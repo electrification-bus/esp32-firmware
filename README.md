@@ -68,7 +68,7 @@ you sell.  So, if you want to implement your buckets thing to manage energy and 
 ## Futures
 
 * Develop a [CTA-2045/EcoPort UCM](https://github.com/electrification-bus/Open-EcoPort) based on this toolkit.
-* Explore the value and/or difficultly/effort of supporting this toolkit on Build
+* Explore the value and/or difficultly/effort of supporting this toolkit on ESPHome
 * If it is possible to host a MQTT broker on an ESP32, I am super interested to learn about that, and have that capability. If an ESP32 could BOTH do everything we talk about above as a eBus/Homie entity in the “device role” AND also be an MQTT broker, that would be HUGE.
 
 # Declarative Specification of ESP32-eBus Devices
@@ -161,7 +161,7 @@ sensor:
 
 ## Homie/eBus Schemas
 
-A Homie/eBus entity providing supporting the "device role" publishes a `$description` of it's nodes and properties, which are JSON objects, an example:
+A Homie/eBus entity supporting the "device role" publishes a `$description` of it's nodes and properties, which are JSON objects, an example:
 ```
 "temperature": {
         "name": "Engine temperature",
@@ -178,6 +178,8 @@ A YAML specification for an ESP32-eBus device would include the information requ
 When we support Modbus backends, then ideally they are included/supported in the declarative system specification.
 
 Here is a [brainstormed example, from ChatGPT](https://chatgpt.com/share/684ad914-4da8-800f-93d1-2e03d1b7a498)
+
+Developing a comprehensive device declarative device specification including ESP32 config, Homie/eBus schemas, and Modbus register schemas seems within the realm of possibility...
 
 ```
 type: object
