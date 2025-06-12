@@ -2,7 +2,7 @@
 
 ## Goals
 
-Initial focus is an ESP32 eBus/Homie operating in the “device role”, see: https://homieiot.github.io/specification/#roles
+Initial focus is an ESP32 eBus/Homie system [operating in the “device role”](https://homieiot.github.io/specification/#roles)
 
 The code will attempt to discover an eBus/Homie/MQTT broker via mDNS, details TBD.
 
