@@ -34,6 +34,16 @@ Modbus support is not 100% required for the initial version, but we should scope
 
 Let’s not worry about the “throttle” idea initally, I think that will be super easy to layer in later on….
 
+### Firmware Updates
+
+The ability to update the ESP32 firmware over the network (AKA OTA) is a highly desirable feature.
+
+Does PlatformIO provide that capability?
+
+The ESPHome system/framework has excellent support for this.
+
+## Confidentiality
+
 If we need an NDA, we can of course do one, but I would prefer that we try to avoid the need.
 I have no interest nor desire to know about your bucket algorithm, especially if that is your special intellectual property.
 Seems like this is something you can use and layer into products you may provide based on this tookit,
@@ -57,8 +67,147 @@ you sell.  So, if you want to implement your buckets thing to manage energy and 
 
 ## Futures
 
-If it is possible to host a MQTT broker on an ESP32, I am super interested to learn about that, and have that capability.
-If an ESP32 could BOTH do everything we talk about above as a eBus/Homie entity in the “device role” AND also be an MQTT broker,
-that would be HUGE.
+* Develop a [CTA-2045/EcoPort UCM](https://github.com/electrification-bus/Open-EcoPort) based on this toolkit.
+* Explore the value and/or difficultly/effort of supporting this toolkit on Build
+* If it is possible to host a MQTT broker on an ESP32, I am super interested to learn about that, and have that capability. If an ESP32 could BOTH do everything we talk about above as a eBus/Homie entity in the “device role” AND also be an MQTT broker, that would be HUGE.
 
-Explore the value and/or difficultly/effort of supporting this toolkit on ESPHome
+# Declarative Specification of ESP32-eBus Devices
+
+## ESPHome Example
+
+Below is the complete specification for a ESPHome application that counts pulses from three water meters, and publishes the counts to MQTT.
+
+Things to note:
+* The ESP32 GPIO pins are defined and configured via this specfication
+* ESPHome functional plugins/modules are referenced and used, i.e. `pulse_counter`
+
+Aspirationally this project would provide a similar capability.
+Note: If in order to support this, some sort of "compiler" from YAML to C++ would be required, that is potentially something that DCJ could develop.
+
+```
+esphome:
+  name: esphome-web-90f4f8
+  friendly_name: Water-Meters
+
+esp32:
+  board: esp32-poe-iso
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# MQTT
+mqtt:
+  broker: 192.168.128.175
+  username: foo
+  password: SECRET
+
+# mDNS discovery
+mdns:
+  disabled: false
+
+ota:
+  platform: esphome
+
+ethernet:
+  type: LAN8720
+  mdc_pin: GPIO23
+  mdio_pin: GPIO18
+  clk_mode: GPIO17_OUT
+  phy_addr: 0
+  power_pin: GPIO12
+  # manual_ip:
+    # static_ip: 192.168.128.190
+    # gateway: 192.168.128.1
+    # subnet: 255.255.255.0
+
+sensor:
+  - platform: pulse_counter
+    pin:
+      number: 13
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    name: "Water_House_Cold_PPM"
+    update_interval: 5s
+    total:
+      name: "Water_House_Cold"
+  - platform: pulse_counter
+    pin:
+      number: 5
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    name: "Water_House_Hot_PPM"
+    update_interval: 5s
+    total:
+      name: "Water_House_Hot"
+  - platform: pulse_counter
+    pin:
+      number: 16
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    name: "Water_Irrigation_PPM"
+    update_interval: 5s
+    total:
+      name: "Water_Irrigation"
+```
+
+## Homie/eBus Schemas
+
+A Homie/eBus entity providing supporting the "device role" publishes a `$description` of it's nodes and properties, which are JSON objects, an example:
+```
+"temperature": {
+        "name": "Engine temperature",
+        "unit": "°C",
+        "datatype": "float",
+        "format": "-20:120"
+      }
+```
+A YAML specification for an ESP32-eBus device would include the information required to generate the property's `$description` schema.
+
+
+## Modbus Register Schemas
+
+When we support Modbus backends, then ideally they are included/supported in the declarative system specification.
+
+Here is a [brainstormed example, from ChatGPT](https://chatgpt.com/share/684ad914-4da8-800f-93d1-2e03d1b7a498)
+
+```
+type: object
+properties:
+  name:
+    type: string
+    description: Human-readable name of the register
+  address:
+    type: integer
+    description: Modbus register address (0-based)
+  function:
+    type: integer
+    enum: [1, 2, 3, 4]
+    description: Modbus function code (1=coil, 2=input, 3=holding, 4=input register)
+  type:
+    type: string
+    enum: [int16, uint16, int32, uint32, float32]
+    description: Data type of the register
+  unit:
+    type: string
+    description: Unit of measurement (e.g., V, A, W)
+  scale:
+    type: number
+    description: Multiplier to apply to raw value
+  description:
+    type: string
+    description: Optional human-friendly description of the register
+required:
+  - name
+  - address
+  - function
+  - type
+```
