@@ -1,8 +1,7 @@
 #include <Arduino.h>
 #include <DeviceState.h>
 
-
-inline const char* device_state_to_cstr(DeviceState state) {
+const char* device_state_to_cstr(DeviceState state) {
     switch (state) {
         case DEVICE_STATE_INIT:         return "init";
         case DEVICE_STATE_READY:        return "ready";
@@ -14,7 +13,7 @@ inline const char* device_state_to_cstr(DeviceState state) {
 }
 
 // Safe for exact matches only; not case-insensitive
-inline DeviceState device_state_from_cstr(const char* str) {
+DeviceState device_state_from_cstr(const char* str) {
     if (strcmp(str, "init") == 0)         return DEVICE_STATE_INIT;
     if (strcmp(str, "ready") == 0)        return DEVICE_STATE_READY;
     if (strcmp(str, "disconnected") == 0) return DEVICE_STATE_DISCONNECTED;

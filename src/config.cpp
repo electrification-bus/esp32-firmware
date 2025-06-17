@@ -55,8 +55,8 @@ bool loadConfiguration() {
   }
     
   // Deserialize the JSON document
-  JsonDocument doc; // https://arduinojson.org/v6/assistant to compute the capacity.
-  DeserializationError error = deserializeJson(doc, file);
+  JsonDocument conf; // https://arduinojson.org/v6/assistant to compute the capacity.
+  DeserializationError error = deserializeJson(conf, file);
   file.close();
   if (error) {
     Serial.printf("***** CONFIG: FAILED to read config JSON: '%s'", error.c_str());
@@ -67,17 +67,24 @@ bool loadConfiguration() {
   Serial.println(F("CONFIG: JSON DESERIALIZE OK"));
 
   //TODO keys to #define header
-  const char* name = doc["name"].as<JsonString>().c_str(); // "EVPE_1.0"
-  Serial.printf("CONFIG: %s",name);
+  const char* name = conf["name"].as<JsonString>().c_str(); // "EVPE_1.0"
+  Serial.printf("CONFIG: %s\n",name);
 
-  JsonObject foo = doc["foo"].as<JsonObject>();
+  JsonObject foo = conf["foo"].as<JsonObject>();
   int cnt = 0;
-  for (JsonObject evse : foo["bar"].as<JsonArray>()) {
-    int a = evse["baz"].as<JsonInteger>();
+  for (JsonObject node : foo["bar"].as<JsonArray>()) {
+    int a = node["baz"].as<JsonInteger>();
+    Serial.printf("CONFIG: foo.bar[%d].baz = %d\n", cnt, a);
     if (a == 0) {
       continue;
     }
     cnt++;
+  }
+
+  /*** process the nodes */
+  int num_nodes = 0;
+  for (JsonObject node : conf["nodes"].as<JsonArray>()) {
+    Serial.printf("CONFIG:%d: %s\n",num_nodes++, node["name"].as<JsonString>().c_str());
   }
 
   return true;

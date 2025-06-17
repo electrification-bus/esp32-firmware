@@ -9,6 +9,6 @@ typedef enum {
     DEVICE_STATE_UNKNOWN
 } DeviceState;
 
-inline const char* device_state_to_cstr(DeviceState state);
+const char* device_state_to_cstr(DeviceState state);
 // Safe for exact matches only; not case-insensitive
-inline DeviceState device_state_from_cstr(const char* str);
+DeviceState device_state_from_cstr(const char* str);

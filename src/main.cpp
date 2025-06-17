@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <wifi_.h>
+#include <network.h>
 #include <config.h>
 #include <mqtt_client.h>
 #include <ESPmDNS.h>
@@ -7,22 +7,19 @@
 void setup() {
   Serial.begin(115200);
   generateDeviceID();
+  loadConfiguration();
   delay(3000);
 
-  if (!setup_wifi()) {
-    //add retries
-    return;
-  }
-  if (!MDNS.begin("esp32poe1")) {
-    Serial.println("Error setting up MDNS responder!");
-  }
-  Serial.println("mDNS responder started");
+  setup_wifi();
 
+  setup_mdns();
   setup_mqtt();
+  //setup_ota();
 
 }
 
 void loop() {
+  loop_ota(); //TODO: interval?
   loop_mqtt();
 }
 /*

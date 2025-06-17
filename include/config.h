@@ -13,4 +13,4 @@
 
 void generateDeviceID();
 const char* getDeviceID();
-
+bool loadConfiguration();
