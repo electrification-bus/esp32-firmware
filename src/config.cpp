@@ -2,11 +2,11 @@
 #include <Arduino.h>
 #include <SPIFFS.h>
 
-String UNIQUE_ID = "";
+const char* UNIQUE_ID = "";
 
-String config_file = "/homie/config.json";
-String spiffs_config_file = "/config.json";
-String config_file_backup = "/config_from_SD.json";
+const char* config_file = "/homie/config.json";
+const char* spiffs_config_file = "/config.json";
+const char* config_file_backup = "/config_from_SD.json";
 
 char device_id[MAX_DEVICE_ID_CHARS] = {0};
 
@@ -41,10 +41,10 @@ bool loadConfiguration() {
     return false;
   }
   //see if we have a config from the build (SPIFFS)
-  if (SPIFFS.exists(spiffs_config_file.c_str())) {
-    file = SPIFFS.open(spiffs_config_file.c_str(), FILE_READ);
+  if (SPIFFS.exists(spiffs_config_file)) {
+    file = SPIFFS.open(spiffs_config_file, FILE_READ);
     Serial.println("CONFIG: LOAD from SPIFFS default (config.json)");
-  } else if (SPIFFS.exists(config_file_backup.c_str())) {
+  } else if (SPIFFS.exists(config_file_backup)) {
     file = SPIFFS.open(config_file_backup, FILE_READ);
     Serial.println("CONFIG: LOAD from SPIFFS backup (config_from_SD.json)");
   }
@@ -59,7 +59,7 @@ bool loadConfiguration() {
   DeserializationError error = deserializeJson(conf, file);
   file.close();
   if (error) {
-    Serial.printf("***** CONFIG: FAILED to read config JSON: '%s'", error.c_str());
+    Serial.printf("***** CONFIG: FAILED to read config JSON: '%s'", error);
     //SD.end();
     SPIFFS.end();
     return false;

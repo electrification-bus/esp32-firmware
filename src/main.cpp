@@ -3,23 +3,21 @@
 #include <config.h>
 #include <mqtt_client.h>
 #include <ESPmDNS.h>
+#include <Property.h>
 
 void setup() {
   Serial.begin(115200);
   generateDeviceID();
   loadConfiguration();
   delay(3000);
-
   setup_wifi();
-
   setup_mdns();
   setup_mqtt();
   //setup_ota();
-
 }
 
 void loop() {
-  loop_ota(); //TODO: interval?
+  //loop_ota(); //TODO: interval?
   loop_mqtt();
 }
 /*

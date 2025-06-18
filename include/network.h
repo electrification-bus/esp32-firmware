@@ -3,11 +3,11 @@
 
 bool setup_wifi();
 bool setup_mdns();
-bool setup_ota();
+void setup_ota();
 
 void loop_ota();
 
 bool wifi_client_connected();
-String get_wifi_ip();
+const char* get_wifi_ip();
 
 

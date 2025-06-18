@@ -18,5 +18,3 @@ void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data)
 void mqtt_publish(const char * data);
 void mqtt_restart();
 boolean mqtt_connected();
-String uint64ToString(uint64_t input);
-String getCommandTopic();

@@ -2,8 +2,9 @@
 #include <ArduinoOTA.h>
 #include <WiFiMulti.h>
 #include <ESPmDNS.h>
-#include <network.h>
 #include <WiFiUdp.h>
+#include <config.h>
+#include <network.h>
 
 #define WIFI_SSID "REDACTED_WIFI_SSID"
 #define WIFI_PW "REDACTED_WIFI_PASSWORD"
@@ -16,19 +17,19 @@ bool wifi_client_connected() {
 }
 
 // Function to get the IP address as a string
-String get_wifi_ip() {
+const char* get_wifi_ip() {
   if (wifi_client_connected()) {
-    return WiFi.localIP().toString();
+    return WiFi.localIP().toString().c_str();
   }
   return "Not Connected";
 }
 
 bool setup_mdns() {
-  if (!MDNS.begin("esp32")) {
+  if (!MDNS.begin(getDeviceID())) {
     Serial.println("Error setting up MDNS responder!");
     return false;
   }
-  Serial.println("mDNS responder started");
+  Serial.printf("mDNS responder started for host:'%s'\n",getDeviceID());
   return true;
 } 
 
@@ -59,8 +60,7 @@ bool setup_wifi() {
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-bool setup_ota() {
+void setup_ota() {
   
   // Port defaults to 3232
   // ArduinoOTA.setPort(3232);

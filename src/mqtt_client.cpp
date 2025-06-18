@@ -29,36 +29,32 @@
 
 #include "mqtt_client.h"
 #include <TimeLib.h>
-#include <WiFiMulti.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <config.h>
 #define ENABLE_DEBUG_MQTT = 1
 
+//WiFiClientSecure transportClient; TODO
 WiFiClient transportClient;
 PubSubClient mqttclient(transportClient);
-
+#define TOPIC_TOKEN_SIZ 64
+#define MQTT_DATA_SIZ 128
 unsigned long mqtt_interval_ts = 0;
-static char mqtt_data[128] = "";
+static char mqtt_data[MQTT_DATA_SIZ] = "";
 static int mqtt_connection_error_count = 0;
-String topic_device;
-String topic_cmd;
+char topic_device[TOPIC_TOKEN_SIZ] = {0};
+char topic_cmd[TOPIC_TOKEN_SIZ] = {0};
 
 // Function prototype for mqtt_publish_json
 void mqtt_publish_json(const char* subtopic, const JsonDocument* payload);
 
 void generateTopics() {
-  topic_device = "homie/5/tld";
-  topic_device.concat("/");
-  topic_device.concat(123);//getDeviceID());
-  topic_device.concat("/");
-  topic_cmd = topic_device;
-  topic_cmd.concat("cmd");
+  sprintf(topic_device,"%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID());
+  sprintf(topic_cmd,"%s/%s",topic_device, HOMIE_TOPIC_SET);
 }
 
-boolean mqtt_connect()
-{
+boolean mqtt_connect() {
   Serial.printf("MQTT Connecting...timeout in:%d\r\n", transportClient.getTimeout());
-  // todo ENABLE_DEBUG_MQTT=1;
   if (transportClient.connect(MQTT_HOST, 1883) != 1) //8883 for TLS
   {
      Serial.println("MQTT connect timeout.");
@@ -73,6 +69,8 @@ boolean mqtt_connect()
 
   if (strcmp(MQTT_USER, "") == 0) {
     //allows for anonymous connection
+    // TODO: will, qos, retain
+    // boolean connect(const char* id, const char* willTopic, uint8_t willQos, boolean willRetain, const char* willMessage);
     mqttclient.connect(getDeviceID()); // Attempt to connect
   } else {
     mqttclient.connect(getDeviceID(), MQTT_USER, MQTT_PW); // Attempt to connect
@@ -82,17 +80,17 @@ boolean mqtt_connect()
     Serial.printf("MQTT connected: %s\r\n", MQTT_HOST);
     
     //subscribe to command topic
-    if (!mqttclient.subscribe(topic_cmd.c_str())) {
+    if (!mqttclient.subscribe(topic_cmd)) {
       delay(250);
-      if (!mqttclient.subscribe(topic_cmd.c_str())) {
+      if (!mqttclient.subscribe(topic_cmd)) {
         delay(500);
-        if (!mqttclient.subscribe(topic_cmd.c_str())) {
-          Serial.printf("MQTT: FAILED TO SUBSCRIBE TO COMMAND TOPIC: %s\r\n", topic_cmd.c_str());
+        if (!mqttclient.subscribe(topic_cmd)) {
+          Serial.printf("MQTT: FAILED TO SUBSCRIBE TO COMMAND TOPIC: %s\r\n", topic_cmd);
           return false;
         }
       }
     }
-    Serial.printf("MQTT: SUBSCRIBED TO COMMAND TOPIC: %s\r\n", topic_cmd.c_str());
+    Serial.printf("MQTT: SUBSCRIBED TO COMMAND TOPIC: %s\r\n", topic_cmd);
     //  mqttclient.publish(getDeviceTopic().c_str(), "connected"); // Once connected, publish an announcement..
   } else {
     Serial.println("MQTT failed: ");
@@ -103,24 +101,24 @@ boolean mqtt_connect()
 }
 
 void mqtt_publish_json(const char* subtopic, const JsonDocument * payload) {
-    String topicBuf;
-    String jsonString;
+
     if (measureJson(*payload) >= 1024) {
       Serial.println("MQTT publish: payload too large");
       return;
     }
+    char topicBuf[256];
+    char jsonString[1024];
     serializeJson(*payload, jsonString);
     // It's annoying to have to set this limit, but maybe a static size is better for performance?
-    char data[1024];
-    jsonString.toCharArray(data, sizeof(data));
-    topicBuf = topic_device;
-    topicBuf.concat(subtopic);
-    if (!mqttclient.publish(topicBuf.c_str(), data)) {
+    //char data[1024];
+    //jsonString.toCharArray(data, sizeof(data));
+    //topicBuf.concat(subtopic);
+    sprintf(topicBuf, "%s/%s", topic_device, subtopic);
+    //if (!mqttclient.publish(topicBuf.c_str(), data)) {
+    if (!mqttclient.publish(topicBuf, jsonString)) {
         Serial.println("MQTT publish: failed");
     }
-#ifdef ENABLE_DEBUG_MQTT
-    Serial.printf("topic: %s, data: %s\n", topicBuf.c_str(), data);
-#endif
+    Serial.printf("topic: %s, data: %s\n", topicBuf, jsonString);
 }
 
 //pull apart a comma-sep colon-delim name:value string and publish the name:value pairs under 'subtopic'
@@ -167,7 +165,7 @@ void subscriber_callback(char* topic, uint8_t* payload, unsigned int length) {
     Serial.printf("MQTT CALLBACK: not handled: payload len overrun:%d\n", length);
     return;
   }
-  if (strcmp(topic, topic_cmd.c_str()) == 0) {
+  if (strcmp(topic, topic_cmd) == 0) {
     char payload_buf[length+1] = {0};
     strncpy(payload_buf, (char*)payload, length);
     payload_buf[length] = '\0'; //ensure null-termination
