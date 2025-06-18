@@ -4,6 +4,7 @@
 bool setup_wifi();
 bool setup_mdns();
 void setup_ota();
+void setup_ethernet();
 
 void loop_ota();
 

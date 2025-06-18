@@ -7,10 +7,12 @@
 
 void setup() {
   Serial.begin(115200);
+  delay(3000);
   generateDeviceID();
   loadConfiguration();
-  delay(3000);
-  setup_wifi();
+  //setup_wifi();
+  setup_ethernet();
+  delay(1000); // give time for the ethernet to connect
   setup_mdns();
   setup_mqtt();
   //setup_ota();
