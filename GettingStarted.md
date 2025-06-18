@@ -15,14 +15,16 @@ This is what this is
   - **Windows:** Run the installer and follow the prompts
   - **macOS:** Drag the application to your Applications folder
 
-### Step 2: Install PlatformIO Extension
+### Step 2: Install PlatformIO Extension and Serial Monitor extension
 
 1. Open VSCode
 2. Click on the Extensions icon in the left sidebar (or press Ctrl+Shift+X)
 3. Search for "PlatformIO IDE"
 4. Click "Install" on the PlatformIO IDE extension
 5. Wait for the installation to complete (this may take a few minutes)
-6. Restart VSCode when prompted
+6. Search for "Serial Monitor" and select the one from Microsoft (if there are multiple)
+7. Click "Install" on the PlatformIO IDE extension, wait for installation to compleete.
+8. Restart VSCode when prompted
 
 ### Step 3: Clone the Repository
 1. Open a terminal/command prompt
