@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+u# Check if an argument was provided
+if [ $# -lt 1 ]; then
+    echo "Usage: $0 <option>"
+    exit 1
+fi
+
+case "$1" in
+    dcj)
+        echo "Configuring for: $1"
+	ln -s platformio-DCJ.ini platformio.ini
+	ln -s config/config-DCJ.h config/config.h
+        ;;
+    doug)
+        echo "Configuring for: $1"
+	ln -s platformio-Doug.ini platformio.ini
+	ln -s config/config-Doug.h config/config.h
+        # Place your stop logic here
+        ;;
+    glenn)
+        echo "Configuring for: $1"
+        # Place your status check logic here
+        ;;
+    *)
+        echo "Unknown option: $1"
+        echo "Valid options are: dcj, doug, glenns"
+        exit 1
+        ;;
+esac
