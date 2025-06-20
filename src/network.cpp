@@ -11,14 +11,15 @@
 
 int CONNECT_ATTEMPTS = 6;
 WiFiMulti wifiMulti;
+static bool eth_connected = false;
 
-bool wifi_client_connected() {
-  return WiFi.isConnected() && (WIFI_STA == (WiFi.getMode() & WIFI_STA));
+bool client_connected() {
+  return eth_connected || (WiFi.isConnected() && (WIFI_STA == (WiFi.getMode() & WIFI_STA)));
 }
 
 // Function to get the IP address as a string
 const char* get_wifi_ip() {
-  if (wifi_client_connected()) {
+  if (client_connected()) {
     return WiFi.localIP().toString().c_str();
   }
   return "Not Connected";
@@ -40,7 +41,7 @@ bool setup_wifi() {
     delay(1000);
     Serial.printf("wifi failed to connect - retrying %s\n", WIFI_SSID);
   }
-  bool didConnect = wifi_client_connected();
+  bool didConnect = client_connected();
   Serial.printf("WiFi: %s: %s\n", WIFI_SSID, didConnect ?  WiFi.localIP().toString().c_str() : "FAILED TO CONNECT");
   return didConnect;
 }
@@ -127,8 +128,6 @@ void loop_ota() {
 */
 
 #include <ETH.h>
-
-static bool eth_connected = false;
 #include "FS.h"
 //#include "SD_MMC.h"
 
@@ -201,12 +200,5 @@ void setup_ethernet()
 }
 
 
-void loop_ethernet()
-{
-
-  if (eth_connected) {
-    testClient("google.com", 80);
-  }
-  
-  delay(2000);
+void loop_ethernet() {
 }

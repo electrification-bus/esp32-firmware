@@ -8,7 +8,7 @@ void setup_ethernet();
 
 void loop_ota();
 
-bool wifi_client_connected();
+bool client_connected();
 const char* get_wifi_ip();
 
 

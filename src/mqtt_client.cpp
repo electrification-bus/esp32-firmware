@@ -30,7 +30,7 @@
 #include "mqtt_client.h"
 #include <TimeLib.h>
 #include <WiFiClientSecure.h>
-#include <ArduinoJson.h>
+#include <ArduinoYaml.h>
 #include <config.h>
 #define ENABLE_DEBUG_MQTT = 1
 
@@ -54,8 +54,8 @@ void generateTopics() {
 }
 
 boolean mqtt_connect() {
-  Serial.printf("MQTT Connecting...timeout in:%d\r\n", transportClient.getTimeout());
-  if (transportClient.connect(MQTT_HOST, 1883) != 1) //8883 for TLS
+  Serial.printf("MQTT Connecting: '%s': timeout in:%d\r\n", mqtt_host.c_str(), transportClient.getTimeout());
+  if (transportClient.connect(mqtt_host.c_str(), mqtt_port) != 1) //8883 for TLS
   {
      Serial.println("MQTT connect timeout.");
      // todo ENABLE_DEBUG_MQTT=0;
@@ -67,17 +67,17 @@ boolean mqtt_connect() {
   mqttclient.setBufferSize(MAX_DATA_LEN + 200);
   mqttclient.setKeepAlive(180);
 
-  if (strcmp(MQTT_USER, "") == 0) {
+  if (mqtt_username.isEmpty()) {
     //allows for anonymous connection
     // TODO: will, qos, retain
     // boolean connect(const char* id, const char* willTopic, uint8_t willQos, boolean willRetain, const char* willMessage);
     mqttclient.connect(getDeviceID()); // Attempt to connect
   } else {
-    mqttclient.connect(getDeviceID(), MQTT_USER, MQTT_PW); // Attempt to connect
+    mqttclient.connect(getDeviceID(), mqtt_username.c_str(), mqtt_password.c_str()); // Attempt to connect
   }
 
   if (mqttclient.state() == 0) {
-    Serial.printf("MQTT connected: %s\r\n", MQTT_HOST);
+    Serial.printf("MQTT connected: %s\r\n", mqtt_host.c_str());
     
     //subscribe to command topic
     if (!mqttclient.subscribe(topic_cmd)) {
@@ -200,7 +200,7 @@ void loop_mqtt() {
       //publish here; call publishers 
     } else if (millis() - last_connect_error > 10000) { //throttle connection retries
       last_connect_error = millis();
-      Serial.printf("MQTT not connected - retrying: %s\n", MQTT_HOST);
+      Serial.printf("MQTT not connected - retrying: %s\n", mqtt_host.c_str());
       mqtt_connect();
     }
     mqtt_interval_ts = millis();

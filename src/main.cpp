@@ -12,7 +12,10 @@ void setup() {
   loadConfiguration();
   //setup_wifi();
   setup_ethernet();
-  delay(1000); // give time for the ethernet to connect
+  while(!client_connected()) {
+    Serial.println("Waiting for network connection...");
+    delay(1000);
+  }
   setup_mdns();
   setup_mqtt();
   //setup_ota();
