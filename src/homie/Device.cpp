@@ -46,11 +46,7 @@ Device::Device(const char* id, const char* name, const char* version) {
             JsonObject props_obj = props[0].as<JsonObject>();
             Serial.printf("Device: Node: adding property %s\n", props_obj["id"].as<const char*>());
             Property* prop = new Property();
-            prop->setId(props_obj["id"].as<const char*>());
-            prop->setName(props_obj["name"].as<const char*>()); 
-            prop->setDatatype(props_obj["datatype"].as<const char*>());
-            //prop->setFormat(props_obj["format"].as<const char*>());
-
+            prop->from_dict(&props_obj); // Initialize property from JsonObject
             if (prop) {
               n->addProperty(prop);
             } else {

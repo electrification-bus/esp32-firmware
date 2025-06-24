@@ -3,27 +3,51 @@
 #include <homie/Device.h>
 Property::Property(){};
 
+void Property::from_dict(JsonObject* props_obj) {
+    setId((*props_obj)["id"].as<const char*>());
+    setName((*props_obj)["name"].as<const char*>()); 
+    setDatatype((*props_obj)["datatype"].as<const char*>());
+    //setUnit((*props_obj)["unit"].as<const char*>());
+    //setValue((*props_obj)["value"].as<const char*>());
+    //setFormat((*props_obj)["format"].as<const char*>());
+    //setDatatype((*props_obj)["settable"].as<const char*>());
+    //setRetained((*props_obj)["retained"].as<bool>());
+    /*
+
+    char _unit[8];
+    int _round_to = 0;
+    bool _supports_target = false;*/
+}
+
 void Property::setNode(Node* node) {
     strncpy(_id, node->id(), sizeof(_id) - 1);
     _id[sizeof(_id) - 1] = '\0'; // Ensure null termination
 }
 
-Node* Property::node() const {
-    return nullptr;
+Node* Property::node() {
+    return _node;
 }
 
 void Property::setId(const char* id) {
     strncpy(_id, id, sizeof(_id) - 1);
-    _id[sizeof(_id) - 1] = '\0'; // Ensure null termination
+    _id[sizeof(_id) - 1] = '\0';
 }
 
 const char* Property::id() const {
     return _id;
 }
 
+void Property::setUnit(const char* unit) {
+    strncpy(_unit, unit, sizeof(_unit) - 1);
+    _unit[sizeof(_unit) - 1] = '\0';
+}
+
+const char* Property::unit() {
+    return _unit;
+}
 void Property::setName(const char* name) {
     strncpy(_name, name, sizeof(_name) - 1);
-    _name[sizeof(_name) - 1] = '\0'; // Ensure null termination}
+    _name[sizeof(_name) - 1] = '\0';
 }
 
 const char* Property::name() const {
@@ -36,6 +60,11 @@ void Property::setDevice(Device* device) {
 
 void Property::setValue(const char* value) {
 
+}
+
+void Property::setFormat(const char* fmt) {
+    strncpy(_format, fmt, sizeof(_format) - 1);
+    _format[sizeof(_format) - 1] = '\0';
 }
 
 const char* Property::coerced_value() const {
@@ -58,13 +87,21 @@ PubSubClient* Property::mqttClient() const {
 void Property::start_mqtt_client() {}
 
 
-bool Property::is_settable() const {
+bool Property::settable() {
     return false;
 }
 
 
-bool Property::is_retained() const {
-    return false;
+void Property::setSettable(bool s) {
+   _settable = s;;
+}
+
+void Property::setRetained(bool r) {
+    _retained = r;
+}
+
+bool Property::retained() {
+    return _retained;
 }
 
 bool Property::is_json_datatype() const {
