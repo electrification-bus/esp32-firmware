@@ -88,7 +88,8 @@ bool loadConfiguration() {
   //TODO keys to #define header
   JsonArray conf_array = config["config"].as<JsonArray>();
   config_json = conf_array[0].as<JsonObject>();
-  mqtt_host = config_json["mqtt_host"].as<JsonString>().c_str();
+  if (config_json["mqtt_host"].is<JsonString>())
+    mqtt_host = config_json["mqtt_host"].as<JsonString>().c_str();
   mqtt_port = config_json["mqtt_port"].as<uint16_t>();
   mqtt_username = config_json["mqtt_username"].as<JsonString>().c_str();
   mqtt_password = config_json["mqtt_password"].as<JsonString>().c_str();

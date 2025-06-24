@@ -15,7 +15,8 @@ public:
     void setDevice(Device* device);
     Device* device();
     void setMQTTClient(PubSubClient* client);
-    void publish();
+    void publish(const char* topic);
+
 
 private:
     char _id[64];

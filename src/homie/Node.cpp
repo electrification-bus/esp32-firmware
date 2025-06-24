@@ -2,6 +2,7 @@
 #include <homie/Property.h>
 #include <homie/Device.h>
 Node::Node() {
+    _num_properties = 0;
 }
 
 Node::~Node() {
@@ -10,12 +11,15 @@ Node::~Node() {
 void Node::addProperty(Property* property) {
     property->setNode(this); // Set the node for the property
     _properties[_num_properties++] = property;
-    Serial.printf("node::addProperty: Property %s added to node %s\n", property->id(), this->id());
 }
 
-void Node::publish() {
+void Node::publish(const char* topic) {
+    String top(topic);
+    top.concat(_id);
+    top.concat("/");
     for(int i=0;i<_num_properties;i++) {
-        _properties[i]->publish();
+        Serial.printf("Node: Publishing to topic %d: '%s'\n", i, top.c_str());
+        _properties[i]->publish(top.c_str() );
     }
 }
 
@@ -46,5 +50,8 @@ Device* Node::device() {
 }
 
 void Node::setMQTTClient(PubSubClient* client) {
-    this->_mqtt_client = client;
+    _mqtt_client = client;
+    for(int i=0; i < _num_properties; i++) {
+        _properties[i]->setMQTTClient(client); // Set the MQTT client for each property
+    }
 }

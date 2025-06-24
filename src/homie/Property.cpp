@@ -1,14 +1,27 @@
+#include <config.h>
 #include "homie/Property.h"
 #include <homie/Node.h>
 #include <homie/Device.h>
 Property::Property(){};
 
 void Property::from_dict(JsonObject* props_obj) {
-    setId((*props_obj)["id"].as<const char*>());
-    setName((*props_obj)["name"].as<const char*>()); 
-    setDatatype((*props_obj)["datatype"].as<const char*>());
-    //setUnit((*props_obj)["unit"].as<const char*>());
-    //setValue((*props_obj)["value"].as<const char*>());
+    if ((*props_obj)["id"].is<const char*>())
+        setId((*props_obj)["id"].as<const char*>());
+
+    if ((*props_obj)["name"].is<const char*>())
+        setName((*props_obj)["name"].as<const char*>()); 
+
+    if ((*props_obj)["datatype"].is<const char*>())
+        setDatatype((*props_obj)["datatype"].as<const char*>());
+
+    if ((*props_obj)["value"].is<bool>())
+        setValue((*props_obj)["value"].as<bool>()); // Set the value from the JsonString
+    else if ((*props_obj)["value"].is<float>())
+        setValue((*props_obj)["value"].as<float>()); // Set the value from the JsonString
+    else if ((*props_obj)["value"].is<const char*>())
+        setValue((*props_obj)["value"].as<const char*>()); // Set the value from the JsonString
+    
+    
     //setFormat((*props_obj)["format"].as<const char*>());
     //setDatatype((*props_obj)["settable"].as<const char*>());
     //setRetained((*props_obj)["retained"].as<bool>());
@@ -20,8 +33,7 @@ void Property::from_dict(JsonObject* props_obj) {
 }
 
 void Property::setNode(Node* node) {
-    strncpy(_id, node->id(), sizeof(_id) - 1);
-    _id[sizeof(_id) - 1] = '\0'; // Ensure null termination
+    _node = node;
 }
 
 Node* Property::node() {
@@ -45,6 +57,7 @@ void Property::setUnit(const char* unit) {
 const char* Property::unit() {
     return _unit;
 }
+
 void Property::setName(const char* name) {
     strncpy(_name, name, sizeof(_name) - 1);
     _name[sizeof(_name) - 1] = '\0';
@@ -57,9 +70,30 @@ const char* Property::name() const {
 void Property::setDevice(Device* device) {
     _device = device;
 }
-
+void Property::setValue(int value) {
+    snprintf(_value, sizeof(_value), "%d", value);
+}
+void Property::setValue(float value) {
+    snprintf(_value, sizeof(_value), "%f", value);
+}
 void Property::setValue(const char* value) {
+    strncpy(_value, value, sizeof(_value) - 1);
+    _value[sizeof(_value) - 1] = '\0';
+}
+void Property::setValue(bool value) {
+    strncpy(_value, value ? "true" : "false", sizeof(_value) - 1);
+    _value[sizeof(_value) - 1] = '\0';
+}
+void Property::setValue(unsigned int value) {
+    snprintf(_value, sizeof(_value), "%u", value);
+}
 
+void Property::setValue(long value) {
+    snprintf(_value, sizeof(_value), "%ld", value);
+}
+
+void Property::setValue(double value) {
+    snprintf(_value, sizeof(_value), "%f", value);
 }
 
 void Property::setFormat(const char* fmt) {
@@ -67,6 +101,9 @@ void Property::setFormat(const char* fmt) {
     _format[sizeof(_format) - 1] = '\0';
 }
 
+const char* Property::value() {
+    return _value;
+}
 const char* Property::coerced_value() const {
     return "";
 }
@@ -120,9 +157,17 @@ void Property::description(SimpleMap<const char*, const char*>& desc) const {}
 
 void Property::_settable_callback(const char* topic, const char* payload) {}
 
-void Property::set_subscribe() {}
+void Property::setSubscribe() {}
 
-void Property::publish() {
-    //boolean PubSubClient::publish(const char* topic, const uint8_t* payload, unsigned int plength, boolean retained) {
-    _mqtt_client->publish(_name, _value);
+void Property::setMQTTClient(PubSubClient* client) {
+    _mqtt_client = client;
+}
+String topic_buf;
+String value_buf;
+void Property::publish(const char* topic) {
+    topic_buf = topic;
+    value_buf = _value;
+    topic_buf.concat("value");
+    Serial.printf("Property::publish: %s = %s, client is: %s\n", topic_buf.c_str(), _value, _mqtt_client ? "set" : "not set");
+    _mqtt_client->publish(topic_buf.c_str(), value_buf.c_str()); //TODO retained flag
 }

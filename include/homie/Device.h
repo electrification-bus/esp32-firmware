@@ -12,11 +12,12 @@ class Device {
 
     void setState(DeviceState state);
     Node* addNode(JsonVariant node);
-    void setMQTTClient(PubSubClient* client) {_mqtt_client = client;}
+    void setMQTTClient(PubSubClient* client);
     String toJson();
     String getId();
     void publish();
     void setTopic(const char* topic);
+    const char* topic();
     void serialize(String& output);
 
  private:
