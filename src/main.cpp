@@ -8,9 +8,9 @@ Device* theDevice;
 
 void setup_homie() {
   theDevice = new Device(getDeviceID(), "My Device", "1.0");
-  //theDevice->setMQTTClient(&mqttclient);
-  //theDevice->setState(DEVICE_STATE_INIT);
-  //theDevice->publish();
+  theDevice->setMQTTClient(&mqtt_client);
+  theDevice->setState(DEVICE_STATE_INIT);
+  theDevice->publish();
 }
 
 void setup() {

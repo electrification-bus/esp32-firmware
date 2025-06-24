@@ -36,7 +36,7 @@
 
 //WiFiClientSecure transportClient; TODO
 WiFiClient transportClient;
-PubSubClient mqttclient(transportClient);
+PubSubClient mqtt_client(transportClient);
 #define TOPIC_TOKEN_SIZ 64
 #define MQTT_DATA_SIZ 128
 unsigned long mqtt_interval_ts = 0;
@@ -63,28 +63,28 @@ boolean mqtt_connect() {
   }
 
   //transportClient.setTimeout(60);//(MQTT_TIMEOUT);
-  mqttclient.setSocketTimeout(6);//MQTT_TIMEOUT);
-  mqttclient.setBufferSize(MAX_DATA_LEN + 200);
-  mqttclient.setKeepAlive(180);
+  mqtt_client.setSocketTimeout(6);//MQTT_TIMEOUT);
+  mqtt_client.setBufferSize(MAX_DATA_LEN + 200);
+  mqtt_client.setKeepAlive(180);
 
   if (mqtt_username.isEmpty()) {
     //allows for anonymous connection
     // TODO: will, qos, retain
     // boolean connect(const char* id, const char* willTopic, uint8_t willQos, boolean willRetain, const char* willMessage);
-    mqttclient.connect(getDeviceID()); // Attempt to connect
+    mqtt_client.connect(getDeviceID()); // Attempt to connect
   } else {
-    mqttclient.connect(getDeviceID(), mqtt_username.c_str(), mqtt_password.c_str()); // Attempt to connect
+    mqtt_client.connect(getDeviceID(), mqtt_username.c_str(), mqtt_password.c_str()); // Attempt to connect
   }
 
-  if (mqttclient.state() == 0) {
+  if (mqtt_client.state() == 0) {
     Serial.printf("MQTT connected: %s\r\n", mqtt_host.c_str());
     
     //subscribe to command topic
-    if (!mqttclient.subscribe(topic_cmd)) {
+    if (!mqtt_client.subscribe(topic_cmd)) {
       delay(250);
-      if (!mqttclient.subscribe(topic_cmd)) {
+      if (!mqtt_client.subscribe(topic_cmd)) {
         delay(500);
-        if (!mqttclient.subscribe(topic_cmd)) {
+        if (!mqtt_client.subscribe(topic_cmd)) {
           Serial.printf("MQTT: FAILED TO SUBSCRIBE TO COMMAND TOPIC: %s\r\n", topic_cmd);
           return false;
         }
@@ -94,7 +94,7 @@ boolean mqtt_connect() {
     //  mqttclient.publish(getDeviceTopic().c_str(), "connected"); // Once connected, publish an announcement..
   } else {
     Serial.println("MQTT failed: ");
-    Serial.println(mqttclient.state());
+    Serial.println(mqtt_client.state());
     return (0);
   }
   return (1);
@@ -115,7 +115,7 @@ void mqtt_publish_json(const char* subtopic, const JsonDocument * payload) {
     //topicBuf.concat(subtopic);
     sprintf(topicBuf, "%s/%s", topic_device, subtopic);
     //if (!mqttclient.publish(topicBuf.c_str(), data)) {
-    if (!mqttclient.publish(topicBuf, jsonString)) {
+    if (!mqtt_client.publish(topicBuf, jsonString)) {
         Serial.println("MQTT publish: failed");
     }
     Serial.printf("topic: %s, data: %s\n", topicBuf, jsonString);
@@ -145,7 +145,7 @@ void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data)
       mqtt_data[pos] = 0;
       data += pos;
 
-      if (!mqttclient.publish(topicBuf.c_str(), mqtt_data)) {
+      if (!mqtt_client.publish(topicBuf.c_str(), mqtt_data)) {
        Serial.println("MQTT publish: failed");
       }
 #ifdef ENABLE_DEBUG_MQTT
@@ -180,7 +180,7 @@ void subscriber_callback(char* topic, uint8_t* payload, unsigned int length) {
 
 void setup_mqtt() {
   generateTopics();
-  mqttclient.setCallback(subscriber_callback);
+  mqtt_client.setCallback(subscriber_callback);
   if (!mqtt_connect()) {
     delay(250);
     if (!mqtt_connect()) {
@@ -196,7 +196,7 @@ void setup_mqtt() {
 
 int last_connect_error = millis();
 void loop_mqtt() {
-    if (mqttclient.connected()) {  
+    if (mqtt_client.connected()) {  
       //publish here; call publishers 
     } else if (millis() - last_connect_error > 10000) { //throttle connection retries
       last_connect_error = millis();
@@ -204,15 +204,15 @@ void loop_mqtt() {
       mqtt_connect();
     }
     mqtt_interval_ts = millis();
-    mqttclient.loop();
+    mqtt_client.loop();
 }
 
 void mqtt_restart() {
-  if (mqttclient.connected()) {
-    mqttclient.disconnect();
+  if (mqtt_client.connected()) {
+    mqtt_client.disconnect();
   }
 }
 
 boolean mqtt_connected() {
-  return mqttclient.connected();
+  return mqtt_client.connected();
 }

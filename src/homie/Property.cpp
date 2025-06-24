@@ -1,70 +1,58 @@
 #include "homie/Property.h"
+#include <homie/Node.h>
+#include <homie/Device.h>
+Property::Property(){};
 
-Property::Property(const char* id,
-        const char* name,
-        const char* datatype)
-        /*,
-        const char* _format,
-        bool _settable,
-        void* _callback,
-        bool _retained,
-        const char* _unit,
-        int _round_to,
-        bool _supports_target,
-        Node* _node,
-        Device* _device,
-        void* _async_loop)*/ {
-
-        strncpy(_id, id, sizeof(_id) - 1);
-        _id[sizeof(_id) - 1] = '\0'; // Ensure null termination
-
-        strncpy(_name, name, sizeof(_name) - 1);
-        _name[sizeof(_name) - 1] = '\0'; // Ensure null termination
-
-
-        //strcpy(datatype,_datatype);
-        //strcpy(format,_format);
-     //   settable = _settable;
-      //  callback = _callback;
-     //   retained = _retained;
-        //strcpy(unit, _unit); 
-     //   round_to = _round_to;
-     //   supports_target = _supports_target;
-     //   node = _node;
-     //   device = _device;
-      //  async_loop = _async_loop;           
+void Property::setNode(Node* node) {
+    strncpy(_id, node->id(), sizeof(_id) - 1);
+    _id[sizeof(_id) - 1] = '\0'; // Ensure null termination
 }
 
-void Property::set_node(Node* node) {}
-
-Node* Property::get_node() const {
+Node* Property::node() const {
     return nullptr;
+}
+
+void Property::setId(const char* id) {
+    strncpy(_id, id, sizeof(_id) - 1);
+    _id[sizeof(_id) - 1] = '\0'; // Ensure null termination
 }
 
 const char* Property::id() const {
     return _id;
 }
 
-void Property::set_device(Device* device) {
-
+void Property::setName(const char* name) {
+    strncpy(_name, name, sizeof(_name) - 1);
+    _name[sizeof(_name) - 1] = '\0'; // Ensure null termination}
 }
 
-bool Property::set_value(const char* value) {
-    return false;
+const char* Property::name() const {
+    return _name;
+}
+
+void Property::setDevice(Device* device) {
+    _device = device;
+}
+
+void Property::setValue(const char* value) {
+
 }
 
 const char* Property::coerced_value() const {
     return "";
 }
 
-
+void Property::setDatatype(const char* dt)  {
+    strncpy(_datatype, dt, sizeof(_datatype) - 1);
+    _datatype[sizeof(_datatype) - 1] = '\0'; // Ensure null termination}
+}
 
 const char* Property::datatype() const {
     return "";
 }
 
-MqttClient* Property::mqtt_client() const {
-    return nullptr;
+PubSubClient* Property::mqttClient() const {
+    return _mqtt_client;
 }
 
 void Property::start_mqtt_client() {}
@@ -96,3 +84,8 @@ void Property::description(SimpleMap<const char*, const char*>& desc) const {}
 void Property::_settable_callback(const char* topic, const char* payload) {}
 
 void Property::set_subscribe() {}
+
+void Property::publish() {
+    //boolean PubSubClient::publish(const char* topic, const uint8_t* payload, unsigned int plength, boolean retained) {
+    _mqtt_client->publish(_name, _value);
+}

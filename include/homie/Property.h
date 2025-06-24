@@ -1,49 +1,36 @@
 #pragma once
 
 #include <Arduino.h>
+#include <mqtt_client.h>
 #include <SimpleMap.h>
-
-// Forward declarations for types used as pointers
 class Node;
 class Device;
-class MqttClient;
 
 class Property {
 public:
-    Property(
-        const char* id,
-        const char* name,
-        const char* datatype);
-        /*,
-        const char* format,
-        bool settable,
-        void* callback,
-        bool retained,
-        const char* unit = nullptr,
-        int round_to = 0,
-        bool supports_target = false,
-        Node* node = nullptr,
-        Device* device = nullptr,
-        void* async_loop = nullptr
-    );*/
+    Property();
+    ~Property(){};
 
     //static Property* from_dict(const void* property_dict);
 
-    void set_node(Node* node);
-    Node* get_node() const;
+    void setId(const char* id);
     const char* id() const;
-    const char* nodeId() const;
-    const char* deviceId() const;
-    void set_device(Device* device);
-    bool set_value(const char* value);
-
+    void setNode(Node* node);
+    Node* node() const;
+    void setDevice(Device* device);
+    const char* name() const;
+    void setName(const char* name);
+    const char* device() const;
+    void setValue(const char* value);
     const char* value() const;
+    const char* setFormat() const;
     const char* format() const;
     const char* coerced_value() const;
 
+    void setDatatype(const char*);
     const char* datatype() const;
     const char* unit() const;
-    MqttClient* mqtt_client() const;
+    PubSubClient* mqttClient() const;
     void start_mqtt_client();
     bool is_settable() const;
     bool is_retained() const;
@@ -54,6 +41,7 @@ public:
     void description(SimpleMap<const char*, const char*>& desc) const;
     void _settable_callback(const char* topic, const char* payload);
     void set_subscribe();
+    void publish();
 
 private:
     char _id[64];
@@ -69,5 +57,6 @@ private:
     bool _supports_target = false;
     Node* _node = nullptr;
     Device* _device = nullptr;
+    PubSubClient* _mqtt_client;
     void* _async_loop = nullptr;
 };

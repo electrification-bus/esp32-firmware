@@ -1,7 +1,9 @@
 #pragma once
+#include <ArduinoJson.h>
 #include <homie/DeviceState.h>
-#include <homie/Node.h>
 #include <mqtt_client.h>
+#include <homie/Node.h>
+#include <homie/Property.h>
 
 class Device {
  public:

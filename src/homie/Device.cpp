@@ -36,20 +36,20 @@ Device::Device(const char* id, const char* name, const char* version) {
     JsonArray nodes_array = (*nodes)["nodes"].as<JsonArray>();
     for (JsonVariant node : nodes_array) {
       if (node) {
-        Serial.printf("Processing node %s\n", node["name"].as<const char*>());
+        Serial.printf("Device: adding node %s\n", node["name"].as<const char*>());
         Node* n = addNode(node);
         if (n) {
           n->setDevice(this); // Set the device for the node
-          n->setMQTTClient(&mqttclient); // Set the MQTT client for the node
+          n->setMQTTClient(_mqtt_client); // Set the MQTT client for the node
           JsonVariant props = node["properties"].as<JsonArray>();
           if (props[0].is<JsonObject>()) {
             JsonObject props_obj = props[0].as<JsonObject>();
-            Serial.printf("Adding property %s w/format \n", props_obj["id"].as<const char*>());//, kv.value()["format"].as<const char*>());
-            Property* prop = new Property(
-                props_obj["id"].as<const char*>(),
-                props_obj["name"].as<const char*>(),
-                props_obj["datatype"].as<const char*>()
-            );
+            Serial.printf("Device: Node: adding property %s\n", props_obj["id"].as<const char*>());
+            Property* prop = new Property();
+            prop->setId(props_obj["id"].as<const char*>());
+            prop->setName(props_obj["name"].as<const char*>()); 
+            prop->setDatatype(props_obj["datatype"].as<const char*>());
+            //prop->setFormat(props_obj["format"].as<const char*>());
 
             if (prop) {
               n->addProperty(prop);
@@ -106,7 +106,7 @@ void Device::serialize(String& output) {
 void Device::publish() {
     String json = toJson();
     String topic = String(HOMIE_TOPIC_PREFIX) + "/" + _id + "/$description";
-    if (!mqttclient.publish(topic.c_str(), json.c_str())) {
+    if (!_mqtt_client->publish(topic.c_str(), json.c_str())) {
         Serial.println("MQTT publish: failed");
     } else {
         Serial.printf("Published to %s: %s\n", topic.c_str(), json.c_str());
