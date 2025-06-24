@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <DeviceState.h>
+#include <homie/DeviceState.h>
 
 const char* device_state_to_cstr(DeviceState state) {
     switch (state) {

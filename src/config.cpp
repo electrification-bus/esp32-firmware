@@ -4,6 +4,7 @@
 #include <ArduinoYaml.h>
 
 static JsonObject config_json;
+static JsonDocument node_config_json;
 String mqtt_host;
 uint16_t mqtt_port;
 String mqtt_username;
@@ -19,6 +20,13 @@ const char* config_file_backup = "/config_from_SD.json";
 const bool default_value = false; // default value for property
 bool current_value = default_value;
 bool config_loaded = false; // prevent updates if config isn't loaded
+
+JsonObject* get_config() {
+    return &config_json;
+}
+JsonDocument* get_node_config() {
+    return &node_config_json;
+}
 
 void generatefullDeviceID() {// includes OUI vendorid of the ethernet MAC inside the ESP32S2 -prefer to not use  full MACid
   uint32_t low = ESP.getEfuseMac() & 0xFFFFFFFF;
@@ -77,12 +85,6 @@ bool loadConfiguration() {
   }
   Serial.println(F("CONFIG: DESERIALIZE OK"));
 
-  /*** process the nodes */
-  int num_nodes = 0;
-  for (JsonObject node : config["nodes"].as<JsonArray>()) {
-    Serial.printf("CONFIG:%d: %s\n",num_nodes++, node["name"].as<JsonString>().c_str());
-  }
-
   //TODO keys to #define header
   JsonArray conf_array = config["config"].as<JsonArray>();
   config_json = conf_array[0].as<JsonObject>();
@@ -91,6 +93,16 @@ bool loadConfiguration() {
   mqtt_username = config_json["mqtt_username"].as<JsonString>().c_str();
   mqtt_password = config_json["mqtt_password"].as<JsonString>().c_str();
   device_id_prefix = config_json["device_id_prefix"].as<JsonString>().c_str();
+
+    /*** process the nodes */
+  int num_nodes = 0;
+  for (JsonObject node : config["nodes"].as<JsonArray>()) {
+    Serial.printf("CONFIG:%d: %s\n",num_nodes++, node["name"].as<JsonString>().c_str());
+  }
+  node_config_json["nodes"] = config["nodes"]; // store the nodes in a JsonArray for easy access la
+  for (JsonObject n : node_config_json["nodes"].as<JsonArray>()) {
+    Serial.printf("CONFIG NODE:%s\n",n["name"].as<JsonString>().c_str());
+  }
   /* debug
   for(JsonObject::iterator it = config_json.begin(); it != config_json.end(); ++it) {
     //YAML config supports string and integer values. null converts to empty string

@@ -18,3 +18,4 @@ void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data)
 void mqtt_publish(const char * data);
 void mqtt_restart();
 boolean mqtt_connected();
+extern PubSubClient mqttclient;

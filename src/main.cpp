@@ -3,7 +3,15 @@
 #include <config.h>
 #include <mqtt_client.h>
 #include <ESPmDNS.h>
-#include <Property.h>
+#include <homie/Device.h>
+Device* theDevice;
+
+void setup_homie() {
+  theDevice = new Device(getDeviceID(), "My Device", "1.0");
+  //theDevice->setMQTTClient(&mqttclient);
+  //theDevice->setState(DEVICE_STATE_INIT);
+  //theDevice->publish();
+}
 
 void setup() {
   Serial.begin(115200);
@@ -19,6 +27,8 @@ void setup() {
   setup_mdns();
   setup_mqtt();
   //setup_ota();
+
+  setup_homie();
 }
 
 void loop() {

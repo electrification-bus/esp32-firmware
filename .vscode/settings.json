@@ -8,6 +8,21 @@
         "functional": "cpp",
         "tuple": "cpp",
         "type_traits": "cpp",
-        "utility": "cpp"
+        "utility": "cpp",
+        "deque": "cpp",
+        "unordered_map": "cpp",
+        "vector": "cpp",
+        "initializer_list": "cpp",
+        "new": "cpp",
+        "optional": "cpp",
+        "system_error": "cpp",
+        "algorithm": "cpp",
+        "memory": "cpp",
+        "memory_resource": "cpp",
+        "random": "cpp",
+        "cmath": "cpp",
+        "fstream": "cpp",
+        "numeric": "cpp",
+        "streambuf": "cpp"
     }
 }
