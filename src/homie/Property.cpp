@@ -163,7 +163,7 @@ void Property::serialize(String& serialized) {
     doc["id"] = _id;
     doc["name"] = _name;
     doc["datatype"] = _datatype;
-    doc["forma"] = _format;
+    doc["format"] = _format;
     doc["settable"] = _settable;
     doc["retained"] = _retained;
     doc["unit"] = _unit;
