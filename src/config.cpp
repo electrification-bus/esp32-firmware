@@ -45,7 +45,7 @@ void generateDeviceID() {
 }
 
 const char* getDeviceID() {
-  return (const char*)device_id;
+  return device_id;
 }
 
 bool loadConfiguration() {

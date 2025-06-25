@@ -4,13 +4,12 @@
 #include <mqtt_client.h>
 #include <ESPmDNS.h>
 #include <homie/Device.h>
-Device* theDevice;
+Device theDevice;
 
 void setup_homie() {
-  theDevice = new Device(getDeviceID(), "My Device", "1.0");
-  theDevice->setMQTTClient(&mqtt_client);
-  theDevice->setState(DEVICE_STATE_INIT);
-  theDevice->publish();
+  //theDevice = new Device();
+  theDevice.init("Thing1", getDeviceID(), DEVICE_STATE_INIT, &mqtt_client);
+  //theDevice.publish();
 }
 
 void setup() {
@@ -30,8 +29,15 @@ void setup() {
 
   setup_homie();
 }
-
+bool first_pass = true;
+void loop_homie() {
+  if (first_pass) {
+    first_pass = false;
+    theDevice.publish();
+  }
+}
 void loop() {
   //loop_ota(); //TODO: interval?
   loop_mqtt();
+  loop_homie();
 }

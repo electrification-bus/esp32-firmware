@@ -22,7 +22,7 @@ nodes:
       - id: degrees
         name: Temperature
         datatype: float
-        unit: °C
+        unit: C
         settable: false
         retained: true
         value: 72.4
@@ -90,6 +90,6 @@ nodes:
         datatype: boolean
         settable: true
         retained: false
-        value: "string test"
+        value: false
 extensions: []
 implementation: homie-esp32-sdk

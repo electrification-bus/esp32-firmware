@@ -26,51 +26,59 @@
     }
   }
 */
-Device::Device(const char* id, const char* name, const char* version) {
-    _id = id;
-    _name = name;
-    _version = version;
-
-    //instantiate my nodes
-    JsonDocument* nodes = get_node_config();
-    JsonArray nodes_array = (*nodes)["nodes"].as<JsonArray>();
-    for (JsonVariant node : nodes_array) {
-      if (node) {
-        Serial.printf("Device: adding node %s\n", node["name"].as<const char*>());
-        Node* n = addNode(node);
-        if (n) {
-          n->setDevice(this); // Set the device for the node
-          JsonVariant props = node["properties"].as<JsonArray>();
-          if (props[0].is<JsonObject>()) {
-            JsonObject props_obj = props[0].as<JsonObject>();
-            Serial.printf("Device: Node: adding property %s\n", props_obj["id"].as<const char*>());
-            Property* prop = new Property();
-            prop->from_dict(&props_obj); // Initialize property from JsonObject
-            prop->setMQTTClient(_mqtt_client);
-            Serial.printf("Device: Node: property val %s\n", prop->value());
-            n->addProperty(prop);
-          }
-        } else {
-          Serial.printf("Failed to add node %s\n", node["id"].as<const char*>());
-        }
-      }
-    }
+Device::Device() {
+    _num_nodes = 0;
 }
 
-Node* Device::addNode(JsonVariant node) {
+void Device::init(const char* name, const char* id, DeviceState state, PubSubClient* mqtt_client) {
+  setName(name);
+  setId(id);
+  setState(state);
+  setMQTTClient(mqtt_client);
+  sprintf(_topic, "homie/5/%s/", id);
+  
+  //instantiate the nodes
+  JsonDocument* nodes = get_node_config();
+  JsonArray nodes_array = (*nodes)["nodes"].as<JsonArray>();
+  for (JsonVariant node : nodes_array) {
+    Serial.printf("Device: adding node %s\n", node["name"].as<const char*>());
+    addNode(node,_topic);
+  }
+}
+
+Node* Device::addNode(JsonVariant node, const char* topic) {
     Node* n =  new Node();
     n->setId(node["id"].as<const char*>());
     n->setName(node["name"].as<const char*>());
-    Serial.printf("Device: Node: Adding '%s' with id %s\n", n->name(), n->id());
-    _nodes[_num_nodes++] = n;
+    n->setDevice(this);
+    n->setTopic(topic);
+    JsonVariant props = node["properties"].as<JsonArray>();
+    if (props[0].is<JsonObject>()) {
+      Property* prop = new Property();
+      prop->setNode(n); // required: set the parent node on the property before anything else
+      prop->setMQTTClient(_mqtt_client);
+      JsonObject props_obj = props[0].as<JsonObject>();
+      prop->from_dict(&props_obj); // Initialize property from JsonObject
+      n->addProperty(prop);
+      Serial.printf("Device: Node: Prop '%s':'%s' val '%s'\n", prop->name(), prop->id(), prop->value());
+    }
+    Serial.printf("Device: Node: Adding '%s' with id '%s'\n", n->name(), n->id());
+    _nodes[_num_nodes] = n;
+    _num_nodes++;
     return n;
 }
 
 void Device::setState(DeviceState state) {
     _state = state;
 }
-void Device::setTopic(const char* topic) {
-    _topic = topic;
+
+void Device::setId(const char* id) {
+    strcpy(_id,id);
+    sprintf(_topic, "homie/5/%s/", _id);
+}
+
+void Device::setName(const char* name) {
+    strcpy(_name,name);
 }
 
 void Device::setMQTTClient(PubSubClient* client) {
@@ -81,9 +89,7 @@ void Device::setMQTTClient(PubSubClient* client) {
 }
 
 const char* Device::topic() {
-    static char topic[128];
-    snprintf(topic, sizeof(topic), "%s/%s/", HOMIE_TOPIC_PREFIX, getId());
-    return topic;
+    return _topic;
 }
 
 String Device::toJson() {
@@ -92,7 +98,7 @@ String Device::toJson() {
     return json;
 }
 
-String Device::getId() {
+char* Device::getId() {
     return _id;
 }
 
@@ -107,19 +113,17 @@ void Device::serialize(String& output) {
 }
 
 void Device::publish() {
-  String topic = String(HOMIE_TOPIC_PREFIX) + "/" + _id + "/";\
   Serial.println("DEVICE publish: nodes");
   //nodes
   for (int i = 0; i < _num_nodes; i++) {
-    _nodes[i]->publish(topic.c_str());
+    Serial.printf("DEVICE publish: node: %s\n", _nodes[i]->name());
+    _nodes[i]->publish();
   }
-  Serial.println("DEVICE publish: $description");
   //device $description
-  topic.concat("/$description");
+  char top[128] = {0};
+  sprintf(top, "%s$description", topic());
   String json = toJson();
-  if (!_mqtt_client->publish(topic.c_str(), json.c_str())) {
+  if (!_mqtt_client->publish(top, json.c_str())) {
       Serial.println("MQTT publish: failed");
-  } else {
-      Serial.printf("Published to %s: %s\n", topic.c_str(), json.c_str());
   }
 }

@@ -5,31 +5,24 @@
 #include <mqtt_client.h>
 #include <SimpleMap.h>
 class Node;
-class Device;
 
 class Property {
 public:
     Property();
     ~Property(){};
 
-    //static Property* from_dict(const void* property_dict);
-
     void setId(const char* id);
     const char* id() const;
     void setNode(Node* node);
     Node* node();
-    void setDevice(Device* device);
-    const char* name() const;
     void setName(const char* name);
-    const char* device() const;
+    const char* name() const;
 
     void setValue(int value);
     void setValue(float value);
     void setValue(const char* value);
     void setValue(bool value);
     void setValue(unsigned int value);
-    void setValue(long value);
-    void setValue(double value);
     const char* value();
 
     void setFormat(const char* fmt);
@@ -55,14 +48,16 @@ public:
     void _settable_callback(const char* topic, const char* payload);
     void setSubscribe();
     void from_dict(JsonObject* props_obj);
-    void publish(const char* topic);
+    const char* topic();
+    void publish();
 
 private:
-    char _id[64] = {0};
-    char _name[64] = {0};
-    char _value[64] = {0};
+    char _id[32] = {0};
+    char _name[32] = {0};
+    char _value[32] = {0};
     char _datatype[8] = {0};
     char _format[8] = {0};
+    char _topic[64] = {0};
     bool _settable;
     void* _callback;
     bool _retained;
@@ -70,7 +65,12 @@ private:
     int _round_to = 0;
     bool _supports_target = false;
     Node* _node = nullptr;
-    Device* _device = nullptr;
     PubSubClient* _mqtt_client;
     void* _async_loop = nullptr;
+
+    bool _boolValue;
+    char _stringValue[32];
+    float _floatValue;
+    uint64_t _unsignedValue;
+    int _intValue;
 };

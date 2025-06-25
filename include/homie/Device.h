@@ -7,28 +7,31 @@
 
 class Device {
  public:
-    Device(const char* id, const char* name, const char* version);
+    Device();
     ~Device() {};
 
+    void init(const char* name, const char* id, DeviceState state, PubSubClient* mqtt_client);
     void setState(DeviceState state);
-    Node* addNode(JsonVariant node);
+    //Node* addNode(JsonVariant node);
+    Node* addNode(JsonVariant node, const char* topic);
     void setMQTTClient(PubSubClient* client);
     String toJson();
-    String getId();
+    void setId(const char* id);
+    void setName(const char* name);
+    char* getId();
     void publish();
-    void setTopic(const char* topic);
     const char* topic();
     void serialize(String& output);
 
  private:
-    String _id;
-    String _name;
-    String _version;
-    String _topic;
+    char _id[16] = {0};
+    char _name[32] = {0};
+    char _version[16] = {0};
+    char _topic[64] = {0};
+    Node* _nodes[32] = {0};
     DeviceState _state = DEVICE_STATE_INIT;
     JsonDocument _serialized;
     PubSubClient* _mqtt_client;
-    Node* _nodes[256];
-    int _num_nodes = 0;
+    int _num_nodes;
 
 };

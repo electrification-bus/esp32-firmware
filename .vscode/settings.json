@@ -23,6 +23,7 @@
         "cmath": "cpp",
         "fstream": "cpp",
         "numeric": "cpp",
-        "streambuf": "cpp"
+        "streambuf": "cpp",
+        "typeinfo": "cpp"
     }
 }

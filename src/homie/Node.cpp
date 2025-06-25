@@ -9,28 +9,22 @@ Node::~Node() {
 }
 
 void Node::addProperty(Property* property) {
-    property->setNode(this); // Set the node for the property
-    _properties[_num_properties++] = property;
+    _properties[_num_properties] = property;
+    _num_properties++;
 }
 
-void Node::publish(const char* topic) {
-    String top(topic);
-    top.concat(_id);
-    top.concat("/");
+void Node::publish() {
     for(int i=0;i<_num_properties;i++) {
-        Serial.printf("Node: Publishing to topic %d: '%s'\n", i, top.c_str());
-        _properties[i]->publish(top.c_str() );
+        _properties[i]->publish();
     }
 }
 
 void Node::setName(const char* name) {
-    strncpy(_name, name, sizeof(_name) - 1);
-    _name[sizeof(_name) - 1] = '\0'; // Ensure null termination
+    strcpy(_name, name);
 }
 
 void Node::setId(const char* id) {
-    strncpy(_id, id, sizeof(_id) - 1);
-    _id[sizeof(_id) - 1] = '\0'; // Ensure null termination
+    strcpy(_id, id);
 }
 
 const char* Node::name() {
@@ -42,11 +36,19 @@ const char* Node::id() {
 }
 
 void Node::setDevice(Device* _device) {
-   this->_device = _device;
+   _device = _device;
 }
 
 Device* Node::device() {
    return _device;
+}
+
+void Node::setTopic(const char* top) {
+    sprintf(_topic, "%s/%s", top, _id);
+}
+
+const char* Node::topic() {
+    return _topic;
 }
 
 void Node::setMQTTClient(PubSubClient* client) {
