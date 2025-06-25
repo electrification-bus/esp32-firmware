@@ -8,29 +8,22 @@ Property::Property() {
 
 void Property::from_dict(JsonObject* props_obj) {
     if ((*props_obj)["id"].is<const char*>()) {
-        Serial.println("PROP: id string ");
         setId((*props_obj)["id"].as<const char*>());
     }
     if ((*props_obj)["name"].is<const char*>()) {
-        Serial.println("PROP: name string ");
         setName((*props_obj)["name"].as<const char*>()); 
 
     }
     if ((*props_obj)["datatype"].is<const char*>()) {
-        Serial.println("PROP: datatype string ");
         setDatatype((*props_obj)["datatype"].as<const char*>());
-
     }
     if ((*props_obj)["value"].is<bool>()) {
-            Serial.println("PROP: value bool ");
         setValue((*props_obj)["value"].as<bool>());
     }
     if ((*props_obj)["value"].is<float>()) {
-        Serial.println("PROP: value float ");
         setValue((*props_obj)["value"].as<float>());
     }
     if ((*props_obj)["value"].is<const char*>()) {
-        Serial.println("PROP: value string ");
         setValue((*props_obj)["value"].as<const char*>());
     }
     
@@ -48,8 +41,6 @@ Node* Property::node() {
 
 void Property::setId(const char* id) {
     strcpy(_id, id);
-    Serial.printf("set ID: '%s'\n",_id);
-
     //SET-ID SIDE-EFFECT - construct the topic
     sprintf(_topic, "%s/%s", _node->topic(), _id);
 }

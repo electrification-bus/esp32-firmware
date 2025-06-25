@@ -41,16 +41,16 @@ void Device::init(const char* name, const char* id, DeviceState state, PubSubCli
   JsonDocument* nodes = get_node_config();
   JsonArray nodes_array = (*nodes)["nodes"].as<JsonArray>();
   for (JsonVariant node : nodes_array) {
-    Serial.printf("Device: adding node %s\n", node["name"].as<const char*>());
+    //Serial.printf("Device: adding node %s\n", node["name"].as<const char*>());
     addNode(node,_topic);
   }
 }
 
 Node* Device::addNode(JsonVariant node, const char* topic) {
     Node* n =  new Node();
+    n->setDevice(this);
     n->setId(node["id"].as<const char*>());
     n->setName(node["name"].as<const char*>());
-    n->setDevice(this);
     n->setTopic(topic);
     JsonVariant props = node["properties"].as<JsonArray>();
     if (props[0].is<JsonObject>()) {
@@ -60,7 +60,7 @@ Node* Device::addNode(JsonVariant node, const char* topic) {
       JsonObject props_obj = props[0].as<JsonObject>();
       prop->from_dict(&props_obj); // Initialize property from JsonObject
       n->addProperty(prop);
-      Serial.printf("Device: Node: Prop '%s':'%s' val '%s'\n", prop->name(), prop->id(), prop->value());
+      //Serial.printf("Device: Node: Prop '%s':'%s' val '%s'\n", prop->name(), prop->id(), prop->value());
     }
     Serial.printf("Device: Node: Adding '%s' with id '%s'\n", n->name(), n->id());
     _nodes[_num_nodes] = n;
@@ -74,6 +74,7 @@ void Device::setState(DeviceState state) {
 
 void Device::setId(const char* id) {
     strcpy(_id,id);
+    //SET-ID SIDE-EFFECT: set topic
     sprintf(_topic, "homie/5/%s/", _id);
 }
 
@@ -116,7 +117,7 @@ void Device::publish() {
   Serial.println("DEVICE publish: nodes");
   //nodes
   for (int i = 0; i < _num_nodes; i++) {
-    Serial.printf("DEVICE publish: node: %s\n", _nodes[i]->name());
+    //Serial.printf("DEVICE publish: node: %s\n", _nodes[i]->name());
     _nodes[i]->publish();
   }
   //device $description

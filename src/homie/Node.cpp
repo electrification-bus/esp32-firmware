@@ -44,7 +44,7 @@ Device* Node::device() {
 }
 
 void Node::setTopic(const char* top) {
-    sprintf(_topic, "%s/%s", top, _id);
+    sprintf(_topic, "%s%s", top, _id);
 }
 
 const char* Node::topic() {

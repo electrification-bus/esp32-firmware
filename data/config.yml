@@ -22,7 +22,7 @@ nodes:
       - id: degrees
         name: Temperature
         datatype: float
-        unit: C
+        unit: °C
         settable: false
         retained: true
         value: 72.4
