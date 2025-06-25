@@ -15,6 +15,7 @@ class Device {
     //Node* addNode(JsonVariant node);
     Node* addNode(JsonVariant node, const char* topic);
     void setMQTTClient(PubSubClient* client);
+    void mqttConnected();
     String toJson();
     void setId(const char* id);
     void setName(const char* name);

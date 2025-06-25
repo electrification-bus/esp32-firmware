@@ -3,6 +3,8 @@
 #include <SPIFFS.h>
 #include <ArduinoYaml.h>
 
+Device theDevice;
+
 static JsonObject config_json;
 static JsonDocument node_config_json;
 String mqtt_host;

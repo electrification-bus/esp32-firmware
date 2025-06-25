@@ -44,9 +44,9 @@ public:
     void set_callback() const;
     void publish_target_value(const char* payload);
     bool publish_value();
-    void description(SimpleMap<const char*, const char*>& desc) const;
+    //void description(SimpleMap<const char*, const char*>& desc) const;
     void _settable_callback(const char* topic, const char* payload);
-    void setSubscribe();
+    void subscribe();
     void from_dict(JsonObject* props_obj);
     const char* topic();
     void publish();

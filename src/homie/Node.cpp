@@ -26,8 +26,7 @@ void Node::serialize(String& serialized) {
 }
 
 void Node::addProperty(Property* property) {
-    _properties[_num_properties] = property;
-    _num_properties++;
+    _properties[_num_properties++] = property;
 }
 
 void Node::publish() {
@@ -82,5 +81,14 @@ void Node::setMQTTClient(PubSubClient* client) {
     _mqtt_client = client;
     for(int i=0; i < _num_properties; i++) {
         _properties[i]->setMQTTClient(client); // Set the MQTT client for each property
+    }
+}
+
+void Node::mqttConnected() {
+    for(int i=0;i<_num_properties;i++) {
+        //re-subscribe to set topic if property is settable
+        if (_properties[i]->settable()) {
+            _properties[i]->subscribe();
+        }
     }
 }

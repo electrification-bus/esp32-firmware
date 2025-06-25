@@ -32,6 +32,7 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoYaml.h>
 #include <config.h>
+#include <homie/Property.h>
 #define ENABLE_DEBUG_MQTT = 1
 
 //WiFiClientSecure transportClient; TODO
@@ -44,6 +45,14 @@ static char mqtt_data[MQTT_DATA_SIZ] = "";
 static int mqtt_connection_error_count = 0;
 char topic_device[TOPIC_TOKEN_SIZ] = {0};
 char topic_cmd[TOPIC_TOKEN_SIZ] = {0};
+int num_subscribers = 0;
+
+struct Subscribed_properties {
+    char topic[64];
+    subscriber_callback_t callback;
+    Property* instance; // store the instance to call the member function on
+};
+Subscribed_properties subscribed_properties[128];
 
 // Function prototype for mqtt_publish_json
 void mqtt_publish_json(const char* subtopic, const JsonDocument* payload);
@@ -51,6 +60,14 @@ void mqtt_publish_json(const char* subtopic, const JsonDocument* payload);
 void generateTopics() {
   sprintf(topic_device,"%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID());
   sprintf(topic_cmd,"%s/%s",topic_device, HOMIE_TOPIC_SET);
+}
+
+void subscribe_for_callbacks(const char* topic, subscriber_callback_t cb, Property* instance) {
+   //Serial.printf("Callback Subscription #%d: %s\n", num_subscribers, topic);
+   strcpy(subscribed_properties[num_subscribers].topic, topic);
+   subscribed_properties[num_subscribers].callback = cb;
+   subscribed_properties[num_subscribers].instance = instance;
+   num_subscribers++;
 }
 
 boolean mqtt_connect() {
@@ -66,6 +83,7 @@ boolean mqtt_connect() {
   mqtt_client.setSocketTimeout(6);//MQTT_TIMEOUT);
   mqtt_client.setBufferSize(MAX_DATA_LEN + 200);
   mqtt_client.setKeepAlive(180);
+  mqtt_client.setCallback(subscriber_callback);
 
   if (mqtt_username.isEmpty()) {
     //allows for anonymous connection
@@ -78,19 +96,6 @@ boolean mqtt_connect() {
 
   if (mqtt_client.state() == 0) {
     Serial.printf("MQTT connected: %s\r\n", mqtt_host.c_str());
-    
-    //subscribe to command topic
-    if (!mqtt_client.subscribe(topic_cmd)) {
-      delay(250);
-      if (!mqtt_client.subscribe(topic_cmd)) {
-        delay(500);
-        if (!mqtt_client.subscribe(topic_cmd)) {
-          Serial.printf("MQTT: FAILED TO SUBSCRIBE TO COMMAND TOPIC: %s\r\n", topic_cmd);
-          return false;
-        }
-      }
-    }
-    Serial.printf("MQTT: SUBSCRIBED TO COMMAND TOPIC: %s\r\n", topic_cmd);
     //  mqttclient.publish(getDeviceTopic().c_str(), "connected"); // Once connected, publish an announcement..
   } else {
     Serial.println("MQTT failed: ");
@@ -109,12 +114,7 @@ void mqtt_publish_json(const char* subtopic, const JsonDocument * payload) {
     char topicBuf[256];
     char jsonString[1024];
     serializeJson(*payload, jsonString);
-    // It's annoying to have to set this limit, but maybe a static size is better for performance?
-    //char data[1024];
-    //jsonString.toCharArray(data, sizeof(data));
-    //topicBuf.concat(subtopic);
     sprintf(topicBuf, "%s/%s", topic_device, subtopic);
-    //if (!mqttclient.publish(topicBuf.c_str(), data)) {
     if (!mqtt_client.publish(topicBuf, jsonString)) {
         Serial.println("MQTT publish: failed");
     }
@@ -154,27 +154,28 @@ void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data)
     } while (*data++ != 0);
 }
 
-// Subscriber callback
+// MQTT Subscriber callback
 //
-// We're subscribed to the following topics:
-// tbd
-//
+// all subscriptions arrive here
 void subscriber_callback(char* topic, uint8_t* payload, unsigned int length) {
   //sanity
   if (length > 254) {
     Serial.printf("MQTT CALLBACK: not handled: payload len overrun:%d\n", length);
     return;
   }
-  if (strcmp(topic, topic_cmd) == 0) {
-    char payload_buf[length+1] = {0};
-    strncpy(payload_buf, (char*)payload, length);
-    payload_buf[length] = '\0'; //ensure null-termination
-    Serial.printf("\n***MQTT CALLBACK: topic '%s', payload '%s'\n", topic, payload_buf);
-    if (strstr(payload_buf, "report") == 0) {
-      //trigger a data-model dump
-      return;
+
+  char payload_buf[length+1] = {0};
+  strncpy(payload_buf, (char*)payload, length);
+  payload_buf[length] = '\0'; //ensure null-termination
+  Serial.printf("\n***MQTT CALLBACK: topic '%s', payload '%s'\n", topic, payload_buf);
+
+  //route to subscriber property
+  for(int i=0;i<num_subscribers;i++) {
+    if (strcmp(subscribed_properties[i].topic, topic) == 0) {
+      if (subscribed_properties[i].callback && subscribed_properties[i].instance) {
+          (subscribed_properties[i].instance->*subscribed_properties[i].callback)(topic, payload_buf);
+      }
     }
-    // add new commands here
   }
 }
 

@@ -17,16 +17,18 @@ public:
     void setDevice(Device* device);
     Device* device();
     void setMQTTClient(PubSubClient* client);
+    void mqttConnected();
     void setTopic(const char*);
     const char* topic();
     void publish();
     void serialize(String& serialized);
+    int numProperties() { return _num_properties;};
 
 private:
     char _id[64] = {0};
     char _name[64] = {0};
     char _type[16] = {0};
-    char _topic[128] = {0};
+    char _topic[64] = {0};
     PubSubClient* _mqtt_client; // MQTT client for this node
     Property* _properties[32]; //array of properties, could be a vector or list in a full implementation
     int _num_properties = 0; // Number of properties added to this node

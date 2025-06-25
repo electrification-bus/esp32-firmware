@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <ArduinoYaml.h>
+#include <homie/Device.h>
 
 #define MAX_DEVICE_ID_CHARS   32
 #define HOMIE_VERSION           "5"
@@ -18,3 +19,5 @@ const char* getDeviceID();
 bool loadConfiguration();
 JsonObject* get_config();
 JsonDocument* get_node_config();
+
+extern Device theDevice;

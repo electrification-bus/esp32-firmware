@@ -61,11 +61,13 @@ Node* Device::addNode(JsonVariant node, const char* topic) {
       JsonObject props_obj = props[0].as<JsonObject>();
       prop->from_dict(&props_obj); // Initialize property from JsonObject
       n->addProperty(prop);
+      if (prop->settable()) {
+        prop->subscribe();
+      }
       //Serial.printf("Device: Node: Prop '%s':'%s' val '%s'\n", prop->name(), prop->id(), prop->value());
     }
     Serial.printf("Device: Node: Adding '%s' with id '%s'\n", n->name(), n->id());
-    _nodes[_num_nodes] = n;
-    _num_nodes++;
+    _nodes[_num_nodes++] = n;
     return n;
 }
 
@@ -84,10 +86,16 @@ void Device::setName(const char* name) {
 }
 
 void Device::setMQTTClient(PubSubClient* client) {
-    _mqtt_client = client;
-    for(int i=0; i < _num_nodes; i++) {
-        _nodes[i]->setMQTTClient(client); // Set the MQTT client for each node
-    }
+  _mqtt_client = client;
+  for(int i=0; i < _num_nodes; i++) {
+      _nodes[i]->setMQTTClient(client); // Set the MQTT client for each node
+  }
+}
+
+void Device::mqttConnected() {
+  for(int i=0;i<_num_nodes;i++) {
+    _nodes[i]->mqttConnected();
+  }
 }
 
 const char* Device::topic() {

@@ -2,6 +2,7 @@
 #include "homie/Property.h"
 #include <homie/Node.h>
 #include <homie/Device.h>
+#include <mqtt_client.h>
 Property::Property() {
     _node = nullptr;
 };
@@ -140,11 +141,30 @@ bool Property::publish_value() {
     return false;
 }
 
-void Property::description(SimpleMap<const char*, const char*>& desc) const {}
+void Property::_settable_callback(const char* topic, const char* payload) {
+    Serial.printf("Node: '%s',  Property: '%s': new value:'%s'\n",_node->id(), _id, payload);
+    //TODO set _value
+}
 
-void Property::_settable_callback(const char* topic, const char* payload) {}
-
-void Property::setSubscribe() {}
+void Property::subscribe() {
+    if (_mqtt_client) {
+        char set[64] = {0};
+        sprintf(set, "%s/set", _topic);
+        Serial.printf("property '%s' settable - subscribe: '%s'\n",_id, set);
+        if (!_mqtt_client->subscribe(set)) {
+            delay(250);
+            if (!_mqtt_client->subscribe(set)) {
+                delay(500);
+                if (!_mqtt_client->subscribe(set)) {
+                    Serial.printf("MQTT: FAILED TO SUBSCRIBE TO PROPERTY SET TOPIC: %s\r\n", set);
+                    return;
+                }
+            }
+        }
+        //register the property for callbacks
+        subscribe_for_callbacks(set, &Property::_settable_callback, this);
+    }
+}
 
 const char* Property::topic() {
     return _topic;
