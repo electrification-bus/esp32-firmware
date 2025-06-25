@@ -157,3 +157,16 @@ void Property::setMQTTClient(PubSubClient* client) {
 void Property::publish() {
     _mqtt_client->publish(topic(), _value); //TODO retained flag
 }
+
+void Property::serialize(String& serialized) {
+    JsonDocument doc;
+    doc["id"] = _id;
+    doc["name"] = _name;
+    doc["datatype"] = _datatype;
+    doc["forma"] = _format;
+    doc["settable"] = _settable;
+    doc["retained"] = _retained;
+    doc["unit"] = _unit;
+    doc["round_to"] = 0;
+    serializeJson(doc, serialized);
+}

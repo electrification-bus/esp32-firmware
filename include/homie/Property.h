@@ -50,6 +50,7 @@ public:
     void from_dict(JsonObject* props_obj);
     const char* topic();
     void publish();
+    void serialize(String& serialized);
 
 private:
     char _id[32] = {0};

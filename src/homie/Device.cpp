@@ -51,6 +51,7 @@ Node* Device::addNode(JsonVariant node, const char* topic) {
     n->setDevice(this);
     n->setId(node["id"].as<const char*>());
     n->setName(node["name"].as<const char*>());
+    n->setType(node["type"].as<const char*>());
     n->setTopic(topic);
     JsonVariant props = node["properties"].as<JsonArray>();
     if (props[0].is<JsonObject>()) {
@@ -110,6 +111,15 @@ void Device::serialize(String& output) {
     serialized["name"] = _name;
     serialized["version"] = _version;
     serialized["state"] = device_state_to_cstr(_state);
+
+    //nodes
+    JsonDocument nodes;
+    String node_serial;
+    for(int i=0;i<_num_nodes;i++) {
+      _nodes[i]->serialize(node_serial);
+      nodes[_nodes[i]->id()] = node_serial;
+    }
+    serialized["nodes"] = nodes;
     serializeJson(serialized, output);
 }
 

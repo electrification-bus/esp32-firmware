@@ -8,6 +8,23 @@ Node::Node() {
 Node::~Node() {
 }
 
+void Node::serialize(String& serialized) {
+    JsonDocument doc;
+    doc["id"] = _id;
+    doc["name"] = _name;
+    doc["type"] = _type;
+
+    //properties
+    JsonDocument props;
+    String prop_serial;
+    for(int i=0;i<_num_properties;i++) {
+      _properties[i]->serialize(prop_serial);
+      props[_properties[i]->id()] = prop_serial;
+    }
+    doc["properties"] = props;
+    serializeJson(doc, serialized);
+}
+
 void Node::addProperty(Property* property) {
     _properties[_num_properties] = property;
     _num_properties++;
@@ -23,13 +40,23 @@ void Node::setName(const char* name) {
     strcpy(_name, name);
 }
 
+const char* Node::name() {
+    return _name;
+}  
+
+void Node::setType(const char* type) {
+    strcpy(_type, type);
+}
+
+const char* Node::type() {
+    return _type;
+}
+
 void Node::setId(const char* id) {
     strcpy(_id, id);
 }
 
-const char* Node::name() {
-    return _name;
-}  
+
 
 const char* Node::id() {
     return _id;
