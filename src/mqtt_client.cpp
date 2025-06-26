@@ -84,14 +84,16 @@ boolean mqtt_connect() {
   mqtt_client.setBufferSize(MAX_DATA_LEN + 200);
   mqtt_client.setKeepAlive(180);
   mqtt_client.setCallback(subscriber_callback);
-
+    
+  //construct will
+  char lwt[64] = {0};
+  sprintf(lwt,"%s/%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID(),HOMIE_$STATE);
+  Serial.printf("MQTT will topic:'%s' msg:'%s'\n", lwt, HOMIE_STATE_LOST);
   if (mqtt_username.isEmpty()) {
     //allows for anonymous connection
-    // TODO: will, qos, retain
-    // boolean connect(const char* id, const char* willTopic, uint8_t willQos, boolean willRetain, const char* willMessage);
-    mqtt_client.connect(getDeviceID()); // Attempt to connect
+    mqtt_client.connect(getDeviceID(), lwt, 1, 1, HOMIE_STATE_LOST); 
   } else {
-    mqtt_client.connect(getDeviceID(), mqtt_username.c_str(), mqtt_password.c_str()); // Attempt to connect
+    mqtt_client.connect(getDeviceID(), mqtt_username.c_str(), mqtt_password.c_str(),  lwt, 1, 1, HOMIE_STATE_LOST); // Attempt to connect
   }
 
   if (mqtt_client.state() == 0) {
@@ -115,7 +117,7 @@ void mqtt_publish_json(const char* subtopic, const JsonDocument * payload) {
     char jsonString[1024];
     serializeJson(*payload, jsonString);
     sprintf(topicBuf, "%s/%s", topic_device, subtopic);
-    if (!mqtt_client.publish(topicBuf, jsonString)) {
+    if (!mqtt_client.publish(topicBuf, jsonString, true)) {
         Serial.println("MQTT publish: failed");
     }
     Serial.printf("topic: %s, data: %s\n", topicBuf, jsonString);
@@ -145,7 +147,7 @@ void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data)
       mqtt_data[pos] = 0;
       data += pos;
 
-      if (!mqtt_client.publish(topicBuf.c_str(), mqtt_data)) {
+      if (!mqtt_client.publish(topicBuf.c_str(), mqtt_data, true)) {
        Serial.println("MQTT publish: failed");
       }
 #ifdef ENABLE_DEBUG_MQTT

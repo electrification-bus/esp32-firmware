@@ -12,14 +12,15 @@ Node::~Node() {
 
 JsonDocument Node::serialize() {
     JsonDocument json;
-    json[HOMIE_ID] = _id;
     json[HOMIE_NAME] = _name;
     json[HOMIE_TYPE] = _type;
 
     //properties
     JsonDocument props;
+    JsonDocument obj;
     for(int i=0;i<_num_properties;i++) {
-      props[_properties[i]->id()].add(_properties[i]->serialize());
+        _properties[i]->serialize(obj);
+        props[_properties[i]->id()] = obj;
     }
     json[HOMIE_PROPERTIES] = props;
     return json;
@@ -27,6 +28,7 @@ JsonDocument Node::serialize() {
 
 void Node::addProperty(Property* property) {
     _properties[_num_properties++] = property;
+    Serial.printf("Device: Node Property: Adding '%s'\n", property->id());
 }
 
 void Node::publish() {

@@ -25,8 +25,6 @@ public:
     void setValue(unsigned int value);
     const char* value();
 
-    void setFormat(const char* fmt);
-    const char* format() const;
     const char* coerced_value() const;
 
     void setDatatype(const char* dt);
@@ -50,6 +48,7 @@ public:
     void from_dict(JsonObject* props_obj);
     const char* topic();
     void publish();
+    void serialize(JsonDocument& json);
     JsonDocument serialize();
 
 private:
@@ -57,7 +56,6 @@ private:
     char _name[32] = {0};
     char _value[32] = {0};
     char _datatype[8] = {0};
-    char _format[8] = {0};
     char _topic[64] = {0};
     bool _settable;
     void* _callback;

@@ -28,7 +28,6 @@ void Property::from_dict(JsonObject* props_obj) {
         setValue((*props_obj)[HOMIE_VALUE].as<const char*>());
     }
     
-    //setFormat((*props_obj)["format"].as<const char*>());
     setSettable((*props_obj)[HOMIE_SETTABLE].as<bool>());
 }
 
@@ -85,10 +84,6 @@ void Property::setValue(bool value) {
 void Property::setValue(unsigned int value) {
     _unsignedValue = value;
     sprintf(_value, "%u", value);
-}
-
-void Property::setFormat(const char* fmt) {
-    strcpy(_format, fmt);
 }
 
 const char* Property::value() {
@@ -182,15 +177,15 @@ void Property::publish() {
     _mqtt_client->publish(topic(), _value, true); //TODO retained flag
 }
 
-JsonDocument Property::serialize() {
-    JsonDocument json;
-    json[HOMIE_ID] = _id;
+void Property::serialize(JsonDocument& json) {
     json[HOMIE_NAME] = _name;
     json[HOMIE_DATATYPE] = _datatype;
-    json[HOMIE_FORMAT] = _format;
     json[HOMIE_SETTABLE] = _settable;
     json[HOMIE_RETAINED] = _retained;
     json[HOMIE_UNIT] = _unit;
-    json[HOMIE_ROUNDTO] = 0;
-    return json;
+}
+
+JsonDocument Property::serialize() {
+    JsonDocument json;
+    return serialize();
 }
