@@ -1,3 +1,4 @@
+#include <ArduinoYaml.h>
 #include <homie/homie.h>
 #include <homie/Node.h>
 #include <homie/Property.h>
@@ -9,21 +10,19 @@ Node::Node() {
 Node::~Node() {
 }
 
-void Node::serialize(String& serialized) {
-    JsonDocument doc;
-    doc[HOMIE_ID] = _id;
-    doc[HOMIE_NAME] = _name;
-    doc[HOMIE_TYPE] = _type;
+JsonDocument Node::serialize() {
+    JsonDocument json;
+    json[HOMIE_ID] = _id;
+    json[HOMIE_NAME] = _name;
+    json[HOMIE_TYPE] = _type;
 
     //properties
     JsonDocument props;
-    String prop_serial;
     for(int i=0;i<_num_properties;i++) {
-      _properties[i]->serialize(prop_serial);
-      props[_properties[i]->id()] = prop_serial;
+      props[_properties[i]->id()].add(_properties[i]->serialize());
     }
-    doc[HOMIE_PROPERTIES] = props;
-    serializeJson(doc, serialized);
+    json[HOMIE_PROPERTIES] = props;
+    return json;
 }
 
 void Node::addProperty(Property* property) {

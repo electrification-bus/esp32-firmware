@@ -22,7 +22,7 @@ class Device {
     char* getId();
     void publish();
     const char* topic();
-    void serialize(String& output);
+    void serialize(String& serialized);
 
  private:
     char _id[16] = {0};

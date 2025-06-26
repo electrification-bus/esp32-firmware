@@ -183,15 +183,15 @@ void Property::publish() {
     _mqtt_client->publish(topic(), _value); //TODO retained flag
 }
 
-void Property::serialize(String& serialized) {
-    JsonDocument doc;
-    doc[HOMIE_ID] = _id;
-    doc[HOMIE_NAME] = _name;
-    doc[HOMIE_DATATYPE] = _datatype;
-    doc[HOMIE_FORMAT] = _format;
-    doc[HOMIE_SETTABLE] = _settable;
-    doc[HOMIE_RETAINED] = _retained;
-    doc[HOMIE_UNIT] = _unit;
-    doc[HOMIE_ROUNDTO] = 0;
-    serializeJson(doc, serialized);
+JsonDocument Property::serialize() {
+    JsonDocument json;
+    json[HOMIE_ID] = _id;
+    json[HOMIE_NAME] = _name;
+    json[HOMIE_DATATYPE] = _datatype;
+    json[HOMIE_FORMAT] = _format;
+    json[HOMIE_SETTABLE] = _settable;
+    json[HOMIE_RETAINED] = _retained;
+    json[HOMIE_UNIT] = _unit;
+    json[HOMIE_ROUNDTO] = 0;
+    return json;
 }

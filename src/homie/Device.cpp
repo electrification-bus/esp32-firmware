@@ -114,22 +114,20 @@ char* Device::getId() {
 }
 
 // JSON serialization
-void Device::serialize(String& output) {
-  JsonDocument serialized;
-    serialized[HOMIE_ID] = _id;
-    serialized[HOMIE_NAME] = _name;
-    serialized[HOMIE_VERSION] = _version;
-    serialized[HOMIE_STATE] = device_state_to_cstr(_state);
+void Device::serialize(String& serialized) {
+  JsonDocument json;
+    json[HOMIE_ID] = _id;
+    json[HOMIE_NAME] = _name;
+    json[HOMIE_VERSION] = _version;
+    json[HOMIE_STATE] = device_state_to_cstr(_state);
 
     //nodes
-    JsonDocument nodes;
-    String node_serial;
+    JsonDocument json_nodes;
     for(int i=0;i<_num_nodes;i++) {
-      _nodes[i]->serialize(node_serial);
-      nodes[_nodes[i]->id()] = node_serial;
+      json_nodes[_nodes[i]->id()].add(_nodes[i]->serialize());
     }
-    serialized[HOMIE_NODES] = nodes;
-    serializeJson(serialized, output);
+    json[HOMIE_NODES] = json_nodes;
+    serializeJson(json, serialized);
 }
 
 void Device::publish() {
