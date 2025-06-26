@@ -2,7 +2,7 @@
 
 ## Goals
 
-Initial focus is an ESP32 eBus-Homie system [operating in the “device role”](https://homieiot.github.io/specification/#roles)
+Initial focus is an ESP32 eBus/Homie system [operating in the “device role”](https://homieiot.github.io/specification/#roles)
 
 The code will attempt to discover an eBus-Homie/MQTT broker via mDNS, details TBD.
 
@@ -34,23 +34,6 @@ Modbus support is not 100% required for the initial version, but we should scope
 
 Let’s not worry about the “throttle” idea initally, I think that will be super easy to layer in later on….
 
-### mDNS
-
-The device should resolve/claim its `.local` hostname, and this hostname should be configurable
-
-### MQTT Broker Discovery via mDNS
-
-The device should attempt to discover the eBus-Homie MQTT broker via mDNS service-type advertisements by the broker,
-if found, attempt to connect to that broker. mDNS service-type details for MQTT are TBD.
-
-MQTT authentication TBD, initially the user/password should be configurable.
-Maybe someday there will be some automated/assisted way for the device to obtain these credentials.
-
-### MQTT Transport
-
-* MQTT (initially)
-* MQTTS (future)
-
 ### Firmware Updates
 
 The ability to update the ESP32 firmware over the network (AKA OTA) is a highly desirable feature.
@@ -59,15 +42,34 @@ Does PlatformIO provide that capability?
 
 The ESPHome system/framework has excellent support for this.
 
-### Debug Console
+## Confidentiality
 
-The ability to connect to the debug console over the network is highly desirable, ESPHome provides this capability
+If we need an NDA, we can of course do one, but I would prefer that we try to avoid the need.
+I have no interest nor desire to know about your bucket algorithm, especially if that is your special intellectual property.
+Seems like this is something you can use and layer into products you may provide based on this tookit,
+my guess is your bucket stuff is a cool way to implement “throttle-like” things.  Bully for you, and fine by me,
+but unless there is a real need for me to see any of that, I’d prefer not to be contaminated with. your IP.
+
+Same goes for me, if there is something secret, I will either keep you out of it, or we can do an NDA.
+This project may become interesting to SPAN, but I’m not doing to for them, they aren’t paying for this,
+this is MINE! (or OURS!)
+
+## Intellectual Property Ownership
+
+The idea is virtually all the results will become open-source software, that I will host under the electrification-bus GitHub org.
+My intention is that you guys would be clearly identified as the developers of the code you write (for compensation), unless you DON’T WANT THAT.
+and that I would be clearly identified as the person who funded this work.
+If it turns out I end up doing any code development, I get credited for that also.
+
+I haven’t thought about which license to use, but it is not going to be a viral GPL,
+you (or anyone else) will be free to incorporate this into products and/or services
+you sell.  So, if you want to implement your buckets thing to manage energy and sell that to someone, more power to you.
 
 ## Futures
 
 * Develop a [CTA-2045/EcoPort UCM](https://github.com/electrification-bus/Open-EcoPort) based on this toolkit.
 * Explore the value and/or difficultly/effort of supporting this toolkit on ESPHome
-* If it is possible to host a MQTT broker on an ESP32, I am super interested to learn about that, and have that capability. If an ESP32 could BOTH do everything we talk about above as a eBus-Homie entity in the “device role” AND also be an MQTT broker, that would be HUGE.
+* If it is possible to host a MQTT broker on an ESP32, I am super interested to learn about that, and have that capability. If an ESP32 could BOTH do everything we talk about above as a eBus/Homie entity in the “device role” AND also be an MQTT broker, that would be HUGE.
 
 # Declarative Specification of ESP32-eBus Devices
 
@@ -157,33 +159,9 @@ sensor:
       name: "Water_Irrigation"
 ```
 
-## eBus-Homie Device Representation
+## Homie/eBus Schemas
 
-Both the Homie-prefix and Homie-version should be configuable.
-Note that eBus specifies and uses the Homeie-prefix `ebus` (instead of `homie`)
-
-### eBus-Homie Device
-
-The `deviceID` should be configurable, the current `deviceID` of `esp32poe3A3D78` is fine for now.
-The device should publish the `$description` attribute detailing the nodes and their properties (See below).
-The device `type` in `$description` should be configurable, and is TBD.
-
-### eBus-Homie Nodes
-
-We will likely end up with several nodes.
-Let's start with a a node to represent the ESP32 itself, so mcu
-Then add properties underneath that.
-Almost anything OK.
-* macaddress
-* anything about the model number of the MCU, vendor, etc.
-* version number of software
-ATM, just publish SOMETHING that is easy, even if you have to make something up.
-So, as a result, there should be something like this published:
-`homie/5/esp32poe3A3D78/mcu/some-nodeID/some-propertyID` and its value is some string
-
-## eBus-Homie Schemas
-
-A eBus-Homie entity supporting the "device role" publishes a `$description` of it's nodes and properties, which are JSON objects, an example:
+A Homie/eBus entity supporting the "device role" publishes a `$description` of it's nodes and properties, which are JSON objects, an example:
 ```
 "temperature": {
         "name": "Engine temperature",
@@ -235,26 +213,3 @@ required:
   - function
   - type
 ```
-
-## Confidentiality
-
-If we need an NDA, we can of course do one, but I would prefer that we try to avoid the need.
-I have no interest nor desire to know about your bucket algorithm, especially if that is your special intellectual property.
-Seems like this is something you can use and layer into products you may provide based on this tookit,
-my guess is your bucket stuff is a cool way to implement “throttle-like” things.  Bully for you, and fine by me,
-but unless there is a real need for me to see any of that, I’d prefer not to be contaminated with. your IP.
-
-Same goes for me, if there is something secret, I will either keep you out of it, or we can do an NDA.
-This project may become interesting to SPAN, but I’m not doing to for them, they aren’t paying for this,
-this is MINE! (or OURS!)
-
-## Intellectual Property Ownership
-
-The idea is virtually all the results will become open-source software, that I will host under the electrification-bus GitHub org.
-My intention is that you guys would be clearly identified as the developers of the code you write (for compensation), unless you DON’T WANT THAT.
-and that I would be clearly identified as the person who funded this work.
-If it turns out I end up doing any code development, I get credited for that also.
-
-I haven’t thought about which license to use, but it is not going to be a viral GPL,
-you (or anyone else) will be free to incorporate this into products and/or services
-you sell.  So, if you want to implement your buckets thing to manage energy and sell that to someone, more power to you.
