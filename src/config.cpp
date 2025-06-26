@@ -99,12 +99,12 @@ bool loadConfiguration() {
 
     /*** process the nodes */
   int num_nodes = 0;
-  for (JsonObject node : config["nodes"].as<JsonArray>()) {
-    Serial.printf("CONFIG:%d: %s\n",num_nodes++, node["name"].as<JsonString>().c_str());
+  for (JsonObject node : config[HOMIE_NODES].as<JsonArray>()) {
+    Serial.printf("CONFIG:%d: %s\n",num_nodes++, node[HOMIE_NAME].as<JsonString>().c_str());
   }
-  node_config_json["nodes"] = config["nodes"]; // store the nodes in a JsonArray for easy access la
-  for (JsonObject n : node_config_json["nodes"].as<JsonArray>()) {
-    Serial.printf("CONFIG NODE:%s\n",n["name"].as<JsonString>().c_str());
+  node_config_json[HOMIE_NODES] = config[HOMIE_NODES]; // store the nodes in a JsonArray for easy access la
+  for (JsonObject n : node_config_json[HOMIE_NODES].as<JsonArray>()) {
+    Serial.printf("CONFIG NODE:%s\n",n[HOMIE_NAME].as<JsonString>().c_str());
   }
   /* debug
   for(JsonObject::iterator it = config_json.begin(); it != config_json.end(); ++it) {

@@ -8,28 +8,28 @@ Property::Property() {
 };
 
 void Property::from_dict(JsonObject* props_obj) {
-    if ((*props_obj)["id"].is<const char*>()) {
-        setId((*props_obj)["id"].as<const char*>());
+    if ((*props_obj)[HOMIE_ID].is<const char*>()) {
+        setId((*props_obj)[HOMIE_ID].as<const char*>());
     }
-    if ((*props_obj)["name"].is<const char*>()) {
-        setName((*props_obj)["name"].as<const char*>()); 
+    if ((*props_obj)[HOMIE_NAME].is<const char*>()) {
+        setName((*props_obj)[HOMIE_NAME].as<const char*>()); 
 
     }
-    if ((*props_obj)["datatype"].is<const char*>()) {
-        setDatatype((*props_obj)["datatype"].as<const char*>());
+    if ((*props_obj)[HOMIE_DATATYPE].is<const char*>()) {
+        setDatatype((*props_obj)[HOMIE_DATATYPE].as<const char*>());
     }
-    if ((*props_obj)["value"].is<bool>()) {
-        setValue((*props_obj)["value"].as<bool>());
+    if ((*props_obj)[HOMIE_VALUE].is<bool>()) {
+        setValue((*props_obj)[HOMIE_VALUE].as<bool>());
     }
-    if ((*props_obj)["value"].is<float>()) {
-        setValue((*props_obj)["value"].as<float>());
+    if ((*props_obj)[HOMIE_VALUE].is<float>()) {
+        setValue((*props_obj)[HOMIE_VALUE].as<float>());
     }
-    if ((*props_obj)["value"].is<const char*>()) {
-        setValue((*props_obj)["value"].as<const char*>());
+    if ((*props_obj)[HOMIE_VALUE].is<const char*>()) {
+        setValue((*props_obj)[HOMIE_VALUE].as<const char*>());
     }
     
     //setFormat((*props_obj)["format"].as<const char*>());
-    setSettable((*props_obj)["settable"].as<bool>());
+    setSettable((*props_obj)[HOMIE_SETTABLE].as<bool>());
 }
 
 void Property::setNode(Node* node) {
@@ -95,7 +95,7 @@ const char* Property::value() {
     return _value;
 }
 const char* Property::coerced_value() const {
-    return "";
+    return _value; //TODO
 }
 
 void Property::setDatatype(const char* dt)  {
@@ -103,7 +103,7 @@ void Property::setDatatype(const char* dt)  {
 }
 
 const char* Property::datatype() const {
-    return "";
+    return _datatype;
 }
 
 PubSubClient* Property::mqttClient() const {
@@ -113,12 +113,11 @@ PubSubClient* Property::mqttClient() const {
 void Property::start_mqtt_client() {}
 
 
-bool Property::settable() {
-    return _settable;
-}
-
 void Property::setSettable(bool s) {
    _settable = s;
+}
+bool Property::settable() {
+    return _settable;
 }
 
 void Property::setRetained(bool r) {
@@ -135,10 +134,12 @@ bool Property::is_json_datatype() const {
 void Property::set_callback() const{
 }
 
-void Property::publish_target_value(const char* payload) {}
+void Property::publish_target_value(const char* payload) {
+    return publish(); //TODO ?
+}
 
 bool Property::publish_value() {
-    return false;
+    return true; //TODO
 }
 
 void Property::_settable_callback(const char* topic, const char* payload) {
@@ -147,23 +148,27 @@ void Property::_settable_callback(const char* topic, const char* payload) {
 }
 
 void Property::subscribe() {
-    if (_mqtt_client) {
-        char set[64] = {0};
-        sprintf(set, "%s/set", _topic);
-        Serial.printf("property '%s' settable - subscribe: '%s'\n",_id, set);
+    if (!_mqtt_client || !_mqtt_client->connected()) {
+        //TODO flag for retry
+        return;
+    }
+    char set[64] = {0};
+    sprintf(set, "%s/%s", _topic, HOMIE_TOPIC_SET);
+    Serial.printf("property '%s' settable - subscribe: '%s'\n",_id, set);
+    //TODO pull this out; retry in loop
+    if (!_mqtt_client->subscribe(set)) {
+        delay(250);
         if (!_mqtt_client->subscribe(set)) {
-            delay(250);
+            delay(500);
             if (!_mqtt_client->subscribe(set)) {
-                delay(500);
-                if (!_mqtt_client->subscribe(set)) {
-                    Serial.printf("MQTT: FAILED TO SUBSCRIBE TO PROPERTY SET TOPIC: %s\r\n", set);
-                    return;
-                }
+                Serial.printf("MQTT: FAILED TO SUBSCRIBE TO PROPERTY SET TOPIC: %s\r\n", set);
+                return;
             }
         }
-        //register the property for callbacks
-        subscribe_for_callbacks(set, &Property::_settable_callback, this);
     }
+    //register the property for callbacks
+    subscribe_for_callbacks(set, &Property::_settable_callback, this);
+
 }
 
 const char* Property::topic() {
@@ -180,13 +185,13 @@ void Property::publish() {
 
 void Property::serialize(String& serialized) {
     JsonDocument doc;
-    doc["id"] = _id;
-    doc["name"] = _name;
-    doc["datatype"] = _datatype;
-    doc["format"] = _format;
-    doc["settable"] = _settable;
-    doc["retained"] = _retained;
-    doc["unit"] = _unit;
-    doc["round_to"] = 0;
+    doc[HOMIE_ID] = _id;
+    doc[HOMIE_NAME] = _name;
+    doc[HOMIE_DATATYPE] = _datatype;
+    doc[HOMIE_FORMAT] = _format;
+    doc[HOMIE_SETTABLE] = _settable;
+    doc[HOMIE_RETAINED] = _retained;
+    doc[HOMIE_UNIT] = _unit;
+    doc[HOMIE_ROUNDTO] = 0;
     serializeJson(doc, serialized);
 }

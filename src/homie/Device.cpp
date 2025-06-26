@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <ArduinoYaml.h>
+#include <homie/homie.h>
 #include <homie/Device.h>
 #include <config.h>
 #include <mqtt_client.h>
@@ -35,11 +36,11 @@ void Device::init(const char* name, const char* id, DeviceState state, PubSubCli
   setId(id);
   setState(state);
   setMQTTClient(mqtt_client);
-  sprintf(_topic, "homie/5/%s/", id);
+  sprintf(_topic, "%s/%s/", HOMIE_TOPIC_PREFIX, id);
   
   //instantiate the nodes
   JsonDocument* nodes = get_node_config();
-  JsonArray nodes_array = (*nodes)["nodes"].as<JsonArray>();
+  JsonArray nodes_array = (*nodes)[HOMIE_NODES].as<JsonArray>();
   for (JsonVariant node : nodes_array) {
     //Serial.printf("Device: adding node %s\n", node["name"].as<const char*>());
     addNode(node,_topic);
@@ -49,11 +50,11 @@ void Device::init(const char* name, const char* id, DeviceState state, PubSubCli
 Node* Device::addNode(JsonVariant node, const char* topic) {
     Node* n =  new Node();
     n->setDevice(this);
-    n->setId(node["id"].as<const char*>());
-    n->setName(node["name"].as<const char*>());
-    n->setType(node["type"].as<const char*>());
+    n->setId(node[HOMIE_ID].as<const char*>());
+    n->setName(node[HOMIE_NAME].as<const char*>());
+    n->setType(node[HOMIE_TYPE].as<const char*>());
     n->setTopic(topic);
-    JsonVariant props = node["properties"].as<JsonArray>();
+    JsonVariant props = node[HOMIE_PROPERTIES].as<JsonArray>();
     if (props[0].is<JsonObject>()) {
       Property* prop = new Property();
       prop->setNode(n); // required: set the parent node on the property before anything else
@@ -78,7 +79,7 @@ void Device::setState(DeviceState state) {
 void Device::setId(const char* id) {
     strcpy(_id,id);
     //SET-ID SIDE-EFFECT: set topic
-    sprintf(_topic, "homie/5/%s/", _id);
+    sprintf(_topic, "%s/%s/", HOMIE_TOPIC_PREFIX, _id);
 }
 
 void Device::setName(const char* name) {
@@ -115,10 +116,10 @@ char* Device::getId() {
 // JSON serialization
 void Device::serialize(String& output) {
   JsonDocument serialized;
-    serialized["id"] = _id;
-    serialized["name"] = _name;
-    serialized["version"] = _version;
-    serialized["state"] = device_state_to_cstr(_state);
+    serialized[HOMIE_ID] = _id;
+    serialized[HOMIE_NAME] = _name;
+    serialized[HOMIE_VERSION] = _version;
+    serialized[HOMIE_STATE] = device_state_to_cstr(_state);
 
     //nodes
     JsonDocument nodes;
@@ -127,7 +128,7 @@ void Device::serialize(String& output) {
       _nodes[i]->serialize(node_serial);
       nodes[_nodes[i]->id()] = node_serial;
     }
-    serialized["nodes"] = nodes;
+    serialized[HOMIE_NODES] = nodes;
     serializeJson(serialized, output);
 }
 
@@ -140,7 +141,7 @@ void Device::publish() {
   }
   //device $description
   char top[128] = {0};
-  sprintf(top, "%s$description", topic());
+  sprintf(top, "%s%s", topic(), HOMIE_DESCRIPTION);
   String json = toJson();
   if (!_mqtt_client->publish(top, json.c_str())) {
       Serial.println("MQTT publish: failed");

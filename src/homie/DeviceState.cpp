@@ -1,14 +1,15 @@
 #include <Arduino.h>
+#include <homie/homie.h>
 #include <homie/DeviceState.h>
 
 const char* device_state_to_cstr(DeviceState state) {
     switch (state) {
-        case DEVICE_STATE_INIT:         return "init";
-        case DEVICE_STATE_READY:        return "ready";
-        case DEVICE_STATE_DISCONNECTED: return "disconnected";
-        case DEVICE_STATE_SLEEPING:     return "sleeping";
-        case DEVICE_STATE_LOST:         return "lost";
-        default:                        return "unknown";
+        case DEVICE_STATE_INIT:         return HOMIE_STATE_INIT;
+        case DEVICE_STATE_READY:        return HOMIE_STATE_READY;
+        case DEVICE_STATE_DISCONNECTED: return HOMIE_STATE_DISCONNECTED;
+        case DEVICE_STATE_SLEEPING:     return HOMIE_STATE_SLEEPING;
+        case DEVICE_STATE_LOST:         return HOMIE_STATE_LOST;
+        default:                        return HOMIE_STATE_UNKNOWN;
     }
 }
 

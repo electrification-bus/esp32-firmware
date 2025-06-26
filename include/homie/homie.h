@@ -1,0 +1,38 @@
+#pragma once
+
+#define HOMIE_VERSION_NUM       "5"
+#define HOMIE_TOPIC_PREFIX      "homie/" HOMIE_VERSION_NUM
+#define HOMIE_TOPIC_SET         "set"
+
+typedef enum {
+    DEVICE_STATE_INIT,
+    DEVICE_STATE_READY,
+    DEVICE_STATE_DISCONNECTED,
+    DEVICE_STATE_SLEEPING,
+    DEVICE_STATE_LOST,
+    DEVICE_STATE_UNKNOWN
+} DeviceState;
+
+#define HOMIE_NAME        "name"
+#define HOMIE_STATE       "state"
+#define HOMIE_NODES       "nodes"
+#define HOMIE_ID          "id"
+#define HOMIE_TYPE        "type"
+#define HOMIE_DATATYPE    "datatype"
+#define HOMIE_FORMAT      "format"
+#define HOMIE_SETTABLE    "settable"
+#define HOMIE_RETAINED    "retained"
+#define HOMIE_ROUNDTO     "round_to"
+#define HOMIE_UNIT        "unit"
+#define HOMIE_VALUE       "value"
+#define HOMIE_PROPERTIES  "properties"
+#define HOMIE_VERSION     "version"
+#define HOMIE_DESCRIPTION "$description"
+
+#define HOMIE_STATE_DISCONNECTED  "disconnected"
+#define HOMIE_STATE_SLEEPING      "sleeping"
+#define HOMIE_STATE_INIT          "init"
+#define HOMIE_STATE_READY         "ready"
+#define HOMIE_STATE_LOST          "lost"
+#define HOMIE_STATE_UNKNOWN       "unknown"
+

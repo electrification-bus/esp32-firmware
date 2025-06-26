@@ -1,4 +1,5 @@
-#include "homie/Node.h"
+#include <homie/homie.h>
+#include <homie/Node.h>
 #include <homie/Property.h>
 #include <homie/Device.h>
 Node::Node() {
@@ -10,9 +11,9 @@ Node::~Node() {
 
 void Node::serialize(String& serialized) {
     JsonDocument doc;
-    doc["id"] = _id;
-    doc["name"] = _name;
-    doc["type"] = _type;
+    doc[HOMIE_ID] = _id;
+    doc[HOMIE_NAME] = _name;
+    doc[HOMIE_TYPE] = _type;
 
     //properties
     JsonDocument props;
@@ -21,7 +22,7 @@ void Node::serialize(String& serialized) {
       _properties[i]->serialize(prop_serial);
       props[_properties[i]->id()] = prop_serial;
     }
-    doc["properties"] = props;
+    doc[HOMIE_PROPERTIES] = props;
     serializeJson(doc, serialized);
 }
 
