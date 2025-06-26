@@ -27,7 +27,8 @@ typedef enum {
 #define HOMIE_VALUE       "value"
 #define HOMIE_PROPERTIES  "properties"
 #define HOMIE_VERSION     "version"
-#define HOMIE_DESCRIPTION "$description"
+#define HOMIE_$STATE       "$state"
+#define HOMIE_$DESCRIPTION "$description"
 
 #define HOMIE_STATE_DISCONNECTED  "disconnected"
 #define HOMIE_STATE_SLEEPING      "sleeping"

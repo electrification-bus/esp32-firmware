@@ -12,6 +12,7 @@ class Device {
 
     void init(const char* name, const char* id, DeviceState state, PubSubClient* mqtt_client);
     void setState(DeviceState state);
+    DeviceState state() { return _state;};
     //Node* addNode(JsonVariant node);
     Node* addNode(JsonVariant node, const char* topic);
     void setMQTTClient(PubSubClient* client);
@@ -20,7 +21,7 @@ class Device {
     void setId(const char* id);
     void setName(const char* name);
     char* getId();
-    void publish();
+    void publish(bool state_only=false);
     const char* topic();
     void serialize(String& serialized);
 

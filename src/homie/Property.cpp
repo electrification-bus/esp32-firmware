@@ -168,7 +168,6 @@ void Property::subscribe() {
     }
     //register the property for callbacks
     subscribe_for_callbacks(set, &Property::_settable_callback, this);
-
 }
 
 const char* Property::topic() {

@@ -34,8 +34,8 @@ Device::Device() {
 void Device::init(const char* name, const char* id, DeviceState state, PubSubClient* mqtt_client) {
   setName(name);
   setId(id);
-  setState(state);
-  setMQTTClient(mqtt_client);
+  _state = state;
+  _mqtt_client = mqtt_client;
   sprintf(_topic, "%s/%s/", HOMIE_TOPIC_PREFIX, id);
   
   //instantiate the nodes
@@ -73,7 +73,13 @@ Node* Device::addNode(JsonVariant node, const char* topic) {
 }
 
 void Device::setState(DeviceState state) {
-    _state = state;
+  DeviceState previous_state = _state;
+  _state = state;
+
+  //state change?
+  if (_state != previous_state) {
+    publish(true); //publish state only
+  }
 }
 
 void Device::setId(const char* id) {
@@ -130,18 +136,33 @@ void Device::serialize(String& serialized) {
     serializeJson(json, serialized);
 }
 
-void Device::publish() {
-  Serial.println("DEVICE publish: nodes");
+void Device::publish(bool state_only/*=false*/) {
+
+  Serial.println("DEVICE publish: $state");
+  char state[128] = {0};
+  sprintf(state, "%s%s", topic(), HOMIE_$STATE);
+
+  if (!_mqtt_client->publish(state, device_state_to_cstr(_state))) {
+      Serial.println("MQTT publish: $state failed");
+  }
+
+  if (state_only)
+    return;
+
+  //$description
+  Serial.println("DEVICE publish: $description");
+  char top[128] = {0};
+  sprintf(top, "%s%s", topic(), HOMIE_$DESCRIPTION);
+  String json = toJson();
+  if (!_mqtt_client->publish(top, json.c_str())) {
+      Serial.println("MQTT publish: $description failed");
+  }
+
   //nodes
+  Serial.println("DEVICE publish: nodes");
   for (int i = 0; i < _num_nodes; i++) {
     //Serial.printf("DEVICE publish: node: %s\n", _nodes[i]->name());
     _nodes[i]->publish();
   }
-  //device $description
-  char top[128] = {0};
-  sprintf(top, "%s%s", topic(), HOMIE_DESCRIPTION);
-  String json = toJson();
-  if (!_mqtt_client->publish(top, json.c_str())) {
-      Serial.println("MQTT publish: failed");
-  }
+
 }
