@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-u# Check if an argument was provided
+# Check if an argument was provided
 if [ $# -lt 1 ]; then
     echo "Usage: $0 <option>"
     exit 1
@@ -10,12 +10,12 @@ case "$1" in
     dcj)
         echo "Configuring for: $1"
 	ln -s platformio-DCJ.ini platformio.ini
-	ln -s config/config-DCJ.h config/config.h
+	ln -s include/config-DCJ.h include/config.h
         ;;
     doug)
         echo "Configuring for: $1"
 	ln -s platformio-Doug.ini platformio.ini
-	ln -s config/config-Doug.h config/config.h
+	ln -s include/config-Doug.h include/config.h
         # Place your stop logic here
         ;;
     glenn)
