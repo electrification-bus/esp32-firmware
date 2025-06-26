@@ -55,17 +55,19 @@ Node* Device::addNode(JsonVariant node, const char* topic) {
     n->setType(node[HOMIE_TYPE].as<const char*>());
     n->setTopic(topic);
     JsonVariant props = node[HOMIE_PROPERTIES].as<JsonArray>();
-    if (props[0].is<JsonObject>()) {
-      Property* prop = new Property();
-      prop->setNode(n); // required: set the parent node on the property before anything else
-      prop->setMQTTClient(_mqtt_client);
-      JsonObject props_obj = props[0].as<JsonObject>();
-      prop->from_dict(&props_obj); // Initialize property from JsonObject
-      n->addProperty(prop);
-      if (prop->settable()) {
-        prop->subscribe();
+    for(JsonVariant json_prop : props.as<JsonArray>()) {
+      if (json_prop.is<JsonObject>()) {
+        Property* prop = new Property();
+        prop->setNode(n); // required: set the parent node on the property before anything else
+        prop->setMQTTClient(_mqtt_client);
+        JsonObject props_obj = json_prop.as<JsonObject>();
+        prop->from_dict(&props_obj); // Initialize property from JsonObject
+        n->addProperty(prop);
+        if (prop->settable()) {
+          prop->subscribe();
+        }
+        //Serial.printf("Device: Node: Prop '%s':'%s' val '%s'\n", prop->name(), prop->id(), prop->value());
       }
-      //Serial.printf("Device: Node: Prop '%s':'%s' val '%s'\n", prop->name(), prop->id(), prop->value());
     }
     Serial.printf("Device: Node: Adding '%s' with id '%s'\n", n->name(), n->id());
     _nodes[_num_nodes++] = n;

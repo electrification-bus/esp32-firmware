@@ -15,8 +15,8 @@ config:
     firmware_url: http://example.com/firmware.bin
 state: init
 nodes:
-  - id: temperature
-    name: Temperature Sensor
+  - id: environment
+    name: Temp/Pressure/Humidity Sensor
     type: sensor
     properties:
       - id: degrees
@@ -26,6 +26,20 @@ nodes:
         settable: false
         retained: true
         value: 72.4
+      - id: millibars
+        name: Air Pressure
+        datatype: float
+        unit: mb
+        settable: false
+        retained: true
+        value: 1024.4
+      - id: percent
+        name: Humidity
+        datatype: float
+        unit: percent
+        settable: false
+        retained: true
+        value: 67.7
   - id: led
     name: LED
     type: switch
