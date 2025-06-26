@@ -29,12 +29,12 @@
 */
 Device::Device() {
     _num_nodes = 0;
+    _state = DeviceState::DEVICE_STATE_INIT;
 }
 
-void Device::init(const char* name, const char* id, DeviceState state, PubSubClient* mqtt_client) {
+void Device::init(const char* name, const char* id, PubSubClient* mqtt_client) {
   setName(name);
   setId(id);
-  _state = state;
   _mqtt_client = mqtt_client;
   sprintf(_topic, "%s/%s/", HOMIE_TOPIC_PREFIX, id);
   

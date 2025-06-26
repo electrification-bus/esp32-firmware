@@ -10,7 +10,7 @@ class Device {
     Device();
     ~Device() {};
 
-    void init(const char* name, const char* id, DeviceState state, PubSubClient* mqtt_client);
+    void init(const char* name, const char* id, PubSubClient* mqtt_client);
     void setState(DeviceState state);
     DeviceState state() { return _state;};
     //Node* addNode(JsonVariant node);

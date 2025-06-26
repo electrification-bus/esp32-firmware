@@ -7,7 +7,7 @@
 
 void setup_homie() {
   //theDevice = new Device();
-  theDevice.init("Thing1", getDeviceID(), DEVICE_STATE_INIT, &mqtt_client);
+  theDevice.init("Thing1", getDeviceID(), &mqtt_client);
 }
 
 void setup() {
@@ -33,10 +33,13 @@ int state_change_millis = millis();
 void loop_homie() {
   if (homie_first_loop) {
     homie_first_loop = false;
-    theDevice.publish();
+    theDevice.publish(); //device in init state
+    theDevice.setState(DeviceState::DEVICE_STATE_READY);
+    theDevice.publish(true); //publish state change only
   }
 
   //toggle state every 30 seconds between LOST and READY
+  /*
   if (millis() - state_change_millis > 30000) {
     state_change_millis = millis();
     DeviceState to_state;
@@ -46,7 +49,7 @@ void loop_homie() {
         to_state = DeviceState::DEVICE_STATE_READY;
     }
     theDevice.setState(to_state);
-  }
+  }*/
 }
 
 void loop() {
