@@ -179,7 +179,7 @@ void Property::setMQTTClient(PubSubClient* client) {
 }
 
 void Property::publish() {
-    _mqtt_client->publish(topic(), _value); //TODO retained flag
+    _mqtt_client->publish(topic(), _value, true); //TODO retained flag
 }
 
 JsonDocument Property::serialize() {
