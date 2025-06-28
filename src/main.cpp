@@ -6,11 +6,13 @@
 #include <homie/Device.h>
 
 void setup_homie() {
+  JsonDocument* dev_conf = get_device_config();
+  Serial.printf("Device name '%s', type '%s'\n", (*dev_conf)["name"].as<const char*>(), (*dev_conf)["type"].as<const char*>());
+
   //theDevice = new Device();
-  theDevice.init("Thing1", getDeviceID(), &mqtt_client);
+  theDevice.init((*dev_conf)["name"].as<const char*>(), getDeviceID(), (*dev_conf)["type"].as<const char*>(), &mqtt_client);
   theDevice.publish();
-  theDevice.setState(DeviceState::DEVICE_STATE_READY);
-  theDevice.publish(true); //publish state change only
+  theDevice.setState(DeviceState::DEVICE_STATE_READY); //setState will publish
 }
 
 void setup() {

@@ -32,9 +32,10 @@ Device::Device() {
     _state = DeviceState::DEVICE_STATE_INIT;
 }
 
-void Device::init(const char* name, const char* id, PubSubClient* mqtt_client) {
+void Device::init(const char* name, const char* id, const char* type, PubSubClient* mqtt_client) {
   setName(name);
   setId(id);
+  setType(type);
   _mqtt_client = mqtt_client;
   sprintf(_topic, "%s/%s/", HOMIE_TOPIC_PREFIX, id);
   
@@ -94,6 +95,14 @@ void Device::setName(const char* name) {
     strcpy(_name,name);
 }
 
+void Device::setType(const char* type) {
+    strcpy(_type, type);
+}
+
+const char* Device::type() {
+    return _type;
+}
+
 void Device::setMQTTClient(PubSubClient* client) {
   _mqtt_client = client;
   for(int i=0; i < _num_nodes; i++) {
@@ -124,10 +133,8 @@ char* Device::getId() {
 // JSON serialization
 void Device::serialize(String& serialized) {
   JsonDocument json;
-    json[HOMIE_ID] = _id;
     json[HOMIE_NAME] = _name;
-    json[HOMIE_VERSION] = _version;
-    json[HOMIE_STATE] = device_state_to_cstr(_state);
+    json[HOMIE_TYPE] = _type;
 
     //nodes
     JsonDocument json_nodes;
@@ -147,7 +154,6 @@ void Device::publish(bool state_only/*=false*/) {
   if (!_mqtt_client->publish(state, device_state_to_cstr(_state), true)) {
       Serial.println("MQTT publish: $state failed");
   }
-
   if (state_only)
     return;
 

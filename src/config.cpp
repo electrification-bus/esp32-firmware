@@ -6,6 +6,7 @@
 Device theDevice;
 
 static JsonObject config_json;
+static JsonDocument device_config_json;
 static JsonDocument node_config_json;
 String mqtt_host;
 uint16_t mqtt_port;
@@ -29,7 +30,9 @@ JsonObject* get_config() {
 JsonDocument* get_node_config() {
     return &node_config_json;
 }
-
+JsonDocument* get_device_config() {
+    return &device_config_json;
+}
 void generatefullDeviceID() {// includes OUI vendorid of the ethernet MAC inside the ESP32S2 -prefer to not use  full MACid
   uint32_t low = ESP.getEfuseMac() & 0xFFFFFFFF;
   uint32_t high = (ESP.getEfuseMac() >> 32) & 0xFFFFFFFF;
@@ -72,10 +75,10 @@ bool loadConfiguration() {
     SPIFFS.end();
     return false;
   }
-  JsonDocument config; // https://arduinojson.org/v6/assistant to compute the capacity of static (deprecated).
+  JsonDocument yml_config; // https://arduinojson.org/v6/assistant to compute the capacity of static (deprecated).
   DeserializationError error;
   Serial.printf("CONFIG: YAML config:'%s'\n", config_file);
-  error = deserializeYml( config, file ); // convert yaml to json
+  error = deserializeYml( yml_config, file ); // convert yaml to json
 
   // Deserialize the JSON document
   file.close();
@@ -86,9 +89,26 @@ bool loadConfiguration() {
     return false;
   }
   Serial.println(F("CONFIG: DESERIALIZE OK"));
+  /*debug
+  serializeJsonPretty(yml_config, Serial);
+  Serial.println();
+  //the device
+  for (JsonPair kv : root) {
+    if (kv.value().is<JsonObject>() || kv.value().is<JsonArray>())
+      continue;
+    Serial.printf("Root key: %s, value: %s\n", kv.key().c_str(), kv.value().as<const char*>());
+  }*/
+
+  JsonObject dev_conf_obf = device_config_json.to<JsonObject>();
+  JsonObject root = yml_config.as<JsonObject>();
+  dev_conf_obf[HOMIE_HOMIE] = root[HOMIE_HOMIE];
+  dev_conf_obf[HOMIE_NAME] = root[HOMIE_NAME];
+  dev_conf_obf[HOMIE_TYPE] = root[HOMIE_TYPE];
+  dev_conf_obf[HOMIE_IMPLEMENTATION] = root[HOMIE_IMPLEMENTATION].as<const char*>();
+  Serial.printf("CONFIG:  DEVICE version %s name %s type%s\n", root[HOMIE_HOMIE].as<const char*>(), root[HOMIE_NAME].as<const char*>(),root[HOMIE_TYPE].as<const char*>());
 
   //TODO keys to #define header
-  JsonArray conf_array = config["config"].as<JsonArray>();
+  JsonArray conf_array = yml_config["config"].as<JsonArray>();
   config_json = conf_array[0].as<JsonObject>();
   if (config_json["mqtt_host"].is<JsonString>())
     mqtt_host = config_json["mqtt_host"].as<JsonString>().c_str();
@@ -97,12 +117,13 @@ bool loadConfiguration() {
   mqtt_password = config_json["mqtt_password"].as<JsonString>().c_str();
   device_id_prefix = config_json["device_id_prefix"].as<JsonString>().c_str();
 
+
     /*** process the nodes */
   int num_nodes = 0;
-  for (JsonObject node : config[HOMIE_NODES].as<JsonArray>()) {
+  for (JsonObject node : yml_config[HOMIE_NODES].as<JsonArray>()) {
     Serial.printf("CONFIG:%d: %s\n",num_nodes++, node[HOMIE_NAME].as<JsonString>().c_str());
   }
-  node_config_json[HOMIE_NODES] = config[HOMIE_NODES]; // store the nodes in a JsonArray for easy access la
+  node_config_json[HOMIE_NODES] = yml_config[HOMIE_NODES]; // store the nodes in a JsonArray for easy access la
   for (JsonObject n : node_config_json[HOMIE_NODES].as<JsonArray>()) {
     Serial.printf("CONFIG NODE:%s\n",n[HOMIE_NAME].as<JsonString>().c_str());
   }

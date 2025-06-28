@@ -13,6 +13,7 @@ typedef enum {
     DEVICE_STATE_UNKNOWN
 } DeviceState;
 
+#define HOMIE_HOMIE       "homie"
 #define HOMIE_NAME        "name"
 #define HOMIE_STATE       "state"
 #define HOMIE_NODES       "nodes"
@@ -27,6 +28,7 @@ typedef enum {
 #define HOMIE_VALUE       "value"
 #define HOMIE_PROPERTIES  "properties"
 #define HOMIE_VERSION     "version"
+#define HOMIE_IMPLEMENTATION    "implementation"
 #define HOMIE_$STATE       "$state"
 #define HOMIE_$DESCRIPTION "$description"
 

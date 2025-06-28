@@ -10,7 +10,7 @@ class Device {
     Device();
     ~Device() {};
 
-    void init(const char* name, const char* id, PubSubClient* mqtt_client);
+    void init(const char* name, const char* id, const char* type, PubSubClient* mqtt_client);
     void setState(DeviceState state);
     DeviceState state() { return _state;};
     //Node* addNode(JsonVariant node);
@@ -20,6 +20,8 @@ class Device {
     String toJson();
     void setId(const char* id);
     void setName(const char* name);
+    void setType(const char* type);
+    const char* type();
     char* getId();
     void publish(bool state_only=false);
     const char* topic();
@@ -28,6 +30,7 @@ class Device {
  private:
     char _id[16] = {0};
     char _name[32] = {0};
+    char _type[32] = {0};
     char _version[16] = {0};
     char _topic[64] = {0};
     Node* _nodes[32] = {0};

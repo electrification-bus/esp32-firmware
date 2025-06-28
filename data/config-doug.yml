@@ -1,5 +1,3 @@
-homie: 5.0.1
-name: ESP32POEISO
 config: 
   - wifi_ssid: 
     wifi_password: 
@@ -13,6 +11,9 @@ config:
     firmware_name: ESP32POEISO Firmware
     firmware_version: 1.0.0
     firmware_url: http://example.com/firmware.bin
+homie: 5.0.1
+name: ESP32POEISO
+type: ebus
 state: init
 nodes:
   - id: environment
