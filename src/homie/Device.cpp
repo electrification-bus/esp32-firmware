@@ -81,7 +81,7 @@ void Device::setState(DeviceState state) {
 
   //state change?
   if (_state != previous_state) {
-    publish(true); //publish state only
+    publishState();
   }
 }
 
@@ -145,8 +145,7 @@ void Device::serialize(String& serialized) {
     serializeJson(json, serialized);
 }
 
-void Device::publish(bool state_only/*=false*/) {
-
+void Device::publishState() {
   Serial.println("DEVICE publish: $state");
   char state[128] = {0};
   sprintf(state, "%s%s", topic(), HOMIE_$STATE);
@@ -154,8 +153,9 @@ void Device::publish(bool state_only/*=false*/) {
   if (!_mqtt_client->publish(state, device_state_to_cstr(_state), true)) {
       Serial.println("MQTT publish: $state failed");
   }
-  if (state_only)
-    return;
+}
+
+void Device::publish() {
 
   //$description
   Serial.println("DEVICE publish: $description");

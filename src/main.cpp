@@ -11,8 +11,9 @@ void setup_homie() {
 
   //theDevice = new Device();
   theDevice.init((*dev_conf)["name"].as<const char*>(), getDeviceID(), (*dev_conf)["type"].as<const char*>(), &mqtt_client);
+  theDevice.publishState();//default state is init
   theDevice.publish();
-  theDevice.setState(DeviceState::DEVICE_STATE_READY); //setState will publish
+  theDevice.setState(DeviceState::DEVICE_STATE_READY); //setState will publish the $state
 }
 
 void setup() {

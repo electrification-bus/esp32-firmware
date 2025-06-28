@@ -23,7 +23,8 @@ class Device {
     void setType(const char* type);
     const char* type();
     char* getId();
-    void publish(bool state_only=false);
+    void publish();
+    void publishState();
     const char* topic();
     void serialize(String& serialized);
 
