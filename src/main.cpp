@@ -4,6 +4,7 @@
 #include <mqtt_client.h>
 #include <ESPmDNS.h>
 #include <homie/Device.h>
+#include <bme280.h>
 
 void setup_homie() {
   JsonDocument* dev_conf = get_device_config();
@@ -29,6 +30,7 @@ void setup() {
   }
   setup_mdns();
   setup_mqtt();
+  setup_bme280();
   //setup_ota();
 
   setup_homie();
@@ -54,5 +56,6 @@ void loop_homie() {
 void loop() {
   //loop_ota(); //TODO: interval?
   loop_homie();
-  loop_mqtt();
+  loop_bme280();
+  loop_mqtt(); 
 }
