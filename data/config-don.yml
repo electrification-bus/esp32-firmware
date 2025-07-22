@@ -13,6 +13,7 @@ config:
     firmware_url: http://example.com/firmware.bin
 homie: 5.0.1
 name: ESP32POEISO
+type: ebus
 state: init
 nodes:
   - id: environment
