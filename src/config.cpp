@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <SPIFFS.h>
 #include <ArduinoYaml.h>
+#include <jsonUtils.h>
 
 Device theDevice;
 
@@ -101,10 +102,11 @@ bool loadConfiguration() {
 
   JsonObject dev_conf_obf = device_config_json.to<JsonObject>();
   JsonObject root = yml_config.as<JsonObject>();
-  dev_conf_obf[HOMIE_HOMIE] = root[HOMIE_HOMIE];
-  dev_conf_obf[HOMIE_NAME] = root[HOMIE_NAME];
-  dev_conf_obf[HOMIE_TYPE] = root[HOMIE_TYPE];
-  dev_conf_obf[HOMIE_IMPLEMENTATION] = root[HOMIE_IMPLEMENTATION].as<const char*>();
+  if (jsonExists(root[HOMIE_HOMIE])) dev_conf_obf[HOMIE_HOMIE] = root[HOMIE_HOMIE]; else {Serial.printf("CONFIG:**ERROR: MISSING '%s'\n",HOMIE_HOMIE);return false;}
+
+  if (jsonExists(root[HOMIE_NAME])) dev_conf_obf[HOMIE_NAME] = root[HOMIE_NAME]; else {Serial.printf("CONFIG:**ERROR: MISSING '%s'\n",HOMIE_NAME);return false;}
+  if (jsonExists(root[HOMIE_TYPE])) dev_conf_obf[HOMIE_TYPE] = root[HOMIE_TYPE]; else {Serial.printf("CONFIG:**ERROR: MISSING '%s'\n",HOMIE_TYPE);return false;}
+  if (jsonExists(root[HOMIE_IMPLEMENTATION])) dev_conf_obf[HOMIE_IMPLEMENTATION] = root[HOMIE_IMPLEMENTATION].as<const char*>(); else {Serial.printf("CONFIG:**ERROR: MISSING '%s'\n",HOMIE_IMPLEMENTATION);return false;}
   Serial.printf("CONFIG:  DEVICE version %s name %s type%s\n", root[HOMIE_HOMIE].as<const char*>(), root[HOMIE_NAME].as<const char*>(),root[HOMIE_TYPE].as<const char*>());
 
   //TODO keys to #define header
@@ -121,11 +123,15 @@ bool loadConfiguration() {
     /*** process the nodes */
   int num_nodes = 0;
   for (JsonObject node : yml_config[HOMIE_NODES].as<JsonArray>()) {
-    Serial.printf("CONFIG:%d: %s\n",num_nodes++, node[HOMIE_NAME].as<JsonString>().c_str());
+    if (jsonExists(node[HOMIE_NAME])) {
+      Serial.printf("CONFIG:%d: %s\n",num_nodes++, node[HOMIE_NAME].as<JsonString>().c_str());
+    }
   }
   node_config_json[HOMIE_NODES] = yml_config[HOMIE_NODES]; // store the nodes in a JsonArray for easy access la
   for (JsonObject n : node_config_json[HOMIE_NODES].as<JsonArray>()) {
-    Serial.printf("CONFIG NODE:%s\n",n[HOMIE_NAME].as<JsonString>().c_str());
+    if (jsonExists(n[HOMIE_NAME])) {
+      Serial.printf("CONFIG NODE:%s\n",n[HOMIE_NAME].as<JsonString>().c_str());
+    }
   }
   /* debug
   for(JsonObject::iterator it = config_json.begin(); it != config_json.end(); ++it) {

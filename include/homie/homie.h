@@ -13,6 +13,16 @@ typedef enum {
     DEVICE_STATE_UNKNOWN
 } DeviceState;
 
+#define HOMIE_DATATYPE_BOOLEAN  "boolean"
+#define HOMIE_DATATYPE_STRING   "string"
+#define HOMIE_DATATYPE_INTEGER  "integer"
+#define HOMIE_DATATYPE_FLOAT    "float"
+#define HOMIE_DATATYPE_ENUM     "enum"
+#define HOMIE_DATATYPE_COLOR    "color"
+#define HOMIE_DATATYPE_DATETIME "datetime"
+#define HOMIE_DATATYPE_DURATION "duration"
+#define HOMIE_DATATYPE_JSON     "json"
+
 #define HOMIE_HOMIE       "homie"
 #define HOMIE_NAME        "name"
 #define HOMIE_STATE       "state"

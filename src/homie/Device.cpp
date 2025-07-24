@@ -4,6 +4,7 @@
 #include <homie/Device.h>
 #include <config.h>
 #include <mqtt_client.h>
+#include <jsonUtils.h>
 /*
   homie/5/device123/$state → ready
   homie/5/device123/$description → {
@@ -51,9 +52,9 @@ void Device::init(const char* name, const char* id, const char* type, PubSubClie
 Node* Device::addNode(JsonVariant node, const char* topic) {
     Node* n =  new Node();
     n->setDevice(this);
-    n->setId(node[HOMIE_ID].as<const char*>());
-    n->setName(node[HOMIE_NAME].as<const char*>());
-    n->setType(node[HOMIE_TYPE].as<const char*>());
+    if (jsonExists(node[HOMIE_ID])) n->setId(node[HOMIE_ID].as<const char*>());
+    if (jsonExists(node[HOMIE_NAME])) n->setName(node[HOMIE_NAME].as<const char*>());
+    if (jsonExists(node[HOMIE_TYPE])) n->setType(node[HOMIE_TYPE].as<const char*>());
     n->setTopic(topic);
     JsonVariant props = node[HOMIE_PROPERTIES].as<JsonArray>();
     for(JsonVariant json_prop : props.as<JsonArray>()) {
@@ -133,16 +134,16 @@ char* Device::getId() {
 // JSON serialization
 void Device::serialize(String& serialized) {
   JsonDocument json;
-    json[HOMIE_NAME] = _name;
-    json[HOMIE_TYPE] = _type;
+  json[HOMIE_NAME] = _name;
+  json[HOMIE_TYPE] = _type;
 
-    //nodes
-    JsonDocument json_nodes;
-    for(int i=0;i<_num_nodes;i++) {
-      json_nodes[_nodes[i]->id()] = _nodes[i]->serialize();
-    }
-    json[HOMIE_NODES] = json_nodes;
-    serializeJson(json, serialized);
+  //nodes
+  JsonDocument json_nodes;
+  for(int i=0;i<_num_nodes;i++) {
+    json_nodes[_nodes[i]->id()] = _nodes[i]->serialize();
+  }
+  json[HOMIE_NODES] = json_nodes;
+  serializeJson(json, serialized);
 }
 
 void Device::publishState() {

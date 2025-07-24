@@ -3,32 +3,48 @@
 #include <homie/Node.h>
 #include <homie/Device.h>
 #include <mqtt_client.h>
+#include <jsonUtils.h>
+
 Property::Property() {
     _node = nullptr;
 };
 
 void Property::from_dict(JsonObject* props_obj) {
-    if ((*props_obj)[HOMIE_ID].is<const char*>()) {
+
+    if (jsonExists((*props_obj)[HOMIE_ID]) && (*props_obj)[HOMIE_ID].is<const char*>()) {
         setId((*props_obj)[HOMIE_ID].as<const char*>());
     }
-    if ((*props_obj)[HOMIE_NAME].is<const char*>()) {
+    if (jsonExists((*props_obj)[HOMIE_NAME]) && (*props_obj)[HOMIE_NAME].is<const char*>()) {
         setName((*props_obj)[HOMIE_NAME].as<const char*>()); 
-
     }
-    if ((*props_obj)[HOMIE_DATATYPE].is<const char*>()) {
+    if (jsonExists((*props_obj)[HOMIE_DATATYPE]) && (*props_obj)[HOMIE_DATATYPE].is<const char*>()) {
         setDatatype((*props_obj)[HOMIE_DATATYPE].as<const char*>());
     }
-    if ((*props_obj)[HOMIE_VALUE].is<bool>()) {
-        setValue((*props_obj)[HOMIE_VALUE].as<bool>());
+    if (jsonExists((*props_obj)[HOMIE_UNIT]) && (*props_obj)[HOMIE_UNIT].is<const char*>()) {
+        setUnit((*props_obj)[HOMIE_UNIT].as<const char*>());
     }
-    if ((*props_obj)[HOMIE_VALUE].is<float>()) {
-        setValue((*props_obj)[HOMIE_VALUE].as<float>());
+    if (jsonExists((*props_obj)[HOMIE_SETTABLE]) && (*props_obj)[HOMIE_SETTABLE].is<bool>()) {
+        setSettable((*props_obj)[HOMIE_SETTABLE].as<bool>());
     }
-    if ((*props_obj)[HOMIE_VALUE].is<const char*>()) {
-        setValue((*props_obj)[HOMIE_VALUE].as<const char*>());
+    if (jsonExists((*props_obj)[HOMIE_RETAINED]) && (*props_obj)[HOMIE_RETAINED].is<bool>()) {
+        setRetained((*props_obj)[HOMIE_RETAINED].as<bool>());
     }
-    
-    setSettable((*props_obj)[HOMIE_SETTABLE].as<bool>());
+    if (jsonExists((*props_obj)[HOMIE_VALUE])) {
+        if ((*props_obj)[HOMIE_VALUE].is<bool>()) {
+            setValue((*props_obj)[HOMIE_VALUE].as<bool>());
+        }
+        if ((*props_obj)[HOMIE_VALUE].is<float>()) {
+            setValue((*props_obj)[HOMIE_VALUE].as<float>());
+        }
+        if ((*props_obj)[HOMIE_VALUE].is<const char*>()) {
+            setValue((*props_obj)[HOMIE_VALUE].as<const char*>());
+        }
+        if ((*props_obj)[HOMIE_VALUE].is<int>()) {
+            setValue((*props_obj)[HOMIE_VALUE].as<int>());
+        }
+        //TODO all types
+    }
+
 }
 
 void Property::setNode(Node* node) {
@@ -111,6 +127,7 @@ void Property::start_mqtt_client() {}
 void Property::setSettable(bool s) {
    _settable = s;
 }
+
 bool Property::settable() {
     return _settable;
 }
@@ -129,6 +146,10 @@ bool Property::is_json_datatype() const {
 void Property::set_callback() const{
 }
 
+void Property::publish() {
+    _mqtt_client->publish(topic(), _value, retained());
+}
+
 void Property::publish_target_value(const char* payload) {
     return publish(); //TODO ?
 }
@@ -138,8 +159,33 @@ bool Property::publish_value() {
 }
 
 void Property::_settable_callback(const char* topic, const char* payload) {
-    Serial.printf("Node: '%s',  Property: '%s': new value:'%s'\n",_node->id(), _id, payload);
-    //TODO set _value
+    bool isValid = false;
+    if (strcmp(datatype(), HOMIE_DATATYPE_BOOLEAN) == 0) {
+        //TODO allow various bools?
+        if (strcmp(payload, "true") == 0 || strcmp(payload, "1") == 0 || strcmp(payload, "on") == 0 || strcmp(payload, "yes") == 0) {
+            setValue(true);
+        } else if (strcmp(payload, "false") == 0 || strcmp(payload, "0") == 0 || strcmp(payload, "off") == 0 || strcmp(payload, "no") == 0) {
+            setValue(false);
+        } else {
+            Serial.printf("Node: '%s', Property: '%s' - invalid boolean value '%s'\n", _node->id(), _id, payload);
+            return; //invalid value
+        }; 
+        isValid = true;
+    } else if (strcmp(datatype(),  HOMIE_DATATYPE_STRING) == 0) {
+        setValue(payload);
+        isValid = true;
+    } else if (strcmp(datatype(), HOMIE_DATATYPE_INTEGER) == 0) {
+        setValue(atoi(payload));
+        isValid = true;
+    } else if (strcmp(datatype(), HOMIE_DATATYPE_FLOAT) == 0) {
+        float f = atof(payload);
+        setValue(f);
+        isValid = true;
+    }
+    if (isValid) {
+        Serial.printf("Node: '%s',  Property: '%s': datetype: '%s', new value: '%s'\n",_node->id(), _id, datatype(), payload);
+        publish();
+    }
 }
 
 void Property::subscribe() {
@@ -147,7 +193,7 @@ void Property::subscribe() {
         //TODO flag for retry
         return;
     }
-    char set[64] = {0};
+    char set[128] = {0};
     sprintf(set, "%s/%s", _topic, HOMIE_TOPIC_SET);
     Serial.printf("property '%s' settable - subscribe: '%s'\n",_id, set);
     //TODO pull this out; retry in loop
@@ -173,19 +219,19 @@ void Property::setMQTTClient(PubSubClient* client) {
     _mqtt_client = client;
 }
 
-void Property::publish() {
-    _mqtt_client->publish(topic(), _value, true);
-}
-
 void Property::serialize(JsonDocument& json) {
     json[HOMIE_NAME] = _name;
     json[HOMIE_DATATYPE] = _datatype;
-    json[HOMIE_SETTABLE] = _settable;
-    json[HOMIE_RETAINED] = _retained;
-    json[HOMIE_UNIT] = _unit;
-}
-
-JsonDocument Property::serialize() {
-    JsonDocument json;
-    return serialize();
+    if (_settable) {
+        json[HOMIE_SETTABLE] = _settable;
+    }
+    if (!_retained) {
+        json[HOMIE_RETAINED] = _retained;
+    }
+    if (strlen(_format) != 0) {
+        json[HOMIE_FORMAT] = _format;
+    }
+    if (strlen(_unit) != 0) {
+        json[HOMIE_UNIT] = _unit;
+    }
 }

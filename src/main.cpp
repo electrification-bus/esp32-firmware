@@ -21,7 +21,10 @@ void setup() {
   Serial.begin(115200);
   //delay(3000);
   generateDeviceID();
-  loadConfiguration();
+  if (!loadConfiguration()) {
+      Serial.println("CONFIG: **ERROR -- failed to load configuration: missing data in config.yml");
+      return;
+  }
   //setup_wifi();
   setup_ethernet();
   while(!client_connected()) {

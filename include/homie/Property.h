@@ -31,6 +31,8 @@ public:
     const char* datatype() const;
     void setUnit(const char* unit);
     const char* unit();
+    void setFormat(const char* fmt);
+    const char* format();
     void setMQTTClient(PubSubClient* client);
     PubSubClient* mqttClient() const;
     void start_mqtt_client();
@@ -49,7 +51,6 @@ public:
     const char* topic();
     void publish();
     void serialize(JsonDocument& json);
-    JsonDocument serialize();
 
 private:
     char _id[32] = {0};
@@ -57,9 +58,10 @@ private:
     char _value[32] = {0};
     char _datatype[8] = {0};
     char _topic[64] = {0};
+    char _format[16] = {0};
     bool _settable;
     void* _callback;
-    bool _retained;
+    bool _retained = true;
     char _unit[8] = {0};
     int _round_to = 0;
     bool _supports_target = false;
