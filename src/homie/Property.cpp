@@ -3,7 +3,7 @@
 #include <homie/Node.h>
 #include <homie/Device.h>
 #include <mqtt_client.h>
-#include <jsonUtils.h>
+#include <util/jsonUtils.h>
 
 Property::Property() {
     _node = nullptr;

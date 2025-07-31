@@ -4,7 +4,7 @@
 #include <homie/Device.h>
 #include <config.h>
 #include <mqtt_client.h>
-#include <jsonUtils.h>
+#include <util/jsonUtils.h>
 /*
   homie/5/device123/$state → ready
   homie/5/device123/$description → {

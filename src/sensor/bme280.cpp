@@ -1,38 +1,31 @@
-#include <Wire.h>
 #include <Adafruit_BME280.h>
-#include <bme280.h>
+#include <sensor/bme280.h>
 #include <pins.h>
 
-Adafruit_BME280 bme; // use I2C interface
-Adafruit_Sensor *bme_temp = bme.getTemperatureSensor();
-Adafruit_Sensor *bme_pressure = bme.getPressureSensor();
-Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
+#define BME_ADDR 0x76
 
-TwoWire bmeWire(0);
-
-void setup_bme280() {  
-  bmeWire.setPins(BME280_SDA_PIN,BME280_SCL_PIN);
-  if (!bme.begin(0x76,&bmeWire)) {
-    Serial.println(F("Could not find a valid BME280 sensor, check wiring"));
-    return;
-  }
-  
-  //bme_temp->printSensorDetails();
-  //bme_pressure->printSensorDetails();
-  //bme_humidity->printSensorDetails();
+void BME280::setPins(int8_t sda, int8_t scl) {
+    this->sda = sda;
+    this->scl = scl;
 }
 
-int bme_read_interval = millis();
-bool interval_() {
-  if (millis() - bme_read_interval > 10000) {
-    bme_read_interval = millis();
+bool BME280::sensor_begin() {
+    since_last_read = millis();
+    deviceWire = new TwoWire(0);
+    deviceWire->begin(sda, scl);
+    return bme.begin(BME_ADDR, deviceWire);
+}
+
+bool BME280::interval() {
+  if (millis() - since_last_read > read_interval) {
+    since_last_read = millis();
     return true;
   }
   return false;
 }
 
-void loop_bme280() {
-  if (interval_()) {
+void BME280::loop() {
+  if (interval()) {
     sensors_event_t temp_event, pressure_event, humidity_event;
     bme_temp->getEvent(&temp_event);
     bme_pressure->getEvent(&pressure_event);

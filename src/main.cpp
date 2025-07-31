@@ -4,7 +4,7 @@
 #include <mqtt_client.h>
 #include <ESPmDNS.h>
 #include <homie/Device.h>
-#include <bme280.h>
+#include <sensor/homie_sensor.h>
 
 void setup_homie() {
   JsonDocument* dev_conf = get_device_config();
@@ -33,9 +33,10 @@ void setup() {
   }
   setup_mdns();
   setup_mqtt();
-  setup_bme280();
+
   //setup_ota();
 
+  setup_homie_sensors();
   setup_homie();
 }
 
@@ -56,9 +57,17 @@ void loop_homie() {
   }*/
 }
 
+void loop_homie_sensor() {
+    if (bme280 != nullptr) bme280->loop();  //TODO move to sensor manager/driver 
+}
+
+void loop_homie_actuator() {
+    //TODO move to actuator manager/driver 
+}
+
 void loop() {
-  //loop_ota(); //TODO: interval?
   loop_homie();
-  loop_bme280();
+  loop_homie_sensor(); //temperature, humidity, pressure, energy, photons, etc.
+  //loop_homie_actuator(); //switches, relays, etc.
   loop_mqtt(); 
 }
