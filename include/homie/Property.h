@@ -51,7 +51,7 @@ public:
     const char* topic();
     void publish();
     void serialize(JsonDocument& json);
-    void register_property_for_device_callbacks(void (Property::*callback)(const char*), const char* property_name);
+    void register_for_device_callbacks(void (Property::*callback)(const char*), const char* property_name);
 private:
     char _id[32] = {0};
     char _name[32] = {0};
