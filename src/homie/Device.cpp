@@ -68,6 +68,8 @@ Node* Device::addNode(JsonVariant node, const char* topic) {
         if (prop->settable()) {
           prop->subscribe();
         }
+        //attach this node to a sensor, actuator, etc.
+        n->register_property_for_device_callbacks(&Property::device_new_value_callback, prop->name());
         //Serial.printf("Device: Node: Prop '%s':'%s' val '%s'\n", prop->name(), prop->id(), prop->value());
       }
     }

@@ -13,7 +13,6 @@ class Device {
     void init(const char* name, const char* id, const char* type, PubSubClient* mqtt_client);
     void setState(DeviceState state);
     DeviceState state() { return _state;};
-    //Node* addNode(JsonVariant node);
     Node* addNode(JsonVariant node, const char* topic);
     void setMQTTClient(PubSubClient* client);
     void mqttConnected();

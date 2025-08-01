@@ -158,7 +158,11 @@ bool Property::publish_value() {
     return true; //TODO
 }
 
-void Property::_settable_callback(const char* topic, const char* payload) {
+void Property::device_new_value_callback(const char* sensor_value) {
+    setValue(sensor_value);
+}
+
+void Property::mqtt_settable_callback(const char* topic, const char* payload) {
     bool isValid = false;
     if (strcmp(datatype(), HOMIE_DATATYPE_BOOLEAN) == 0) {
         //TODO allow various bools?
@@ -208,7 +212,7 @@ void Property::subscribe() {
         }
     }
     //register the property for callbacks
-    subscribe_for_callbacks(set, &Property::_settable_callback, this);
+    subscribe_for_callbacks(set, &Property::mqtt_settable_callback, this);
 }
 
 const char* Property::topic() {
@@ -234,4 +238,10 @@ void Property::serialize(JsonDocument& json) {
     if (strlen(_unit) != 0) {
         json[HOMIE_UNIT] = _unit;
     }
+}
+
+void Property::register_for_device_callbacks(Node* node) {
+   // node.property_map[_num_properties_mapped].funcPtr = callback;
+    //strcpy(property_map[_num_properties_mapped++].prop_id, property_id);
+   // Serial.printf("Node: '%s' - Property '%s' registered for device callbacks\n", _id, property_id);
 }

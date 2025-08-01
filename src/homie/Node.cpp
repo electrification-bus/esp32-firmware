@@ -28,7 +28,11 @@ JsonDocument Node::serialize() {
 
 void Node::addProperty(Property* property) {
     _properties[_num_properties++] = property;
-    Serial.printf("Device: Node Property: Adding '%s'\n", property->id());
+
+    //property_map[_num_properties_mapped].funcPtr = property->get_device_callback();
+    //strcpy(property_map[_num_properties_mapped++].prop_id, property_id);
+    //Serial.printf("Node: '%s' - Property '%s' registered for device callbacks\n", _id, property_id);
+    //Serial.printf("Device: Node Property: Adding '%s'\n", property->id());
 }
 
 void Node::publish() {
@@ -93,4 +97,8 @@ void Node::mqttConnected() {
             _properties[i]->subscribe();
         }
     }
+}
+
+void Node::register_property_for_device_callbacks(void (Property::*callback)(const char*), const char* property_id) {
+    Serial.printf("Node: '%s' - Property '%s' registered for device callbacks\n", _id, property_id);
 }

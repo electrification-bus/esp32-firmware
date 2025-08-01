@@ -1,7 +1,9 @@
 #pragma once
+#include <ArduinoJson.h>
 #include <PubSubClient.h>
 class Property; // Forward declaration
 class Device;
+
 class Node {
 public:
     Node();
@@ -23,6 +25,7 @@ public:
     void publish();
     JsonDocument serialize();
     int numProperties() { return _num_properties;};
+    void register_property_for_device_callbacks(void (Property::*callback)(const char*), const char* property_name);
 
 private:
     char _id[64] = {0};
@@ -32,5 +35,6 @@ private:
     PubSubClient* _mqtt_client; // MQTT client for this node
     Property* _properties[32]; //array of properties, could be a vector or list in a full implementation
     int _num_properties = 0; // Number of properties added to this node
+    int _num_properties_mapped = 0; // Number of properties mapped to a device callback
     Device* _device; // Pointer to the parent device
 };

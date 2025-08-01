@@ -3,7 +3,6 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <mqtt_client.h>
-#include <SimpleMap.h>
 class Node;
 
 class Property {
@@ -44,14 +43,15 @@ public:
     void set_callback() const;
     void publish_target_value(const char* payload);
     bool publish_value();
-    //void description(SimpleMap<const char*, const char*>& desc) const;
-    void _settable_callback(const char* topic, const char* payload);
+    void mqtt_settable_callback(const char* topic, const char* payload);
+    void register_for_device_callbacks(Node* node);
+    void device_new_value_callback(const char* sensor_value);
     void subscribe();
     void from_dict(JsonObject* props_obj);
     const char* topic();
     void publish();
     void serialize(JsonDocument& json);
-
+    void register_property_for_device_callbacks(void (Property::*callback)(const char*), const char* property_name);
 private:
     char _id[32] = {0};
     char _name[32] = {0};
