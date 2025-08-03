@@ -10,6 +10,7 @@ public:
     ~Node();
 
     void addProperty(Property* property);
+    Property* getProperty(const char* id);
     void setId(const char* id);
     const char* id();
     void setName(const char* name);
@@ -25,7 +26,6 @@ public:
     void publish();
     JsonDocument serialize();
     int numProperties() { return _num_properties;};
-    void register_property_for_device_callbacks(void (Property::*callback)(const char*), const char* property_name);
 
 private:
     char _id[64] = {0};

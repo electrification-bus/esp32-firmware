@@ -239,9 +239,3 @@ void Property::serialize(JsonDocument& json) {
         json[HOMIE_UNIT] = _unit;
     }
 }
-
-void Property::register_for_device_callbacks(Node* node) {
-   // node.property_map[_num_properties_mapped].funcPtr = callback;
-    //strcpy(property_map[_num_properties_mapped++].prop_id, property_id);
-   // Serial.printf("Node: '%s' - Property '%s' registered for device callbacks\n", _id, property_id);
-}

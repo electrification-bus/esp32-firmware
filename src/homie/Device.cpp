@@ -5,6 +5,7 @@
 #include <config.h>
 #include <mqtt_client.h>
 #include <util/jsonUtils.h>
+#include <node/NodeManager.h>
 /*
   homie/5/device123/$state → ready
   homie/5/device123/$description → {
@@ -45,7 +46,8 @@ void Device::init(const char* name, const char* id, const char* type, PubSubClie
   JsonArray nodes_array = (*nodes)[HOMIE_NODES].as<JsonArray>();
   for (JsonVariant node : nodes_array) {
     //Serial.printf("Device: adding node %s\n", node["name"].as<const char*>());
-    addNode(node,_topic);
+    Node* n = addNode(node,_topic);
+    nodeManager->addNode(n); // Register the node with NodeManager
   }
 }
 
@@ -68,9 +70,6 @@ Node* Device::addNode(JsonVariant node, const char* topic) {
         if (prop->settable()) {
           prop->subscribe();
         }
-        //attach this node to a sensor, actuator, etc.
-        n->register_property_for_device_callbacks(&Property::device_new_value_callback, prop->name());
-        //Serial.printf("Device: Node: Prop '%s':'%s' val '%s'\n", prop->name(), prop->id(), prop->value());
       }
     }
     Serial.printf("Device: Node: Adding '%s' with id '%s'\n", n->name(), n->id());

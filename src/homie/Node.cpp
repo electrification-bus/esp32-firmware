@@ -27,12 +27,8 @@ JsonDocument Node::serialize() {
 }
 
 void Node::addProperty(Property* property) {
+    Serial.printf("Node '%s': Adding property: '%s'\n", _id, property->id());
     _properties[_num_properties++] = property;
-
-    //property_map[_num_properties_mapped].funcPtr = property->get_device_callback();
-    //strcpy(property_map[_num_properties_mapped++].prop_id, property_id);
-    //Serial.printf("Node: '%s' - Property '%s' registered for device callbacks\n", _id, property_id);
-    //Serial.printf("Device: Node Property: Adding '%s'\n", property->id());
 }
 
 void Node::publish() {
@@ -99,6 +95,12 @@ void Node::mqttConnected() {
     }
 }
 
-void Node::register_property_for_device_callbacks(void (Property::*callback)(const char*), const char* property_id) {
-    Serial.printf("Node: '%s' - Property '%s' registered for device callbacks\n", _id, property_id);
+Property* Node::getProperty(const char* id) {
+    for(int i=0;i<_num_properties;i++) {
+        if (strcmp(_properties[i]->id(), id) == 0) {
+            return _properties[i];
+        }
+    }
+    Serial.printf("Node: '%s' - Property '%s' not found\n", _id, id);
+    return nullptr; // Property not found
 }

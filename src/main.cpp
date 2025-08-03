@@ -4,19 +4,21 @@
 #include <mqtt_client.h>
 #include <ESPmDNS.h>
 #include <homie/Device.h>
-#include <node/homie_node.h>
+#include <node/NodeManager.h>
 
 void setup_homie() {
-  setup_homie_nodes();
-
   JsonDocument* dev_conf = get_device_config();
   Serial.printf("Device name '%s', type '%s'\n", (*dev_conf)[HOMIE_NAME].as<const char*>(), (*dev_conf)[HOMIE_TYPE].as<const char*>());
 
-  //theDevice = new Device();
-  theDevice.init((*dev_conf)[HOMIE_NAME].as<const char*>(), getDeviceID(), (*dev_conf)[HOMIE_TYPE].as<const char*>(), &mqtt_client);
-  theDevice.publishState();//default state is init
-  theDevice.publish();
-  theDevice.setState(DeviceState::DEVICE_STATE_READY); //setState will publish the $state
+  nodeManager = new NodeManager();
+
+  theDevice = new Device();
+  theDevice->init((*dev_conf)[HOMIE_NAME].as<const char*>(), getDeviceID(), (*dev_conf)[HOMIE_TYPE].as<const char*>(), &mqtt_client);
+  theDevice->publishState();//default state is init
+  theDevice->publish();
+  theDevice->setState(DeviceState::DEVICE_STATE_READY); //setState will publish the $state
+
+  nodeManager->setup();
 }
 
 void setup() {
@@ -42,7 +44,7 @@ void setup() {
 }
 
 void loop_homie() {
- loop_homie_nodes();
+ nodeManager->loop();
 }
 
 void loop() {

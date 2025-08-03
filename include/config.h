@@ -19,4 +19,4 @@ JsonObject* get_config();
 JsonDocument* get_node_config();
 JsonDocument* get_device_config();
 
-extern Device theDevice;
+extern Device* theDevice;

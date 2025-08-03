@@ -1,6 +1,7 @@
 #include <Adafruit_BME280.h>
 #include <node/bme280.h>
 #include <pins.h>
+#include <node/NodeManager.h>
 
 #define BME_ADDR 0x76
 
@@ -44,7 +45,7 @@ void BME280::loop() {
     float f = temp_event.temperature * 9/5 + 32;
     float mb = pressure_event.pressure / 100; //convert Pascals to millibars where 100 Pascals = 1 hPa = 1 millibar
     float inHg = pressure_event.pressure*100 / 3386.39; //convert Pascals to inches of mercury where 1 inch Hg = 3386.39 Pascal
-    Serial.printf("Temp: %3.1fC, %.2fF Humid: %3.1f%% AP: %.2f Pa %.2f mb, %2.2f inHg\n", temp_event.temperature,f,  humidity_event.relative_humidity,pressure_event.pressure,mb,inHg);
+    Serial.printf("Temp: %3.1fC, %.2fF Humid: %3.1f%% AP: %.2f Pa %.2f mb, %2.2f inHg\n", temp_event.temperature,f,  humidity_event.relative_humidity,pressure_event.pressure,mb,humidity_event.relative_humidity);
    
     //get our homie node and update the values
     if (homie_node_id[0] == 0) {
@@ -52,8 +53,10 @@ void BME280::loop() {
       return;
     }
     Serial.printf("BME280: update node id: '%s'\n", homie_node_id);
-
-    //call out to a device or node manager to handle setting the values on the homie node
-    
+    //call out to node manager to handle setting the values on the homie node
+    nodeManager->setNodeProperty(homie_node_id, "degrees", f);
+    nodeManager->setNodeProperty(homie_node_id, "millibars", mb);  
+    nodeManager->setNodeProperty(homie_node_id, "percent", humidity_event.relative_humidity); 
+    nodeManager->publish(homie_node_id); 
   }
 }
