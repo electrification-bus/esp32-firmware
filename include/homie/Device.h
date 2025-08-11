@@ -26,6 +26,9 @@ class Device {
     void publishState();
     const char* topic();
     void serialize(String& serialized);
+    
+   Node* getNode(const char* id);
+   Node* operator[](const char* node_id_key) { return getNode(node_id_key); };
 
  private:
     char _id[16] = {0};

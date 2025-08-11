@@ -77,6 +77,16 @@ Node* Device::addNode(JsonVariant node, const char* topic) {
     return n;
 }
 
+Node* Device::getNode(const char* id) {
+  for (int i = 0; i < _num_nodes; i++) {
+      if (strcmp(_nodes[i]->id(), id) == 0) {
+          return _nodes[i];
+      }
+  }
+  Serial.printf("Device: Node '%s' not found\n", id);
+  return nullptr;
+}
+
 void Device::setState(DeviceState state) {
   DeviceState previous_state = _state;
   _state = state;

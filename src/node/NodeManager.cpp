@@ -67,21 +67,6 @@ Node* NodeManager::getNode(const char* id) {
     return nullptr;
 };
 
-void NodeManager::removeNode(const char* id) {
-    for (int i = 0; i < _num_nodes; i++) {
-        if (strcmp(_nodes[i]->id(), id) == 0) {
-            delete _nodes[i]; // Clean up the node
-            for (int j = i; j < _num_nodes - 1; j++) {
-                _nodes[j] = _nodes[j + 1];
-            }
-            _num_nodes--;
-            Serial.printf("NodeManager: Node '%s' removed\n", id);
-            return;
-        }
-    }
-    Serial.printf("NodeManager: Node '%s' not found for removal\n", id);
-};
-
 void NodeManager::loop() {
   //loop the nodes
     if (bme280 != nullptr) bme280->loop();  //TODO move to sensor manager/driver 
