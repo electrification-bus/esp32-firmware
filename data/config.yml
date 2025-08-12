@@ -1,7 +1,7 @@
 config: 
   - wifi_ssid: 
     wifi_password: 
-    mqtt_host: 192.168.1.129
+    mqtt_host: 192.168.1.70
     mqtt_port: 1883
     mqtt_username:
     mqtt_password:
@@ -16,6 +16,22 @@ name: ESP32POEISO
 type: ebus
 state: init
 nodes:
+  - id: voltage_current_detector
+    name: Modbus Eletechsup32
+    type: modbus
+    properties:
+      - id: V_detect
+        name: Voltage Detect
+        datatype: boolean
+        settable: false
+        retained: true
+        value: false
+      - id: I_detect
+        name: Current Detect
+        datatype: boolean
+        settable: false
+        retained: true
+        value: false
   - id: environment
     name: Temp/Pressure/Humidity Sensor
     type: sensor
@@ -45,7 +61,7 @@ nodes:
     name: LED
     type: switch
     properties:
-      - id: 'on'
+      - id: on_off
         name: On/Off
         datatype: boolean
         settable: true

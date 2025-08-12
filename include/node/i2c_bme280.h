@@ -16,7 +16,7 @@ class BME280 : public Adafruit_BME280 {
         float getHumidity() const;  
 
         bool node_begin() ;
-        void setup();
+        bool setup();
         void loop();
 
         void setReadInterval(int interval) { read_interval = interval; }
@@ -31,7 +31,7 @@ class BME280 : public Adafruit_BME280 {
         uint8_t scl;
         int read_interval = 0; // interval for reading sensor data in milliseconds
         int since_last_read = 0;
-        char homie_node_id[32] = {0};
+        char homie_node_id[32] = {0}; //derive from homie base class?
 };
 
 extern BME280* bme280;

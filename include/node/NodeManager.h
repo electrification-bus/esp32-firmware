@@ -2,7 +2,8 @@
 #include <ArduinoJson.h>
 #include <homie/Device.h>
 #include <homie/Node.h>
-#include <node/BME280.h>
+#include <node/i2c_bme280.h>
+#include <node/modbus_eletechsup32.h>
 
 class NodeManager {
     public:
@@ -11,9 +12,10 @@ class NodeManager {
 
         void setup();
         void loop();
-        void addNode(Node* node);
+        void addDevice(Device* device);
         Node* getNode(const char* id);
         void publish(const char* node_id);
+        Property* validate(const char* node_id, const char* property_id);
         void setNodeProperty(const char* node_id, const char* property_id, int value);
         void setNodeProperty(const char* node_id, const char* property_id, float value);
         void setNodeProperty(const char* node_id, const char* property_id, const char* value);
@@ -23,7 +25,7 @@ class NodeManager {
         Node* operator[](const char* node_id_key) { return getNode(node_id_key); };
 
     private:
-        Node* _nodes[32];
+        Device* _device;
         int _num_nodes = 0;
         int _num_properties_mapped = 0;
 };

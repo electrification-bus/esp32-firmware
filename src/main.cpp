@@ -5,14 +5,16 @@
 #include <ESPmDNS.h>
 #include <homie/Device.h>
 #include <node/NodeManager.h>
+#include <modbus/modbus_master.h>
 
 void setup_homie() {
   JsonDocument* dev_conf = get_device_config();
   Serial.printf("Device name '%s', type '%s'\n", (*dev_conf)[HOMIE_NAME].as<const char*>(), (*dev_conf)[HOMIE_TYPE].as<const char*>());
 
   nodeManager = new NodeManager();
-
   theDevice = new Device();
+
+  nodeManager->addDevice(theDevice);
   theDevice->init((*dev_conf)[HOMIE_NAME].as<const char*>(), getDeviceID(), (*dev_conf)[HOMIE_TYPE].as<const char*>(), &mqtt_client);
   theDevice->publishState();//default state is init
   theDevice->publish();
@@ -38,7 +40,9 @@ void setup() {
   setup_mdns();
   setup_mqtt();
 
-  //setup_ota();
+  setup_modbus_master(); //TODO only if configged
+
+  //setup_ota(); //TODO
 
   setup_homie();
 }

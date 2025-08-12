@@ -10,6 +10,9 @@
 #ifndef MQTT_TIMEOUT
 #define MQTT_TIMEOUT 3
 #endif
+
+#define MQTTPublish_rootrate 10000
+
 typedef void (Property::*subscriber_callback_t)(const char*, const char*);
 
 void loop_mqtt();

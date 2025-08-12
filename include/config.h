@@ -1,8 +1,11 @@
 #pragma once
 #include <Arduino.h>
 #include <ArduinoYaml.h>
+#include <pins.h>
+#include <util/jsonUtils.h>
 #include <homie/homie.h>
 #include <homie/Device.h>
+
 
 #define MAX_DEVICE_ID_CHARS   32 //TODO all string sizes
 

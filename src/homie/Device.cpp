@@ -46,8 +46,7 @@ void Device::init(const char* name, const char* id, const char* type, PubSubClie
   JsonArray nodes_array = (*nodes)[HOMIE_NODES].as<JsonArray>();
   for (JsonVariant node : nodes_array) {
     //Serial.printf("Device: adding node %s\n", node["name"].as<const char*>());
-    Node* n = addNode(node,_topic);
-    nodeManager->addNode(n); // Register the node with NodeManager
+    addNode(node,_topic);
   }
 }
 
@@ -181,7 +180,7 @@ void Device::publish() {
   //nodes
   Serial.println("DEVICE publish: nodes");
   for (int i = 0; i < _num_nodes; i++) {
-    //Serial.printf("DEVICE publish: node: %s\n", _nodes[i]->name());
+    Serial.printf("DEVICE publish: node: %s\n", _nodes[i]->name());
     _nodes[i]->publish();
   }
 

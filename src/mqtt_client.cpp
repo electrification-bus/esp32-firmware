@@ -201,7 +201,7 @@ int last_connect_error = millis();
 void loop_mqtt() {
     if (mqtt_client.connected()) {  
       //publish here; call publishers 
-    } else if (millis() - last_connect_error > 10000) { //throttle connection retries
+    } else if (millis() - last_connect_error > MQTTPublish_rootrate) { //throttle connection retries
       last_connect_error = millis();
       Serial.printf("MQTT not connected - retrying: %s\n", mqtt_host.c_str());
       mqtt_connect();
