@@ -36,21 +36,21 @@ nodes:
     name: Temp/Pressure/Humidity Sensor
     type: sensor
     properties:
-      - id: degrees
+      - id: temperature
         name: Temperature
         datatype: float
         unit: °C
         settable: false
         retained: true
         value: 72.4
-      - id: millibars
+      - id: air_pressure
         name: Air Pressure
         datatype: float
         unit: mb
         settable: false
         retained: true
         value: 1024.4
-      - id: percent
+      - id: relative_humidity
         name: Humidity
         datatype: float
         unit: percent

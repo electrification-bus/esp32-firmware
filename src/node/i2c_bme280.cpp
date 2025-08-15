@@ -88,9 +88,9 @@ void BME280::loop() {
     }
     Serial.printf("BME280: update node id: '%s'\n", homie_node_id);
     //call out to node manager to handle setting the values on the homie node
-    nodeManager->setNodeProperty(homie_node_id, "degrees", f);
-    nodeManager->setNodeProperty(homie_node_id, "millibars", mb);  
-    nodeManager->setNodeProperty(homie_node_id, "percent", humidity_event.relative_humidity); 
+    nodeManager->setNodeProperty(homie_node_id, "temperature", f);
+    nodeManager->setNodeProperty(homie_node_id, "air_pressure", mb);  
+    nodeManager->setNodeProperty(homie_node_id, "relative_humidity", humidity_event.relative_humidity); 
     nodeManager->publish(homie_node_id); 
   }
 }
