@@ -22,7 +22,7 @@ char device_id[MAX_DEVICE_ID_CHARS] = {0};
 const char* platform_config_file = "/config.yml";
 const char* homie_config_file = "/homie.yml";
 const char* homie_config_file_backup = "/homie_config_from_SD.yml";
-const char* config_file_backup = "/config_from_SD.json";
+const char* config_file_backup = "/config_from_SD.yml";
 
 const bool default_value = false; // default value for property
 bool current_value = default_value;

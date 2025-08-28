@@ -20,7 +20,7 @@ nodes:
         retained: true
         value: false
   - id: environment_bme280
-    name: Temp/Pressure/Humidity Sensor
+    name: BME280 Temp/Pressure/Humidity Sensor
     type: sensor
     properties:
       - id: temperature
@@ -45,7 +45,7 @@ nodes:
         retained: true
         value: 67.7
   - id: environment_sht20
-    name: Temp/Humidity Sensor
+    name: SHT20 MODBUS Temp/Humidity Sensor
     type: sensor
     properties:
       - id: temperature
