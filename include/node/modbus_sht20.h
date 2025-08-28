@@ -9,6 +9,7 @@ class Modbus_SHT20 : public ModbusEntity {
 
         bool nodeBegin() override;
         uint8_t poll() override;
+        const char* getNodeName() const override { return "SHT20"; };
 
         void route_poll_response(uint16_t reg, uint16_t response);
         //uint8_t get_modbus_address();

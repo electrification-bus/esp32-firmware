@@ -19,9 +19,9 @@ class BME280 : public Entity, public Adafruit_BME280 {
         bool nodeBegin() override;
         void loop() override;
         bool pollIntervalTrigger() override;
+        const char* getNodeName() const override { return "BME280"; };
 
         void setReadInterval(int interval) { read_interval = interval; }
-        const char* getClassName() const { return "BME280"; }
     private:
         TwoWire* deviceWire;
         Adafruit_Sensor *bme_temp = nullptr; //getTemperatureSensor();

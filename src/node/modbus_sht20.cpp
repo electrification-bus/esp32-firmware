@@ -39,12 +39,10 @@ bool Modbus_SHT20::nodeBegin() {
 }
 
 uint8_t Modbus_SHT20::poll() {
+    Serial.println("MODBUS SHT20: POLL");
     //read two registers: 1=temp, 2=humidity. Divide responses by 10.
     uint8_t result = readInputRegisters(rTEMPERATURE, 2);
     if (result == ku8MBSuccess) {
-#ifdef ENABLE_DEBUG_MODBUS
-        Serial.printf("MODBUS SHT20: addr:%d reg:0x001 value:%d temperature:%2.1fC\n", modbus_address, getResponseBuffer(0), getResponseBuffer(0)/10.0); 
-#endif
         timestamp_last_report = millis();
         //route_poll_response(reg, getResponseBuffer(0); //TODO parse multi-byte response in route_poll_response instead of here
         Serial.printf("MODBUS SHT20: Temperature: %2.1fC  Humidity:%2.1f%%\n", getResponseBuffer(0)/10.0, getResponseBuffer(1)/10.0);
@@ -52,25 +50,17 @@ uint8_t Modbus_SHT20::poll() {
         humidity = getResponseBuffer(1);
     } else {
         timestamp_last_failure = millis();
-#ifdef ENABLE_DEBUG_MODBUS
-        Serial.println("MODBUS SHT20 POLL FAIL");
-#endif
+        Serial.println("MODBUS SHT20: Read failed");
     }
-    
     return result;
 }
 
 uint8_t Modbus_SHT20::query_register(uint16_t reg) {
-
     uint8_t result = readInputRegisters(reg, 1);
-#ifdef ENABLE_DEBUG_MODBUS
-    Serial.printf("MODBUS SHT20 %d: readInputRegisters( %d ): %s\n", modbus_address, reg, (result == ku8MBSuccess) ? "OK" : "FAIL");
-#endif
     if (result == ku8MBSuccess) {
         route_poll_response(reg, getResponseBuffer(0));
     } else {
         timestamp_last_failure = millis();
     }
-    
     return result;
 }

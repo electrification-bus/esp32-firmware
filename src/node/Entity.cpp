@@ -41,6 +41,7 @@ bool Entity::setup() {
                 for (JsonVariant props : props.as<JsonArray>()) {
                     //nodeManager->mapProperty(props[HOMIE_ID].as<const char*>(), props[HOMIE_NAME].as<const char*>(), props[HOMIE_TYPE].as<const char*>());
                 }
+                Serial.printf("%s: mapped to homie node id: %s\n", getNodeName(), homie_node_id);
                 setHomieNodeId(node[HOMIE_ID].as<const char*>());
                 break;
             }
