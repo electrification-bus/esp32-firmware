@@ -1,14 +1,13 @@
 #include <Arduino.h>
 #include <SoftwareSerial.h>
-#include <modbus/modbus.h>
-#include <mqtt_client.h>
 #include <config.h>
+#include <mqtt_client.h>
+#include <modbus/modbus_master.h>
 
 unsigned long lastPollMillis = 0;
 
 SoftwareSerial _modbus1(RS485_RX_1, RS485_TX_1);
 //SoftwareSerial _modbus2(RS485_RX_2, RS485_TX_2);
-
 
 void setup_modbus_master() {
     gpio_reset_pin(RS485_RX_1);

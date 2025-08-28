@@ -4,6 +4,7 @@
 #include <homie/Node.h>
 #include <node/i2c_bme280.h>
 #include <node/modbus_eletechsup32.h>
+#include <node/modbus_sht20.h>
 
 class NodeManager {
     public:
@@ -12,6 +13,7 @@ class NodeManager {
 
         void setup();
         void loop();
+
         void addDevice(Device* device);
         Node* getNode(const char* id);
         void publish(const char* node_id);

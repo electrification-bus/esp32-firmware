@@ -1,0 +1,76 @@
+#include <Arduino.h>
+#include <config.h>
+#include <node/NodeManager.h>
+#include <node/modbus_sht20.h>
+#include <mqtt_client.h>
+#define PAUSE_ON_RAMP_LEVELS 30000
+
+Modbus_SHT20::Modbus_SHT20() : ModbusEntity() {
+    modbus_address = SHT20_ADDR;
+    temperature = 0;
+    humidity = 0;
+    poll_timestamp = 0;
+    timestamp_last_report = 0;
+    timestamp_last_failure = 0;
+}
+
+float Modbus_SHT20::getTemperature() { return temperature/10.0; }
+float Modbus_SHT20::getHumidity() { return humidity/10.0; }
+
+void Modbus_SHT20::route_poll_response(uint16_t reg, uint16_t response) {
+    switch (reg) {
+        case rTEMPERATURE :
+            Serial.printf("MODBUS SHT20: Temperature: %2.1fC\n", response/10.0);
+            temperature = response;
+            break;
+        case rHUMIDITY :
+            Serial.printf("MODBUS SHT20: Humidity %2.1f%%\n", response/10.0);
+            humidity = response;
+            break;
+        default:break;
+    }
+}
+
+bool Modbus_SHT20::nodeBegin() {
+    Serial.printf("Modbus_SHT20: Node Begin with address %d\n", modbus_address);
+    // Initialize Modbus communication
+    begin(modbus_address, get_serial1());
+    return true;
+}
+
+uint8_t Modbus_SHT20::poll() {
+    //read two registers: 1=temp, 2=humidity. Divide responses by 10.
+    uint8_t result = readInputRegisters(rTEMPERATURE, 2);
+    if (result == ku8MBSuccess) {
+#ifdef ENABLE_DEBUG_MODBUS
+        Serial.printf("MODBUS SHT20: addr:%d reg:0x001 value:%d temperature:%2.1fC\n", modbus_address, getResponseBuffer(0), getResponseBuffer(0)/10.0); 
+#endif
+        timestamp_last_report = millis();
+        //route_poll_response(reg, getResponseBuffer(0); //TODO parse multi-byte response in route_poll_response instead of here
+        Serial.printf("MODBUS SHT20: Temperature: %2.1fC  Humidity:%2.1f%%\n", getResponseBuffer(0)/10.0, getResponseBuffer(1)/10.0);
+        temperature = getResponseBuffer(0);
+        humidity = getResponseBuffer(1);
+    } else {
+        timestamp_last_failure = millis();
+#ifdef ENABLE_DEBUG_MODBUS
+        Serial.println("MODBUS SHT20 POLL FAIL");
+#endif
+    }
+    
+    return result;
+}
+
+uint8_t Modbus_SHT20::query_register(uint16_t reg) {
+
+    uint8_t result = readInputRegisters(reg, 1);
+#ifdef ENABLE_DEBUG_MODBUS
+    Serial.printf("MODBUS SHT20 %d: readInputRegisters( %d ): %s\n", modbus_address, reg, (result == ku8MBSuccess) ? "OK" : "FAIL");
+#endif
+    if (result == ku8MBSuccess) {
+        route_poll_response(reg, getResponseBuffer(0));
+    } else {
+        timestamp_last_failure = millis();
+    }
+    
+    return result;
+}

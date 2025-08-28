@@ -8,7 +8,7 @@
 #include <modbus/modbus_master.h>
 
 void setup_homie() {
-  JsonDocument* dev_conf = get_device_config();
+  JsonDocument* dev_conf = get_homie_config();
   Serial.printf("Device name '%s', type '%s'\n", (*dev_conf)[HOMIE_NAME].as<const char*>(), (*dev_conf)[HOMIE_TYPE].as<const char*>());
 
   nodeManager = new NodeManager();

@@ -1,9 +1,10 @@
 #pragma once
 #include <Adafruit_BME280.h>
+#include <node/Entity.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
 
-class BME280 : public Adafruit_BME280 {
+class BME280 : public Entity, public Adafruit_BME280 {
     public:
         BME280();
         ~BME280(){};
@@ -15,15 +16,14 @@ class BME280 : public Adafruit_BME280 {
         float getPressure() const;
         float getHumidity() const;  
 
-        bool node_begin() ;
-        bool setup();
-        void loop();
+        bool nodeBegin() override;
+        void loop() override;
+        bool pollIntervalTrigger() override;
 
         void setReadInterval(int interval) { read_interval = interval; }
         const char* getClassName() const { return "BME280"; }
     private:
         TwoWire* deviceWire;
-        bool interval();
         Adafruit_Sensor *bme_temp = nullptr; //getTemperatureSensor();
         Adafruit_Sensor *bme_pressure = nullptr; //getPressureSensor();
         Adafruit_Sensor *bme_humidity = nullptr; //getHumiditySensor();

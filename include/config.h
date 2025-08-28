@@ -18,8 +18,11 @@ extern String device_id_prefix;
 void generateDeviceID();
 const char* getDeviceID();
 bool loadConfiguration();
+bool loadPlatformConfiguration();
+bool loadHomieConfiguration();
 JsonObject* get_config();
 JsonDocument* get_node_config();
-JsonDocument* get_device_config();
+JsonDocument* get_platform_config();
+JsonDocument* get_homie_config();
 
 extern Device* theDevice;

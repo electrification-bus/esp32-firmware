@@ -1,0 +1,131 @@
+homie: 5.0.1
+name: ESP32POEISO
+type: ebus
+state: init
+nodes:
+  - id: voltage_current_detector
+    name: Modbus Eletechsup32
+    type: modbus
+    properties:
+      - id: V_detect
+        name: Voltage Detect
+        datatype: boolean
+        settable: false
+        retained: true
+        value: false
+      - id: I_detect
+        name: Current Detect
+        datatype: boolean
+        settable: false
+        retained: true
+        value: false
+  - id: environment_bme280
+    name: Temp/Pressure/Humidity Sensor
+    type: sensor
+    properties:
+      - id: temperature
+        name: Temperature
+        datatype: float
+        unit: °C
+        settable: false
+        retained: true
+        value: 72.4
+      - id: air_pressure
+        name: Air Pressure
+        datatype: float
+        unit: mb
+        settable: false
+        retained: true
+        value: 1024.4
+      - id: relative_humidity
+        name: Humidity
+        datatype: float
+        unit: percent
+        settable: false
+        retained: true
+        value: 67.7
+  - id: environment_sht20
+    name: Temp/Humidity Sensor
+    type: sensor
+    properties:
+      - id: temperature
+        name: Temperature
+        datatype: float
+        unit: °C
+        settable: false
+        retained: true
+        value: 77.7
+      - id: relative_humidity
+        name: Humidity
+        datatype: float
+        unit: percent
+        settable: false
+        retained: true
+        value: 66.6
+  - id: led
+    name: LED
+    type: switch
+    properties:
+      - id: on_off
+        name: On/Off
+        datatype: boolean
+        settable: true
+        retained: true
+        value: false
+
+  - id: meter_volts
+    name: Voltage Sensor
+    type: energy
+    properties:
+      - id: volts
+        name: Voltage
+        datatype: float
+        unit: V
+        settable: false
+        retained: true
+        value: 120.0
+  - id: meter_current
+    name: Current Sensor
+    type: energy
+    properties:
+      - id: amps
+        name: Current
+        datatype: float
+        unit: A
+        settable: false
+        retained: true
+        value: 1.0
+  - id: meter_watts
+    name: Power Sensor
+    type: energy
+    properties:
+      - id: watts
+        name: Power
+        datatype: float
+        unit: W
+        settable: false
+        retained: true
+        value: 0.0
+  - id: meter_kwh
+    name: Energy Consumption
+    type: energy
+    properties:
+      - id: kwh
+        name: Energy
+        datatype: float
+        unit: kWh
+        settable: false
+        retained: true
+        value: 0.0
+  - id: ota
+    name: OTA Updates
+    type: ota
+    properties:
+      - id: update
+        name: Update Firmware
+        datatype: boolean
+        settable: true
+        retained: false
+        value: false
+extensions: []
+implementation: homie-esp32-sdk

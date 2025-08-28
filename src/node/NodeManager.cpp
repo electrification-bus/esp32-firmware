@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <node/Entity.h>
 #include <node/NodeManager.h>
 #include <config.h>
 #include <util/jsonUtils.h>
@@ -9,7 +10,8 @@ BME280* bme280 = nullptr;
 //Thermostat* thermostat; //TODO implement thermostat
 //EnergyMeter* energy_meter; //TODO implement energy meter
 //TODO implement other sensors
-Modbus_Eletechsup32* iv_detector = nullptr;   //Modbus Eletechsup32 sensor for 32 discrete inputs
+Modbus_Eletechsup32* iv_detector = nullptr;     //Modbus Eletechsup32 sensor for 32 discrete inputs
+Modbus_SHT20* sht20 = nullptr;                  //Modbus SHT20 sensor for temperature and humidity
 
 void NodeManager::addDevice(Device* dev) {
     _device = dev;
@@ -20,18 +22,22 @@ Node* NodeManager::getNode(const char* id) {
 };
 
 void NodeManager::loop() {
-  //loop the nodes
-    if (bme280 != nullptr) bme280->loop();  //TODO move to sensor manager/driver 
-    if (iv_detector != nullptr) iv_detector->loop();  //TODO move to sensor manager/driver 
-};
+    //loop the nodes
+    if (bme280 != nullptr) bme280->loop();
+    if (iv_detector != nullptr) iv_detector->loop();
+    if (sht20 != nullptr) sht20->loop();  
+}
 
 void NodeManager::setup() {
     bme280 = new BME280();
-    bme280->setup(); // Initialize BME280 sensor
+    bme280->setup("environment_bme280"); // Initialize BME280 sensor
 
     iv_detector = new Modbus_Eletechsup32();
-    iv_detector->setup(); // Initialize Modbus Eletechsup32 sensor
-};
+    iv_detector->setup("voltage_current_detector"); // Initialize Modbus Eletechsup32 sensor
+
+    sht20 = new Modbus_SHT20();
+    sht20->setup("environment_sht20"); // Initialize Modbus SHT20 sensor
+}
 
 void NodeManager::publish(const char* node_id) {
     Node* node = getNode(node_id);
