@@ -1,9 +1,9 @@
 #pragma once
 #include <Arduino.h>
-#include <node/Entity.h>
+#include <node/NodeEntity.h>
 #include <modbus/modbus_master.h>
 
-class ModbusEntity : public Entity, public ModbusMaster {
+class ModbusEntity : public NodeEntity, public ModbusMaster {
 
     public: 
         ModbusEntity();

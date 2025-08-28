@@ -1,7 +1,7 @@
 #include <modbus/ModbusEntity.h>
 #include <config.h>
 
-ModbusEntity::ModbusEntity() : Entity(), ModbusMaster() {
+ModbusEntity::ModbusEntity() : NodeEntity(), ModbusMaster() {
     modbus_address = 0;
     poll_timestamp = 0;
 }   

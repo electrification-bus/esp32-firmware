@@ -1,10 +1,10 @@
 #pragma once
 #include <Adafruit_BME280.h>
-#include <node/Entity.h>
+#include <node/NodeEntity.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
 
-class BME280 : public Entity, public Adafruit_BME280 {
+class BME280 : public NodeEntity, public Adafruit_BME280 {
     public:
         BME280();
         ~BME280(){};

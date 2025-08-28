@@ -6,7 +6,7 @@
 
 #define BME_ADDR 0x76
 
-BME280::BME280() : Entity(), Adafruit_BME280() {
+BME280::BME280() : NodeEntity(), Adafruit_BME280() {
   setPins(BME280_SDA_PIN, BME280_SCL_PIN);
   bme_temp = getTemperatureSensor();
   bme_pressure = getPressureSensor();

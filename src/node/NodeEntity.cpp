@@ -1,34 +1,34 @@
 #include <Arduino.h>
 #include <config.h>
 #include <util/jsonUtils.h>
-#include <node/Entity.h>
+#include <node/NodeEntity.h>
 
-Entity::Entity(){};
-Entity::~Entity(){};
+NodeEntity::NodeEntity(){};
+NodeEntity::~NodeEntity(){};
 
-const char* Entity::getHomieNodeId() {
+const char* NodeEntity::getHomieNodeId() {
     return homie_node_id;
 }
 
-bool Entity::pollIntervalTrigger() {
+bool NodeEntity::pollIntervalTrigger() {
     return false;
 }
 
-const char* Entity::getClassName() const {
-    return "Entity";
+const char* NodeEntity::getClassName() const {
+    return "NodeEntity";
 }
 
-void Entity::setHomieNodeId(const char* id) {
+void NodeEntity::setHomieNodeId(const char* id) {
     strncpy(homie_node_id, id, sizeof(homie_node_id) - 1);
     homie_node_id[sizeof(homie_node_id) - 1] = '\0'; // Ensure null termination
 }
 
-bool Entity::setup(const char* node_id) {
+bool NodeEntity::setup(const char* node_id) {
     setHomieNodeId(node_id);
     return setup();
 }
 
-bool Entity::setup() {
+bool NodeEntity::setup() {
     JsonDocument* node_conf = get_node_config();
     //TODO remove this hardcoding and map the YAML 'voltage_current_detector' node to the Modbus_Eletechsup32 (consolidate with BME280 setup())
     if (jsonExists((*node_conf)[HOMIE_NODES].as<JsonVariant>())) {
@@ -47,7 +47,7 @@ bool Entity::setup() {
             }
         }
     } else {
-        Serial.printf("SETUP: Entity: ERROR: node not found in config:'%s' - skipping setup\n", homie_node_id); //TODO
+        Serial.printf("SETUP: NodeEntity: ERROR: node not found in config:'%s' - skipping setup\n", homie_node_id); //TODO
         return false;
     }
     return nodeBegin();
