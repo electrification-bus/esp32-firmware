@@ -22,6 +22,16 @@
     d["msg"] = "hello world";  // works like Python dict
 
     Serial.println(d["msg"]);  // implicit conversion to const char*
+
+    // with Property pointer
+    Dict<Property*> dp;
+    Node* node = new Node();
+    node->setId("test_node");
+    Property* prop = new Property(node);
+    prop->setId("temperature");
+    dp["temp_property"] = prop;
+    Property* dict_prop = dp["temp_property"];
+    Serial.printf("Dict with Property pointer: id:'%s'\n", dict_prop->id());
 */
 
 // Wrapper for fixed-size char buffer with assignment operator
@@ -133,7 +143,7 @@ void test_dict() {
 
     // with string values - use StringBuffer wrapper class (char[32] in this example)
     Dict<StringBuffer<32>> d;
-    d["msg"] = "hello world";  // works like Python dict
+    d["msg"] = "hello world";
 
 
     Serial.printf("Dict with string %s\n", d["msg"].c_str());
