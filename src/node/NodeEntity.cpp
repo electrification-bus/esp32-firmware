@@ -7,20 +7,16 @@ NodeEntity::NodeEntity(){};
 NodeEntity::~NodeEntity(){};
 
 const char* NodeEntity::getHomieNodeId() {
-    return homie_node_id;
+    return _homie_node_id;
 }
 
 bool NodeEntity::pollIntervalTrigger() {
     return false;
 }
 
-const char* NodeEntity::getClassName() const {
-    return "NodeEntity";
-}
-
 void NodeEntity::setHomieNodeId(const char* id) {
-    strncpy(homie_node_id, id, sizeof(homie_node_id) - 1);
-    homie_node_id[sizeof(homie_node_id) - 1] = '\0'; // Ensure null termination
+    strncpy(_homie_node_id, id, sizeof(_homie_node_id) - 1);
+    _homie_node_id[sizeof(_homie_node_id) - 1] = '\0'; // Ensure null termination
 }
 
 bool NodeEntity::setup(const char* node_id) {
@@ -34,20 +30,20 @@ bool NodeEntity::setup() {
     if (jsonExists((*node_conf)[HOMIE_NODES].as<JsonVariant>())) {
         JsonVariant nodes = (*node_conf)[HOMIE_NODES].as<JsonVariant>();
         for (JsonVariant node : nodes.as<JsonArray>()) {
-            if (strcmp(node[HOMIE_ID].as<const char*>(), homie_node_id) == 0) { //read this from node config? (map environment to BME280)
-                Serial.printf("SETUP: ModbusEntity: found node: %s\n", homie_node_id);
+            if (strcmp(node[HOMIE_ID].as<const char*>(), _homie_node_id) == 0) { //read this from node config? (map environment to BME280)
+                Serial.printf("SETUP: NodeEntity: found node: %s\n", _homie_node_id);
                 //pull out properties and map to Modbus_Eletechsup32 device
                 JsonVariant props = node[HOMIE_PROPERTIES].as<JsonVariant>();
                 for (JsonVariant props : props.as<JsonArray>()) {
                     //nodeManager->mapProperty(props[HOMIE_ID].as<const char*>(), props[HOMIE_NAME].as<const char*>(), props[HOMIE_TYPE].as<const char*>());
                 }
-                Serial.printf("%s: mapped to homie node id: %s\n", getNodeName(), homie_node_id);
+                Serial.printf("%s: mapped to homie node id: %s\n", getNodeName(), _homie_node_id);
                 setHomieNodeId(node[HOMIE_ID].as<const char*>());
                 break;
             }
         }
     } else {
-        Serial.printf("SETUP: NodeEntity: ERROR: node not found in config:'%s' - skipping setup\n", homie_node_id); //TODO
+        Serial.printf("SETUP: NodeEntity: ERROR: node not found in config:'%s' - skipping setup\n", _homie_node_id); //TODO
         return false;
     }
     return nodeBegin();

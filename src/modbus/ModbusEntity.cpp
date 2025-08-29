@@ -1,35 +1,35 @@
-#include <modbus/ModbusEntity.h>
+#include <modbus/ModbusRTUEntity.h>
 #include <config.h>
 
-ModbusEntity::ModbusEntity() : NodeEntity(), ModbusMaster() {
-    modbus_address = 0;
-    poll_timestamp = 0;
+ModbusRTUEntity::ModbusRTUEntity() : NodeEntity(), ModbusMaster() {
+    _modbus_address = 0;
+    _poll_timestamp = 0;
 }   
 
-bool ModbusEntity::pollIntervalTrigger() {
-    if ( (millis() - poll_timestamp) > ModbusMaster_pollrate) {
-        poll_timestamp = millis();
+bool ModbusRTUEntity::pollIntervalTrigger() {
+    if ( (millis() - _poll_timestamp) > MODBUS_POLLRATE) {
+        _poll_timestamp = millis();
         return true;
     }
     return false;
 }
 
-uint8_t ModbusEntity::get_modbus_address() const {
-    return modbus_address;
+uint8_t ModbusRTUEntity::getModbusAddress() const {
+    return _modbus_address;
 }
 
-void ModbusEntity::set_modbus_address(uint8_t addr) {
-    modbus_address = addr;
+void ModbusRTUEntity::setModbusAddress(uint8_t addr) {
+    _modbus_address = addr;
 }
 
-bool ModbusEntity::nodeBegin() {
-    Serial.printf("ModbusEntity: nodeBegin with MODBUS address %d\n", modbus_address);
+bool ModbusRTUEntity::nodeBegin() {
+    Serial.printf("ModbusRTUEntity: nodeBegin with MODBUS address %d\n", _modbus_address);
     // Initialize Modbus communication
-    begin(modbus_address, get_serial1());
+    begin(_modbus_address, get_serial1());
     return true;
 }
 
-void ModbusEntity::loop() {
+void ModbusRTUEntity::loop() {
     if (pollIntervalTrigger()) {
         poll();
     }

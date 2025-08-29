@@ -8,6 +8,7 @@ class Node;
 class Property {
 public:
     Property();
+    Property(Node* parent_node);
     ~Property(){};
 
     void setId(const char* id);
@@ -63,7 +64,7 @@ private:
     char _unit[8] = {0};
     int _round_to = 0;
     bool _supports_target = false;
-    Node* _node = nullptr;
+    Node* _parent_node = nullptr;
     PubSubClient* _mqtt_client;
     void* _async_loop = nullptr;
 

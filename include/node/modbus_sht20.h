@@ -1,19 +1,17 @@
 #pragma once
 
-#include <modbus/ModbusEntity.h>
+#include <modbus/ModbusRTUEntity.h>
 
-class Modbus_SHT20 : public ModbusEntity {
+class Modbus_SHT20 : public ModbusRTUEntity {
     public:
         Modbus_SHT20();
         ~Modbus_SHT20() {};
 
         bool nodeBegin() override;
         uint8_t poll() override;
-        const char* getNodeName() const override { return "SHT20"; };
+        const char* getNodeName() const override { return "SHT20"; }
 
         void route_poll_response(uint16_t reg, uint16_t response);
-        //uint8_t get_modbus_address();
-        //void set_modbus_address(uint8_t addr);
         uint8_t query_register(uint16_t reg);
 
         enum MB_Reg {

@@ -5,7 +5,7 @@
 
 #define SHT20_ADDR 0x01
 #define INPUT32_ADDR 0x04
-#define ModbusMaster_pollrate 5000 //poll every 5 seconds
+#define MODBUS_POLLRATE 5000 //poll every 5 seconds
 
 void setup_modbus_clients();
 void setup_modbus_master();

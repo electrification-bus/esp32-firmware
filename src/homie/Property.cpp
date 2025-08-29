@@ -6,8 +6,12 @@
 #include <util/jsonUtils.h>
 
 Property::Property() {
-    _node = nullptr;
-};
+    _parent_node = nullptr;
+}
+
+Property::Property(Node* node) {
+    _parent_node = node;
+}
 
 void Property::from_dict(JsonObject* props_obj) {
 
@@ -48,17 +52,17 @@ void Property::from_dict(JsonObject* props_obj) {
 }
 
 void Property::setNode(Node* node) {
-    _node = node;
+    _parent_node = node;
 }
 
 Node* Property::node() {
-    return _node;
+    return _parent_node;
 }
 
 void Property::setId(const char* id) {
     strcpy(_id, id);
     //SET-ID SIDE-EFFECT - construct the topic
-    sprintf(_topic, "%s/%s", _node->topic(), _id);
+    sprintf(_topic, "%s/%s", _parent_node->topic(), _id);
 }
 
 const char* Property::id() const {
@@ -171,7 +175,7 @@ void Property::mqtt_settable_callback(const char* topic, const char* payload) {
         } else if (strcmp(payload, "false") == 0 || strcmp(payload, "0") == 0 || strcmp(payload, "off") == 0 || strcmp(payload, "no") == 0) {
             setValue(false);
         } else {
-            Serial.printf("Node: '%s', Property: '%s' - invalid boolean value '%s'\n", _node->id(), _id, payload);
+            Serial.printf("Node: '%s', Property: '%s' - invalid boolean value '%s'\n", _parent_node->id(), _id, payload);
             return; //invalid value
         }; 
         isValid = true;
@@ -187,7 +191,7 @@ void Property::mqtt_settable_callback(const char* topic, const char* payload) {
         isValid = true;
     }
     if (isValid) {
-        Serial.printf("Node: '%s',  Property: '%s': datetype: '%s', new value: '%s'\n",_node->id(), _id, datatype(), payload);
+        Serial.printf("Node: '%s',  Property: '%s': datetype: '%s', new value: '%s'\n",_parent_node->id(), _id, datatype(), payload);
         publish();
     }
 }

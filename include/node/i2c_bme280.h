@@ -21,17 +21,17 @@ class BME280 : public NodeEntity, public Adafruit_BME280 {
         bool pollIntervalTrigger() override;
         const char* getNodeName() const override { return "BME280"; };
 
-        void setReadInterval(int interval) { read_interval = interval; }
+        void setReadInterval(int interval) { _read_interval = interval; }
+
     private:
-        TwoWire* deviceWire;
-        Adafruit_Sensor *bme_temp = nullptr; //getTemperatureSensor();
-        Adafruit_Sensor *bme_pressure = nullptr; //getPressureSensor();
-        Adafruit_Sensor *bme_humidity = nullptr; //getHumiditySensor();
-        uint8_t sda;
-        uint8_t scl;
-        int read_interval = 0; // interval for reading sensor data in milliseconds
-        int since_last_read = 0;
-        char homie_node_id[32] = {0}; //derive from homie base class?
+        TwoWire* _deviceWire;
+        Adafruit_Sensor *_bme_temp = nullptr; //getTemperatureSensor();
+        Adafruit_Sensor *_bme_pressure = nullptr; //getPressureSensor();
+        Adafruit_Sensor *_bme_humidity = nullptr; //getHumiditySensor();
+        uint8_t _sda;
+        uint8_t _scl;
+        int _read_interval = 0; // interval for reading sensor data in milliseconds
+        int _since_last_read = 0;
 };
 
 extern BME280* bme280;

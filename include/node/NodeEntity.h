@@ -1,4 +1,5 @@
 #pragma once
+#include <node/NodeProperty.h>
 
 class NodeEntity {
     public:
@@ -13,9 +14,11 @@ class NodeEntity {
         virtual void setHomieNodeId(const char* id);
         virtual bool pollIntervalTrigger();
         virtual const char* getHomieNodeId();
-        virtual const char* getClassName() const;
+        virtual const char* getClassName() const {return "NodeEntity";}
 
     protected:
-        char homie_node_id[32] = {0}; // Homie node ID,
-
+        Node* _parent_node = nullptr; // Pointer to the parent Node
+        char _homie_node_id[32] = {0}; // Homie node ID,
+        NodeProperty* _node_properties[32]; // Array of NodeProperties
+        int _num_node_properties = 0;
 };

@@ -5,11 +5,11 @@
 #include <mqtt_client.h>
 #define PAUSE_ON_RAMP_LEVELS 30000
 
-Modbus_SHT20::Modbus_SHT20() : ModbusEntity() {
-    modbus_address = SHT20_ADDR;
+Modbus_SHT20::Modbus_SHT20() : ModbusRTUEntity() {
+    _modbus_address = SHT20_ADDR;
     temperature = 0;
     humidity = 0;
-    poll_timestamp = 0;
+    _poll_timestamp = 0;
     timestamp_last_report = 0;
     timestamp_last_failure = 0;
 }
@@ -32,25 +32,25 @@ void Modbus_SHT20::route_poll_response(uint16_t reg, uint16_t response) {
 }
 
 bool Modbus_SHT20::nodeBegin() {
-    Serial.printf("Modbus_SHT20: Node Begin with address %d\n", modbus_address);
+    Serial.printf("Modbus_SHT20: Node Begin with address %d\n", _modbus_address);
     // Initialize Modbus communication
-    begin(modbus_address, get_serial1());
+    begin(_modbus_address, get_serial1());
     return true;
 }
 
 uint8_t Modbus_SHT20::poll() {
-    Serial.println("MODBUS SHT20: POLL");
+    Serial.println("Modbus_SHT20: POLL");
     //read two registers: 1=temp, 2=humidity. Divide responses by 10.
     uint8_t result = readInputRegisters(rTEMPERATURE, 2);
     if (result == ku8MBSuccess) {
         timestamp_last_report = millis();
         //route_poll_response(reg, getResponseBuffer(0); //TODO parse multi-byte response in route_poll_response instead of here
-        Serial.printf("MODBUS SHT20: Temperature: %2.1fC  Humidity:%2.1f%%\n", getResponseBuffer(0)/10.0, getResponseBuffer(1)/10.0);
+        Serial.printf("Modbus_SHT20: Temperature: %2.1fC  Humidity:%2.1f%%\n", getResponseBuffer(0)/10.0, getResponseBuffer(1)/10.0);
         temperature = getResponseBuffer(0);
         humidity = getResponseBuffer(1);
     } else {
         timestamp_last_failure = millis();
-        Serial.println("MODBUS SHT20: Read failed");
+        Serial.println("Modbus_SHT20: Read failed");
     }
     return result;
 }

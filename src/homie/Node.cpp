@@ -28,6 +28,8 @@ JsonDocument Node::serialize() {
 
 void Node::addProperty(Property* property) {
     Serial.printf("Node '%s': Adding property: '%s'\n", _id, property->id());
+    //instantiate NodeProperty and add to array
+    property->setNode(this); // Set the parent node for the property
     _properties[_num_properties++] = property;
 }
 
