@@ -6,6 +6,7 @@
 #include <homie/Device.h>
 #include <node/NodeManager.h>
 #include <modbus/modbus_master.h>
+#include <util/dict.h>
 
 void setup_homie() {
   JsonDocument* dev_conf = get_homie_config();

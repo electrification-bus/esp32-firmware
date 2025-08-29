@@ -27,6 +27,7 @@
         "typeinfo": "cpp",
         "list": "cpp",
         "unordered_set": "cpp",
-        "iostream": "cpp"
+        "iostream": "cpp",
+        "chrono": "cpp"
     }
 }
