@@ -1,162 +1,324 @@
-/* GPT-5 prompted implementation of Python-like "dict" */
+/**
+ * @file Dict.h
+ * @brief A lightweight Arduino-compatible dynamic dictionary class.
+ *
+ * This class emulates a Python-style dictionary (`dict`) with bracket access,
+ * supporting multiple value types, nested dictionaries, and JSON
+ * serialization/deserialization — all without dynamic allocation.
+ *
+ * ## Features
+ * - Python-style access: `d["key"] = value;`
+ * - Supports multiple value types (including nested Dicts and arbitrary object pointers (Node*, Device*, Property*, etc.)
+ * - Serializes cleanly to JSON (with pointer info as "ptr:0x...)
+ * - Uses only fixed-size char buffers (no String, no STL)
+ * - Parsing is recursive for nested dicts
+ * - No heap allocation (new/delete used only for Dict expansion).
+ * - JSON serialization (`toJSON`) and parsing (`fromJSON`)
+ * - Works with microcontroller frameworks (ESP32, AVR, ARM, etc.)
+ *
+ * ## Example
+ * @code
+ * Dict<> d;
+ * d["temp"] = 25.4;
+ * d["enabled"] = true;
+ * d["msg"] = "Hello";
+ * 
+ * d["node"] = new Node();
+ * ((Node*)d["node"])->setId("DictTestNode");
+ * d["property"] = new Property(((Node*)d["node"]));
+ * 
+ * char buf[256];
+ * d.toJSON(buf, sizeof(buf));
+ * Serial.println(buf);
+ * @endcode
+ *
+ * @note
+ * Pointer types (e.g. `Node*`, `Device*`, `Property*`) are serialized as
+ * string placeholders ("ptr:0x...") and not dereferenced.
+ *
+ * @author
+ * ChatGPT (GPT-5), collaboratively developed for Doug Mendonca
+ *
+ * @date
+ * October 2025
+ *
+ */
 #include <Arduino.h>
-//#include <string.h>
+#include <string.h>
 
-#define MAX_KEY_LEN 32
+// Forward declaration
+template <size_t KEY_LEN, size_t BUF_LEN> class Dict;
 
-/* example Dict usage
+// -------------------- Value Class --------------------
+template <size_t KEY_LEN = 32, size_t BUF_LEN = 64>
+class Value {
+public:
+    enum Type { NONE, INT, LONG, FLOAT, BOOL, STRING, DICT, POINTER } type;
 
-    // with int values
-    Dict<int> d1;
-    d1["a"] = 123;
-    d1["b"] = 456;
-    Serial.println(d1["a"]);  // 123
+    union {
+        int i;
+        long l;
+        float f;
+        bool b;
+        void* ptr;
+        Dict<KEY_LEN, BUF_LEN>* d;
+    };
 
-    // with float values
-    Dict<float> d2;
-    d2["pi"] = 3.14159;
-    Serial.println(d2["pi"], 6);
+    char s[BUF_LEN];
 
-    // with string values - use StringBuffer wrapper class (char[32] in this example)
-    Dict<StringBuffer<32>> d;
-    d["msg"] = "hello world";  // works like Python dict
+    Value() : type(NONE), ptr(nullptr) { s[0] = '\0'; }
 
-    Serial.println(d["msg"]);  // implicit conversion to const char*
+    // --- Assignment overloads ---
+    Value& operator=(int v)    { type = INT; i = v; return *this; }
+    Value& operator=(long v)   { type = LONG; l = v; return *this; }
+    Value& operator=(float v)  { type = FLOAT; f = v; return *this; }
+    Value& operator=(bool v)   { type = BOOL; b = v; return *this; }
+    Value& operator=(const char* v) { 
+        type = STRING; 
+        strncpy(s, v, BUF_LEN - 1); 
+        s[BUF_LEN - 1] = '\0'; 
+        return *this; 
+    }
 
-    // with Property pointer
-    Dict<Property*> dp;
-    Node* node = new Node();
-    node->setId("test_node");
-    Property* prop = new Property(node);
-    prop->setId("temperature");
-    dp["temp_property"] = prop;
-    Property* dict_prop = dp["temp_property"];
-    Serial.printf("Dict with Property pointer: id:'%s'\n", dict_prop->id());
-*/
+    Value& operator=(Dict<KEY_LEN, BUF_LEN>& v) { type = DICT; d = &v; return *this; }
 
-// Wrapper for fixed-size char buffer with assignment operator
-template <size_t N>
-class StringBuffer {
+    // --- NEW: Pointer assignment ---
+    template <typename T>
+    Value& operator=(T* p) {
+        type = POINTER;
+        ptr = (void*)p;
+        return *this;
+    }
+
+    // --- Conversions ---
+    operator int() const    { return (type == INT) ? i : 0; }
+    operator long() const   { return (type == LONG) ? l : (type == INT ? i : 0); }
+    operator float() const  { return (type == FLOAT) ? f : 0.0f; }
+    operator bool() const   { return (type == BOOL) ? b : false; }
+    operator const char*() const {
+        switch (type) {
+            case STRING: return s;
+            case INT: snprintf((char*)s, BUF_LEN, "%d", i); break;
+            case LONG: snprintf((char*)s, BUF_LEN, "%ld", l); break;
+            case FLOAT: snprintf((char*)s, BUF_LEN, "%.3f", f); break;
+            case BOOL: snprintf((char*)s, BUF_LEN, "%s", b ? "true" : "false"); break;
+            case POINTER: snprintf((char*)s, BUF_LEN, "ptr:%p", ptr); break;
+            default: snprintf((char*)s, BUF_LEN, "");
+        }
+        return s;
+    }
+
+    // --- Generic pointer cast ---
+    template <typename T>
+    operator T*() const {
+        if (type == POINTER) return (T*)ptr;
+        return nullptr;
+    }
+
+    // --- Nested dict access ---
+    Value& operator[](const char* key);
+
+    bool isDict() const { return type == DICT; }
+
+    // --- JSON Serialization ---
+    size_t toJSON(char *out, size_t maxLen, int indent = 0) const {
+        switch (type) {
+            case STRING: return snprintf(out, maxLen, "\"%s\"", s);
+            case INT:    return snprintf(out, maxLen, "%d", i);
+            case LONG:   return snprintf(out, maxLen, "%ld", l);
+            case FLOAT:  return snprintf(out, maxLen, "%.3f", f);
+            case BOOL:   return snprintf(out, maxLen, "%s", b ? "true" : "false");
+            case DICT:   return d ? d->toJSON(out, maxLen, indent) : snprintf(out, maxLen, "{}");
+            case POINTER:return snprintf(out, maxLen, "\"ptr:%p\"", ptr);
+            default:     return snprintf(out, maxLen, "null");
+        }
+    }
+};
+
+// -------------------- Dict Class --------------------
+template <size_t KEY_LEN = 32, size_t BUF_LEN = 64>
+class Dict {
 private:
-    char _data[N];
+    struct Entry {
+        char key[KEY_LEN];
+        Value<KEY_LEN, BUF_LEN> value;
+    };
+
+    Entry* entries;
+    size_t capacity;
+    size_t count;
+
+    void resize(size_t newCap) {
+        Entry* newEntries = new Entry[newCap];
+        for (size_t i = 0; i < count; i++) newEntries[i] = entries[i];
+        delete[] entries;
+        entries = newEntries;
+        capacity = newCap;
+    }
 
 public:
-    StringBuffer() { _data[0] = '\0'; }
-
-    // Assignment from const char*
-    StringBuffer& operator=(const char* rhs) {
-        strncpy(_data, rhs, N - 1);
-        _data[N - 1] = '\0';
-        return *this;
+    Dict(size_t initialCap = 8)
+        : capacity(initialCap), count(0) {
+        entries = new Entry[capacity];
+        for (size_t i = 0; i < capacity; i++) entries[i].key[0] = '\0';
     }
 
-    // Assignment from another StringBuffer
-    StringBuffer& operator=(const StringBuffer& rhs) {
-        strncpy(_data, rhs._data, N - 1);
-        _data[N - 1] = '\0';
-        return *this;
+    ~Dict() { delete[] entries; }
+
+    Value<KEY_LEN, BUF_LEN>& operator[](const char* key) {
+        for (size_t i = 0; i < count; i++) {
+            if (strcmp(entries[i].key, key) == 0)
+                return entries[i].value;
+        }
+        if (count >= capacity) resize(capacity * 2);
+        strncpy(entries[count].key, key, KEY_LEN - 1);
+        entries[count].key[KEY_LEN - 1] = '\0';
+        count++;
+        return entries[count - 1].value;
     }
 
-    // Implicit conversion to const char*
-    operator const char*() const {
-        return _data;
+    bool contains(const char* key) const {
+        for (size_t i = 0; i < count; i++)
+            if (strcmp(entries[i].key, key) == 0)
+                return true;
+        return false;
     }
 
-    // Direct access
-    char* c_str() { return _data; }
-    const char* c_str() const { return _data; }
+    size_t size() const { return count; }
 
-    // Provide a print overload for Arduino - NOT WORKING - attempted to obviate need for ".c_str()" accessor 
-    //friend size_t printTo(Stream &s, const StringBuffer &b) {
-    //    return s.print(b._data);
-   // }
+    // --- JSON Serialization ---
+    size_t toJSON(char *out, size_t maxLen, int indent = 0) const {
+        size_t used = 0;
+        used += snprintf(out + used, maxLen - used, "{");
+
+        for (size_t i = 0; i < count && used < maxLen; i++) {
+            if (i > 0) used += snprintf(out + used, maxLen - used, ",");
+            used += snprintf(out + used, maxLen - used, "\"%s\":", entries[i].key);
+            used += entries[i].value.toJSON(out + used, maxLen - used, indent + 2);
+        }
+
+        used += snprintf(out + used, maxLen - used, "}");
+        return used;
+    }
+
+    // --- JSON Deserialization ---
+    bool fromJSON(const char *json);
 };
 
-template <typename T, size_t KEY_LEN = MAX_KEY_LEN>
-class Dict {
-    public:
-        Dict(size_t initialCapacity = 8)
-            : _capacity(initialCapacity), _count(0) {
-            _entries = new Entry[_capacity];
-            for (size_t i = 0; i < _capacity; i++) {
-                _entries[i].key[0] = '\0';
-            }
+// -------------------- Cross-Reference --------------------
+template <size_t KEY_LEN, size_t BUF_LEN>
+Value<KEY_LEN, BUF_LEN>& Value<KEY_LEN, BUF_LEN>::operator[](const char* key) {
+    if (type != DICT) {
+        static Dict<KEY_LEN, BUF_LEN> dummy;
+        d = &dummy;
+        type = DICT;
+    }
+    return (*d)[key];
+}
+
+// -------------------- JSON Parsing Helpers --------------------
+namespace {
+    void skipWhitespace(const char*& p) {
+        while (*p && isspace(*p)) p++;
+    }
+
+    bool parseLiteral(const char*& p, const char* literal) {
+        size_t len = strlen(literal);
+        if (strncmp(p, literal, len) == 0) {
+            p += len;
+            return true;
         }
+        return false;
+    }
 
-        ~Dict() { delete[] _entries; }
-
-        T& operator[](const char* key) {
-            for (size_t i = 0; i < _count; i++) {
-                if (strcmp(_entries[i].key, key) == 0) {
-                    return _entries[i].value;
-                }
-            }
-            if (_count >= _capacity) {
-                resize(_capacity * 2);
-            }
-            strncpy(_entries[_count].key, key, KEY_LEN - 1);
-            _entries[_count].key[KEY_LEN - 1] = '\0';
-            _count++;
-            return _entries[_count - 1].value;
+    bool parseString(const char*& p, char* out, size_t outLen) {
+        skipWhitespace(p);
+        if (*p != '"') return false;
+        p++; // skip opening quote
+        size_t i = 0;
+        while (*p && *p != '"' && i < outLen - 1) {
+            out[i++] = *p++;
         }
+        out[i] = '\0';
+        if (*p == '"') p++;
+        skipWhitespace(p);
+        return true;
+    }
+}
 
-        bool contains(const char* key) const {
-            for (size_t i = 0; i < _count; i++) {
-                if (strcmp(_entries[i].key, key) == 0) return true;
-            }
+// -------------------- JSON Value Parser --------------------
+template <size_t KEY_LEN, size_t BUF_LEN>
+bool parseValue(const char*& p, Value<KEY_LEN, BUF_LEN>& outVal) {
+    skipWhitespace(p);
+
+    if (*p == '"') {
+        char temp[BUF_LEN];
+        if (parseString(p, temp, BUF_LEN)) {
+            outVal = temp;
+            return true;
+        }
+        return false;
+    }
+
+    if (*p == '{') {
+        p++;
+        Dict<KEY_LEN, BUF_LEN> sub;
+        sub.fromJSON(p);
+        outVal = sub;
+        skipWhitespace(p);
+        if (*p == '}') p++;
+        return true;
+    }
+
+    if (parseLiteral(p, "true")) { outVal = true; return true; }
+    if (parseLiteral(p, "false")) { outVal = false; return true; }
+
+    char numBuf[32];
+    size_t i = 0;
+    if (*p == '-' || isdigit(*p)) {
+        while ((*p == '-' || *p == '.' || isdigit(*p)) && i < sizeof(numBuf) - 1)
+            numBuf[i++] = *p++;
+        numBuf[i] = '\0';
+        if (strchr(numBuf, '.'))
+            outVal = (float)atof(numBuf);
+        else
+            outVal = atol(numBuf);
+        skipWhitespace(p);
+        return true;
+    }
+
+    return false;
+}
+
+// -------------------- Dict::fromJSON --------------------
+template <size_t KEY_LEN, size_t BUF_LEN>
+bool Dict<KEY_LEN, BUF_LEN>::fromJSON(const char *json) {
+    const char* p = json;
+    skipWhitespace(p);
+
+    if (*p == '{') p++;
+    skipWhitespace(p);
+
+    while (*p && *p != '}') {
+        char key[KEY_LEN];
+        if (!parseString(p, key, KEY_LEN))
             return false;
-        }
 
-        size_t size() const { return _count; }
-        
-    private:
-        struct Entry {
-            char key[KEY_LEN];
-            T value;
-        };
+        skipWhitespace(p);
+        if (*p != ':') return false;
+        p++;
+        skipWhitespace(p);
 
-        Entry* _entries;
-        size_t _capacity;
-        size_t _count;
+        Value<KEY_LEN, BUF_LEN> val;
+        if (!parseValue(p, val))
+            return false;
 
-        void resize(size_t newCapacity) {
-            Entry* newEntries = new Entry[newCapacity];
-            for (size_t i = 0; i < _count; i++) {
-                newEntries[i] = _entries[i];
-            }
-            delete[] _entries;
-            _entries = newEntries;
-            _capacity = newCapacity;
-        }
-};
+        (*this)[key] = val;
 
-void test_dict() {
-    // with int values
-    Dict<int> d1;
-    d1["a"] = 123;
-    Serial.printf("Dict with int %d\n", d1["a"]);  // 123
+        skipWhitespace(p);
+        if (*p == ',') { p++; skipWhitespace(p); }
+    }
 
-    // with float values
-    Dict<float> d2;
-    d2["pi"] = 3.14159;
-    Serial.printf("Dict with float %.6f\n", d2["pi"]);
-
-    // with string values - use StringBuffer wrapper class (char[32] in this example)
-    Dict<StringBuffer<32>> d;
-    d["msg"] = "hello world";
-
-
-    Serial.printf("Dict with string %s\n", d["msg"].c_str());
-    //NOT WORKING - need implicit conversion accessor
-    //Serial.printf("Dict with string implicit %s\n", d["msg"]);
-
-    //with Property pointer
-    Dict<Property*> dp;
-    Node* node = new Node();
-    node->setId("test_node");
-    Property* prop = new Property(node);
-    prop->setId("temperature");
-    dp["temp_property"] = prop;
-    Property* dict_prop = dp["temp_property"];
-    Serial.printf("Dict with Property pointer: id:'%s'\n", dict_prop->id());
+    if (*p == '}') p++;
+    return true;
 }
