@@ -50,6 +50,13 @@ void Device::init(const char* name, const char* id, const char* type, PubSubClie
   }
 }
 
+Node* Device::addNode(Node* node, const char* topic) {
+    node->setDevice(this);
+    node->setTopic(topic);
+    _nodes[_num_nodes++] = node;
+    return node;
+}
+
 Node* Device::addNode(JsonVariant node, const char* topic) {
     Node* n =  new Node();
     n->setDevice(this);
