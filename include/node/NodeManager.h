@@ -2,9 +2,11 @@
 #include <ArduinoJson.h>
 #include <homie/Device.h>
 #include <homie/Node.h>
+//TODO move these
 #include <node/i2c_bme280.h>
 #include <node/modbus_eletechsup32.h>
 #include <node/modbus_sht20.h>
+#include <node/gpio_ssr.h>
 
 class NodeManager {
     public:

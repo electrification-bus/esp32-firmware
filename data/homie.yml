@@ -3,6 +3,17 @@ name: ESP32POEISO
 type: ebus
 state: init
 nodes:
+  - id: relay1
+    name: Solid State Relay
+    type: gpio
+    properties:
+      - id: state
+        name: State
+        datatype: "boolean"
+        settable: true
+        retained: true
+        value: false
+        description: "The state of the relay (on/off)."
   - id: voltage_current_detector
     name: Modbus Eletechsup32
     type: modbus

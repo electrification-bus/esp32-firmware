@@ -12,6 +12,7 @@ BME280* bme280 = nullptr;
 //TODO implement other sensors
 Modbus_Eletechsup32* iv_detector = nullptr;     //Modbus Eletechsup32 sensor for 32 discrete inputs
 Modbus_SHT20* sht20 = nullptr;                  //Modbus SHT20 sensor for temperature and humidity
+SSR* ssr = nullptr;                             //Solid State Relay driven by GPIO
 
 void NodeManager::addDevice(Device* dev) {
     _device = dev;
@@ -26,6 +27,7 @@ void NodeManager::loop() {
     if (bme280 != nullptr) bme280->loop();
     if (iv_detector != nullptr) iv_detector->loop();
     if (sht20 != nullptr) sht20->loop();  
+    if (ssr != nullptr) ssr->loop();  
 }
 
 void NodeManager::setup() {
@@ -37,6 +39,9 @@ void NodeManager::setup() {
 
     sht20 = new Modbus_SHT20();
     sht20->setup("environment_sht20"); // Initialize Modbus SHT20 sensor
+
+    ssr = new SSR();
+    ssr->setup("relay1"); // Initialize SSR node
 }
 
 void NodeManager::publish(const char* node_id) {

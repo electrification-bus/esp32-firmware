@@ -2,7 +2,7 @@
 #include <config.h>
 #include <node/NodeManager.h>
 #include <node/modbus_sht20.h>
-#include <mqtt_client.h>
+
 #define PAUSE_ON_RAMP_LEVELS 30000
 
 Modbus_SHT20::Modbus_SHT20() : ModbusRTUEntity() {
