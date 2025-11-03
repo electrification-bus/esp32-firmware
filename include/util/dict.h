@@ -1,3 +1,4 @@
+#pragma once
 /**
  * @file Dict.h
  * @brief A lightweight Arduino-compatible dynamic dictionary class.
