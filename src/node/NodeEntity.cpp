@@ -48,3 +48,8 @@ bool NodeEntity::setup() {
     }
     return nodeBegin();
 } 
+
+bool NodeEntity::nodeBegin() {
+    Serial.printf("NodeEntity: nodeBegin() not implemented for node id: %s\n", _homie_node_id);
+    return true;
+}

@@ -6,9 +6,8 @@ class SSR : public NodeEntity {
         SSR();
         ~SSR(){};
 
-        bool nodeBegin() override { return true; };
+        //bool nodeBegin() override { return true; };
         void loop() override;
-        void setHomieNodeId(const char* id);
 
         const char* getNodeName() const override { return "SSR"; };
         bool getState() { return _state; };

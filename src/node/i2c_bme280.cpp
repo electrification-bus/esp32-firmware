@@ -18,11 +18,6 @@ void BME280::setPins(int8_t sda, int8_t scl) {
     _scl = scl;
 }
 
-void BME280::setHomieNodeId(const char* id) {
-    strcpy(_homie_node_id, id);
-    Serial.printf("BME280: mapped to homie node id: %s\n", _homie_node_id);
-}
-
 bool BME280::nodeBegin() {
   Serial.println("BME280: Node Begin");
   _read_interval = 10000; //default to 60 seconds

@@ -11,11 +11,6 @@ int last_toggle = millis();
 SSR::SSR() : NodeEntity() {
     pinMode(SSR1_PIN, OUTPUT);
 }
-    
-void SSR::setHomieNodeId(const char* id) {
-    strcpy(_homie_node_id, id);
-    Serial.printf("SSR: mapped to homie node id: %s\n", _homie_node_id);
-}
 
 void SSR::set_on_state() {
     digitalWrite(SSR1_PIN, LOW_TRIGGER ? LOW : HIGH);

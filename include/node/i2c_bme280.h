@@ -10,7 +10,6 @@ class BME280 : public NodeEntity, public Adafruit_BME280 {
         ~BME280(){};
 
         void setPins(int8_t sda, int8_t scl);
-        void setHomieNodeId(const char* id);
 
         float getTemperature() const;
         float getPressure() const;
