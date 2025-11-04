@@ -7,22 +7,7 @@
 #include <node/NodeManager.h>
 #include <modbus/modbus_master.h>
 #include <util/dict.h>
-
-void setup_homie() {
-  JsonDocument* dev_conf = get_homie_config();
-  Serial.printf("Device name '%s', type '%s'\n", (*dev_conf)[HOMIE_NAME].as<const char*>(), (*dev_conf)[HOMIE_TYPE].as<const char*>());
-
-  nodeManager = new NodeManager();
-  theDevice = new Device();
-
-  nodeManager->addDevice(theDevice);
-  theDevice->init((*dev_conf)[HOMIE_NAME].as<const char*>(), getDeviceID(), (*dev_conf)[HOMIE_TYPE].as<const char*>(), &mqtt_client);
-  theDevice->publishState();//default state is init
-  theDevice->publish();
-  theDevice->setState(DeviceState::DEVICE_STATE_READY); //setState will publish the $state
-
-  nodeManager->setup();
-}
+#include <homie.h>
 
 void setup() {
   Serial.begin(115200);
@@ -46,10 +31,6 @@ void setup() {
   //setup_ota(); //TODO
 
   setup_homie();
-}
-
-void loop_homie() {
- nodeManager->loop();
 }
 
 void loop() {

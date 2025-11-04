@@ -10,6 +10,7 @@
 
 class NodeManager {
     public:
+        NodeManager(Device* device) : _device(device) {};
         NodeManager(){};
         ~NodeManager(){};
 

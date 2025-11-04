@@ -6,8 +6,8 @@
 #include <config.h>
 #include <network.h>
 
-#define WIFI_SSID "REDACTED_WIFI_SSID"
-#define WIFI_PW "REDACTED_WIFI_PASSWORD"
+#define WIFI_SSID "foo"
+#define WIFI_PW   "bar"
 
 int CONNECT_ATTEMPTS = 6;
 WiFiMulti wifiMulti;
