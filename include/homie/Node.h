@@ -26,7 +26,7 @@ public:
     void publish();
     JsonDocument serialize();
     int numProperties() { return _num_properties;};
-
+    void settable_callback(Property* property);
 private:
     char _id[64] = {0};
     char _name[64] = {0};

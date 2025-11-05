@@ -29,7 +29,7 @@ bool NodeEntity::setup() {
         for (JsonVariant node : nodes.as<JsonArray>()) {
             if (strcmp(node[HOMIE_ID].as<const char*>(), _homie_node_id) == 0) { //read this from node config? (map environment to BME280)
                 Serial.printf("SETUP: NodeEntity: found node: %s\n", _homie_node_id);
-                //pull out properties and map to Modbus_Eletechsup32 device
+                //pull out properties and map to device
                 JsonVariant props = node[HOMIE_PROPERTIES].as<JsonVariant>();
                 for (JsonVariant props : props.as<JsonArray>()) {
                     //entityManager->mapProperty(props[HOMIE_ID].as<const char*>(), props[HOMIE_NAME].as<const char*>(), props[HOMIE_TYPE].as<const char*>());

@@ -39,8 +39,24 @@ Property* EntityManager::validate(const char* node_id, const char* property_id) 
 
 
 //TODO handle all property types
-void EntityManager::setNodeProperty(const char* node_id, const char* property_id, int value) {};
-void EntityManager::setNodeProperty(const char* node_id, const char* property_id, const char* value) {};
+void EntityManager::setNodeProperty(const char* node_id, const char* property_id, int value) {
+    Property* property = validate(node_id, property_id);
+    if (property == nullptr) {
+        Serial.printf("EntityManager: Property '%s' not found in Node '%s' for setting value %.2f\n", property_id, node_id, value);
+        return;
+    }
+    property->setValue(value);
+    Serial.printf("EntityManager: Set property '%s' of Node '%s' to value %s\n", property_id, node_id, value ? "true":"false");
+};
+void EntityManager::setNodeProperty(const char* node_id, const char* property_id, const char* value) {
+    Property* property = validate(node_id, property_id);
+    if (property == nullptr) {
+        Serial.printf("EntityManager: Property '%s' not found in Node '%s' for setting value %.2f\n", property_id, node_id, value);
+        return;
+    }
+    property->setValue(value);
+    Serial.printf("EntityManager: Set property '%s' of Node '%s' to value %s\n", property_id, node_id, value ? "true":"false");
+};
 void EntityManager::setNodeProperty(const char* node_id, const char* property_id, bool value) {
     Property* property = validate(node_id, property_id);
     if (property == nullptr) {
@@ -50,7 +66,15 @@ void EntityManager::setNodeProperty(const char* node_id, const char* property_id
     property->setValue(value);
     Serial.printf("EntityManager: Set property '%s' of Node '%s' to value %s\n", property_id, node_id, value ? "true":"false");
 };
-void EntityManager::setNodeProperty(const char* node_id, const char* property_id, unsigned int value) {};
+void EntityManager::setNodeProperty(const char* node_id, const char* property_id, unsigned int value) {
+        Property* property = validate(node_id, property_id);
+    if (property == nullptr) {
+        Serial.printf("EntityManager: Property '%s' not found in Node '%s' for setting value %.2f\n", property_id, node_id, value);
+        return;
+    }
+    property->setValue(value);
+    Serial.printf("EntityManager: Set property '%s' of Node '%s' to value %s\n", property_id, node_id, value ? "true":"false");
+};
 void EntityManager::setNodeProperty(const char* node_id, const char* property_id, float value) {
     Property* property = validate(node_id, property_id);
     if (property == nullptr) {

@@ -24,6 +24,7 @@ public:
     void setValue(bool value);
     void setValue(unsigned int value);
     const char* value();
+    float getFloatValue();
 
     const char* coerced_value() const;
 

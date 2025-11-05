@@ -109,6 +109,9 @@ void Property::setValue(unsigned int value) {
 const char* Property::value() {
     return _value;
 }
+float Property::getFloatValue() {
+    return _floatValue;
+}
 const char* Property::coerced_value() const {
     return _value; //TODO
 }
@@ -194,6 +197,8 @@ void Property::mqtt_settable_callback(const char* topic, const char* payload) {
         Serial.printf("Node: '%s',  Property: '%s': datetype: '%s', new value: '%s'\n",_parent_node->id(), _id, datatype(), payload);
         publish();
     }
+    //tell my Node about the new value
+    _parent_node->settable_callback(this);
 }
 
 void Property::subscribe() {

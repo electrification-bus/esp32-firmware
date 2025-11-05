@@ -59,8 +59,6 @@ void Node::setId(const char* id) {
     strcpy(_id, id);
 }
 
-
-
 const char* Node::id() {
     return _id;
 }
@@ -105,4 +103,13 @@ Property* Node::getProperty(const char* id) {
     }
     Serial.printf("Node: '%s' - Property '%s' not found\n", _id, id);
     return nullptr; // Property not found
+}
+
+void Node::settable_callback(Property* property) {
+    // Notify the device about the property change
+    if (_device) {
+        Serial.printf("Node: '%s' notifying Device about property '%s' change\n", _id, property->id());
+        // Here you can implement any specific logic needed to notify the device
+        // For example, you might want to call a method on the device
+    }
 }

@@ -48,6 +48,9 @@ uint8_t Modbus_SHT20::poll() {
         Serial.printf("Modbus_SHT20: Temperature: %2.1fC  Humidity:%2.1f%%\n", getResponseBuffer(0)/10.0, getResponseBuffer(1)/10.0);
         temperature = getResponseBuffer(0);
         humidity = getResponseBuffer(1);
+        entityManager->setNodeProperty(_homie_node_id, "temperature", float(temperature/10.0)); 
+        entityManager->setNodeProperty(_homie_node_id, "humidity", float(humidity/10.0));
+        entityManager->publish(_homie_node_id);
     } else {
         timestamp_last_failure = millis();
         Serial.println("Modbus_SHT20: Read failed");
