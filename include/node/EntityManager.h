@@ -2,20 +2,12 @@
 #include <ArduinoJson.h>
 #include <homie/Device.h>
 #include <homie/Node.h>
-//TODO move these
-#include <node/i2c_bme280.h>
-#include <node/modbus_eletechsup32.h>
-#include <node/modbus_sht20.h>
-#include <node/gpio_ssr.h>
 
-class NodeManager {
+class EntityManager {
     public:
-        NodeManager(Device* device) : _device(device) {};
-        NodeManager(){};
-        ~NodeManager(){};
-
-        void setup();
-        void loop();
+        EntityManager(Device* device) : _device(device) {};
+        EntityManager(){};
+        ~EntityManager(){};
 
         void addDevice(Device* device);
         Node* getNode(const char* id);
@@ -35,5 +27,5 @@ class NodeManager {
         int _num_properties_mapped = 0;
 };
 
-extern NodeManager* nodeManager;
+extern EntityManager* entityManager;
 

@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <node/gpio_ssr.h>
-#include <node/NodeManager.h>
+#include <node/EntityManager.h>
 #include <pins.h>
 
 #define DEBUG_SSR false
@@ -29,8 +29,8 @@ void SSR::set_ssr_state(bool onoff) {
         set_off_state();
     }
     Serial.printf("SSR STATE: %s\n", _state ? "ON" : "OFF");
-    nodeManager->setNodeProperty(_homie_node_id, "state", _state);
-    nodeManager->publish(_homie_node_id);
+    entityManager->setNodeProperty(_homie_node_id, "state", _state);
+    entityManager->publish(_homie_node_id);
 }
 
 void SSR::loop() {

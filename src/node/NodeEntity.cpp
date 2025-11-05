@@ -3,9 +3,6 @@
 #include <util/jsonUtils.h>
 #include <node/NodeEntity.h>
 
-NodeEntity::NodeEntity(){};
-NodeEntity::~NodeEntity(){};
-
 const char* NodeEntity::getHomieNodeId() {
     return _homie_node_id;
 }
@@ -35,7 +32,7 @@ bool NodeEntity::setup() {
                 //pull out properties and map to Modbus_Eletechsup32 device
                 JsonVariant props = node[HOMIE_PROPERTIES].as<JsonVariant>();
                 for (JsonVariant props : props.as<JsonArray>()) {
-                    //nodeManager->mapProperty(props[HOMIE_ID].as<const char*>(), props[HOMIE_NAME].as<const char*>(), props[HOMIE_TYPE].as<const char*>());
+                    //entityManager->mapProperty(props[HOMIE_ID].as<const char*>(), props[HOMIE_NAME].as<const char*>(), props[HOMIE_TYPE].as<const char*>());
                 }
                 Serial.printf("%s: mapped to homie node id: %s\n", getNodeName(), _homie_node_id);
                 setHomieNodeId(node[HOMIE_ID].as<const char*>());

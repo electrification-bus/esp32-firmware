@@ -2,7 +2,7 @@
 #include <node/i2c_bme280.h>
 #include <config.h>
 #include <pins.h>
-#include <node/NodeManager.h>
+#include <node/EntityManager.h>
 
 #define BME_ADDR 0x76
 
@@ -53,9 +53,9 @@ void BME280::loop() {
     }
     Serial.printf("BME280: update node id: '%s'\n", _homie_node_id);
     //call out to node manager to handle setting the values on the homie node
-    nodeManager->setNodeProperty(_homie_node_id, "temperature", f);
-    nodeManager->setNodeProperty(_homie_node_id, "air_pressure", mb);  
-    nodeManager->setNodeProperty(_homie_node_id, "relative_humidity", humidity_event.relative_humidity); 
-    nodeManager->publish(_homie_node_id); 
+    entityManager->setNodeProperty(_homie_node_id, "temperature", f);
+    entityManager->setNodeProperty(_homie_node_id, "air_pressure", mb);  
+    entityManager->setNodeProperty(_homie_node_id, "relative_humidity", humidity_event.relative_humidity); 
+    entityManager->publish(_homie_node_id); 
   }
 }

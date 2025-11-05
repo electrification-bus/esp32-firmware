@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <config.h>
-#include <node/NodeManager.h>
+#include <node/EntityManager.h>
 #include <node/modbus_sht20.h>
 
 #define PAUSE_ON_RAMP_LEVELS 30000

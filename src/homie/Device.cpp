@@ -5,7 +5,7 @@
 #include <config.h>
 #include <mqtt_client.h>
 #include <util/jsonUtils.h>
-#include <node/NodeManager.h>
+#include <node/EntityManager.h>
 /*
   homie/5/device123/$state → ready
   homie/5/device123/$description → {
@@ -34,6 +34,23 @@ Device::Device() {
     _state = DeviceState::DEVICE_STATE_INIT;
 }
 
+void Device::addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json) {
+    JsonVariant props = node_json[HOMIE_PROPERTIES].as<JsonArray>();
+    for(JsonVariant json_prop : props.as<JsonArray>()) {
+      if (json_prop.is<JsonObject>()) {
+        Property* prop = new Property();
+        prop->setNode(n); // required: set the parent node on the property before anything else
+        prop->setMQTTClient(_mqtt_client);
+        JsonObject props_obj = json_prop.as<JsonObject>();
+        prop->from_dict(&props_obj); // Initialize property from JsonObject
+        n->addProperty(prop);
+        if (prop->settable()) {
+          prop->subscribe();
+        }
+      }
+    }
+}
+
 void Device::init(const char* name, const char* id, const char* type, PubSubClient* mqtt_client) {
   setName(name);
   setId(id);
@@ -46,7 +63,9 @@ void Device::init(const char* name, const char* id, const char* type, PubSubClie
   JsonArray nodes_array = (*nodes)[HOMIE_NODES].as<JsonArray>();
   for (JsonVariant node : nodes_array) {
     //Serial.printf("Device: adding node %s\n", node["name"].as<const char*>());
-    addNode(node,_topic);
+    //instantiate Homie Node objects and add their properties
+    Node* newNode = addNode2(node,_topic);
+    addNodePropertiesFromConfigJson(newNode, node);
   }
 }
 
@@ -82,6 +101,19 @@ Node* Device::addNode(JsonVariant node, const char* topic) {
     _nodes[_num_nodes++] = n;
     return n;
 }
+
+Node* Device::addNode2(JsonVariant node, const char* topic) {
+    Node* n =  new Node();
+    n->setDevice(this);
+    if (jsonExists(node[HOMIE_ID])) n->setId(node[HOMIE_ID].as<const char*>());
+    if (jsonExists(node[HOMIE_NAME])) n->setName(node[HOMIE_NAME].as<const char*>());
+    if (jsonExists(node[HOMIE_TYPE])) n->setType(node[HOMIE_TYPE].as<const char*>());
+    n->setTopic(topic);
+    Serial.printf("Device: Node: Adding '%s' with id '%s'\n", n->name(), n->id());
+    _nodes[_num_nodes++] = n;
+    return n;
+}
+
 
 Node* Device::getNode(const char* id) {
   for (int i = 0; i < _num_nodes; i++) {
