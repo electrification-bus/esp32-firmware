@@ -50,3 +50,7 @@ bool NodeEntity::nodeBegin() {
     Serial.printf("NodeEntity: nodeBegin() not implemented for node id: %s\n", _homie_node_id);
     return true;
 }
+
+void NodeEntity::entity_settable_callback(Property* property) {
+    Serial.printf("NodeEntity: entity_settable_callback() not implemented for node id: %s, property id: %s\n", _homie_node_id, property->id());
+}

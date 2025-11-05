@@ -3,7 +3,7 @@
 #include <homie/Node.h>
 #include <homie/Property.h>
 #include <homie/Device.h>
-Node::Node() {
+Node::Node() : _mqtt_client(nullptr), _device(nullptr) {
     _num_properties = 0;
 }
 
@@ -107,9 +107,5 @@ Property* Node::getProperty(const char* id) {
 
 void Node::settable_callback(Property* property) {
     // Notify the device about the property change
-    if (_device) {
-        Serial.printf("Node: '%s' notifying Device about property '%s' change\n", _id, property->id());
-        // Here you can implement any specific logic needed to notify the device
-        // For example, you might want to call a method on the device
-    }
+    Serial.printf("Node: '%s' send/set property change to/on Device '%s' change\n", _id, property->id());
 }

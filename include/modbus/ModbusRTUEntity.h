@@ -11,7 +11,6 @@ class ModbusRTUEntity : public NodeEntity, public ModbusMaster {
 
         void loop() override;
         bool pollIntervalTrigger() override;
-        const char* getClassName() const override { return "ModbusRTUEntity"; }
 
         virtual uint8_t poll() = 0;         // loop processing - implement in derived classes
         virtual bool nodeBegin() = 0;      // start the node - implement in derived classes

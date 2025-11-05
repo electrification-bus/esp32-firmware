@@ -19,18 +19,23 @@ class NodeEntity {
         virtual void setHomieNodeId(const char* id);
         virtual bool pollIntervalTrigger();
         virtual const char* getHomieNodeId();
-        virtual const char* getClassName() const {return "NodeEntity";}
 
         //from EntityManager (NodeManager)
         void setDevice(Device* device) {_device = device;};
         Node* getNode(const char* id);
         void publish(const char* node_id);
         Property* validate(const char* node_id, const char* property_id);
-        void setNodeProperty(const char* node_id, const char* property_id, int value);
-        void setNodeProperty(const char* node_id, const char* property_id, float value);
-        void setNodeProperty(const char* node_id, const char* property_id, const char* value);
-        void setNodeProperty(const char* node_id, const char* property_id, bool value);
-        void setNodeProperty(const char* node_id, const char* property_id, unsigned int value);
+        void setNodeProperty(const char* property_id, int value);
+        void setNodeProperty(const char* property_id, float value);
+        void setNodeProperty(const char* property_id, const char* value);
+        void setNodeProperty(const char* property_id, bool value);
+        void setNodeProperty(const char* property_id, unsigned int value);
+
+        void entity_settable_callback(Property* property);
+        virtual void set(bool onOff) {};
+        virtual void set(int val) {};
+        virtual void set(float val) {}; 
+        virtual void set(const char* val) {};
 
     protected:
         Node* _parent_node = nullptr; // Pointer to the parent Node

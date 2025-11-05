@@ -23,8 +23,12 @@ public:
     void setValue(const char* value);
     void setValue(bool value);
     void setValue(unsigned int value);
-    const char* value();
-    float getFloatValue();
+    const char* value() { return _value; };
+    float getFloatValue() { return _floatValue; };
+    int getIntValue() { return (float)_intValue; };
+    bool getBoolValue() { return _boolValue; };
+    bool getEnumValue() { return _boolValue; }; //NOT IMPLEMENTED
+    bool getColorValue() { return _boolValue; }; //NOT IMPLEMENTED
 
     const char* coerced_value() const;
 
@@ -51,8 +55,12 @@ public:
     void from_dict(JsonObject* props_obj);
     const char* topic();
     void publish();
+    Node* getParentNode() const { return _parent_node; }
     void serialize(JsonDocument& json);
+    bool is_dirty() const { return _dirty_settable; }
+    void clear_dirty() { _dirty_settable = false; }
 private:
+    bool _dirty_settable = false;
     char _id[32] = {0};
     char _name[32] = {0};
     char _value[32] = {0};

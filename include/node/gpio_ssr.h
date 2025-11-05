@@ -7,6 +7,7 @@ class SSR : public NodeEntity {
         ~SSR(){};
 
         void loop() override;
+        void set(bool onOff) override;
 
         const char* getNodeName() const override { return "SSR"; };
         bool getState() { return _state; };

@@ -33,6 +33,7 @@
 #include <ArduinoYaml.h>
 #include <config.h>
 #include <homie/Property.h>
+#include <node/EntityManager.h>
 #define ENABLE_DEBUG_MQTT = 1
 
 //WiFiClientSecure transportClient; TODO
@@ -176,6 +177,7 @@ void subscriber_callback(char* topic, uint8_t* payload, unsigned int length) {
     if (strcmp(subscribed_properties[i].topic, topic) == 0) {
       if (subscribed_properties[i].callback && subscribed_properties[i].instance) {
           (subscribed_properties[i].instance->*subscribed_properties[i].callback)(topic, payload_buf);
+          entityManager->setNodePropertyOnEntity(subscribed_properties[i].instance->getParentNode()->id(), subscribed_properties[i].instance->id());
       }
     }
   }

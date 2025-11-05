@@ -50,9 +50,13 @@ void Device::addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json) {
         //set the correct value type
         if (strcmp(prop->datatype(), "float") == 0) {
             entityManager->setNodeProperty(n->id(), prop->id(), prop->getFloatValue());
-        } else if (strcmp(prop->datatype(), "int") == 0) {
+        } else if (strcmp(prop->datatype(), "integer") == 0) {
             entityManager->setNodeProperty(n->id(), prop->id(), atoi(prop->value()));
-        } else if (strcmp(prop->datatype(), "bool") == 0) {
+        } else if (strcmp(prop->datatype(), "boolean") == 0) {
+            entityManager->setNodeProperty(n->id(), prop->id(), strcmp(prop->value(),"true")==0);
+        } else if (strcmp(prop->datatype(), "enum") == 0) {                                           // NOT IMPLEMENTED
+            entityManager->setNodeProperty(n->id(), prop->id(), strcmp(prop->value(),"true")==0);
+        } else if (strcmp(prop->datatype(), "color") == 0) {                                          // NOT IMPLEMENTED             
             entityManager->setNodeProperty(n->id(), prop->id(), strcmp(prop->value(),"true")==0);
         } else {
             entityManager->setNodeProperty(n->id(), prop->id(), prop->value()); 

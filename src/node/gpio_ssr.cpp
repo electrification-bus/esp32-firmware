@@ -41,3 +41,8 @@ void SSR::loop() {
         set_ssr_state(!_state);
     }
 }
+
+void SSR::set(bool onOff) {
+    Serial.printf("SSR: external SET: 'state' to %s\n", onOff ? "ON" : "OFF");
+    set_ssr_state(onOff);
+}
