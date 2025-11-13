@@ -15,7 +15,6 @@ class NodeEntity {
         virtual const char* getNodeName() const = 0;
 
         virtual bool setup();
-        virtual bool setup(const char* node_id);
         virtual void setHomieNodeId(const char* id);
         virtual bool pollIntervalTrigger();
         virtual const char* getHomieNodeId();

@@ -86,6 +86,7 @@ void EntityManager::setNodeProperty(const char* node_id, const char* property_id
 };  
 
 void EntityManager::addNodeEntity(const char* homie_node_id, NodeEntity* entity) {
+    entity->setHomieNodeId(homie_node_id);
     _entities[_num_entities++] = entity;
     Serial.printf("EntityManager: Adding NodeEntity for Homie Node ID '%s'\n", homie_node_id);
 };

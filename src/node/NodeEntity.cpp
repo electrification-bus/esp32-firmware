@@ -16,11 +16,6 @@ void NodeEntity::setHomieNodeId(const char* id) {
     _homie_node_id[sizeof(_homie_node_id) - 1] = '\0'; // Ensure null termination
 }
 
-bool NodeEntity::setup(const char* node_id) {
-    setHomieNodeId(node_id);
-    return setup();
-}
-
 bool NodeEntity::setup() {
     JsonDocument* node_conf = get_node_config();
     //TODO remove this hardcoding and map the YAML 'voltage_current_detector' node to the Modbus_Eletechsup32 (consolidate with BME280 setup())
