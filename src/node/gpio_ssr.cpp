@@ -29,8 +29,7 @@ void SSR::set_ssr_state(bool onoff) {
         set_off_state();
     }
     Serial.printf("SSR STATE: %s\n", _state ? "ON" : "OFF");
-    entityManager->setNodeProperty(_homie_node_id, "state", _state);
-    entityManager->publish(_homie_node_id);
+    _state_property.set_value_and_publish(_state);
 }
 
 void SSR::loop() {

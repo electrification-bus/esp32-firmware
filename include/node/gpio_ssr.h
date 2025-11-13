@@ -15,6 +15,7 @@ class SSR : public NodeEntity {
         void set_off_state();  
         void set_ssr_state(bool onoff);
     private:
+        NodeProperty _state_property;
         bool _state;
         bool LOW_TRIGGER = true;
 };

@@ -1,5 +1,6 @@
 #pragma once
 #include <homie/Node.h>
+#include <mqtt_client.h>
 
 class NodeProperty {
     public:
@@ -13,10 +14,25 @@ class NodeProperty {
         void add_on_change_callback();//self, callback: Callable);
         void add_on_set_callback();//self, callback: Callable);
         void remove_callback();//self, callback_id: uuid.UUID);
-        void set_value();//self, new_value: Any);
+        void set_value_and_publish();//self, new_value: Any);
+        void set_value_and_publish(int value);
+        void set_value_and_publish(float value);
+        void set_value_and_publish(const char* value);
+        void set_value_and_publish(bool value);
+        void set_value_and_publish(unsigned int value);
         void set_entity(); //self, new_value: Any);
         void set_entity_setter();//self, entity_setter: Callable);
         void as_dict();
+
+        void set(int value);
+        void set(float value);
+        void set(const char* value);
+        void set(bool value);
+        void set(unsigned int value);
+
+        void publish();
+        const char* topic() const { return _topic; }
+        void set_topic(const char* topic) { strcpy(_topic, topic); }
 
     private:
         char _id[32] = {0};
@@ -29,8 +45,9 @@ class NodeProperty {
         Node* _parent_node = nullptr;
         //std::mutex _lock;
         char _value[32] = {0};
-        //Any _entity;
-        //Any _entity_setter;
-        //std::map<uuid.UUID, Callable> _on_change_callbacks;
-        //std::map<uuid.UUID, Callable> _on_set_callbacks;
+        int _intValue = 0;
+        float _floatValue = 0.0;
+        char _stringValue[32] = {0};
+        bool _boolValue = false;
+        unsigned int _unsignedValue = 0;
 };

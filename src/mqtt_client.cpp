@@ -83,7 +83,8 @@ boolean mqtt_connect() {
   //transportClient.setTimeout(60);//(MQTT_TIMEOUT);
   mqtt_client.setSocketTimeout(6);//MQTT_TIMEOUT);
   mqtt_client.setBufferSize(MAX_DATA_LEN + 200);
-  mqtt_client.setKeepAlive(MQTT_KEEPALIVE-3); //keepalive is 3 seconds less than the configured value to allow for network delays
+  mqtt_client.setKeepAlive(33);
+  mqtt_client.setSocketTimeout(33); 
   mqtt_client.setCallback(subscriber_callback);
     
   //construct will
@@ -99,7 +100,12 @@ boolean mqtt_connect() {
 
   if (mqtt_client.state() == 0) {
     Serial.printf("MQTT connected: %s\r\n", mqtt_host.c_str());
-    //  mqttclient.publish(getDeviceTopic().c_str(), "connected"); // Once connected, publish an announcement..
+    //mqttclient.publish(getDeviceTopic().c_str(), "connected"); // Once connected, publish an announcement..
+    //re-subscrive to topics if needed
+    for(int i=0;i<num_subscribers;i++) {
+      Serial.printf("MQTT subscribing to topic: %s\n", subscribed_properties[i].topic);
+      mqtt_client.subscribe(subscribed_properties[i].topic);
+    }
   } else {
     Serial.println("MQTT failed: ");
     Serial.println(mqtt_client.state());

@@ -43,5 +43,5 @@ void loop_homie() {
     //if (iv_detector != nullptr) iv_detector->loop();
     //if (sht20 != nullptr) sht20->loop();  
     if (ssr != nullptr) ssr->loop();  
-    //entityManager->loop(); this works! loops the entity->loops()
+    //entityManager->loop(); //loops the entity->loops()
   }
