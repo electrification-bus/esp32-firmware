@@ -4,7 +4,7 @@
 
 #define PAUSE_ON_RAMP_LEVELS 30000
 
-Modbus_SHT20::Modbus_SHT20() : ModbusRTUEntity() {
+Modbus_SHT20::Modbus_SHT20() : ModbusRTUEntity("environment_sht20") {
     _modbus_address = SHT20_ADDR;
     temperature = 0;
     humidity = 0;
@@ -12,14 +12,8 @@ Modbus_SHT20::Modbus_SHT20() : ModbusRTUEntity() {
     timestamp_last_report = 0;
     timestamp_last_failure = 0;
 
-    char _topic[128] = {0};
-    sprintf(_topic, "%s%s/temperature", theDevice->topic(), getNodeId());
-    np_temperature.set_homie_property_id("temperature");
-    np_temperature.set_topic(_topic);
-
-    sprintf(_topic, "%s%s/relative_humidity", theDevice->topic(), getNodeId());
-    np_humidity.set_homie_property_id("relative_humidity");
-    np_humidity.set_topic("relative_humidity");
+    np_temperature.setup("environment_sht20", "temperature");
+    np_humidity.setup("environment_sht20", "relative_humidity");
 }
 
 float Modbus_SHT20::getTemperature() { return temperature/10.0; }

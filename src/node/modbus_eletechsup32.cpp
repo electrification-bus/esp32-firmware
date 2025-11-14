@@ -3,13 +3,10 @@
 #include <node/modbus_eletechsup32.h>
 #include <mqtt_client.h>
 
-Modbus_Eletechsup32::Modbus_Eletechsup32() : ModbusRTUEntity() {
+Modbus_Eletechsup32::Modbus_Eletechsup32() : ModbusRTUEntity("voltage_current_detector") {
     _poll_timestamp = 0;
     _modbus_address = INPUT32_ADDR;
-    char _topic[128] = {0};
-    sprintf(_topic, "%s%s/V_detect", theDevice->topic(), getNodeId());
-    voltage_detect.set_topic(_topic);
-    voltage_detect.set_homie_property_id("V_detect");
+    voltage_detect.setup("voltage_current_detector", "V_detect");
 }
 
 uint8_t Modbus_Eletechsup32::poll() {

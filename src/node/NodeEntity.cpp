@@ -22,10 +22,9 @@ bool NodeEntity::setup(const char* homie_node_id) {
 }
 
 //returns local alloc - caller must not retain
-const char* NodeEntity::getPropertyTopic(const char* homie_id, const char* property_id) {
-  char topic_buf[128];
-  sprintf(topic_buf, "%s%s/%s", theDevice->topic(), homie_id, property_id);
-  return topic_buf;
+const char* NodeEntity::getPropertyTopic(const char* property_id, char* buf) {
+  sprintf(buf, "%s%s/%s", theDevice->topic(), _homie_node_id, property_id);
+  return buf;
 }
 
 bool NodeEntity::setup() {

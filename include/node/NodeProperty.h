@@ -4,11 +4,12 @@
 class NodeProperty {
     public:
         NodeProperty(){};
-        NodeProperty(const char* id){strcpy(_homie_property_id, id);}
         ~NodeProperty(){};
 
+        void setup(const char* node_id, const char* homie_property_id);
+
         const char* homie_property_id()    const    {return _homie_property_id;}
-        void set_homie_property_id (const char* prop_id)  {strcpy(_homie_property_id, prop_id);}
+        void set_homie_property_id (const char* prop_id);
         const char* value() const    {return _value;}
         const char* type()  const    {return _type;}
         const char* format()const    {return _format;}
@@ -37,6 +38,7 @@ class NodeProperty {
         void set_topic(const char* topic) { strcpy(_topic, topic); }
 
     private:
+        char _homie_node_id[32] = {0};
         char _homie_property_id[32] = {0};
         char _type[16] = {0};
         char _format[64] = {0};

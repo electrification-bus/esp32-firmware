@@ -40,7 +40,6 @@ void setup() {
   theDevice->publish();
   theDevice->setState(DeviceState::DEVICE_STATE_READY); //setState will publish the $state
 
-
   setup_homie();
 }
 

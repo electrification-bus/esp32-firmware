@@ -1,11 +1,18 @@
 #include <Arduino.h>
 #include <node/NodeProperty.h>
 #include <mqtt_client.h>
+#include <config.h>
 
 void NodeProperty::publish() {
     mqtt_client.publish(_topic, _value);
 }
+void NodeProperty::setup(const char* node_id, const char* property_id) {
+    set_homie_property_id(property_id);
+    char _topic[128] = {0};
+    sprintf(_topic, "%s%s/%s", theDevice->topic(), node_id, property_id);
+    set_topic(_topic);
 
+}
 void NodeProperty::set(int value) {
     _intValue = value;
     snprintf(_value, sizeof(_value), "%d", value);
@@ -31,7 +38,9 @@ void NodeProperty::set(double value) {
     snprintf(_value, sizeof(_value), "%f", value);
 }
 
-
+void NodeProperty::set_homie_property_id(const char* id) {
+    strcpy(_homie_property_id, id);
+}
 void NodeProperty::set_value_and_publish() {
     // Implementation for publishing the current value
 }

@@ -1,7 +1,7 @@
 #include <modbus/ModbusRTUEntity.h>
 #include <config.h>
 
-ModbusRTUEntity::ModbusRTUEntity() : NodeEntity(), ModbusMaster() {
+ModbusRTUEntity::ModbusRTUEntity(const char* homie_id) : NodeEntity(homie_id) {
     _modbus_address = 0;
     _poll_timestamp = 0;
 }   

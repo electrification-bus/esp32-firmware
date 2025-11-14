@@ -6,7 +6,7 @@
 class ModbusRTUEntity : public NodeEntity, public ModbusMaster {
 
     public: 
-        ModbusRTUEntity();
+        ModbusRTUEntity(const char* homie_id);
         ~ModbusRTUEntity(){};
 
         void loop() override;

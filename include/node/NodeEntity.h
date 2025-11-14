@@ -8,20 +8,21 @@
 class NodeEntity {
     public:
         NodeEntity(){};
+        NodeEntity(const char* hid){strcpy(_homie_node_id, hid);};
         NodeEntity(Device* device) : _device(device) {};
         virtual ~NodeEntity(){};
         virtual bool nodeBegin();       // start the node (MAY be overridden in derived classes)
         virtual void loop() = 0;        // loop processing (MUST override in derived classes)
-        virtual const char* getNodeId() const = 0;
+        virtual const char* getNodeId() {return _homie_node_id;};
 
         virtual bool setup();
-        virtual bool setup(const char* homie_node_id);
+        virtual bool setup(const char* property_id);
         virtual void setHomieNodeId(const char* id);
         virtual bool pollIntervalTrigger();
         virtual const char* getHomieNodeId();
 
         void setDevice(Device* device) {_device = device;};
-        const char* getPropertyTopic(const char* homie_id, const char* property_id);
+        const char* getPropertyTopic(const char* property_id, char* buf);
         Node* getNode(const char* id);
         void publish(const char* node_id);
         Property* validate(const char* node_id, const char* property_id);

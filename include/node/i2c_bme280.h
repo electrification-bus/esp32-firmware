@@ -18,7 +18,7 @@ class BME280 : public NodeEntity, public Adafruit_BME280 {
         bool nodeBegin() override;
         void loop() override;
         bool pollIntervalTrigger() override;
-        const char* getNodeId() const override { return "environment_bme280"; };
+        //const char* getNodeId() const override { return "environment_bme280"; };
 
         void setReadInterval(int interval) { _read_interval = interval; }
 

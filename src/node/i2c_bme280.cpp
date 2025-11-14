@@ -5,25 +5,15 @@
 
 #define BME_ADDR 0x76
 
-BME280::BME280() : NodeEntity(), Adafruit_BME280() {
+BME280::BME280() : NodeEntity("environment_bme280"), Adafruit_BME280() {
   setPins(BME280_SDA_PIN, BME280_SCL_PIN);
   _bme_temp = getTemperatureSensor();
   _bme_pressure = getPressureSensor();
   _bme_humidity = getHumiditySensor();
   
-  //TODO util func to set these up
-  char _topic[128] = {0};
-  sprintf(_topic, "%s%s/temperature", theDevice->topic(), getNodeId());
-  temperature.set_homie_property_id("temperature");
-  temperature.set_topic(_topic);
-
-  sprintf(_topic, "%s%s/relative_humidity", theDevice->topic(), getNodeId());
-  relative_humidity.set_homie_property_id("relative_humidity");
-  relative_humidity.set_topic(_topic);
-
-  sprintf(_topic, "%s%s/air_pressure", theDevice->topic(), getNodeId());
-  air_pressure.set_homie_property_id("air_pressure");
-  air_pressure.set_topic(_topic);
+  temperature.setup("environment_bme280", "temperature");
+  relative_humidity.setup("environment_bme280", "relative_humidity");
+  air_pressure.setup("environment_bme280", "air_pressure");
 
 }
 

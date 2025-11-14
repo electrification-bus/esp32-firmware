@@ -9,7 +9,7 @@ class SSR : public NodeEntity {
         void loop() override;
         void set(bool onOff) override;
 
-        const char* getNodeId() const override { return "relay1"; };
+        //const char* getNodeId() const override { return "relay1"; };
         bool getState() { return _state; };
         void set_on_state();
         void set_off_state();  
