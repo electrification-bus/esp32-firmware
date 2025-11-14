@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <config.h>
-#include <node/EntityManager.h>
 #include <node/modbus_sht20.h>
 
 #define PAUSE_ON_RAMP_LEVELS 30000
@@ -12,6 +11,15 @@ Modbus_SHT20::Modbus_SHT20() : ModbusRTUEntity() {
     _poll_timestamp = 0;
     timestamp_last_report = 0;
     timestamp_last_failure = 0;
+
+    char _topic[128] = {0};
+    sprintf(_topic, "%s%s/temperature", theDevice->topic(), getNodeId());
+    np_temperature.set_homie_property_id("temperature");
+    np_temperature.set_topic(_topic);
+
+    sprintf(_topic, "%s%s/relative_humidity", theDevice->topic(), getNodeId());
+    np_humidity.set_homie_property_id("relative_humidity");
+    np_humidity.set_topic("relative_humidity");
 }
 
 float Modbus_SHT20::getTemperature() { return temperature/10.0; }
@@ -22,10 +30,12 @@ void Modbus_SHT20::route_poll_response(uint16_t reg, uint16_t response) {
         case rTEMPERATURE :
             Serial.printf("MODBUS SHT20: Temperature: %2.1fC\n", response/10.0);
             temperature = response;
+            np_temperature.set_value_and_publish(temperature);
             break;
         case rHUMIDITY :
             Serial.printf("MODBUS SHT20: Humidity %2.1f%%\n", response/10.0);
             humidity = response;
+            np_humidity.set_value_and_publish(humidity);
             break;
         default:break;
     }
@@ -48,9 +58,8 @@ uint8_t Modbus_SHT20::poll() {
         Serial.printf("Modbus_SHT20: Temperature: %2.1fC  Humidity:%2.1f%%\n", getResponseBuffer(0)/10.0, getResponseBuffer(1)/10.0);
         temperature = getResponseBuffer(0);
         humidity = getResponseBuffer(1);
-        entityManager->setNodeProperty(_homie_node_id, "temperature", float(temperature/10.0)); 
-        entityManager->setNodeProperty(_homie_node_id, "humidity", float(humidity/10.0));
-        entityManager->publish(_homie_node_id);
+        np_temperature.set_value_and_publish(temperature);
+        np_humidity.set_value_and_publish(humidity);
     } else {
         timestamp_last_failure = millis();
         Serial.println("Modbus_SHT20: Read failed");

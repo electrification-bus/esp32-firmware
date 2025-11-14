@@ -13,15 +13,15 @@ BME280::BME280() : NodeEntity(), Adafruit_BME280() {
   
   //TODO util func to set these up
   char _topic[128] = {0};
-  sprintf(_topic, "%senvironment_bme280/temperature", theDevice->topic());
+  sprintf(_topic, "%s%s/temperature", theDevice->topic(), getNodeId());
   temperature.set_homie_property_id("temperature");
   temperature.set_topic(_topic);
 
-  sprintf(_topic, "%senvironment_bme280/relative_humidity", theDevice->topic());
+  sprintf(_topic, "%s%s/relative_humidity", theDevice->topic(), getNodeId());
   relative_humidity.set_homie_property_id("relative_humidity");
   relative_humidity.set_topic(_topic);
 
-  sprintf(_topic, "%senvironment_bme280/air_pressure", theDevice->topic());
+  sprintf(_topic, "%s%s/air_pressure", theDevice->topic(), getNodeId());
   air_pressure.set_homie_property_id("air_pressure");
   air_pressure.set_topic(_topic);
 

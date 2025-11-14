@@ -20,8 +20,8 @@ class NodeEntity {
         virtual bool pollIntervalTrigger();
         virtual const char* getHomieNodeId();
 
-        //from EntityManager (NodeManager)
         void setDevice(Device* device) {_device = device;};
+        const char* getPropertyTopic(const char* homie_id, const char* property_id);
         Node* getNode(const char* id);
         void publish(const char* node_id);
         Property* validate(const char* node_id, const char* property_id);

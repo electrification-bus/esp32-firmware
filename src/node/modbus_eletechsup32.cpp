@@ -1,12 +1,15 @@
 #include <Arduino.h>
 #include <config.h>
-#include <node/EntityManager.h>
 #include <node/modbus_eletechsup32.h>
 #include <mqtt_client.h>
 
 Modbus_Eletechsup32::Modbus_Eletechsup32() : ModbusRTUEntity() {
     _poll_timestamp = 0;
     _modbus_address = INPUT32_ADDR;
+    char _topic[128] = {0};
+    sprintf(_topic, "%s%s/V_detect", theDevice->topic(), getNodeId());
+    voltage_detect.set_topic(_topic);
+    voltage_detect.set_homie_property_id("V_detect");
 }
 
 uint8_t Modbus_Eletechsup32::poll() {
@@ -28,11 +31,8 @@ uint8_t Modbus_Eletechsup32::poll() {
         }  
     }
     Serial.printf("\nModbus_Eletechsup32: update node id: '%s'\n", _homie_node_id);
-    //call out to node manager to handle setting the values on the homie node
-    entityManager->setNodeProperty(_homie_node_id, "V_detect", found_inputs);
-   // entityManager->setNodeProperty(homie_node_id, "C", mb);  
 
-    entityManager->publish(_homie_node_id); 
+    voltage_detect.set_value_and_publish(found_inputs);
 
     return 32; //TODO return num registers polled
 }

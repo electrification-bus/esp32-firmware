@@ -5,7 +5,6 @@
 #include <config.h>
 #include <mqtt_client.h>
 #include <util/jsonUtils.h>
-#include <node/EntityManager.h>
 /*
   homie/5/device123/$state → ready
   homie/5/device123/$description → {
@@ -47,21 +46,6 @@ void Device::addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json) {
         if (prop->settable()) {
           prop->subscribe();
         }
-        /*
-        //set the correct value type
-        if (strcmp(prop->datatype(), "float") == 0) {
-            entityManager->setNodeProperty(n->id(), prop->id(), prop->getFloatValue());
-        } else if (strcmp(prop->datatype(), "integer") == 0) {
-            entityManager->setNodeProperty(n->id(), prop->id(), atoi(prop->value()));
-        } else if (strcmp(prop->datatype(), "boolean") == 0) {
-            entityManager->setNodeProperty(n->id(), prop->id(), strcmp(prop->value(),"true")==0);
-        } else if (strcmp(prop->datatype(), "enum") == 0) {                                           // NOT IMPLEMENTED
-            entityManager->setNodeProperty(n->id(), prop->id(), strcmp(prop->value(),"true")==0);
-        } else if (strcmp(prop->datatype(), "color") == 0) {                                          // NOT IMPLEMENTED             
-            entityManager->setNodeProperty(n->id(), prop->id(), strcmp(prop->value(),"true")==0);
-        } else {
-            entityManager->setNodeProperty(n->id(), prop->id(), prop->value()); 
-        }*/
       }
     }
 }

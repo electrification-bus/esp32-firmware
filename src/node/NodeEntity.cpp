@@ -21,6 +21,13 @@ bool NodeEntity::setup(const char* homie_node_id) {
     return setup();
 }
 
+//returns local alloc - caller must not retain
+const char* NodeEntity::getPropertyTopic(const char* homie_id, const char* property_id) {
+  char topic_buf[128];
+  sprintf(topic_buf, "%s%s/%s", theDevice->topic(), homie_id, property_id);
+  return topic_buf;
+}
+
 bool NodeEntity::setup() {
     JsonDocument* node_conf = get_node_config();
     //TODO remove this hardcoding and map the YAML 'voltage_current_detector' node to the Modbus_Eletechsup32 (consolidate with BME280 setup())

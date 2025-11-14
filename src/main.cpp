@@ -4,7 +4,6 @@
 #include <mqtt_client.h>
 #include <ESPmDNS.h>
 #include <homie/Device.h>
-#include <node/EntityManager.h>
 #include <modbus/modbus_master.h>
 #include <util/dict.h>
 #include <homie.h>
@@ -35,9 +34,6 @@ void setup() {
   Serial.printf("Device name '%s', type '%s'\n", (*dev_conf)[HOMIE_NAME].as<const char*>(), (*dev_conf)[HOMIE_TYPE].as<const char*>());
 
   theDevice = new Device();
-  
-  //EntityManager sits between physical sensor/actuator values and Homie node properties
-  //entityManager = new EntityManager(theDevice);
 
   theDevice->init((*dev_conf)[HOMIE_NAME].as<const char*>(), getDeviceID(), (*dev_conf)[HOMIE_TYPE].as<const char*>(), &mqtt_client);
   theDevice->publishState();//default state is init

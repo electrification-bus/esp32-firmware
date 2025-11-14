@@ -15,6 +15,7 @@ class Modbus_Eletechsup32 : public ModbusRTUEntity {
 
     private:
         uint8_t _inputs[32];
+        NodeProperty voltage_detect;
 };
 
 extern Modbus_Eletechsup32* iv_detector;

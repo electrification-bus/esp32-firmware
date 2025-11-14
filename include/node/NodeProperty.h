@@ -4,6 +4,7 @@
 class NodeProperty {
     public:
         NodeProperty(){};
+        NodeProperty(const char* id){strcpy(_homie_property_id, id);}
         ~NodeProperty(){};
 
         const char* homie_property_id()    const    {return _homie_property_id;}

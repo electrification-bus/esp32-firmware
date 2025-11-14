@@ -33,7 +33,6 @@
 #include <ArduinoYaml.h>
 #include <config.h>
 #include <homie/Property.h>
-#include <node/EntityManager.h>
 #define ENABLE_DEBUG_MQTT = 1
 
 //WiFiClientSecure transportClient; TODO

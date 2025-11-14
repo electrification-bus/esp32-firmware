@@ -27,5 +27,7 @@ class Modbus_SHT20 : public ModbusRTUEntity {
         unsigned long timestamp_last_failure;
         uint16_t temperature;
         uint16_t humidity;
+        NodeProperty np_temperature;
+        NodeProperty np_humidity;
 };
 extern Modbus_SHT20* sht20;
