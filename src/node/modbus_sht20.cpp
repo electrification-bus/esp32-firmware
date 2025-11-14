@@ -14,6 +14,8 @@ Modbus_SHT20::Modbus_SHT20(const char* homie_node_id) : ModbusRTUEntity(homie_no
 
     np_temperature.setup(getNodeId(), "temperature");
     np_humidity.setup(getNodeId(), "relative_humidity");
+
+    setup();
 }
 
 float Modbus_SHT20::getTemperature() { return temperature/10.0; }

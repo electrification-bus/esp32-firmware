@@ -17,6 +17,7 @@ BME280::BME280(const char* homie_node_id) : NodeEntity(homie_node_id), Adafruit_
   relative_humidity.setup(getNodeId(), "relative_humidity");
   air_pressure.setup(getNodeId(), "air_pressure");
 
+  setup();
 }
 
 void BME280::setPins(int8_t sda, int8_t scl) {

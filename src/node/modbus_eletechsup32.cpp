@@ -7,6 +7,8 @@ Modbus_Eletechsup32::Modbus_Eletechsup32(const char* homie_node_id) : ModbusRTUE
     _poll_timestamp = 0;
     _modbus_address = INPUT32_ADDR;
     voltage_detect.setup(getNodeId(), "V_detect");
+
+    setup();
 }
 
 uint8_t Modbus_Eletechsup32::poll() {
