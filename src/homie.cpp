@@ -18,17 +18,17 @@ SSR* ssr = nullptr;                             //Solid State Relay driven by GP
 void setup_homie() {
 
   //All objects derive from NodeEntity
-  bme280 = new BME280();
-  bme280->setup("environment_bme280"); // Initialize BME280 sensor
+  bme280 = new BME280("environment_bme280");
+  bme280->setup(); // Initialize BME280 sensor
 
-  iv_detector = new Modbus_Eletechsup32();
-  iv_detector->setup("voltage_current_detector"); // Initialize Modbus Eletechsup32 sensor
+  iv_detector = new Modbus_Eletechsup32("voltage_current_detector");
+  iv_detector->setup(); // Initialize Modbus Eletechsup32 sensor
 
-  sht20 = new Modbus_SHT20();
-  sht20->setup("environment_sht20"); // Initialize Modbus SHT20 sensor
+  sht20 = new Modbus_SHT20("environment_sht20");
+  sht20->setup(); // Initialize Modbus SHT20 sensor
 
-  ssr = new SSR();
-  ssr->setup("relay1"); // Initialize SSR node
+  ssr = new SSR("relay1");
+  ssr->setup(); // Initialize SSR node
 }
 
 void loop_homie() {

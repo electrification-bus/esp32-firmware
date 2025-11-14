@@ -4,7 +4,7 @@
 
 class Modbus_Eletechsup32 : public ModbusRTUEntity {
     public:
-        Modbus_Eletechsup32();
+        Modbus_Eletechsup32(const char* homie_node_id);
         ~Modbus_Eletechsup32(){};
 
         bool nodeBegin() override;

@@ -4,7 +4,7 @@
 
 #define PAUSE_ON_RAMP_LEVELS 30000
 
-Modbus_SHT20::Modbus_SHT20() : ModbusRTUEntity("environment_sht20") {
+Modbus_SHT20::Modbus_SHT20(const char* homie_node_id) : ModbusRTUEntity(homie_node_id) {
     _modbus_address = SHT20_ADDR;
     temperature = 0;
     humidity = 0;

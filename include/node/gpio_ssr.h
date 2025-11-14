@@ -3,7 +3,7 @@
 
 class SSR : public NodeEntity {
     public:
-        SSR();
+        SSR(const char* homie_node_id);
         ~SSR(){};
 
         void loop() override;
@@ -16,6 +16,7 @@ class SSR : public NodeEntity {
         void set_ssr_state(bool onoff);
         void entity_settable_callback(Property* property) override;
     private:
+        const char _homie_node_id[32] = {0};
         NodeProperty _state_property;
         bool _state;
         bool LOW_TRIGGER = true;

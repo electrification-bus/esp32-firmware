@@ -4,7 +4,7 @@
 
 class Modbus_SHT20 : public ModbusRTUEntity {
     public:
-        Modbus_SHT20();
+        Modbus_SHT20(const char* homie_node_id);
         ~Modbus_SHT20() {};
 
         bool nodeBegin() override;

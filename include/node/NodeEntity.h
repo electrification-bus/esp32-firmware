@@ -15,6 +15,7 @@ class NodeEntity {
         virtual void loop() = 0;        // loop processing (MUST override in derived classes)
         virtual const char* getNodeId() {return _homie_node_id;};
 
+        virtual bool setup();
         virtual bool setup(const char* property_id);
         virtual void setHomieNodeId(const char* id);
         virtual bool pollIntervalTrigger();

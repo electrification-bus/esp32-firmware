@@ -15,10 +15,12 @@ void NodeEntity::setHomieNodeId(const char* id) {
     strncpy(_homie_node_id, id, sizeof(_homie_node_id) - 1);
     _homie_node_id[sizeof(_homie_node_id) - 1] = '\0'; // Ensure null termination
 }
-
+bool NodeEntity::setup() {
+    return nodeBegin();
+}
 bool NodeEntity::setup(const char* homie_node_id) {
     setHomieNodeId(homie_node_id);
-    return nodeBegin();
+    return setup();
 }
 
 //returns local alloc - caller must not retain
