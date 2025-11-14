@@ -18,7 +18,7 @@ void NodeEntity::setHomieNodeId(const char* id) {
 
 bool NodeEntity::setup(const char* homie_node_id) {
     setHomieNodeId(homie_node_id);
-    return setup();
+    return nodeBegin();
 }
 
 //returns local alloc - caller must not retain
@@ -26,31 +26,6 @@ const char* NodeEntity::getPropertyTopic(const char* property_id, char* buf) {
   sprintf(buf, "%s%s/%s", theDevice->topic(), _homie_node_id, property_id);
   return buf;
 }
-
-bool NodeEntity::setup() {
-    JsonDocument* node_conf = get_node_config();
-    //TODO remove this hardcoding and map the YAML 'voltage_current_detector' node to the Modbus_Eletechsup32 (consolidate with BME280 setup())
-    if (jsonExists((*node_conf)[HOMIE_NODES].as<JsonVariant>())) {
-        JsonVariant nodes = (*node_conf)[HOMIE_NODES].as<JsonVariant>();
-        for (JsonVariant node : nodes.as<JsonArray>()) {
-            if (strcmp(node[HOMIE_ID].as<const char*>(), _homie_node_id) == 0) { //read this from node config? (map environment to BME280)
-                Serial.printf("SETUP: NodeEntity: found node: %s\n", _homie_node_id);
-                //pull out properties and map to device
-                JsonVariant props = node[HOMIE_PROPERTIES].as<JsonVariant>();
-                for (JsonVariant props : props.as<JsonArray>()) {
-                    //entityManager->mapProperty(props[HOMIE_ID].as<const char*>(), props[HOMIE_NAME].as<const char*>(), props[HOMIE_TYPE].as<const char*>());
-                }
-                Serial.printf("%s: mapped to homie node id: %s\n", getNodeId(), _homie_node_id);
-                setHomieNodeId(node[HOMIE_ID].as<const char*>());
-                break;
-            }
-        }
-    } else {
-        Serial.printf("SETUP: NodeEntity: ERROR: node not found in config:'%s' - skipping setup\n", _homie_node_id); //TODO
-        return false;
-    }
-    return nodeBegin();
-} 
 
 bool NodeEntity::nodeBegin() {
     Serial.printf("NodeEntity: nodeBegin() not implemented for node id: %s\n", _homie_node_id);

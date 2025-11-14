@@ -19,7 +19,7 @@ void NodeProperty::setup_settable(const char* node_id, const char* property_id, 
     sprintf(_topic, "%s%s/%s", theDevice->topic(), node_id, property_id);
     set_topic(_topic);
 
-    sprintf(_topic, "%s%s/state/%s", theDevice->topic(), node_id, HOMIE_TOPIC_SET);
+    sprintf(_topic, "%s%s/%s/%s", theDevice->topic(), node_id, property_id, HOMIE_TOPIC_SET);
     entity_subscribe_for_callbacks(_topic, cb, ne);
 }
 

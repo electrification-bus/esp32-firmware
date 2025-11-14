@@ -15,7 +15,6 @@ class NodeEntity {
         virtual void loop() = 0;        // loop processing (MUST override in derived classes)
         virtual const char* getNodeId() {return _homie_node_id;};
 
-        virtual bool setup();
         virtual bool setup(const char* property_id);
         virtual void setHomieNodeId(const char* id);
         virtual bool pollIntervalTrigger();
@@ -26,11 +25,7 @@ class NodeEntity {
         Node* getNode(const char* id);
         void publish(const char* node_id);
         Property* validate(const char* node_id, const char* property_id);
-        void setNodeProperty(const char* property_id, int value);
-        void setNodeProperty(const char* property_id, float value);
-        void setNodeProperty(const char* property_id, const char* value);
-        void setNodeProperty(const char* property_id, bool value);
-        void setNodeProperty(const char* property_id, unsigned int value);
+
 
         virtual void entity_settable_callback(Property* property);
         virtual void set(bool onOff) {};
@@ -44,7 +39,7 @@ class NodeEntity {
         NodeProperty* _node_properties[32]; // Array of NodeProperties
         int _num_node_properties = 0;
 
-        private:
+    private:
         //from EntityManager
         Device* _device;
         int _num_nodes = 0;
