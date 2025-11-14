@@ -12,8 +12,8 @@ Modbus_SHT20::Modbus_SHT20() : ModbusRTUEntity("environment_sht20") {
     timestamp_last_report = 0;
     timestamp_last_failure = 0;
 
-    np_temperature.setup("environment_sht20", "temperature");
-    np_humidity.setup("environment_sht20", "relative_humidity");
+    np_temperature.setup(getNodeId(), "temperature");
+    np_humidity.setup(getNodeId(), "relative_humidity");
 }
 
 float Modbus_SHT20::getTemperature() { return temperature/10.0; }

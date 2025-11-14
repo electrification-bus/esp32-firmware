@@ -9,15 +9,7 @@ bool LOW_TRIGGER = true;
 int last_toggle = millis();
 
 SSR::SSR() : NodeEntity("relay1") {
-
-    _state_property.setup("relay1", "state");
-
-    //get the Property* for this and subscribe for settable callbacks
-    Property* p = theDevice->getNode(getNodeId())->getProperty("state");
-    char _topic[128];
-    sprintf(_topic, "%s%s/state/%s", theDevice->topic(), getNodeId(), HOMIE_TOPIC_SET);
-    entity_subscribe_for_callbacks(_topic, &NodeEntity::entity_settable_callback, (NodeEntity*)this);
-
+    _state_property.setup_settable(getNodeId(), "state", &NodeEntity::entity_settable_callback,(NodeEntity*)this);
     pinMode(SSR1_PIN, OUTPUT);
 }
 

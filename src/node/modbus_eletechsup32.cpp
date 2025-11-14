@@ -6,7 +6,7 @@
 Modbus_Eletechsup32::Modbus_Eletechsup32() : ModbusRTUEntity("voltage_current_detector") {
     _poll_timestamp = 0;
     _modbus_address = INPUT32_ADDR;
-    voltage_detect.setup("voltage_current_detector", "V_detect");
+    voltage_detect.setup(getNodeId(), "V_detect");
 }
 
 uint8_t Modbus_Eletechsup32::poll() {

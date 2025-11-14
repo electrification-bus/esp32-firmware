@@ -13,6 +13,16 @@ void NodeProperty::setup(const char* node_id, const char* property_id) {
     set_topic(_topic);
 
 }
+void NodeProperty::setup_settable(const char* node_id, const char* property_id, entity_settable_callback_t cb, NodeEntity* ne) {
+    set_homie_property_id(property_id);
+    char _topic[128] = {0};
+    sprintf(_topic, "%s%s/%s", theDevice->topic(), node_id, property_id);
+    set_topic(_topic);
+
+    sprintf(_topic, "%s%s/state/%s", theDevice->topic(), node_id, HOMIE_TOPIC_SET);
+    entity_subscribe_for_callbacks(_topic, cb, ne);
+}
+
 void NodeProperty::set(int value) {
     _intValue = value;
     snprintf(_value, sizeof(_value), "%d", value);

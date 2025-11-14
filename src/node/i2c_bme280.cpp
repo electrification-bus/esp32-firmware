@@ -11,9 +11,9 @@ BME280::BME280() : NodeEntity("environment_bme280"), Adafruit_BME280() {
   _bme_pressure = getPressureSensor();
   _bme_humidity = getHumiditySensor();
   
-  temperature.setup("environment_bme280", "temperature");
-  relative_humidity.setup("environment_bme280", "relative_humidity");
-  air_pressure.setup("environment_bme280", "air_pressure");
+  temperature.setup(getNodeId(), "temperature");
+  relative_humidity.setup(getNodeId(), "relative_humidity");
+  air_pressure.setup(getNodeId(), "air_pressure");
 
 }
 

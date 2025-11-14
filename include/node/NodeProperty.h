@@ -1,6 +1,6 @@
 #pragma once
 #include <homie/Node.h>
-
+#include <mqtt_client.h>
 class NodeProperty {
     public:
         NodeProperty(){};
@@ -25,6 +25,9 @@ class NodeProperty {
         void set_entity(); //self, new_value: Any);
         void set_entity_setter();//self, entity_setter: Callable);
         void as_dict();
+
+        void setup_settable(const char* node_id, const char* property_id, entity_settable_callback_t cb, NodeEntity* ne);
+
 
         void set(int value);
         void set(float value);
