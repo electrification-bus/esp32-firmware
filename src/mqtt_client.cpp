@@ -67,20 +67,16 @@ void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb,
 
 
 void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_t cb, NodeEntity* entity) {
-   Serial.printf("ENTITY: Callback Subscription: %s\n", topic);
    for(int i=0;i<num_subscribers;i++) {
-       Serial.printf("ENTITY: Callback Subscription: compare:%s to %s\n", topic, settable_properties[i].topic);
-
      if (strcmp(settable_properties[i].topic, topic) == 0) {
        //add entity pointer
-          Serial.printf("ENTITY: Callback Subscription: %s SUCCESS\n", topic);
-
+       Serial.printf("ENTITY: Callback Subscription: %s SUCCESS\n", topic);
        settable_properties[i].entity_callback = cb;
        settable_properties[i].entity = entity;
        return;
      }
    }
-   Serial.printf("ENTITY: Callback Subscription: %s FAIL _ NOT FOUND\n", topic);
+   Serial.printf("ENTITY: Callback Subscription:FAIL - %s NOT FOUND\n", topic);
 }
 
 boolean mqtt_connect() {
