@@ -9,7 +9,7 @@ class Modbus_Eletechsup32 : public ModbusRTUEntity {
 
         bool nodeBegin() override;
         uint8_t poll() override;
-        const char* getNodeName() const override { return "Eletechsup32"; }
+        const char* getNodeId() const override { return "voltage_current_detector"; }
 
         bool getInputState(uint8_t index); // Get state of input [0-31]
 

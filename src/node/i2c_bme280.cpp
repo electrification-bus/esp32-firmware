@@ -2,7 +2,6 @@
 #include <node/i2c_bme280.h>
 #include <config.h>
 #include <pins.h>
-#include <node/EntityManager.h>
 
 #define BME_ADDR 0x76
 
@@ -11,6 +10,21 @@ BME280::BME280() : NodeEntity(), Adafruit_BME280() {
   _bme_temp = getTemperatureSensor();
   _bme_pressure = getPressureSensor();
   _bme_humidity = getHumiditySensor();
+  
+  //TODO util func to set these up
+  char _topic[128] = {0};
+  sprintf(_topic, "%senvironment_bme280/temperature", theDevice->topic());
+  temperature.set_homie_property_id("temperature");
+  temperature.set_topic(_topic);
+
+  sprintf(_topic, "%senvironment_bme280/relative_humidity", theDevice->topic());
+  relative_humidity.set_homie_property_id("relative_humidity");
+  relative_humidity.set_topic(_topic);
+
+  sprintf(_topic, "%senvironment_bme280/air_pressure", theDevice->topic());
+  air_pressure.set_homie_property_id("air_pressure");
+  air_pressure.set_topic(_topic);
+
 }
 
 void BME280::setPins(int8_t sda, int8_t scl) {
@@ -37,25 +51,29 @@ bool BME280::pollIntervalTrigger() {
 
 void BME280::loop() {
   if (pollIntervalTrigger()) {
+
     sensors_event_t temp_event, pressure_event, humidity_event;
     _bme_temp->getEvent(&temp_event);
     _bme_pressure->getEvent(&pressure_event);
     _bme_humidity->getEvent(&humidity_event);
-    float f = temp_event.temperature * 9/5 + 32;
-    float mb = pressure_event.pressure / 100; //convert Pascals to millibars where 100 Pascals = 1 hPa = 1 millibar
-    float inHg = pressure_event.pressure*100 / 3386.39; //convert Pascals to inches of mercury where 1 inch Hg = 3386.39 Pascal
-    Serial.printf("Temp: %3.1fC, %.2fF Humid: %3.1f%% AP: %.2f Pa %.2f mb, %2.2f inHg\n", temp_event.temperature,f,  humidity_event.relative_humidity,pressure_event.pressure,mb,humidity_event.relative_humidity);
+
+    temperature.set(temp_event.temperature * 9/5 + 32);
+    relative_humidity.set(humidity_event.relative_humidity);
+    float mb = pressure_event.pressure / 100;                 //convert Pascals to millibars where 100 Pascals = 1 hPa = 1 millibar
+    air_pressure.set(pressure_event.pressure*100 / 3386.39);  //convert Pascals to inches of mercury where 1 inch Hg = 3386.39 Pascal
+
+    Serial.printf("Temp: %3.1fC, %sF Humid: %s%% AP: %.2f Pa %.2f mb, %s inHg\n", 
+      temp_event.temperature,
+      temperature.value(),  
+      relative_humidity.value(),
+      pressure_event.pressure,
+      mb,
+      air_pressure.value());
    
-    //get our homie node and update the values
-    if (_homie_node_id[0] == 0) {
-      Serial.println(F("BME280: homie node undefined, skipping update"));
-      return;
-    }
     Serial.printf("BME280: update node id: '%s'\n", _homie_node_id);
     //call out to node manager to handle setting the values on the homie node
-    entityManager->setNodeProperty(_homie_node_id, "temperature", f);
-    entityManager->setNodeProperty(_homie_node_id, "air_pressure", mb);  
-    entityManager->setNodeProperty(_homie_node_id, "relative_humidity", humidity_event.relative_humidity); 
-    entityManager->publish(_homie_node_id); 
+    temperature.publish();
+    relative_humidity.publish(); 
+    air_pressure.publish(); 
   }
 }

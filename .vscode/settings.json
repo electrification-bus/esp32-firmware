@@ -28,6 +28,8 @@
         "list": "cpp",
         "unordered_set": "cpp",
         "iostream": "cpp",
-        "chrono": "cpp"
+        "chrono": "cpp",
+        "sstream": "cpp",
+        "stdexcept": "cpp"
     }
 }

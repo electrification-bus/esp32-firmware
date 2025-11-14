@@ -37,7 +37,7 @@ void setup() {
   theDevice = new Device();
   
   //EntityManager sits between physical sensor/actuator values and Homie node properties
-  entityManager = new EntityManager(theDevice);
+  //entityManager = new EntityManager(theDevice);
 
   theDevice->init((*dev_conf)[HOMIE_NAME].as<const char*>(), getDeviceID(), (*dev_conf)[HOMIE_TYPE].as<const char*>(), &mqtt_client);
   theDevice->publishState();//default state is init

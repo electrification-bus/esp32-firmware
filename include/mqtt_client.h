@@ -13,11 +13,25 @@
 
 #define MQTTPublish_rootrate 10000
 
-typedef void (Property::*subscriber_callback_t)(const char*, const char*);
+class NodeEntity; // Forward declaration
+
+typedef void (Property::*property_settable_callback_t)(const char*, const char*);
+typedef void (NodeEntity::*entity_settable_callback_t)(Property*);
+
+struct subscribed_settable_property_t {
+    char topic[64];
+    property_settable_callback_t property_callback;
+    entity_settable_callback_t entity_callback;
+    Property* instance; // store the instance to call the member function on
+    NodeEntity* entity; // Pointer to the associated hardware entity
+};
+
+
 
 void loop_mqtt();
 void setup_mqtt();
-void subscribe_for_callbacks(const char* topic, subscriber_callback_t cb, Property* instance);
+void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb, Property* instance);
+void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_t cb, NodeEntity* entity);
 void subscriber_callback(char* topic, uint8_t* payload, unsigned int length);
 void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data);
 

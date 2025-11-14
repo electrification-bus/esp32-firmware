@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <node/gpio_ssr.h>
-#include <node/EntityManager.h>
 #include <pins.h>
+#include <config.h>
 
 #define DEBUG_SSR false
 
@@ -9,6 +9,16 @@ bool LOW_TRIGGER = true;
 int last_toggle = millis();
 
 SSR::SSR() : NodeEntity() {
+    _state_property.set_homie_property_id("state");
+    char _topic[128] = {0};
+    sprintf(_topic, "%srelay1", theDevice->topic());
+     _state_property.set_topic(_topic);
+
+    //get the Property* for this and subscribe for settable callbacks
+    Property* p = theDevice->getNode("relay1")->getProperty("state");
+    sprintf(_topic, "%srelay1/state/%s", theDevice->topic(), HOMIE_TOPIC_SET);
+    entity_subscribe_for_callbacks(_topic, &NodeEntity::entity_settable_callback, (NodeEntity*)this);
+
     pinMode(SSR1_PIN, OUTPUT);
 }
 
@@ -44,4 +54,18 @@ void SSR::loop() {
 void SSR::set(bool onOff) {
     Serial.printf("SSR: external SET: 'state' to %s\n", onOff ? "ON" : "OFF");
     set_ssr_state(onOff);
+}
+
+void SSR::entity_settable_callback(Property* property) {
+    //Serial.printf("SSR: entity_settable_callback called for property '%s' with value '%s'\n", property->id(), property->value());
+    Serial.printf("SSR: entity_settable_callback called ON SSR\n");
+    if (strcmp(property->id(), "state") == 0) {
+        if (strcmp(property->value(), "true") == 0 || strcmp(property->value(), "1") == 0 || strcmp(property->value(), "on") == 0 || strcmp(property->value(), "yes") == 0) {
+            set_ssr_state(true);
+        } else if (strcmp(property->value(), "false") == 0 || strcmp(property->value(), "0") == 0 || strcmp(property->value(), "off") == 0 || strcmp(property->value(), "no") == 0) {
+            set_ssr_state(false);
+        } else {
+            Serial.printf("SSR: invalid boolean value '%s' for property 'state'\n", property->value());
+        }
+    }
 }

@@ -1,6 +1,9 @@
+#include <Arduino.h>
 #include <node/NodeProperty.h>
+#include <mqtt_client.h>
 
 void NodeProperty::publish() {
+    Serial.printf("NodeProperty: %s : topic: %s value: %s", homie_property_id(), _topic, _value);
     mqtt_client.publish(_topic, _value);
 }
 
@@ -24,6 +27,11 @@ void NodeProperty::set(unsigned int value) {
     _unsignedValue = value;
     snprintf(_value, sizeof(_value), "%u", value);
 }
+void NodeProperty::set(double value) {
+    _doubleValue = value;
+    snprintf(_value, sizeof(_value), "%f", value);
+}
+
 
 void NodeProperty::set_value_and_publish() {
     // Implementation for publishing the current value

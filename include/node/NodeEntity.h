@@ -12,9 +12,10 @@ class NodeEntity {
         virtual ~NodeEntity(){};
         virtual bool nodeBegin();       // start the node (MAY be overridden in derived classes)
         virtual void loop() = 0;        // loop processing (MUST override in derived classes)
-        virtual const char* getNodeName() const = 0;
+        virtual const char* getNodeId() const = 0;
 
         virtual bool setup();
+        virtual bool setup(const char* homie_node_id);
         virtual void setHomieNodeId(const char* id);
         virtual bool pollIntervalTrigger();
         virtual const char* getHomieNodeId();
@@ -30,7 +31,7 @@ class NodeEntity {
         void setNodeProperty(const char* property_id, bool value);
         void setNodeProperty(const char* property_id, unsigned int value);
 
-        void entity_settable_callback(Property* property);
+        virtual void entity_settable_callback(Property* property);
         virtual void set(bool onOff) {};
         virtual void set(int val) {};
         virtual void set(float val) {}; 

@@ -47,6 +47,7 @@ void Device::addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json) {
         if (prop->settable()) {
           prop->subscribe();
         }
+        /*
         //set the correct value type
         if (strcmp(prop->datatype(), "float") == 0) {
             entityManager->setNodeProperty(n->id(), prop->id(), prop->getFloatValue());
@@ -60,7 +61,7 @@ void Device::addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json) {
             entityManager->setNodeProperty(n->id(), prop->id(), strcmp(prop->value(),"true")==0);
         } else {
             entityManager->setNodeProperty(n->id(), prop->id(), prop->value()); 
-        }
+        }*/
       }
     }
 }

@@ -48,12 +48,7 @@ char topic_device[TOPIC_TOKEN_SIZ] = {0};
 char topic_cmd[TOPIC_TOKEN_SIZ] = {0};
 int num_subscribers = 0;
 
-struct Subscribed_properties {
-    char topic[64];
-    subscriber_callback_t callback;
-    Property* instance; // store the instance to call the member function on
-};
-Subscribed_properties subscribed_properties[128];
+subscribed_settable_property_t settable_properties[128];
 
 // Function prototype for mqtt_publish_json
 void mqtt_publish_json(const char* subtopic, const JsonDocument* payload);
@@ -63,12 +58,30 @@ void generateTopics() {
   sprintf(topic_cmd,"%s/%s",topic_device, HOMIE_TOPIC_SET);
 }
 
-void subscribe_for_callbacks(const char* topic, subscriber_callback_t cb, Property* instance) {
+void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb, Property* instance) {
    //Serial.printf("Callback Subscription #%d: %s\n", num_subscribers, topic);
-   strcpy(subscribed_properties[num_subscribers].topic, topic);
-   subscribed_properties[num_subscribers].callback = cb;
-   subscribed_properties[num_subscribers].instance = instance;
+   strcpy(settable_properties[num_subscribers].topic, topic);
+   settable_properties[num_subscribers].property_callback = cb;
+   settable_properties[num_subscribers].instance = instance;
    num_subscribers++;
+}
+
+
+void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_t cb, NodeEntity* entity) {
+   Serial.printf("ENTITY: Callback Subscription: %s\n", topic);
+   for(int i=0;i<num_subscribers;i++) {
+       Serial.printf("ENTITY: Callback Subscription: compare:%s to %s\n", topic, settable_properties[i].topic);
+
+     if (strcmp(settable_properties[i].topic, topic) == 0) {
+       //add entity pointer
+          Serial.printf("ENTITY: Callback Subscription: %s SUCCESS\n", topic);
+
+       settable_properties[i].entity_callback = cb;
+       settable_properties[i].entity = entity;
+       return;
+     }
+   }
+   Serial.printf("ENTITY: Callback Subscription: %s FAIL _ NOT FOUND\n", topic);
 }
 
 boolean mqtt_connect() {
@@ -103,8 +116,8 @@ boolean mqtt_connect() {
     //mqttclient.publish(getDeviceTopic().c_str(), "connected"); // Once connected, publish an announcement..
     //re-subscrive to topics if needed
     for(int i=0;i<num_subscribers;i++) {
-      Serial.printf("MQTT subscribing to topic: %s\n", subscribed_properties[i].topic);
-      mqtt_client.subscribe(subscribed_properties[i].topic);
+      Serial.printf("MQTT subscribing to topic: %s\n", settable_properties[i].topic);
+      mqtt_client.subscribe(settable_properties[i].topic);
     }
   } else {
     Serial.println("MQTT failed: ");
@@ -180,10 +193,14 @@ void subscriber_callback(char* topic, uint8_t* payload, unsigned int length) {
 
   //route to subscriber property
   for(int i=0;i<num_subscribers;i++) {
-    if (strcmp(subscribed_properties[i].topic, topic) == 0) {
-      if (subscribed_properties[i].callback && subscribed_properties[i].instance) {
-          (subscribed_properties[i].instance->*subscribed_properties[i].callback)(topic, payload_buf);
-          entityManager->setNodePropertyOnEntity(subscribed_properties[i].instance->getParentNode()->id(), subscribed_properties[i].instance->id());
+    if (strcmp(settable_properties[i].topic, topic) == 0) {
+      if (settable_properties[i].property_callback && settable_properties[i].instance) {
+        Serial.printf("MQTT: Invoking property callback for topic '%s'\n", topic);
+          (settable_properties[i].instance->*settable_properties[i].property_callback)(topic, payload_buf);
+      }
+      if (settable_properties[i].entity_callback && settable_properties[i].entity) {
+          Serial.printf("MQTT: Invoking entity callback for topic '%s'\n", topic);
+          (settable_properties[i].entity->*settable_properties[i].entity_callback)(settable_properties[i].instance);
       }
     }
   }

@@ -16,6 +16,11 @@ void NodeEntity::setHomieNodeId(const char* id) {
     _homie_node_id[sizeof(_homie_node_id) - 1] = '\0'; // Ensure null termination
 }
 
+bool NodeEntity::setup(const char* homie_node_id) {
+    setHomieNodeId(homie_node_id);
+    return setup();
+}
+
 bool NodeEntity::setup() {
     JsonDocument* node_conf = get_node_config();
     //TODO remove this hardcoding and map the YAML 'voltage_current_detector' node to the Modbus_Eletechsup32 (consolidate with BME280 setup())
@@ -29,7 +34,7 @@ bool NodeEntity::setup() {
                 for (JsonVariant props : props.as<JsonArray>()) {
                     //entityManager->mapProperty(props[HOMIE_ID].as<const char*>(), props[HOMIE_NAME].as<const char*>(), props[HOMIE_TYPE].as<const char*>());
                 }
-                Serial.printf("%s: mapped to homie node id: %s\n", getNodeName(), _homie_node_id);
+                Serial.printf("%s: mapped to homie node id: %s\n", getNodeId(), _homie_node_id);
                 setHomieNodeId(node[HOMIE_ID].as<const char*>());
                 break;
             }
@@ -47,5 +52,6 @@ bool NodeEntity::nodeBegin() {
 }
 
 void NodeEntity::entity_settable_callback(Property* property) {
-    Serial.printf("NodeEntity: entity_settable_callback() not implemented for node id: %s, property id: %s\n", _homie_node_id, property->id());
+    //Serial.printf("NodeEntity: entity_settable_callback() not implemented for node id: %s, property id: %s\n", _homie_node_id, property->id());
+    Serial.printf("NodeEntity: entity_settable_callback() not implemented for node id: %s\n", _homie_node_id);
 }

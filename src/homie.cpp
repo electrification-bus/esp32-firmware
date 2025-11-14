@@ -21,25 +21,25 @@ void setup_homie() {
 
   //All objects derive from NodeEntity
   bme280 = new BME280();
-  entityManager->addNodeEntity("environment_bme280", bme280);
-  bme280->setup(); // Initialize BME280 sensor
+  //entityManager->addNodeEntity("environment_bme280", bme280);
+  bme280->setup("environment_bme280"); // Initialize BME280 sensor
 
   iv_detector = new Modbus_Eletechsup32();
-  entityManager->addNodeEntity("voltage_current_detector", iv_detector);
-  iv_detector->setup(); // Initialize Modbus Eletechsup32 sensor
+  //entityManager->addNodeEntity("voltage_current_detector", iv_detector);
+  iv_detector->setup("voltage_current_detector"); // Initialize Modbus Eletechsup32 sensor
 
   sht20 = new Modbus_SHT20();
-  entityManager->addNodeEntity("environment_sht20", sht20);
-  sht20->setup(); // Initialize Modbus SHT20 sensor
+  //entityManager->addNodeEntity("environment_sht20", sht20);
+  sht20->setup("environment_sht20"); // Initialize Modbus SHT20 sensor
 
   ssr = new SSR();
-  entityManager->addNodeEntity("relay1", ssr);
-  ssr->setup(); // Initialize SSR node
+  //entityManager->addNodeEntity("relay1", ssr);
+  ssr->setup("relay1"); // Initialize SSR node
 }
 
 void loop_homie() {
     //loop the nodes
-    //if (bme280 != nullptr) bme280->loop();
+    if (bme280 != nullptr) bme280->loop();
     //if (iv_detector != nullptr) iv_detector->loop();
     //if (sht20 != nullptr) sht20->loop();  
     if (ssr != nullptr) ssr->loop();  

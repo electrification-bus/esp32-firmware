@@ -9,7 +9,7 @@ class Modbus_SHT20 : public ModbusRTUEntity {
 
         bool nodeBegin() override;
         uint8_t poll() override;
-        const char* getNodeName() const override { return "SHT20"; }
+        const char* getNodeId() const override { return "environment_sht20"; }
 
         void route_poll_response(uint16_t reg, uint16_t response);
         uint8_t query_register(uint16_t reg);
