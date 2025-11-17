@@ -3,6 +3,10 @@
 #include <util/jsonUtils.h>
 #include <node/NodeEntity.h>
 
+NodeEntity::NodeEntity(const char* homie_node_id) {
+    setHomieNodeId(homie_node_id);
+}
+
 const char* NodeEntity::getHomieNodeId() {
     return _homie_node_id;
 }

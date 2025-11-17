@@ -7,10 +7,9 @@
 
 class NodeEntity {
     public:
-        NodeEntity(){};
-        NodeEntity(const char* hid){strcpy(_homie_node_id, hid);};
-        NodeEntity(Device* device) : _device(device) {};
+        NodeEntity(const char* homie_id);
         virtual ~NodeEntity(){};
+
         virtual bool nodeBegin();       // start the node (MAY be overridden in derived classes)
         virtual void loop() = 0;        // loop processing (MUST override in derived classes)
         virtual const char* getNodeId() {return _homie_node_id;};
