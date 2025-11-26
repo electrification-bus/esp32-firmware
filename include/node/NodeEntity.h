@@ -40,7 +40,6 @@ class NodeEntity {
         int _num_node_properties = 0;
 
     private:
-        //from EntityManager
         Device* _device;
         int _num_nodes = 0;
         int _num_properties_mapped = 0;
