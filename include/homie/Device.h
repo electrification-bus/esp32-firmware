@@ -17,7 +17,7 @@ class Device {
     void addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json);
     void setMQTTClient(PubSubClient* client);
     void mqttConnected();
-    String toJson();
+    size_t toJson(char* buffer, size_t bufferSize);
     void setId(const char* id);
     void setName(const char* name);
     void setType(const char* type);
@@ -26,7 +26,7 @@ class Device {
     void publish();
     void publishState();
     const char* topic();
-    void serialize(String& serialized);
+    size_t serialize(char* buffer, size_t bufferSize);
     
    Node* getNode(const char* id);
    Node* operator[](const char* node_id_key) { return getNode(node_id_key); };

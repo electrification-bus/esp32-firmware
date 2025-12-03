@@ -135,10 +135,8 @@ const char* Device::topic() {
     return _topic;
 }
 
-String Device::toJson() {
-    String json;
-    serialize(json);
-    return json;
+size_t Device::toJson(char* buffer, size_t bufferSize) {
+    return serialize(buffer, bufferSize);
 }
 
 char* Device::getId() {
@@ -146,7 +144,7 @@ char* Device::getId() {
 }
 
 // JSON serialization
-void Device::serialize(String& serialized) {
+size_t Device::serialize(char* buffer, size_t bufferSize) {
   JsonDocument json;
   json[HOMIE_NAME] = _name;
   json[HOMIE_TYPE] = _type;
@@ -157,7 +155,7 @@ void Device::serialize(String& serialized) {
     json_nodes[_nodes[i]->id()] = _nodes[i]->serialize();
   }
   json[HOMIE_NODES] = json_nodes;
-  serializeJson(json, serialized);
+  return serializeJson(json, buffer, bufferSize);
 }
 
 void Device::publishState() {
@@ -176,8 +174,9 @@ void Device::publish() {
   Serial.println("DEVICE publish: $description");
   char top[128] = {0};
   sprintf(top, "%s%s", topic(), HOMIE_$DESCRIPTION);
-  String json = toJson();
-  if (!_mqtt_client->publish(top, json.c_str(), true)) {
+  char json[1024] = {0};
+  toJson(json, sizeof(json));
+  if (!_mqtt_client->publish(top, json, true)) {
       Serial.println("MQTT publish: $description failed");
   }
 

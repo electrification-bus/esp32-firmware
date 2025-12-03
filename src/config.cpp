@@ -10,11 +10,11 @@ static JsonObject config_json;
 static JsonDocument homie_config_json;
 static JsonDocument platform_config_json;
 static JsonDocument node_config_json;
-String mqtt_host;
+char mqtt_host[64] = {0};
 uint16_t mqtt_port;
-String mqtt_username;
-String mqtt_password;
-String device_id_prefix;
+char mqtt_username[64] = {0};
+char mqtt_password[64] = {0};
+char device_id_prefix[32] = {0};
 
 const char* UNIQUE_ID = "";
 char device_id[MAX_DEVICE_ID_CHARS] = {0};
@@ -114,11 +114,11 @@ bool loadPlatformConfiguration() {
   JsonArray conf_array = yml_config["config"].as<JsonArray>();
   config_json = conf_array[0].as<JsonObject>();
   if (config_json["mqtt_host"].is<JsonString>())
-    mqtt_host = config_json["mqtt_host"].as<JsonString>().c_str();
+    strncpy(mqtt_host, config_json["mqtt_host"].as<JsonString>().c_str(), sizeof(mqtt_host) - 1);
   mqtt_port = config_json["mqtt_port"].as<uint16_t>();
-  mqtt_username = config_json["mqtt_username"].as<JsonString>().c_str();
-  mqtt_password = config_json["mqtt_password"].as<JsonString>().c_str();
-  device_id_prefix = config_json["device_id_prefix"].as<JsonString>().c_str();
+  strncpy(mqtt_username, config_json["mqtt_username"].as<JsonString>().c_str(), sizeof(mqtt_username) - 1);
+  strncpy(mqtt_password, config_json["mqtt_password"].as<JsonString>().c_str(), sizeof(mqtt_password) - 1);
+  strncpy(device_id_prefix, config_json["device_id_prefix"].as<JsonString>().c_str(), sizeof(device_id_prefix) - 1);
   return true;
 }
 

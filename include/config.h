@@ -9,11 +9,11 @@
 
 #define MAX_DEVICE_ID_CHARS   32 //TODO all string sizes
 
-extern String mqtt_host;
+extern char mqtt_host[64];
 extern uint16_t mqtt_port;
-extern String mqtt_username;
-extern String mqtt_password;
-extern String device_id_prefix;
+extern char mqtt_username[64];
+extern char mqtt_password[64];
+extern char device_id_prefix[32];
 
 void generateDeviceID();
 const char* getDeviceID();

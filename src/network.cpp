@@ -78,7 +78,7 @@ void setup_ota() {
 
   ArduinoOTA
     .onStart([]() {
-      String type;
+      const char* type;
       if (ArduinoOTA.getCommand() == U_FLASH) {
         type = "sketch";
       } else {  // U_SPIFFS
@@ -86,7 +86,8 @@ void setup_ota() {
       }
 
       // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-      Serial.println("Start updating " + type);
+      Serial.print("Start updating ");
+      Serial.println(type);
     })
     .onEnd([]() {
       Serial.println("\nEnd");

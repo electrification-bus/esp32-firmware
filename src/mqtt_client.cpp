@@ -80,8 +80,8 @@ void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_
 }
 
 boolean mqtt_connect() {
-  Serial.printf("MQTT Connecting: '%s': timeout in:%d\r\n", mqtt_host.c_str(), transportClient.getTimeout());
-  if (transportClient.connect(mqtt_host.c_str(), mqtt_port) != 1) //8883 for TLS
+  Serial.printf("MQTT Connecting: '%s': timeout in:%d\r\n", mqtt_host, transportClient.getTimeout());
+  if (transportClient.connect(mqtt_host, mqtt_port) != 1) //8883 for TLS
   {
      Serial.println("MQTT connect timeout.");
      // todo ENABLE_DEBUG_MQTT=0;
@@ -92,22 +92,22 @@ boolean mqtt_connect() {
   mqtt_client.setSocketTimeout(6);//MQTT_TIMEOUT);
   mqtt_client.setBufferSize(MAX_DATA_LEN + 200);
   mqtt_client.setKeepAlive(33);
-  mqtt_client.setSocketTimeout(33); 
+  mqtt_client.setSocketTimeout(33);
   mqtt_client.setCallback(subscriber_callback);
-    
+
   //construct will
   char lwt[64] = {0};
   sprintf(lwt,"%s/%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID(),HOMIE_$STATE);
   Serial.printf("MQTT will topic:'%s' msg:'%s'\n", lwt, HOMIE_STATE_LOST);
-  if (mqtt_username.isEmpty()) {
+  if (strlen(mqtt_username) == 0) {
     //allows for anonymous connection
-    mqtt_client.connect(getDeviceID(), lwt, 1, 1, HOMIE_STATE_LOST); 
+    mqtt_client.connect(getDeviceID(), lwt, 1, 1, HOMIE_STATE_LOST);
   } else {
-    mqtt_client.connect(getDeviceID(), mqtt_username.c_str(), mqtt_password.c_str(),  lwt, 1, 1, HOMIE_STATE_LOST); // Attempt to connect
+    mqtt_client.connect(getDeviceID(), mqtt_username, mqtt_password,  lwt, 1, 1, HOMIE_STATE_LOST); // Attempt to connect
   }
 
   if (mqtt_client.state() == 0) {
-    Serial.printf("MQTT connected: %s\r\n", mqtt_host.c_str());
+    Serial.printf("MQTT connected: %s\r\n", mqtt_host);
     //mqttclient.publish(getDeviceTopic().c_str(), "connected"); // Once connected, publish an announcement..
     //re-subscrive to topics if needed
     for(int i=0;i<num_subscribers;i++) {
@@ -140,17 +140,14 @@ void mqtt_publish_json(const char* subtopic, const JsonDocument * payload) {
 
 //pull apart a comma-sep colon-delim name:value string and publish the name:value pairs under 'subtopic'
 void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data) {
-    String topicBuf;
+    char topicBuf[256];
     char buf[256];
     Serial.printf("MQTT publish: size:%d chars", strlen(data));
     do {
       int pos = strcspn(data, ":");
       strncpy(buf, data, pos);
       buf[pos] = 0;
-      String st(subtopic);
-      topicBuf = topic_device;
-      topicBuf.concat(st+"/");
-      topicBuf.concat(buf);
+      snprintf(topicBuf, sizeof(topicBuf), "%s%s/%s", topic_device, subtopic, buf);
       //topic_ptr[pos] = 0;
       data += pos;
       if (*data++ == 0) {
@@ -162,11 +159,11 @@ void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data)
       mqtt_data[pos] = 0;
       data += pos;
 
-      if (!mqtt_client.publish(topicBuf.c_str(), mqtt_data, true)) {
+      if (!mqtt_client.publish(topicBuf, mqtt_data, true)) {
        Serial.println("MQTT publish: failed");
       }
 #ifdef ENABLE_DEBUG_MQTT
-      Serial.printf("topic: %s, data: %s\n", topicBuf.c_str(), mqtt_data);
+      Serial.printf("topic: %s, data: %s\n", topicBuf, mqtt_data);
 #endif
     } while (*data++ != 0);
 }
@@ -219,11 +216,11 @@ void setup_mqtt() {
 
 int last_connect_error = millis();
 void loop_mqtt() {
-    if (mqtt_client.connected()) {  
-      //publish here; call publishers 
+    if (mqtt_client.connected()) {
+      //publish here; call publishers
     } else if (millis() - last_connect_error > MQTTPublish_rootrate) { //throttle connection retries
       last_connect_error = millis();
-      Serial.printf("MQTT not connected - retrying: %s\n", mqtt_host.c_str());
+      Serial.printf("MQTT not connected - retrying: %s\n", mqtt_host);
       mqtt_connect();
     }
     mqtt_interval_ts = millis();
