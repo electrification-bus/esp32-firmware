@@ -17,11 +17,11 @@
 #include <homie/controller.h>
 
 // WiFi credentials
-const char* WIFI_SSID = "your-ssid";
-const char* WIFI_PASSWORD = "your-password";
+const char* WIFI_SSID = "REDACTED_WIFI_SSID";
+const char* WIFI_PASSWORD = "REDACTED_WIFI_PASSWORD";
 
 // MQTT broker
-const char* MQTT_BROKER = "192.168.1.100";
+const char* MQTT_BROKER = "192.168.1.70";
 const int MQTT_PORT = 1883;
 const char* MQTT_USER = "";  // Leave empty for anonymous
 const char* MQTT_PASS = "";

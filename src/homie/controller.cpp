@@ -1,3 +1,4 @@
+/* A minimally-vibed controller. Claude Code, 12/3/25 drm */
 #include <homie/controller.h>
 #include <homie/homie.h>
 #include <string.h>
@@ -396,15 +397,15 @@ static void create_device_from_description(ControllerDevice* ctrl_dev, JsonDocum
     }
 
     // Set device attributes
-    if (doc.containsKey("name")) {
+    if (doc["name"].is<const char*>()) {
         dev->setName(doc["name"].as<const char*>());
     }
-    if (doc.containsKey("type")) {
+    if (doc["type"].is<const char*>()) {
         dev->setType(doc["type"].as<const char*>());
     }
 
     // Parse nodes and properties from description
-    if (doc.containsKey("nodes")) {
+    if (doc["nodes"].is<JsonObject>()) {
         JsonObject nodes = doc["nodes"].as<JsonObject>();
         for (JsonPair node_pair : nodes) {
             const char* node_id = node_pair.key().c_str();
@@ -413,17 +414,17 @@ static void create_device_from_description(ControllerDevice* ctrl_dev, JsonDocum
             // Create Node object
             JsonDocument node_doc;
             node_doc["id"] = node_id;
-            if (node_obj.containsKey("name")) {
+            if (node_obj["name"].is<const char*>()) {
                 node_doc["name"] = node_obj["name"];
             }
-            if (node_obj.containsKey("type")) {
+            if (node_obj["type"].is<const char*>()) {
                 node_doc["type"] = node_obj["type"];
             }
 
             // Create properties array for this node
             JsonArray props_array = node_doc["properties"].to<JsonArray>();
 
-            if (node_obj.containsKey("properties")) {
+            if (node_obj["properties"].is<JsonObject>()) {
                 JsonObject props = node_obj["properties"].as<JsonObject>();
                 for (JsonPair prop_pair : props) {
                     const char* prop_id = prop_pair.key().c_str();
@@ -432,19 +433,19 @@ static void create_device_from_description(ControllerDevice* ctrl_dev, JsonDocum
                     // Create property JSON
                     JsonDocument prop_doc;
                     prop_doc["id"] = prop_id;
-                    if (prop_obj.containsKey("name")) {
+                    if (prop_obj["name"].is<const char*>()) {
                         prop_doc["name"] = prop_obj["name"];
                     }
-                    if (prop_obj.containsKey("datatype")) {
+                    if (prop_obj["datatype"].is<const char*>()) {
                         prop_doc["datatype"] = prop_obj["datatype"];
                     }
-                    if (prop_obj.containsKey("unit")) {
+                    if (prop_obj["unit"].is<const char*>()) {
                         prop_doc["unit"] = prop_obj["unit"];
                     }
-                    if (prop_obj.containsKey("settable")) {
+                    if (prop_obj["settable"].is<bool>()) {
                         prop_doc["settable"] = prop_obj["settable"];
                     }
-                    if (prop_obj.containsKey("retained")) {
+                    if (prop_obj["retained"].is<bool>()) {
                         prop_doc["retained"] = prop_obj["retained"];
                     }
 

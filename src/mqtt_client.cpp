@@ -89,10 +89,9 @@ boolean mqtt_connect() {
   }
 
   //transportClient.setTimeout(60);//(MQTT_TIMEOUT);
-  mqtt_client.setSocketTimeout(6);//MQTT_TIMEOUT);
+  mqtt_client.setSocketTimeout(15);  // 15 seconds socket timeout
   mqtt_client.setBufferSize(MAX_DATA_LEN + 200);
-  mqtt_client.setKeepAlive(33);
-  mqtt_client.setSocketTimeout(33);
+  mqtt_client.setKeepAlive(90);      // 90 seconds keep-alive
   mqtt_client.setCallback(subscriber_callback);
 
   //construct will

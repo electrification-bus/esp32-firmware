@@ -113,12 +113,30 @@ bool loadPlatformConfiguration() {
   //TODO keys to #define header
   JsonArray conf_array = yml_config["config"].as<JsonArray>();
   config_json = conf_array[0].as<JsonObject>();
-  if (config_json["mqtt_host"].is<JsonString>())
+
+  // Safely copy string values with null checks
+  if (config_json["mqtt_host"].is<JsonString>()) {
     strncpy(mqtt_host, config_json["mqtt_host"].as<JsonString>().c_str(), sizeof(mqtt_host) - 1);
+    mqtt_host[sizeof(mqtt_host) - 1] = '\0';
+  }
+
   mqtt_port = config_json["mqtt_port"].as<uint16_t>();
-  strncpy(mqtt_username, config_json["mqtt_username"].as<JsonString>().c_str(), sizeof(mqtt_username) - 1);
-  strncpy(mqtt_password, config_json["mqtt_password"].as<JsonString>().c_str(), sizeof(mqtt_password) - 1);
-  strncpy(device_id_prefix, config_json["device_id_prefix"].as<JsonString>().c_str(), sizeof(device_id_prefix) - 1);
+
+  if (config_json["mqtt_username"].is<JsonString>()) {
+    strncpy(mqtt_username, config_json["mqtt_username"].as<JsonString>().c_str(), sizeof(mqtt_username) - 1);
+    mqtt_username[sizeof(mqtt_username) - 1] = '\0';
+  }
+
+  if (config_json["mqtt_password"].is<JsonString>()) {
+    strncpy(mqtt_password, config_json["mqtt_password"].as<JsonString>().c_str(), sizeof(mqtt_password) - 1);
+    mqtt_password[sizeof(mqtt_password) - 1] = '\0';
+  }
+
+  if (config_json["device_id_prefix"].is<JsonString>()) {
+    strncpy(device_id_prefix, config_json["device_id_prefix"].as<JsonString>().c_str(), sizeof(device_id_prefix) - 1);
+    device_id_prefix[sizeof(device_id_prefix) - 1] = '\0';
+  }
+
   return true;
 }
 
