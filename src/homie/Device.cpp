@@ -159,14 +159,19 @@ size_t Device::serialize(char* buffer, size_t bufferSize) {
 }
 
 void Device::publishState() {
-  Serial.println("DEVICE publish: $state");
-  char state[128] = {0};
-  sprintf(state, "%s%s", topic(), HOMIE_$STATE);
+  char state_topic[128] = {0};
+  sprintf(state_topic, "%s%s", topic(), HOMIE_$STATE);
+  const char* state_str = device_state_to_cstr(_state);
 
-  if (!_mqtt_client->publish(state, device_state_to_cstr(_state), true)) {
+  Serial.printf("DEVICE publish: %s -> '%s'\n", state_topic, state_str);
+
+  if (!_mqtt_client->publish(state_topic, state_str, true)) {
       Serial.println("MQTT publish: $state failed");
   }
 }
+
+// Static buffer for $description JSON (avoid stack allocation)
+static char _description_json[MAX_DATA_LEN];
 
 void Device::publish() {
 
@@ -174,9 +179,9 @@ void Device::publish() {
   Serial.println("DEVICE publish: $description");
   char top[128] = {0};
   sprintf(top, "%s%s", topic(), HOMIE_$DESCRIPTION);
-  char json[1024] = {0};
-  toJson(json, sizeof(json));
-  if (!_mqtt_client->publish(top, json, true)) {
+  size_t len = toJson(_description_json, sizeof(_description_json));
+  Serial.printf("DEVICE: $description JSON size: %d bytes\n", len);
+  if (!_mqtt_client->publish(top, _description_json, true)) {
       Serial.println("MQTT publish: $description failed");
   }
 

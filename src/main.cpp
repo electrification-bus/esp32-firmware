@@ -1,8 +1,9 @@
 /*
- * Homie Device Main Application
+ * Homie Main Application
  *
- * This device publishes its own nodes and properties to the MQTT broker.
- * Optionally enables controller features via ENABLE_CONTROLLER build flag.
+ * Build modes:
+ *   - Device mode (default): Publishes own nodes/properties to MQTT broker
+ *   - Controller mode (ENABLE_CONTROLLER): Discovers and monitors other Homie devices
  */
 
 #include <Arduino.h>
@@ -10,30 +11,66 @@
 #include <config.h>
 #include <mqtt_client.h>
 #include <ESPmDNS.h>
-#include <homie/Device.h>
-#include <modbus/modbus_master.h>
-#include <util/dict.h>
-#include <homie.h>
 
-// Controller features (optional)
 #ifdef ENABLE_CONTROLLER
+// ============================================================================
+// CONTROLLER MODE - discovers and monitors other Homie devices
+// ============================================================================
 #include <homie/controller.h>
+#include <homie/homie.h>
 
 unsigned long lastDiscoveryPrint = 0;
 unsigned long lastStatsCheck = 0;
 
-void controller_setup_after_mqtt() {
-    Serial.println("CONTROLLER: Enabling controller features");
+// Callback to re-publish state after MQTT reconnection
+void on_mqtt_reconnect() {
+    char state_topic[64];
+    snprintf(state_topic, sizeof(state_topic), "%s/%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID(), HOMIE_$STATE);
+    mqtt_client.publish(state_topic, HOMIE_STATE_READY, true);
+    Serial.println("CONTROLLER: Re-published $state after reconnect");
+}
 
-    // Initialize the Homie controller with existing MQTT client
-    controller_init(&mqtt_client, "homie");
+void setup() {
+    Serial.begin(115200);
+    generateDeviceID();
+
+    Serial.println("\n\n===== HOMIE CONTROLLER =====");
+
+    if (!loadConfiguration()) {
+        Serial.println("CONFIG: **ERROR -- failed to load configuration");
+        return;
+    }
+
+    setup_ethernet();
+    while (!client_connected()) {
+        Serial.println("Waiting for network connection...");
+        delay(1000);
+    }
+
+    setup_mdns();
+    setup_mqtt();
+
+    // Register reconnect callback to re-publish state after reconnection
+    mqtt_set_reconnect_callback(on_mqtt_reconnect);
+
+    // Publish controller's own state (overrides LWT "lost" from previous session)
+    on_mqtt_reconnect();
+
+    // Initialize the Homie controller
+    Serial.println("CONTROLLER: Initializing controller mode");
+    controller_init(&mqtt_client, HOMIE_HOMIE, false);
+
+    // Register controller callback to receive MQTT messages
+    mqtt_set_fallback_callback(controller_mqtt_callback);
 
     // Setup device discovery
     controller_setup_discovery();
+
+    Serial.println("CONTROLLER: Ready - discovering devices...");
 }
 
-void controller_main_loop() {
-    // Run controller logic (timeout handling, etc.)
+void loop() {
+    loop_mqtt();
     controller_loop();
 
     // Print discovered devices every 30 seconds
@@ -70,7 +107,23 @@ void controller_main_loop() {
                      stats.messages_received);
     }
 }
-#endif // ENABLE_CONTROLLER
+
+#else
+// ============================================================================
+// DEVICE MODE - publishes own nodes and properties to MQTT broker
+// ============================================================================
+#include <homie/Device.h>
+#include <modbus/modbus_master.h>
+#include <util/dict.h>
+#include <homie.h>
+
+// Callback to re-publish state after MQTT reconnection
+void on_mqtt_reconnect() {
+    if (theDevice) {
+        theDevice->publishState();
+        Serial.println("DEVICE: Re-published $state after reconnect");
+    }
+}
 
 void setup() {
     Serial.begin(115200);
@@ -93,6 +146,9 @@ void setup() {
     setup_mqtt();
     setup_modbus_master();
 
+    // Register reconnect callback to re-publish state after reconnection
+    mqtt_set_reconnect_callback(on_mqtt_reconnect);
+
     // Initialize the Homie Device from the config
     JsonDocument* dev_conf = get_homie_config();
     Serial.printf("Device name '%s', type '%s'\n",
@@ -109,20 +165,11 @@ void setup() {
     theDevice->setState(DeviceState::DEVICE_STATE_READY); // setState will publish the $state
 
     setup_homie();
-
-#ifdef ENABLE_CONTROLLER
-    // Enable controller features after device is ready
-    controller_setup_after_mqtt();
-#endif
 }
 
 void loop() {
-    // Device role - always runs
     loop_homie();
     loop_mqtt();
-
-#ifdef ENABLE_CONTROLLER
-    // Controller role - optional
-    controller_main_loop();
-#endif
 }
+
+#endif // ENABLE_CONTROLLER

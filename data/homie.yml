@@ -83,7 +83,6 @@ nodes:
         settable: true
         retained: true
         value: false
-
   - id: meter_volts
     name: Voltage Sensor
     type: energy

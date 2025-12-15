@@ -21,6 +21,7 @@ typedef struct {
     unsigned long last_seen_ms;      // Last time we heard from this device
     bool has_description;            // Whether we've received $description
     bool is_active;                  // Whether this slot is in use
+    bool properties_subscribed;      // Whether we've subscribed to properties
 } ControllerDevice;
 
 // Controller statistics
@@ -33,7 +34,10 @@ typedef struct {
 } ControllerStats;
 
 // Initialize the Homie controller
-void controller_init(PubSubClient* mqtt_client, const char* domain = "homie");
+// domain: the domain to use for publishing commands (e.g., "homie")
+// discover_all_domains: if true, discover devices from any domain using wildcard (+)
+//                       if false, only discover devices from the specified domain
+void controller_init(PubSubClient* mqtt_client, const char* domain = HOMIE_HOMIE, bool discover_all_domains = true);
 
 // Setup device discovery (subscribes to discovery topics)
 void controller_setup_discovery();

@@ -4,7 +4,7 @@
 #include <homie/Property.h>
 
 #ifndef MAX_DATA_LEN
-#define MAX_DATA_LEN 4096
+#define MAX_DATA_LEN 8192 //+2048
 #endif
 
 #ifndef MQTT_TIMEOUT
@@ -34,6 +34,18 @@ void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb,
 void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_t cb, NodeEntity* entity);
 void subscriber_callback(char* topic, uint8_t* payload, unsigned int length);
 void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data);
+
+// Callback type for forwarding unhandled MQTT messages (used by controller)
+typedef void (*mqtt_fallback_callback_t)(char* topic, uint8_t* payload, unsigned int length);
+
+// Register a fallback callback for messages not handled by property subscriptions
+void mqtt_set_fallback_callback(mqtt_fallback_callback_t callback);
+
+// Callback type for MQTT reconnection (to re-publish state)
+typedef void (*mqtt_reconnect_callback_t)();
+
+// Register a callback to be called after MQTT reconnection
+void mqtt_set_reconnect_callback(mqtt_reconnect_callback_t callback);
 
 void mqtt_publish(const char * data);
 void mqtt_restart();

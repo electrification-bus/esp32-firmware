@@ -49,6 +49,20 @@ int num_subscribers = 0;
 
 subscribed_settable_property_t settable_properties[128];
 
+// Fallback callback for unhandled messages (used by controller)
+static mqtt_fallback_callback_t _fallback_callback = nullptr;
+
+void mqtt_set_fallback_callback(mqtt_fallback_callback_t callback) {
+    _fallback_callback = callback;
+}
+
+// Reconnect callback (to re-publish state after reconnection)
+static mqtt_reconnect_callback_t _reconnect_callback = nullptr;
+
+void mqtt_set_reconnect_callback(mqtt_reconnect_callback_t callback) {
+    _reconnect_callback = callback;
+}
+
 // Function prototype for mqtt_publish_json
 void mqtt_publish_json(const char* subtopic, const JsonDocument* payload);
 
@@ -58,7 +72,16 @@ void generateTopics() {
 }
 
 void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb, Property* instance) {
-   //Serial.printf("Callback Subscription #%d: %s\n", num_subscribers, topic);
+   // Check if topic already registered (avoid duplicates on reconnection)
+   for(int i=0; i<num_subscribers; i++) {
+     if (strcmp(settable_properties[i].topic, topic) == 0) {
+       // Already registered, update callback/instance in case they changed
+       settable_properties[i].property_callback = cb;
+       settable_properties[i].instance = instance;
+       return;
+     }
+   }
+   // New subscription
    strcpy(settable_properties[num_subscribers].topic, topic);
    settable_properties[num_subscribers].property_callback = cb;
    settable_properties[num_subscribers].instance = instance;
@@ -107,11 +130,14 @@ boolean mqtt_connect() {
 
   if (mqtt_client.state() == 0) {
     Serial.printf("MQTT connected: %s\r\n", mqtt_host);
-    //mqttclient.publish(getDeviceTopic().c_str(), "connected"); // Once connected, publish an announcement..
-    //re-subscrive to topics if needed
+    //re-subscribe to topics if needed
     for(int i=0;i<num_subscribers;i++) {
       Serial.printf("MQTT subscribing to topic: %s\n", settable_properties[i].topic);
       mqtt_client.subscribe(settable_properties[i].topic);
+    }
+    // Call reconnect callback to re-publish state (overrides LWT "lost")
+    if (_reconnect_callback) {
+      _reconnect_callback();
     }
   } else {
     Serial.println("MQTT failed: ");
@@ -170,21 +196,26 @@ void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data)
 // MQTT Subscriber callback
 //
 // all subscriptions arrive here
+// Note: Homie $description payloads can be large, use static buffer to avoid stack overflow
+static char _mqtt_payload_buf[MAX_DATA_LEN];
+
 void subscriber_callback(char* topic, uint8_t* payload, unsigned int length) {
   //sanity
-  if (length > 254) {
-    Serial.printf("MQTT CALLBACK: not handled: payload len overrun:%d\n", length);
+  if (length > MAX_DATA_LEN - 1) {
+    Serial.printf("MQTT CALLBACK: not handled: payload len overrun:%d (max:%d)\n", length, MAX_DATA_LEN - 1);
     return;
   }
 
-  char payload_buf[length+1] = {0};
+  char* payload_buf = _mqtt_payload_buf;
   strncpy(payload_buf, (char*)payload, length);
   payload_buf[length] = '\0'; //ensure null-termination
   Serial.printf("\n***MQTT CALLBACK: topic '%s', payload '%s'\n", topic, payload_buf);
 
   //route to subscriber property
+  bool handled = false;
   for(int i=0;i<num_subscribers;i++) {
     if (strcmp(settable_properties[i].topic, topic) == 0) {
+      handled = true;
       if (settable_properties[i].property_callback && settable_properties[i].instance) {
         Serial.printf("MQTT: Invoking property callback for topic '%s'\n", topic);
           (settable_properties[i].instance->*settable_properties[i].property_callback)(topic, payload_buf);
@@ -194,6 +225,12 @@ void subscriber_callback(char* topic, uint8_t* payload, unsigned int length) {
           (settable_properties[i].entity->*settable_properties[i].entity_callback)(settable_properties[i].instance);
       }
     }
+  }
+
+  // If no property handler matched, forward to fallback callback (e.g., controller)
+  // Pass the already null-terminated payload_buf to avoid duplicate buffer allocation
+  if (!handled && _fallback_callback) {
+    _fallback_callback(topic, (uint8_t*)payload_buf, length);
   }
 }
 

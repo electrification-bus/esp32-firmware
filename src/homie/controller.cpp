@@ -5,8 +5,9 @@
 
 // Module state
 static PubSubClient* _mqtt_client = nullptr;
-static char _domain[16] = "homie";
-static char _version[8] = "5";
+static char _domain[16] = HOMIE_HOMIE;
+static char _version[8] = HOMIE_VERSION_NUM;
+static bool _discover_all_domains = true;  // If true, use wildcard for domain discovery
 
 // Discovered devices storage - uses actual Device objects
 static ControllerDevice _devices[MAX_DISCOVERED_DEVICES];
@@ -28,14 +29,16 @@ static bool parse_topic(const char* topic, char* domain_out, char* device_id_out
 static void create_device_from_description(ControllerDevice* ctrl_dev, JsonDocument& doc);
 
 // Initialize the controller
-void controller_init(PubSubClient* mqtt_client, const char* domain) {
+void controller_init(PubSubClient* mqtt_client, const char* domain, bool discover_all_domains) {
     _mqtt_client = mqtt_client;
     strncpy(_domain, domain, sizeof(_domain) - 1);
     _domain[sizeof(_domain) - 1] = '\0';
+    _discover_all_domains = discover_all_domains;
 
     controller_reset();
 
-    Serial.printf("CONTROLLER: Initialized for domain '%s'\n", _domain);
+    Serial.printf("CONTROLLER: Initialized for domain '%s', discover_all_domains=%s\n",
+                  _domain, _discover_all_domains ? "true" : "false");
 }
 
 // Setup device discovery
@@ -45,9 +48,15 @@ void controller_setup_discovery() {
         return;
     }
 
-    // Subscribe to device state messages for discovery: +/5/+/$state
+    // Subscribe to device state messages for discovery
+    // If _discover_all_domains is true: +/5/+/$state (any domain)
+    // If false: homie/5/+/$state (specific domain only)
     char discovery_topic[64];
-    snprintf(discovery_topic, sizeof(discovery_topic), "+/%s/+/$state", _version);
+    if (_discover_all_domains) {
+        snprintf(discovery_topic, sizeof(discovery_topic), "+/%s/+/$state", _version);
+    } else {
+        snprintf(discovery_topic, sizeof(discovery_topic), "%s/%s/+/$state", _domain, _version);
+    }
 
     if (_mqtt_client->subscribe(discovery_topic)) {
         Serial.printf("CONTROLLER: Subscribed to discovery topic: %s\n", discovery_topic);
@@ -55,8 +64,12 @@ void controller_setup_discovery() {
         Serial.printf("CONTROLLER: Failed to subscribe to: %s\n", discovery_topic);
     }
 
-    // Also subscribe to device descriptions: +/5/+/$description
-    snprintf(discovery_topic, sizeof(discovery_topic), "+/%s/+/$description", _version);
+    // Also subscribe to device descriptions
+    if (_discover_all_domains) {
+        snprintf(discovery_topic, sizeof(discovery_topic), "+/%s/+/$description", _version);
+    } else {
+        snprintf(discovery_topic, sizeof(discovery_topic), "%s/%s/+/$description", _domain, _version);
+    }
     if (_mqtt_client->subscribe(discovery_topic)) {
         Serial.printf("CONTROLLER: Subscribed to descriptions: %s\n", discovery_topic);
     }
@@ -218,14 +231,12 @@ int controller_list_device_info(ControllerDevice* devices, int max_devices) {
 }
 
 // MQTT callback handler
+// Note: payload is already null-terminated by subscriber_callback in mqtt_client.cpp
 void controller_mqtt_callback(char* topic, uint8_t* payload, unsigned int length) {
     _stats.messages_received++;
 
-    // Null-terminate payload
-    char payload_str[512];
-    int copy_len = length < sizeof(payload_str) - 1 ? length : sizeof(payload_str) - 1;
-    memcpy(payload_str, payload, copy_len);
-    payload_str[copy_len] = '\0';
+    // Payload is already null-terminated by mqtt_client's subscriber_callback
+    const char* payload_str = (const char*)payload;
 
     // Parse topic to extract components
     char domain[16], device_id[32], node_id[32], property_id[32];
@@ -289,11 +300,15 @@ static void handle_state_message(const char* domain, const char* device_id, cons
         Serial.printf("CONTROLLER: New device discovered: %s (state: %s)\n",
                      device_id, payload);
         _stats.last_discovery_ms = millis();
-
-        // Auto-subscribe to device properties
-        controller_subscribe_device_properties(device_id);
     } else {
         Serial.printf("CONTROLLER: Device %s state: %s\n", device_id, payload);
+    }
+
+    // Subscribe to device properties (only once per device)
+    if (!ctrl_dev->properties_subscribed) {
+        Serial.printf("CONTROLLER: First-time subscription for device %s\n", device_id);
+        controller_subscribe_device_properties(device_id);
+        ctrl_dev->properties_subscribed = true;
     }
 }
 
@@ -382,6 +397,7 @@ static int find_or_create_device(const char* device_id) {
             _devices[i].last_seen_ms = millis();
             _devices[i].is_active = true;
             _devices[i].has_description = false;
+            _devices[i].properties_subscribed = false;
             _device_count++;
             return i;
         }

@@ -238,7 +238,7 @@ void setup() {
     mqttClient.setCallback(controller_mqtt_callback);
 
     // Initialize the Homie controller
-    controller_init(&mqttClient, "homie");  // or "ebus" for eBus-Homie
+    controller_init(&mqttClient, HOMIE_HOMIE);  // or "ebus" for eBus-Homie
 
     Serial.println("Controller initialized");
 }

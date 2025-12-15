@@ -111,7 +111,8 @@ const char* Property::coerced_value() const {
 }
 
 void Property::setDatatype(const char* dt)  {
-    strcpy(_datatype, dt);
+    strncpy(_datatype, dt, sizeof(_datatype) - 1);
+    _datatype[sizeof(_datatype) - 1] = '\0';
 }
 
 const char* Property::datatype() const {

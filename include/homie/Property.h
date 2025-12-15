@@ -64,7 +64,7 @@ private:
     char _id[32] = {0};
     char _name[32] = {0};
     char _value[32] = {0};
-    char _datatype[8] = {0};
+    char _datatype[16] = {0};
     char _topic[64] = {0};
     char _format[16] = {0};
     bool _settable;
