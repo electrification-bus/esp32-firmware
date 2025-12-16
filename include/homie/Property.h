@@ -63,7 +63,7 @@ private:
     bool _dirty_settable = false;
     char _id[32] = {0};
     char _name[32] = {0};
-    char _value[32] = {0};
+    char _value[256] = {0};
     char _datatype[16] = {0};
     char _topic[64] = {0};
     char _format[16] = {0};
@@ -78,7 +78,7 @@ private:
     void* _async_loop = nullptr;
 
     bool _boolValue;
-    char _stringValue[32];
+    char _stringValue[256];
     float _floatValue;
     uint64_t _unsignedValue;
     int _intValue;

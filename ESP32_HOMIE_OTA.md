@@ -799,6 +799,10 @@ void check_device_version(const char* device_id) {
 
 Simple Python HTTP server for testing:
 
+cd .pio/build/esp32-poe-iso && python -m http.server 8080 --bind 0.0.0.0
+
+or
+
 ```python
 #!/usr/bin/env python3
 # firmware_server.py

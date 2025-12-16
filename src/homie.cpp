@@ -5,6 +5,7 @@
 #include <node/modbus_eletechsup32.h>
 #include <node/modbus_sht20.h>
 #include <node/gpio_ssr.h>
+#include <node/ota_node.h>
 
 //the nodes (sensors/actuators) attached to this Homie device
 BME280* bme280 = nullptr;
@@ -14,6 +15,7 @@ BME280* bme280 = nullptr;
 Modbus_Eletechsup32* iv_detector = nullptr;     //Modbus Eletechsup32 sensor for 32 discrete inputs
 Modbus_SHT20* sht20 = nullptr;                  //Modbus SHT20 sensor for temperature and humidity
 SSR* ssr = nullptr;                             //Solid State Relay driven by GPIO
+// otaNode is defined in ota_node.cpp
 
 void setup_homie() {
 
@@ -22,12 +24,14 @@ void setup_homie() {
   //iv_detector = new Modbus_Eletechsup32("voltage_current_detector");
   //sht20 = new Modbus_SHT20("environment_sht20");
   ssr = new SSR("relay1");
+  otaNode = new OTANode("ota");
 }
 
 void loop_homie() {
     //loop the nodes
     //if (bme280 != nullptr) bme280->loop();
     //if (iv_detector != nullptr) iv_detector->loop();
-    //if (sht20 != nullptr) sht20->loop();  
-    if (ssr != nullptr) ssr->loop();  
+    //if (sht20 != nullptr) sht20->loop();
+    if (ssr != nullptr) ssr->loop();
+    if (otaNode != nullptr) otaNode->loop();
   }
