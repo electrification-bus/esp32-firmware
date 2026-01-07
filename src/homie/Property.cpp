@@ -119,7 +119,7 @@ const char* Property::datatype() const {
     return _datatype;
 }
 
-PubSubClient* Property::mqttClient() const {
+MQTTClient* Property::mqttClient() const {
     return _mqtt_client;
 }
 
@@ -149,7 +149,8 @@ void Property::set_callback() const{
 }
 
 void Property::publish() {
-    _mqtt_client->publish(topic(), _value, retained());
+    // MQTTClient publish: (topic, payload, retained, qos)
+    _mqtt_client->publish(topic(), _value, retained(), 0);
 }
 
 void Property::publish_target_value(const char* payload) {
@@ -222,7 +223,7 @@ const char* Property::topic() {
     return _topic;
 }
 
-void Property::setMQTTClient(PubSubClient* client) {
+void Property::setMQTTClient(MQTTClient* client) {
     _mqtt_client = client;
 }
 

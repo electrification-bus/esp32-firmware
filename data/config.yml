@@ -1,10 +1,10 @@
 config: 
   - wifi_ssid: 
     wifi_password: 
-    mqtt_host: 192.168.1.70
+    mqtt_host: public.cloud.shiftr.io
     mqtt_port: 1883
-    mqtt_username:
-    mqtt_password:
+    mqtt_username: public
+    mqtt_password: public
     device_id: esp32poeiso
     device_name: ESP32 POE ISO Homie
     device_type: sensor

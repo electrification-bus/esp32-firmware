@@ -50,7 +50,7 @@ void Device::addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json) {
     }
 }
 
-void Device::init(const char* name, const char* id, const char* type, PubSubClient* mqtt_client) {
+void Device::init(const char* name, const char* id, const char* type, MQTTClient* mqtt_client) {
   setName(name);
   setId(id);
   setType(type);
@@ -118,7 +118,7 @@ const char* Device::type() {
     return _type;
 }
 
-void Device::setMQTTClient(PubSubClient* client) {
+void Device::setMQTTClient(MQTTClient* client) {
   _mqtt_client = client;
   for(int i=0; i < _num_nodes; i++) {
       _nodes[i]->setMQTTClient(client); // Set the MQTT client for each node
@@ -165,7 +165,8 @@ void Device::publishState() {
 
   Serial.printf("DEVICE publish: %s -> '%s'\n", state_topic, state_str);
 
-  if (!_mqtt_client->publish(state_topic, state_str, true)) {
+  // MQTTClient publish: (topic, payload, retained, qos)
+  if (!_mqtt_client->publish(state_topic, state_str, true, 0)) {
       Serial.println("MQTT publish: $state failed");
   }
 }
@@ -181,7 +182,8 @@ void Device::publish() {
   sprintf(top, "%s%s", topic(), HOMIE_$DESCRIPTION);
   size_t len = toJson(_description_json, sizeof(_description_json));
   Serial.printf("DEVICE: $description JSON size: %d bytes\n", len);
-  if (!_mqtt_client->publish(top, _description_json, true)) {
+  // MQTTClient publish: (topic, payload, retained, qos)
+  if (!_mqtt_client->publish(top, _description_json, true, 0)) {
       Serial.println("MQTT publish: $description failed");
   }
 

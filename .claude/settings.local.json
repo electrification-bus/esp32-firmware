@@ -4,7 +4,15 @@
       "Bash(pio run:*)",
       "Bash(taskkill:*)",
       "Bash(mode:*)",
-      "Bash(pio device:*)"
+      "Bash(pio device:*)",
+      "Bash(dir:*)",
+      "Bash(cat:*)",
+      "Bash(wsl bash:*)",
+      "Bash(wsl mosquitto_pub:*)",
+      "Bash(wsl mosquitto_sub:*)",
+      "Bash(ping:*)",
+      "Bash(echo:*)",
+      "Bash(cmd /c \"mode COM12 DTR=off & ping -n 2 localhost > nul & mode COM12 DTR=on\")"
     ]
   }
 }

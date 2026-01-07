@@ -38,8 +38,10 @@ public:
     const char* unit();
     void setFormat(const char* fmt);
     const char* format();
-    void setMQTTClient(PubSubClient* client);
-    PubSubClient* mqttClient() const;
+    //void setMQTTClient(PubSubClient* client);
+    void setMQTTClient(MQTTClient* client);
+    //PubSubClient* mqttClient() const;
+    MQTTClient* mqttClient() const;
     void start_mqtt_client();
     void setSettable(bool settable);
     bool settable();
@@ -74,7 +76,8 @@ private:
     int _round_to = 0;
     bool _supports_target = false;
     Node* _parent_node = nullptr;
-    PubSubClient* _mqtt_client;
+    //PubSubClient* _mqtt_client;
+    MQTTClient* _mqtt_client;
     void* _async_loop = nullptr;
 
     bool _boolValue;

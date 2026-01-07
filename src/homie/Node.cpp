@@ -79,7 +79,7 @@ const char* Node::topic() {
     return _topic;
 }
 
-void Node::setMQTTClient(PubSubClient* client) {
+void Node::setMQTTClient(MQTTClient* client) {
     _mqtt_client = client;
     for(int i=0; i < _num_properties; i++) {
         _properties[i]->setMQTTClient(client); // Set the MQTT client for each property

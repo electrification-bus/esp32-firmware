@@ -2,10 +2,11 @@
 #include <Arduino.h>
 #include <node/NodeEntity.h>
 #include <modbus/modbus_master.h>
+#include <modbus/modbus_queue.h>
 
 class ModbusRTUEntity : public NodeEntity, public ModbusMaster {
 
-    public: 
+    public:
         ModbusRTUEntity(const char* homie_id);
         ~ModbusRTUEntity(){};
 
@@ -13,14 +14,30 @@ class ModbusRTUEntity : public NodeEntity, public ModbusMaster {
         bool pollIntervalTrigger() override;
 
         virtual uint8_t poll() = 0;         // loop processing - implement in derived classes
-        virtual bool nodeBegin() = 0;      // start the node - implement in derived classes
+        virtual bool nodeBegin() = 0;       // start the node - implement in derived classes
 
         void setModbusAddress(uint8_t addr);
         uint8_t getModbusAddress() const;
 
+        // Async queue support
+        void setUseAsyncQueue(bool useAsync);
+        bool getUseAsyncQueue() const;
+
+        // Queue an async poll request - derived classes should implement
+        virtual void pollAsync();
+
+        // Handle async response callback - derived classes should override
+        virtual void handleAsyncResponse(ModbusResponse* resp);
+
+        // Convenience methods for queueing reads
+        uint32_t queueReadInputRegisters(uint16_t reg_addr, uint16_t num_regs);
+        uint32_t queueReadHoldingRegisters(uint16_t reg_addr, uint16_t num_regs);
+        uint32_t queueWriteRegister(uint16_t reg_addr, uint16_t value);
 
     protected:
         uint8_t _modbus_address;
         int _poll_timestamp;
+        bool _use_async_queue;          // Toggle between sync and async modes
+        uint32_t _pending_command_id;   // Track outstanding async command
 
 };

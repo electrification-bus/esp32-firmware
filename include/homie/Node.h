@@ -1,6 +1,7 @@
 #pragma once
 #include <ArduinoJson.h>
-#include <PubSubClient.h>
+//#include <MQTTClient.h>
+#include <MQTT.h>
 class Property; // Forward declaration
 class Device;
 
@@ -19,7 +20,8 @@ public:
     const char* type();
     void setDevice(Device* device);
     Device* device();
-    void setMQTTClient(PubSubClient* client);
+    //void setMQTTClient(MQTTClient* client);
+    void setMQTTClient(MQTTClient* client);
     void mqttConnected();
     void setTopic(const char*);
     const char* topic();
@@ -32,7 +34,7 @@ private:
     char _name[64] = {0};
     char _type[16] = {0};
     char _topic[64] = {0};
-    PubSubClient* _mqtt_client; // MQTT client for this node
+    MQTTClient* _mqtt_client; // MQTT client for this node
     Property* _properties[32]; //array of properties, could be a vector or list in a full implementation
     int _num_properties = 0; // Number of properties added to this node
     int _num_properties_mapped = 0; // Number of properties mapped to a device callback

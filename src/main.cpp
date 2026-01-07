@@ -114,6 +114,7 @@ void loop() {
 // ============================================================================
 #include <homie/Device.h>
 #include <modbus/modbus_master.h>
+#include <modbus/modbus_queue.h>
 #include <util/dict.h>
 #include <homie.h>
 
@@ -143,7 +144,14 @@ void setup() {
     }
 
     setup_mdns();
+
+    // Initialize MQTT publish queue before setup_mqtt (for thread-safe publishing)
+    mqtt_queue_init();
     setup_mqtt();
+
+    // Initialize modbus queue system and worker task
+    modbus_queue_init();
+    modbus_task_start(1);  // Start modbus worker on Core 1
     setup_modbus_master();
 
     // Register reconnect callback to re-publish state after reconnection
@@ -161,15 +169,20 @@ void setup() {
                    (*dev_conf)[HOMIE_TYPE].as<const char*>(),
                    &mqtt_client);
     theDevice->publishState(); // default state is init
+    loop_mqtt();  // Flush MQTT messages
     theDevice->publish();
+    loop_mqtt();  // Flush MQTT messages
     theDevice->setState(DeviceState::DEVICE_STATE_READY); // setState will publish the $state
+    loop_mqtt();  // Flush MQTT messages - ensure $state=ready is sent before continuing
 
     setup_homie();
 }
 
 void loop() {
-    loop_homie();
+    // MQTT must run first and frequently to maintain keepalive
     loop_mqtt();
+    loop_modbus_master();
+    loop_homie();
 }
 
 #endif // ENABLE_CONTROLLER

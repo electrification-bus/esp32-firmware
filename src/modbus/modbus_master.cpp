@@ -3,6 +3,7 @@
 #include <config.h>
 #include <mqtt_client.h>
 #include <modbus/modbus_master.h>
+#include <modbus/modbus_queue.h>
 
 unsigned long lastPollMillis = 0;
 
@@ -20,4 +21,9 @@ void setup_modbus_master() {
 
 SoftwareSerial& get_serial1() {
     return _modbus1;
+}
+
+void loop_modbus_master() {
+    // Process async modbus responses (non-blocking)
+    modbus_process_responses();
 }

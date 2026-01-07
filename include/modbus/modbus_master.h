@@ -9,6 +9,7 @@
 
 void setup_modbus_clients();
 void setup_modbus_master();
+void loop_modbus_master();
 SoftwareSerial& get_serial1();
 void update();
 

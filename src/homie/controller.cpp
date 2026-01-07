@@ -4,7 +4,7 @@
 #include <string.h>
 
 // Module state
-static PubSubClient* _mqtt_client = nullptr;
+static MQTTClient* _mqtt_client = nullptr;
 static char _domain[16] = HOMIE_HOMIE;
 static char _version[8] = HOMIE_VERSION_NUM;
 static bool _discover_all_domains = true;  // If true, use wildcard for domain discovery
@@ -29,7 +29,7 @@ static bool parse_topic(const char* topic, char* domain_out, char* device_id_out
 static void create_device_from_description(ControllerDevice* ctrl_dev, JsonDocument& doc);
 
 // Initialize the controller
-void controller_init(PubSubClient* mqtt_client, const char* domain, bool discover_all_domains) {
+void controller_init(MQTTClient* mqtt_client, const char* domain, bool discover_all_domains) {
     _mqtt_client = mqtt_client;
     strncpy(_domain, domain, sizeof(_domain) - 1);
     _domain[sizeof(_domain) - 1] = '\0';
@@ -137,7 +137,8 @@ bool controller_set_property(const char* device_id, const char* node_id,
              _domain, _version, device_id, node_id, property_id);
 
     // Publish non-retained message (per Homie spec)
-    bool result = _mqtt_client->publish(topic, value, false);
+    // MQTTClient publish: (topic, payload, retained, qos)
+    bool result = _mqtt_client->publish(topic, value, false, 0);
 
     if (result) {
         Serial.printf("CONTROLLER: Sent command to %s: %s\n", topic, value);

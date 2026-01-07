@@ -1,6 +1,8 @@
 #pragma once
 #include <Arduino.h>
-#include <PubSubClient.h>
+//#include <PubSubClient.h>
+#include <MQTT.h>
+
 #include <ArduinoJson.h>
 #include <homie/Device.h>
 #include <homie/Node.h>
@@ -37,7 +39,8 @@ typedef struct {
 // domain: the domain to use for publishing commands (e.g., "homie")
 // discover_all_domains: if true, discover devices from any domain using wildcard (+)
 //                       if false, only discover devices from the specified domain
-void controller_init(PubSubClient* mqtt_client, const char* domain = HOMIE_HOMIE, bool discover_all_domains = true);
+//void controller_init(PubSubClient* mqtt_client, const char* domain = HOMIE_HOMIE, bool discover_all_domains = true);
+void controller_init(MQTTClient* mqtt_client, const char* domain = HOMIE_HOMIE, bool discover_all_domains = true);
 
 // Setup device discovery (subscribes to discovery topics)
 void controller_setup_discovery();

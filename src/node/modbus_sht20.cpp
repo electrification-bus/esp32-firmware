@@ -4,13 +4,14 @@
 
 #define PAUSE_ON_RAMP_LEVELS 30000
 
-Modbus_SHT20::Modbus_SHT20(const char* homie_node_id) : ModbusRTUEntity(homie_node_id) {
+Modbus_SHT20::Modbus_SHT20(const char* homie_node_id, bool useAsyncQueue) : ModbusRTUEntity(homie_node_id) {
     _modbus_address = SHT20_ADDR;
     temperature = 0;
     humidity = 0;
     _poll_timestamp = 0;
     timestamp_last_report = 0;
     timestamp_last_failure = 0;
+    _use_async_queue = useAsyncQueue;
 
     np_temperature.setup(getNodeId(), "temperature");
     np_humidity.setup(getNodeId(), "relative_humidity");
@@ -71,4 +72,30 @@ uint8_t Modbus_SHT20::query_register(uint16_t reg) {
         timestamp_last_failure = millis();
     }
     return result;
+}
+
+// Async queue support - queue a read request (non-blocking)
+void Modbus_SHT20::pollAsync() {
+    Serial.println("Modbus_SHT20: POLL ASYNC (non-blocking)");
+    // Queue read of 2 input registers: temp and humidity
+    queueReadInputRegisters(rTEMPERATURE, 2);
+}
+
+// Handle async response callback - called from modbus_process_responses()
+void Modbus_SHT20::handleAsyncResponse(ModbusResponse* resp) {
+    if (resp->success) {
+        timestamp_last_report = millis();
+        // Process the response data
+        if (resp->data_length >= 2) {
+            Serial.printf("Modbus_SHT20: Temperature: %2.1fC  Humidity:%2.1f%%\n",
+                          resp->data[0]/10.0, resp->data[1]/10.0);
+            temperature = resp->data[0];
+            humidity = resp->data[1];
+            np_temperature.set_value_and_publish(float(temperature/10.0));
+            np_humidity.set_value_and_publish(float(humidity/10.0));
+        }
+    } else {
+        timestamp_last_failure = millis();
+        Serial.printf("Modbus_SHT20: Async read failed, error=%d\n", resp->error_code);
+    }
 }

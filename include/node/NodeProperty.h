@@ -87,7 +87,8 @@ class NodeProperty {
         }
 
         void publish() {
-            mqtt_client.publish(_topic, _value);
+            // Use thread-safe queue for publishing from any task/core
+            mqtt_queue_publish(_topic, _value, false);
         }        
         const char* topic() const { return _topic; }
         void set_topic(const char* topic) { strcpy(_topic, topic); }

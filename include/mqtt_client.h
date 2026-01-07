@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
-#include <PubSubClient.h>   // MQTT https://github.com/knolleary/pubsubclient PlatformIO lib: 89
+//#include <PubSubClient.h>   // MQTT https://github.com/knolleary/pubsubclient PlatformIO lib: 89
+#include <MQTT.h>
 #include <homie/Property.h>
 
 #ifndef MAX_DATA_LEN
@@ -32,7 +33,7 @@ void loop_mqtt();
 void setup_mqtt();
 void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb, Property* instance);
 void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_t cb, NodeEntity* entity);
-void subscriber_callback(char* topic, uint8_t* payload, unsigned int length);
+void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int length);
 void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data);
 
 // Callback type for forwarding unhandled MQTT messages (used by controller)
@@ -50,4 +51,10 @@ void mqtt_set_reconnect_callback(mqtt_reconnect_callback_t callback);
 void mqtt_publish(const char * data);
 void mqtt_restart();
 boolean mqtt_connected();
-extern PubSubClient mqtt_client;
+
+// Thread-safe MQTT publish queue (for publishing from other tasks/cores)
+void mqtt_queue_init();
+bool mqtt_queue_publish(const char* topic, const char* payload, bool retained = false);
+
+//extern PubSubClient mqtt_client;
+extern MQTTClient mqtt_client;

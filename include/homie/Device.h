@@ -10,12 +10,14 @@ class Device {
     Device();
     ~Device() {};
 
-    void init(const char* name, const char* id, const char* type, PubSubClient* mqtt_client);
+    //void init(const char* name, const char* id, const char* type, MQTTClient* mqtt_client);
+    void init(const char* name, const char* id, const char* type, MQTTClient* mqtt_client);
     void setState(DeviceState state);
     DeviceState state() { return _state;};
     Node* addNode(JsonVariant node, const char* topic);
     void addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json);
-    void setMQTTClient(PubSubClient* client);
+    //void setMQTTClient(MQTTClient* client);
+    void setMQTTClient(MQTTClient* client);
     void mqttConnected();
     size_t toJson(char* buffer, size_t bufferSize);
     void setId(const char* id);
@@ -40,7 +42,7 @@ class Device {
     Node* _nodes[32] = {0};
     DeviceState _state = DEVICE_STATE_INIT;
     JsonDocument _serialized;
-    PubSubClient* _mqtt_client;
+    MQTTClient* _mqtt_client;
     int _num_nodes;
 
 };
