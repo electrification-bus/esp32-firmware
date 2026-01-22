@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <config.h>
-#include <node/modbus_eletechsup32.h>
+#include <node/modbus/eletechsup32.h>
 #include <mqtt_client.h>
 
 Modbus_Eletechsup32::Modbus_Eletechsup32(const char* homie_node_id) : ModbusRTUEntity(homie_node_id) {

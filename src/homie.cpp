@@ -1,10 +1,10 @@
 #include <homie.h>
 
 //example nodes supported by this Homie device
-#include <node/i2c_bme280.h>
-#include <node/modbus_eletechsup32.h>
-#include <node/modbus_sht20.h>
-#include <node/gpio_ssr.h>
+#include <node/i2c/bme280.h>
+#include <node/modbus/eletechsup32.h>
+#include <node/modbus/sht20.h>
+#include <node/gpio/ssr.h>
 #include <node/ota_node.h>
 
 //the nodes (sensors/actuators) attached to this Homie device
@@ -23,7 +23,6 @@ void setup_homie() {
   //bme280 = new BME280("environment_bme280");
   //iv_detector = new Modbus_Eletechsup32("voltage_current_detector");
   sht20 = new Modbus_SHT20("environment_sht20");
-  sht20->setUseAsyncQueue(true); //use async modbus queue
   ssr = new SSR("relay1");
   otaNode = new OTANode("ota");
 }

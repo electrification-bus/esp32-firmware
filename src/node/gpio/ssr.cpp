@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <node/gpio_ssr.h>
+#include <node/gpio/ssr.h>
 #include <pins.h>
 #include <config.h>
 

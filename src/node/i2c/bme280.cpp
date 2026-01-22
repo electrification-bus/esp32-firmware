@@ -1,5 +1,5 @@
 #include <Adafruit_BME280.h>
-#include <node/i2c_bme280.h>
+#include <node/i2c/bme280.h>
 #include <config.h>
 #include <pins.h>
 

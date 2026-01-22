@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <config.h>
-#include <node/modbus_sht20.h>
+#include <node/modbus/sht20.h>
 
 #define PAUSE_ON_RAMP_LEVELS 30000
 
@@ -46,7 +46,7 @@ bool Modbus_SHT20::nodeBegin() {
 }
 
 uint8_t Modbus_SHT20::poll() {
-    Serial.println("Modbus_SHT20: POLL");
+    //Serial.println("Modbus_SHT20: POLL");
     //read two registers: 1=temp, 2=humidity. Divide responses by 10.
     uint8_t result = readInputRegisters(rTEMPERATURE, 2);
     if (result == ku8MBSuccess) {
@@ -76,7 +76,7 @@ uint8_t Modbus_SHT20::query_register(uint16_t reg) {
 
 // Async queue support - queue a read request (non-blocking)
 void Modbus_SHT20::pollAsync() {
-    Serial.println("Modbus_SHT20: POLL ASYNC (non-blocking)");
+    //Serial.println("Modbus_SHT20: POLL ASYNC (non-blocking)");
     // Queue read of 2 input registers: temp and humidity
     queueReadInputRegisters(rTEMPERATURE, 2);
 }
