@@ -6,16 +6,9 @@
 #define BME_ADDR 0x76
 
 BME280::BME280(const char* homie_node_id) : NodeEntity(homie_node_id), Adafruit_BME280() {
-
   setPins(BME280_SDA_PIN, BME280_SCL_PIN);
-
-  _bme_temp = getTemperatureSensor();
-  _bme_pressure = getPressureSensor();
-  _bme_humidity = getHumiditySensor();
-  
-  temperature.setup(getNodeId(), "temperature");
-  relative_humidity.setup(getNodeId(), "relative_humidity");
-  air_pressure.setup(getNodeId(), "air_pressure");
+  _read_interval = 10000;
+  _since_last_read = 0;
 }
 
 void BME280::setPins(int8_t sda, int8_t scl) {
@@ -23,13 +16,24 @@ void BME280::setPins(int8_t sda, int8_t scl) {
     _scl = scl;
 }
 
-bool BME280::nodeBegin() {
-  Serial.println("BME280: Node Begin");
-  _read_interval = 10000; //default to 60 seconds
+bool BME280::setup() {
+  NodeEntity::setup();  // Base class first
+
+  temperature.setup(getNodeId(), "temperature");
+  relative_humidity.setup(getNodeId(), "relative_humidity");
+  air_pressure.setup(getNodeId(), "air_pressure");
+
   _since_last_read = millis();
   _deviceWire = new TwoWire(0);
   _deviceWire->begin(_sda, _scl);
-  return begin(BME_ADDR, _deviceWire);
+
+  bool ok = begin(BME_ADDR, _deviceWire);
+  if (ok) {
+    _bme_temp = getTemperatureSensor();
+    _bme_pressure = getPressureSensor();
+    _bme_humidity = getHumiditySensor();
+  }
+  return ok;
 }
 
 bool BME280::pollIntervalTrigger() {

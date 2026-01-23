@@ -18,7 +18,7 @@ class ModbusRTUEntity : public NodeEntity, public ModbusMaster {
         bool pollIntervalTrigger() override;
 
         virtual uint8_t poll() = 0;         // loop processing - implement in derived classes
-        bool nodeBegin() override;          // complete implementation - uses _serial or default
+        bool setup() override;              // Arduino-style setup - initializes modbus subsystem
 
         void setModbusAddress(uint8_t addr);
         uint8_t getModbusAddress() const;
@@ -43,7 +43,7 @@ class ModbusRTUEntity : public NodeEntity, public ModbusMaster {
         Stream* getSerial() const;
 
     protected:
-        // Called by derived class nodeBegin() to store serial reference for async queue
+        // Called by derived class setup() to store serial reference
         void initModbus(Stream& serial);
 
         uint8_t _modbus_address;

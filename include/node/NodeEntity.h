@@ -10,12 +10,11 @@ class NodeEntity {
         NodeEntity(const char* homie_id);
         virtual ~NodeEntity(){};
 
-        virtual bool nodeBegin();       // start the node (MAY be overridden in derived classes)
         virtual void loop() = 0;        // loop processing (MUST override in derived classes)
         virtual const char* getNodeId() {return _homie_node_id;};
 
-        virtual bool setup();
-        virtual bool setup(const char* property_id);
+        virtual bool setup();                           // Arduino-style setup - override and chain to base
+        virtual bool setup(const char* homie_node_id); // convenience: set ID then setup
         virtual void setHomieNodeId(const char* id);
         virtual bool pollIntervalTrigger();
         virtual const char* getHomieNodeId();

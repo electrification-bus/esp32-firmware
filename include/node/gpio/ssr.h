@@ -6,6 +6,7 @@ class SSR : public NodeEntity {
         SSR(const char* homie_node_id);
         ~SSR(){};
 
+        bool setup() override;
         void loop() override;
         void set(bool onOff) override;
 

@@ -20,9 +20,10 @@ void NodeEntity::setHomieNodeId(const char* id) {
     _homie_node_id[sizeof(_homie_node_id) - 1] = '\0'; // Ensure null termination
 }
 bool NodeEntity::setup() {
-    Serial.printf("NodeEntity::setup() for '%s'\n", _homie_node_id);
-    return nodeBegin();
+    Serial.printf("NodeEntity::setup() '%s'\n", _homie_node_id);
+    return true;
 }
+
 bool NodeEntity::setup(const char* homie_node_id) {
     setHomieNodeId(homie_node_id);
     return setup();
@@ -32,11 +33,6 @@ bool NodeEntity::setup(const char* homie_node_id) {
 const char* NodeEntity::getPropertyTopic(const char* property_id, char* buf) {
   sprintf(buf, "%s%s/%s", theDevice.topic(), _homie_node_id, property_id);
   return buf;
-}
-
-bool NodeEntity::nodeBegin() {
-    Serial.printf("NodeEntity: nodeBegin() not implemented for node id: %s\n", _homie_node_id);
-    return true;
 }
 
 void NodeEntity::entity_settable_callback(Property* property) {

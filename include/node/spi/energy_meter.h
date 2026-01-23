@@ -165,7 +165,7 @@ public:
     ~EnergyMeter() {};
 
     // NodeEntity interface
-    bool nodeBegin() override;
+    bool setup() override;
     void loop() override;
     bool pollIntervalTrigger() override;
 

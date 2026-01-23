@@ -8,12 +8,11 @@ Modbus_Eletechsup32::Modbus_Eletechsup32(const char* homie_node_id, Stream& seri
     _modbus_address = addr;
     _serial = &serial;
     _poll_timestamp = 0;
-    voltage_detect.setup(getNodeId(), "V_detect");
 }
+
 bool Modbus_Eletechsup32::setup() {
-    Serial.printf("Modbus_Eletechsup32: setup() node id: '%s'\n", _homie_node_id);
+    ModbusRTUEntity::setup();  // Base class first
     voltage_detect.setup(getNodeId(), "V_detect");
-    nodeBegin();
     return true;
 }
 uint8_t Modbus_Eletechsup32::poll() {

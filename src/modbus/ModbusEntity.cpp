@@ -75,9 +75,9 @@ bool ModbusRTUEntity::getUseAsyncQueue() const {
     return _use_async_queue;
 }
 
-// Complete modbus initialization - no need for derived class to override
-bool ModbusRTUEntity::nodeBegin() {
-    Serial.printf("MODBUS: nodeBegin() for '%s' addr=%d\n", getNodeId(), _modbus_address);
+bool ModbusRTUEntity::setup() {
+    NodeEntity::setup();  // Chain to base
+    Serial.printf("ModbusRTUEntity::setup() '%s' addr=%d\n", getNodeId(), _modbus_address);
 
     // Ensure modbus subsystem (queue, task, serial hardware) is initialized
     ensureModbusSubsystem();
@@ -86,11 +86,9 @@ bool ModbusRTUEntity::nodeBegin() {
     if (_serial == nullptr) {
         _serial = &get_serial1();
     }
-    Serial.printf("MODBUS: Using serial %p for '%s'\n", _serial, getNodeId());
 
     // Initialize ModbusMaster with slave address and serial
     begin(_modbus_address, *_serial);
-
     return true;
 }
 

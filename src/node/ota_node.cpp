@@ -16,6 +16,10 @@ OTANode::OTANode(const char* homie_node_id) : NodeEntity(homie_node_id) {
     memset(_firmware_url, 0, sizeof(_firmware_url));
     memset(_checksum, 0, sizeof(_checksum));
     memset(_message, 0, sizeof(_message));
+}
+
+bool OTANode::setup() {
+    NodeEntity::setup();  // Base class first
 
     // Setup properties
     _enabled_property.setup_settable(getNodeId(), "enabled",
@@ -35,6 +39,7 @@ OTANode::OTANode(const char* homie_node_id) : NodeEntity(homie_node_id) {
     _progress_property.set_value_and_publish(_progress);
     _version_property.set_value_and_publish(_version);
     _message_property.set_value_and_publish("Ready");
+    return true;
 }
 
 const char* OTANode::stateToString(OTAState state) {

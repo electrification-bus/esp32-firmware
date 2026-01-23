@@ -15,7 +15,7 @@ class BME280 : public NodeEntity, public Adafruit_BME280 {
         float getPressure() const;
         float getHumidity() const;  
 
-        bool nodeBegin() override;
+        bool setup() override;
         void loop() override;
         bool pollIntervalTrigger() override;
         //const char* getNodeId() const override { return "environment_bme280"; };

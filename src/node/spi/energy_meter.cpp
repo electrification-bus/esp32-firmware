@@ -79,25 +79,19 @@ void EnergyModel::init(unsigned short lineFreq, unsigned short pgagain, unsigned
 
 EnergyMeter::EnergyMeter(const char* homie_node_id, int cs1_pin, int cs2_pin)
     : NodeEntity(homie_node_id) {
-
     _cs1[0] = cs1_pin;
     _cs2[0] = cs2_pin;
-
     initCalibration(LINE_FREQ_DEFAULT, PGA_GAIN_DEFAULT,
                     VOLTAGE_GAIN_DEFAULT, CURRENT_GAIN_DEFAULT);
-    setupProperties();
 }
 
 EnergyMeter::EnergyMeter(const char* homie_node_id, int cs1_pin, int cs2_pin,
                          unsigned short lineFreq, unsigned short pgaGain,
                          unsigned short voltageGain, unsigned short currentGain)
     : NodeEntity(homie_node_id) {
-
     _cs1[0] = cs1_pin;
     _cs2[0] = cs2_pin;
-
     initCalibration(lineFreq, pgaGain, voltageGain, currentGain);
-    setupProperties();
 }
 
 void EnergyMeter::initCalibration(unsigned short lineFreq, unsigned short pgaGain,
@@ -143,14 +137,13 @@ void EnergyMeter::setupProperties() {
     voltage.setup(getNodeId(), "voltage");
     frequency.setup(getNodeId(), "frequency");
     temperature.setup(getNodeId(), "temperature");
-
-    // Call base class setup
-    setup();
 }
 
-bool EnergyMeter::nodeBegin() {
-    Serial.println("EnergyMeter: Node Begin");
-    Serial.printf("EnergyMeter: lineFreq=%d, pgaGain=%d, voltageGain=%d, currentGain=%d\n",
+bool EnergyMeter::setup() {
+    NodeEntity::setup();  // Base class first
+    setupProperties();
+
+    Serial.printf("EnergyMeter::setup() lineFreq=%d, pgaGain=%d, voltageGain=%d, currentGain=%d\n",
                   _lineFreq, _pgaGain, _voltageGain[0], _currentGainA);
 
     _last_read = millis();

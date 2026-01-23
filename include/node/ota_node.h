@@ -17,6 +17,7 @@ public:
     OTANode(const char* homie_node_id);
     ~OTANode() {};
 
+    bool setup() override;
     void loop() override;
     void entity_settable_callback(Property* property) override;
 

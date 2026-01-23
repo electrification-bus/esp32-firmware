@@ -19,10 +19,9 @@ Modbus_SHT20::Modbus_SHT20(const char* homie_node_id, Stream& serial, uint8_t ad
 float Modbus_SHT20::getTemperature() { return temperature/10.0; }
 float Modbus_SHT20::getHumidity() { return humidity/10.0; }
 bool Modbus_SHT20::setup() {
-    Serial.printf("Modbus_SHT20: setup() node id: '%s'\n", _homie_node_id);
+    ModbusRTUEntity::setup();  // Base class first
     np_temperature.setup(getNodeId(), "temperature");
     np_humidity.setup(getNodeId(), "relative_humidity");
-    nodeBegin();
     return true;
 }
 void Modbus_SHT20::route_poll_response(uint16_t reg, uint16_t response) {
