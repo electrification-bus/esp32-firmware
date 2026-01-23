@@ -22,6 +22,7 @@ class Device {
     size_t toJson(char* buffer, size_t bufferSize);
     void setId(const char* id);
     void setName(const char* name);
+    const char* name() { return _name; };
     void setType(const char* type);
     const char* type();
     char* getId();

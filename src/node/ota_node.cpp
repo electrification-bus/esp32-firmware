@@ -8,8 +8,6 @@
 #define FIRMWARE_VERSION "1.0.0"
 #endif
 
-OTANode* otaNode = nullptr;
-
 OTANode::OTANode(const char* homie_node_id) : NodeEntity(homie_node_id) {
     _state = OTA_STATE_IDLE;
     _enabled = true;
@@ -37,8 +35,6 @@ OTANode::OTANode(const char* homie_node_id) : NodeEntity(homie_node_id) {
     _progress_property.set_value_and_publish(_progress);
     _version_property.set_value_and_publish(_version);
     _message_property.set_value_and_publish("Ready");
-
-    setup();
 }
 
 const char* OTANode::stateToString(OTAState state) {

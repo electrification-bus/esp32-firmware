@@ -10,19 +10,20 @@ class NodeProperty {
 
         void setup(const char* node_id, const char* property_id) {
             set_homie_property_id(property_id);
-            char _topic[128] = {0};
-            sprintf(_topic, "%s%s/%s", theDevice->topic(), node_id, property_id);
-            set_topic(_topic);
+            char _top[128] = {0};
+            sprintf(_top, "%s%s/%s", theDevice.topic(), node_id, property_id);
+            Serial.printf("NodeProperty: setup() topic: %s\n", _top);
+            set_topic(_top);
 
         }
         void setup_settable(const char* node_id, const char* property_id, entity_settable_callback_t cb, NodeEntity* ne) {
             set_homie_property_id(property_id);
-            char _topic[128] = {0};
-            sprintf(_topic, "%s%s/%s", theDevice->topic(), node_id, property_id);
-            set_topic(_topic);
+            char _top[128] = {0};
+            sprintf(_top, "%s%s/%s", theDevice.topic(), node_id, property_id);
+            set_topic(_top);
 
-            sprintf(_topic, "%s%s/%s/%s", theDevice->topic(), node_id, property_id, HOMIE_TOPIC_SET);
-            entity_subscribe_for_callbacks(_topic, cb, ne);
+            sprintf(_top, "%s%s/%s/%s", theDevice.topic(), node_id, property_id, HOMIE_TOPIC_SET);
+            entity_subscribe_for_callbacks(_top, cb, ne);   
         }
         const char* homie_property_id()    const    {return _homie_property_id;}
         void set_homie_property_id(const char* id) {
@@ -88,7 +89,7 @@ class NodeProperty {
 
         void publish() {
             // Use thread-safe queue for publishing from any task/core
-            mqtt_queue_publish(_topic, _value, false);
+            mqtt_queue_publish(topic(), _value, false);
         }        
         const char* topic() const { return _topic; }
         void set_topic(const char* topic) { strcpy(_topic, topic); }

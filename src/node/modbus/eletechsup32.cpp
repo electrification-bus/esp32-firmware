@@ -3,14 +3,19 @@
 #include <node/modbus/eletechsup32.h>
 #include <mqtt_client.h>
 
-Modbus_Eletechsup32::Modbus_Eletechsup32(const char* homie_node_id) : ModbusRTUEntity(homie_node_id) {
+Modbus_Eletechsup32::Modbus_Eletechsup32(const char* homie_node_id, Stream& serial, uint8_t addr)
+    : ModbusRTUEntity(homie_node_id) {
+    _modbus_address = addr;
+    _serial = &serial;
     _poll_timestamp = 0;
-    _modbus_address = INPUT32_ADDR;
     voltage_detect.setup(getNodeId(), "V_detect");
-
-    setup();
 }
-
+bool Modbus_Eletechsup32::setup() {
+    Serial.printf("Modbus_Eletechsup32: setup() node id: '%s'\n", _homie_node_id);
+    voltage_detect.setup(getNodeId(), "V_detect");
+    nodeBegin();
+    return true;
+}
 uint8_t Modbus_Eletechsup32::poll() {
     Serial.println("Modbus_Eletechsup32: POLL");
     //int startTime = millis();
@@ -41,9 +46,3 @@ bool Modbus_Eletechsup32::getInputState(uint8_t index) {
     return _inputs[index];
 }
 
-bool Modbus_Eletechsup32::nodeBegin() {
-    Serial.printf("Modbus_Eletechsup32: Node Begin with address %d\n", _modbus_address);
-    // Initialize Modbus communication
-    begin(_modbus_address, get_serial1());
-    return true;
-}

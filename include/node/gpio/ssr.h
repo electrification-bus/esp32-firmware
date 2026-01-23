@@ -21,5 +21,3 @@ class SSR : public NodeEntity {
         bool _state;
         bool LOW_TRIGGER = true;
 };
-
-extern SSR* ssr;

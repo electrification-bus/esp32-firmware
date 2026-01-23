@@ -49,14 +49,42 @@ static bool execute_modbus_command(ModbusCommand* cmd, ModbusResponse* resp) {
         }
     }
 
-    // Only call begin() once, or when slave address changes
-    if (!queue_modbus_initialized || last_slave_address != cmd->slave_address) {
-        queue_modbus.begin(cmd->slave_address, get_serial1());
+    // Get serial from entity - device controls which serial to use
+    Stream* entitySerial = cmd->entity ? cmd->entity->getSerial() : nullptr;
+    if (!entitySerial) {
+        Serial.println("Modbus: ERROR - entity has no serial configured");
+        resp->error_code = 0xFD;  // Custom error: no serial
+        if (serial_mutex != NULL) xSemaphoreGive(serial_mutex);
+        return false;
+    }
+
+    // Call begin() when slave address or serial changes
+    static Stream* last_serial = nullptr;
+    if (!queue_modbus_initialized || last_slave_address != cmd->slave_address || last_serial != entitySerial) {
+        Serial.printf("Modbus: Calling begin() for slave %d on serial %p\n", cmd->slave_address, entitySerial);
+        queue_modbus.begin(cmd->slave_address, *entitySerial);
         queue_modbus_initialized = true;
         last_slave_address = cmd->slave_address;
+        last_serial = entitySerial;
         // Give time for serial to settle after init
         vTaskDelay(pdMS_TO_TICKS(20));
     }
+
+    //Serial.printf("Modbus: TX to slave %d, reg 0x%04X, count %d\n",
+    //              cmd->slave_address, cmd->reg_address, cmd->num_registers);
+
+    // Flush any leftover bytes from serial RX buffer before transaction
+    int flushed = 0;
+    while (entitySerial->available()) {
+        entitySerial->read();
+        flushed++;
+    }
+    if (flushed > 0) {
+        Serial.printf("Modbus: Flushed %d stale bytes from RX buffer\n", flushed);
+    }
+
+    // Clear ModbusMaster response buffer
+    queue_modbus.clearResponseBuffer();
 
     switch (cmd->type) {
         case MODBUS_CMD_READ_INPUT_REGISTERS:

@@ -4,10 +4,9 @@
 
 class Modbus_Eletechsup32 : public ModbusRTUEntity {
     public:
-        Modbus_Eletechsup32(const char* homie_node_id);
+        Modbus_Eletechsup32(const char* homie_node_id, Stream& serial, uint8_t addr = INPUT32_ADDR);
         ~Modbus_Eletechsup32(){};
-
-        bool nodeBegin() override;
+        bool setup() override;
         uint8_t poll() override;
         //const char* getNodeId() const override { return "voltage_current_detector"; }
 
@@ -17,5 +16,3 @@ class Modbus_Eletechsup32 : public ModbusRTUEntity {
         uint8_t _inputs[32];
         NodeProperty voltage_detect;
 };
-
-extern Modbus_Eletechsup32* iv_detector;

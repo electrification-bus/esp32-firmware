@@ -37,6 +37,3 @@ class BME280 : public NodeEntity, public Adafruit_BME280 {
         int _since_last_read = 0;
 };
 
-extern BME280* bme280;
-
-

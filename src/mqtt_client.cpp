@@ -343,10 +343,6 @@ void loop_mqtt() {
     // MQTTClient::loop() returns false if connection was lost
     bool loop_ok = mqtt_client.loop();
 
-    // Process queued publish requests from other tasks (thread-safe)
-    // Do this AFTER loop() to prioritize keepalive pings
-    mqtt_process_queue();
-
     bool is_connected = mqtt_client.connected();
 
     if (is_connected && loop_ok) {
@@ -357,7 +353,7 @@ void loop_mqtt() {
         if (millis() - last_connected_log > 30000) {
             last_connected_log = millis();
             unsigned long uptime = millis() / 1000;
-            Serial.printf("MQTT: connected OK (uptime: %lus)\n", uptime);
+            Serial.printf("MQTT: connected OK (uptime: %lus) %s/%s\n", uptime, mqtt_host, topic_device);
         }
         was_connected = true;
     } else {
@@ -376,6 +372,10 @@ void loop_mqtt() {
             mqtt_connect();
         }
     }
+    
+    // Process queued publish requests from other tasks (thread-safe)
+    // Do this AFTER loop() to prioritize keepalive pings
+    mqtt_process_queue();
     mqtt_interval_ts = millis();
 }
 

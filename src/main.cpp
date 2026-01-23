@@ -113,17 +113,14 @@ void loop() {
 // DEVICE MODE - publishes own nodes and properties to MQTT broker
 // ============================================================================
 #include <homie/Device.h>
-#include <modbus/modbus_master.h>
-#include <modbus/modbus_queue.h>
 #include <util/dict.h>
 #include <homie.h>
 
 // Callback to re-publish state after MQTT reconnection
 void on_mqtt_reconnect() {
-    if (theDevice) {
-        theDevice->publishState();
-        Serial.println("DEVICE: Re-published $state after reconnect");
-    }
+    theDevice.publishState();
+    Serial.println("DEVICE: Re-published $state after reconnect");
+    
 }
 
 void setup() {
@@ -149,10 +146,7 @@ void setup() {
     mqtt_queue_init();
     setup_mqtt();
 
-    // Initialize modbus queue system and worker task
-    modbus_queue_init();
-    modbus_task_start(1);  // Start modbus worker on Core 1
-    setup_modbus_master();
+    // Note: Modbus subsystem is lazily initialized by first ModbusRTUEntity device
 
     // Register reconnect callback to re-publish state after reconnection
     mqtt_set_reconnect_callback(on_mqtt_reconnect);
@@ -163,16 +157,15 @@ void setup() {
                  (*dev_conf)[HOMIE_NAME].as<const char*>(),
                  (*dev_conf)[HOMIE_TYPE].as<const char*>());
 
-    theDevice = new Device();
-    theDevice->init((*dev_conf)[HOMIE_NAME].as<const char*>(),
+    theDevice.init((*dev_conf)[HOMIE_NAME].as<const char*>(),
                    getDeviceID(),
                    (*dev_conf)[HOMIE_TYPE].as<const char*>(),
                    &mqtt_client);
-    theDevice->publishState(); // default state is init
+    theDevice.publishState(); // default state is init
     loop_mqtt();  // Flush MQTT messages
-    theDevice->publish();
+    theDevice.publish();
     loop_mqtt();  // Flush MQTT messages
-    theDevice->setState(DeviceState::DEVICE_STATE_READY); // setState will publish the $state
+    theDevice.setState(DeviceState::DEVICE_STATE_READY); // setState will publish the $state
     loop_mqtt();  // Flush MQTT messages - ensure $state=ready is sent before continuing
 
     setup_homie();
@@ -181,7 +174,6 @@ void setup() {
 void loop() {
     // MQTT must run first and frequently to maintain keepalive
     loop_mqtt();
-    loop_modbus_master();
     loop_homie();
 }
 

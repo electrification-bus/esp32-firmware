@@ -25,4 +25,4 @@ JsonDocument* get_node_config();
 JsonDocument* get_platform_config();
 JsonDocument* get_homie_config();
 
-extern Device* theDevice;
+extern Device theDevice;

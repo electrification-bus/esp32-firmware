@@ -4,7 +4,7 @@
 #include <ArduinoYaml.h>
 #include <util/jsonUtils.h>
 
-Device* theDevice;
+Device theDevice;
 
 static JsonObject config_json;
 static JsonDocument homie_config_json;

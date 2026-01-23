@@ -20,6 +20,7 @@ void NodeEntity::setHomieNodeId(const char* id) {
     _homie_node_id[sizeof(_homie_node_id) - 1] = '\0'; // Ensure null termination
 }
 bool NodeEntity::setup() {
+    Serial.printf("NodeEntity::setup() for '%s'\n", _homie_node_id);
     return nodeBegin();
 }
 bool NodeEntity::setup(const char* homie_node_id) {
@@ -29,7 +30,7 @@ bool NodeEntity::setup(const char* homie_node_id) {
 
 //returns local alloc - caller must not retain
 const char* NodeEntity::getPropertyTopic(const char* property_id, char* buf) {
-  sprintf(buf, "%s%s/%s", theDevice->topic(), _homie_node_id, property_id);
+  sprintf(buf, "%s%s/%s", theDevice.topic(), _homie_node_id, property_id);
   return buf;
 }
 

@@ -52,5 +52,3 @@ private:
     bool downloadAndUpdate(const char* url);
     bool verifyChecksum(const char* expected);
 };
-
-extern OTANode* otaNode;

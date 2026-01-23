@@ -4,10 +4,10 @@
 
 class Modbus_SHT20 : public ModbusRTUEntity {
     public:
-        Modbus_SHT20(const char* homie_node_id, bool useAsyncQueue = true);
+        Modbus_SHT20(const char* homie_node_id, Stream& serial, uint8_t addr = SHT20_ADDR, bool useAsyncQueue = true);
         ~Modbus_SHT20() {};
+        bool setup() override;
 
-        bool nodeBegin() override;
         uint8_t poll() override;
 
         // Async queue support
@@ -33,4 +33,3 @@ class Modbus_SHT20 : public ModbusRTUEntity {
         NodeProperty np_temperature;
         NodeProperty np_humidity;
 };
-extern Modbus_SHT20* sht20;

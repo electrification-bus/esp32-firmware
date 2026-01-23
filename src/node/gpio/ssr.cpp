@@ -11,7 +11,6 @@ int last_toggle = millis();
 SSR::SSR(const char* homie_node_id) : NodeEntity(homie_node_id) {
     _state_property.setup_settable(getNodeId(), "state", &NodeEntity::entity_settable_callback,(NodeEntity*)this);
     pinMode(SSR1_PIN, OUTPUT);
-    setup();
 }
 
 void SSR::set_on_state() {
