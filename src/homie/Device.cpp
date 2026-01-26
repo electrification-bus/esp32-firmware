@@ -55,7 +55,7 @@ void Device::init(const char* name, const char* id, const char* type, MQTTClient
   setId(id);
   setType(type);
   _mqtt_client = mqtt_client;
-  sprintf(_topic, "%s/%s/", HOMIE_TOPIC_PREFIX, id);
+  sprintf(_topic, "%s/%s/", HOMIE_TOPIC_PREFIX, name);
   
   //instantiate the nodes
   JsonDocument* nodes = get_node_config();
