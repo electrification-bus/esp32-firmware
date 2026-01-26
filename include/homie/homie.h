@@ -4,15 +4,6 @@
 #define HOMIE_TOPIC_PREFIX      "homie/" HOMIE_VERSION_NUM
 #define HOMIE_TOPIC_SET         "set"
 
-typedef enum {
-    DEVICE_STATE_INIT,
-    DEVICE_STATE_READY,
-    DEVICE_STATE_DISCONNECTED,
-    DEVICE_STATE_SLEEPING,
-    DEVICE_STATE_LOST,
-    DEVICE_STATE_UNKNOWN
-} DeviceState;
-
 #define HOMIE_DATATYPE_BOOLEAN  "boolean"
 #define HOMIE_DATATYPE_STRING   "string"
 #define HOMIE_DATATYPE_INTEGER  "integer"

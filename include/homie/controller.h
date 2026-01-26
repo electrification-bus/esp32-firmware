@@ -7,8 +7,7 @@
 #include <homie/Device.h>
 #include <homie/Node.h>
 #include <homie/Property.h>
-#include <homie/DeviceState.h>
-
+#include <homie/homie.h>
 // Maximum discovered devices
 #define MAX_DISCOVERED_DEVICES 16
 
