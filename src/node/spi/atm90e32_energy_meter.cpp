@@ -13,7 +13,7 @@
    -------------------------------------------------------------------
 */
 
-#include <node/spi/energy_meter.h>
+#include <node/spi/atm90e32_energy_meter.h>
 #include <SPI.h>
 
 // Global pointer (optional - instantiate in your code)
