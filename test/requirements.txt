@@ -1,0 +1,5 @@
+# Python dependencies for Homie Device Test
+# Install with: pip install -r test/requirements.txt
+
+paho-mqtt>=1.6.0
+pyyaml>=6.0
