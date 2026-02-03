@@ -407,7 +407,8 @@ void loop_mqtt() {
         if (millis() - last_connected_log > 30000) {
             last_connected_log = millis();
             unsigned long uptime = millis() / 1000;
-            Serial.printf("MQTT: connected OK (uptime: %lus) %s/%s\n", uptime, mqtt_host, topic_device);
+            Serial.printf("MQTT: connected OK%s (uptime: %lus) %s/%s\n",
+                          mqtt_using_secure ? " [TLS]" : "", uptime, mqtt_host, topic_device);
         }
         was_connected = true;
     } else {

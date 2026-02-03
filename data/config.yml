@@ -2,7 +2,7 @@ config:
   - wifi_ssid:
     wifi_password:
     mqtt_host: public.cloud.shiftr.io
-    mqtt_port: 1883
+    mqtt_port: 8883
     mqtt_username: public
     mqtt_password: public
     device_id: esp32poeiso

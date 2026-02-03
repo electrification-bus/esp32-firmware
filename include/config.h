@@ -29,7 +29,7 @@ extern char homie_role[16];
 
 // TLS/SSL support for MQTT (port 8883)
 #define MQTT_SECURE_PORT 8883
-#define MQTT_CA_CERT_PATH "/certs/ca.crt"
+#define MQTT_CA_CERT_PATH "/certs/cloud-shiftr-io.pem"
 
 // Returns true if MQTT should use TLS (port 8883)
 bool mqtt_is_secure();
