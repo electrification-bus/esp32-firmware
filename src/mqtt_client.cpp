@@ -37,8 +37,12 @@
 #include <freertos/queue.h>
 #define ENABLE_DEBUG_MQTT = 1
 
-//WiFiClientSecure transportClient; TODO
-WiFiClient transportClient;
+// Transport clients - use secure or insecure based on port
+WiFiClient insecureClient;
+WiFiClientSecure secureClient;
+Client* transportClient = nullptr;  // Pointer to active client
+bool mqtt_using_secure = false;
+
 MQTTClient mqtt_client(MAX_DATA_LEN + 200);  // Buffer size for MQTT packets
 #define TOPIC_TOKEN_SIZ 64
 #define MQTT_DATA_SIZ 128
@@ -135,6 +139,36 @@ void mqtt_set_reconnect_callback(mqtt_reconnect_callback_t callback) {
 // Function prototype for mqtt_publish_json
 void mqtt_publish_json(const char* subtopic, const JsonDocument* payload);
 
+// Initialize transport client (secure or insecure based on port)
+bool mqtt_init_transport() {
+  mqtt_using_secure = mqtt_is_secure();
+
+  if (mqtt_using_secure) {
+    Serial.println("MQTT: Configuring TLS/SSL connection (port 8883)");
+
+    // Load CA certificate from SPIFFS
+    const char* caCert = mqtt_load_ca_cert();
+    if (caCert == nullptr) {
+      Serial.println("MQTT: ERROR - No CA certificate available for TLS");
+      Serial.println("MQTT: Place CA cert at /data/certs/ca.crt");
+      return false;
+    }
+
+    // Configure secure client with CA certificate
+    secureClient.setCACert(caCert);
+
+    // Optional: Set connection timeout for TLS handshake
+    secureClient.setTimeout(15);  // 15 seconds for TLS handshake
+
+    transportClient = &secureClient;
+    Serial.println("MQTT: TLS transport configured with CA certificate");
+  } else {
+    Serial.printf("MQTT: Using insecure connection (port %d)\n", mqtt_port);
+    transportClient = &insecureClient;
+  }
+  return true;
+}
+
 void generateTopics() {
   sprintf(topic_device,"%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID());
   sprintf(topic_cmd,"%s/%s",topic_device, HOMIE_TOPIC_SET);
@@ -172,17 +206,31 @@ void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_
 }
 
 boolean mqtt_connect() {
-  Serial.printf("MQTT Connecting: '%s:%d'\r\n", mqtt_host, mqtt_port);
+  Serial.printf("MQTT Connecting: '%s:%d'%s\r\n", mqtt_host, mqtt_port,
+                mqtt_using_secure ? " (TLS)" : "");
 
-  // Configure WiFiClient socket timeout before using it
-  transportClient.setTimeout(10);  // 10 seconds socket timeout
+  // Initialize transport client if not already done
+  if (transportClient == nullptr) {
+    if (!mqtt_init_transport()) {
+      Serial.println("MQTT: Failed to initialize transport");
+      return false;
+    }
+  }
+
+  // Configure socket timeout based on connection type
+  if (mqtt_using_secure) {
+    secureClient.setTimeout(15);  // Longer timeout for TLS handshake
+  } else {
+    insecureClient.setTimeout(10);  // 10 seconds for plain TCP
+  }
 
   // setOptions(keepAlive, cleanSession, timeout)
   // keepAlive: 5 seconds - very short to ensure frequent pings (per arduino-mqtt issue #177)
   // cleanSession: false - maintain session across reconnects
-  // timeout: 1000ms - short timeout for operations
-  mqtt_client.setOptions(5, false, 1000);
-  Serial.printf("MQTT: configured keepalive=%ds, timeout=%dms\n", 5, 1000);
+  // timeout: 1000ms - short timeout for operations (2000ms for TLS)
+  int operationTimeout = mqtt_using_secure ? 2000 : 1000;
+  mqtt_client.setOptions(5, false, operationTimeout);
+  Serial.printf("MQTT: configured keepalive=%ds, timeout=%dms\n", 5, operationTimeout);
 
   // Set Last Will and Testament (LWT) - published by broker if connection lost
   // Use static buffer lwt_topic to prevent pointer corruption (arduino-mqtt issue #89)
@@ -191,10 +239,9 @@ boolean mqtt_connect() {
   mqtt_client.setWill(lwt_topic, HOMIE_STATE_LOST, true, 0);  // retained=true, qos=0
   Serial.printf("MQTT will topic:'%s' msg:'%s'\n", lwt_topic, HOMIE_STATE_LOST);
 
-
-   // Configure MQTT client BEFORE connecting
+  // Configure MQTT client BEFORE connecting
   // begin() sets up the network client and host
-  mqtt_client.begin(mqtt_host, mqtt_port, transportClient);
+  mqtt_client.begin(mqtt_host, mqtt_port, *transportClient);
 
   
   // Connect with or without credentials
@@ -318,6 +365,13 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
 
 void setup_mqtt() {
   generateTopics();
+
+  // Initialize transport (secure or insecure based on port)
+  if (!mqtt_init_transport()) {
+    Serial.println("MQTT: FAILED TO INITIALIZE TRANSPORT");
+    return;
+  }
+
   mqtt_client.onMessageAdvanced(subscriber_callback);
   if (!mqtt_connect()) {
     delay(250);
@@ -383,6 +437,8 @@ void mqtt_restart() {
   if (mqtt_client.connected()) {
     mqtt_client.disconnect();
   }
+  // Reset transport client to force re-initialization on next connect
+  transportClient = nullptr;
 }
 
 boolean mqtt_connected() {

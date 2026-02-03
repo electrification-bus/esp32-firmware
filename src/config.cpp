@@ -16,6 +16,18 @@ char mqtt_username[64] = {0};
 char mqtt_password[64] = {0};
 char device_id_prefix[32] = {0};
 
+// Device info for mDNS advertisement
+char device_name[32] = {0};
+char device_type[32] = {0};
+char device_manufacturer[32] = "NESL";
+char device_model[32] = "ESP32";
+char device_serial[32] = {0};
+char firmware_name[32] = {0};
+char firmware_version[16] = "1.0.0";
+
+// Homie role: "device" or "controller"
+char homie_role[16] = "device";
+
 const char* UNIQUE_ID = "";
 char device_id[MAX_DEVICE_ID_CHARS] = {0};
 
@@ -23,6 +35,11 @@ const char* platform_config_file = "/config.yml";
 const char* homie_config_file = "/homie.yml";
 const char* homie_config_file_backup = "/homie_config_from_SD.yml";
 const char* config_file_backup = "/config_from_SD.yml";
+
+// TLS certificate buffer - sized for typical CA certs (up to 4KB)
+#define CA_CERT_MAX_SIZE 4096
+static char ca_cert_buffer[CA_CERT_MAX_SIZE] = {0};
+static bool ca_cert_loaded = false;
 
 const bool default_value = false; // default value for property
 bool current_value = default_value;
@@ -137,6 +154,47 @@ bool loadPlatformConfiguration() {
     device_id_prefix[sizeof(device_id_prefix) - 1] = '\0';
   }
 
+  // Device info for mDNS
+  if (config_json["device_name"].is<JsonString>()) {
+    strncpy(device_name, config_json["device_name"].as<JsonString>().c_str(), sizeof(device_name) - 1);
+    device_name[sizeof(device_name) - 1] = '\0';
+  }
+
+  if (config_json["device_type"].is<JsonString>()) {
+    strncpy(device_type, config_json["device_type"].as<JsonString>().c_str(), sizeof(device_type) - 1);
+    device_type[sizeof(device_type) - 1] = '\0';
+  }
+
+  if (config_json["manufacturer"].is<JsonString>()) {
+    strncpy(device_manufacturer, config_json["manufacturer"].as<JsonString>().c_str(), sizeof(device_manufacturer) - 1);
+    device_manufacturer[sizeof(device_manufacturer) - 1] = '\0';
+  }
+
+  if (config_json["model"].is<JsonString>()) {
+    strncpy(device_model, config_json["model"].as<JsonString>().c_str(), sizeof(device_model) - 1);
+    device_model[sizeof(device_model) - 1] = '\0';
+  }
+
+  if (config_json["serial_number"].is<JsonString>()) {
+    strncpy(device_serial, config_json["serial_number"].as<JsonString>().c_str(), sizeof(device_serial) - 1);
+    device_serial[sizeof(device_serial) - 1] = '\0';
+  }
+
+  if (config_json["firmware_name"].is<JsonString>()) {
+    strncpy(firmware_name, config_json["firmware_name"].as<JsonString>().c_str(), sizeof(firmware_name) - 1);
+    firmware_name[sizeof(firmware_name) - 1] = '\0';
+  }
+
+  if (config_json["firmware_version"].is<JsonString>()) {
+    strncpy(firmware_version, config_json["firmware_version"].as<JsonString>().c_str(), sizeof(firmware_version) - 1);
+    firmware_version[sizeof(firmware_version) - 1] = '\0';
+  }
+
+  if (config_json["homie_role"].is<JsonString>()) {
+    strncpy(homie_role, config_json["homie_role"].as<JsonString>().c_str(), sizeof(homie_role) - 1);
+    homie_role[sizeof(homie_role) - 1] = '\0';
+  }
+
   return true;
 }
 
@@ -183,8 +241,22 @@ bool loadHomieConfiguration() {
   JsonObject homie_root = homie_yml_config.as<JsonObject>();
   if (jsonExists(homie_root[HOMIE_HOMIE])) homie_conf_obf[HOMIE_HOMIE] = homie_root[HOMIE_HOMIE]; else {Serial.printf("CONFIG:**ERROR: MISSING '%s'\n",HOMIE_HOMIE);return false;}
 
-  if (jsonExists(homie_root[HOMIE_NAME])) homie_conf_obf[HOMIE_NAME] = homie_root[HOMIE_NAME]; else {Serial.printf("CONFIG:**ERROR: MISSING '%s'\n",HOMIE_NAME);return false;}
-  if (jsonExists(homie_root[HOMIE_TYPE])) homie_conf_obf[HOMIE_TYPE] = homie_root[HOMIE_TYPE]; else {Serial.printf("CONFIG:**ERROR: MISSING '%s'\n",HOMIE_TYPE);return false;}
+  if (jsonExists(homie_root[HOMIE_NAME])) {
+    homie_conf_obf[HOMIE_NAME] = homie_root[HOMIE_NAME];
+    // Use homie name as device_name if not already set from config.yml
+    if (strlen(device_name) == 0) {
+      strncpy(device_name, homie_root[HOMIE_NAME].as<const char*>(), sizeof(device_name) - 1);
+      device_name[sizeof(device_name) - 1] = '\0';
+    }
+  } else {Serial.printf("CONFIG:**ERROR: MISSING '%s'\n",HOMIE_NAME);return false;}
+  if (jsonExists(homie_root[HOMIE_TYPE])) {
+    homie_conf_obf[HOMIE_TYPE] = homie_root[HOMIE_TYPE];
+    // Use homie type as device_type if not already set
+    if (strlen(device_type) == 0) {
+      strncpy(device_type, homie_root[HOMIE_TYPE].as<const char*>(), sizeof(device_type) - 1);
+      device_type[sizeof(device_type) - 1] = '\0';
+    }
+  } else {Serial.printf("CONFIG:**ERROR: MISSING '%s'\n",HOMIE_TYPE);return false;}
   if (jsonExists(homie_root[HOMIE_IMPLEMENTATION])) homie_conf_obf[HOMIE_IMPLEMENTATION] = homie_root[HOMIE_IMPLEMENTATION].as<const char*>(); else {Serial.printf("CONFIG:**ERROR: MISSING '%s'\n",HOMIE_IMPLEMENTATION);return false;}
   Serial.printf("HOMIE CONFIG:  DEVICE version %s name %s type%s\n", homie_root[HOMIE_HOMIE].as<const char*>(), homie_root[HOMIE_NAME].as<const char*>(),homie_root[HOMIE_TYPE].as<const char*>());
 
@@ -216,4 +288,54 @@ bool loadHomieConfiguration() {
   }*/
  return true;
 
+}
+
+bool mqtt_is_secure() {
+  return mqtt_port == MQTT_SECURE_PORT;
+}
+
+const char* mqtt_load_ca_cert() {
+  if (ca_cert_loaded) {
+    return ca_cert_buffer;
+  }
+
+  if (!SPIFFS.begin(true)) {
+    Serial.println("TLS: Failed to mount SPIFFS for certificate");
+    return nullptr;
+  }
+
+  if (!SPIFFS.exists(MQTT_CA_CERT_PATH)) {
+    Serial.printf("TLS: CA certificate not found at '%s'\n", MQTT_CA_CERT_PATH);
+    SPIFFS.end();
+    return nullptr;
+  }
+
+  File certFile = SPIFFS.open(MQTT_CA_CERT_PATH, FILE_READ);
+  if (!certFile) {
+    Serial.printf("TLS: Failed to open CA certificate '%s'\n", MQTT_CA_CERT_PATH);
+    SPIFFS.end();
+    return nullptr;
+  }
+
+  size_t certSize = certFile.size();
+  if (certSize >= CA_CERT_MAX_SIZE) {
+    Serial.printf("TLS: CA certificate too large (%d bytes, max %d)\n", certSize, CA_CERT_MAX_SIZE - 1);
+    certFile.close();
+    SPIFFS.end();
+    return nullptr;
+  }
+
+  size_t bytesRead = certFile.readBytes(ca_cert_buffer, certSize);
+  ca_cert_buffer[bytesRead] = '\0';  // Null-terminate
+  certFile.close();
+  SPIFFS.end();
+
+  if (bytesRead != certSize) {
+    Serial.printf("TLS: Certificate read incomplete (%d of %d bytes)\n", bytesRead, certSize);
+    return nullptr;
+  }
+
+  ca_cert_loaded = true;
+  Serial.printf("TLS: CA certificate loaded (%d bytes) from '%s'\n", bytesRead, MQTT_CA_CERT_PATH);
+  return ca_cert_buffer;
 }
