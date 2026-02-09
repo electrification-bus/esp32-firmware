@@ -11,6 +11,7 @@
 #include <config.h>
 #include <mqtt_client.h>
 #include <ESPmDNS.h>
+#include <captive_portal.h>
 
 #ifdef ENABLE_CONTROLLER
 // ============================================================================
@@ -39,6 +40,11 @@ void setup() {
     if (!loadConfiguration()) {
         Serial.println("CONFIG: **ERROR -- failed to load configuration");
         return;
+    }
+
+    // If no MQTT broker configured, start captive portal for configuration
+    if (captive_portal_needed()) {
+        captive_portal_start();
     }
 
     setup_ethernet();
@@ -132,6 +138,11 @@ void setup() {
     if (!loadConfiguration()) {
         Serial.println("CONFIG: **ERROR -- failed to load configuration");
         return;
+    }
+
+    // If no MQTT broker configured, start captive portal for configuration
+    if (captive_portal_needed()) {
+        captive_portal_start();
     }
 
     setup_ethernet();

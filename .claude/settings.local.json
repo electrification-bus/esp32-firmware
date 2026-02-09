@@ -12,7 +12,14 @@
       "Bash(wsl mosquitto_sub:*)",
       "Bash(ping:*)",
       "Bash(echo:*)",
-      "Bash(cmd /c \"mode COM12 DTR=off & ping -n 2 localhost > nul & mode COM12 DTR=on\")"
+      "Bash(cmd /c \"mode COM12 DTR=off & ping -n 2 localhost > nul & mode COM12 DTR=on\")",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:homieiot.github.io)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(pip install:*)",
+      "Bash(openssl s_client:*)",
+      "Bash(openssl x509:*)",
+      "Bash(curl:*)"
     ]
   }
 }

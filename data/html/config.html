@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Homie Device Configuration</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #1a1a2e; color: #e0e0e0; padding: 16px; max-width: 480px; margin: 0 auto;
+    }
+    h1 { color: #00d4ff; font-size: 1.4em; margin-bottom: 4px; }
+    .topic { color: #888; font-size: 0.85em; margin-bottom: 20px; word-break: break-all; }
+    h2 { color: #ccc; font-size: 1.1em; margin: 20px 0 10px; border-bottom: 1px solid #333; padding-bottom: 6px; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 0.85em; color: #aaa; margin-bottom: 4px; }
+    .field input {
+      width: 100%; padding: 10px; border: 1px solid #444; border-radius: 6px;
+      background: #16213e; color: #e0e0e0; font-size: 1em; outline: none;
+    }
+    .field input:focus { border-color: #00d4ff; }
+    button {
+      width: 100%; padding: 12px; border: none; border-radius: 6px; font-size: 1em;
+      cursor: pointer; margin-top: 8px; transition: background 0.2s;
+    }
+    button:disabled { background: #333; color: #666; cursor: default; }
+    button:enabled { background: #0077b6; color: #fff; }
+    button:enabled:hover { background: #0096d6; }
+    .status { font-size: 0.85em; margin-top: 6px; min-height: 1.2em; }
+    .status.ok { color: #4caf50; }
+    .status.err { color: #f44336; }
+    .wifi-list { list-style: none; max-height: 260px; overflow-y: auto; }
+    .wifi-item { display: flex; align-items: center; padding: 10px; border: 1px solid #333;
+      border-radius: 6px; margin-bottom: 6px; cursor: pointer; transition: border-color 0.2s; }
+    .wifi-item:hover { border-color: #555; }
+    .wifi-item.selected { border-color: #00d4ff; background: #16213e; }
+    .wifi-item input[type=radio] { margin-right: 10px; accent-color: #00d4ff; }
+    .wifi-ssid { flex: 1; font-size: 0.95em; }
+    .wifi-lock { font-size: 0.8em; color: #aaa; margin-right: 8px; }
+    .wifi-signal { font-size: 0.75em; color: #888; white-space: nowrap; }
+    .wifi-pass-panel { display: none; margin-top: 10px; padding: 12px; background: #16213e;
+      border: 1px solid #444; border-radius: 6px; }
+    .wifi-pass-panel.visible { display: block; }
+    .loading { color: #888; font-size: 0.9em; padding: 20px 0; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>%DEVICE_NAME%</h1>
+  <div class="topic">%DEVICE_TOPIC%</div>
+
+  <h2>Join Network</h2>
+  <div id="wifi-loading" class="loading">Scanning for networks...</div>
+  <ul id="wifi-list" class="wifi-list"></ul>
+  <button type="button" id="wifi-join" disabled>Join Network</button>
+  <div id="wifi-pass-panel" class="wifi-pass-panel">
+    <div class="field"><label>Password</label><input type="password" id="wifi-pass" placeholder="Network password"></div>
+    <button type="button" id="wifi-connect">Connect</button>
+  </div>
+  <div class="status" id="wifi-status"></div>
+
+  <h2>MQTT Configuration</h2>
+  <form id="mqtt-form">
+    <div class="field"><label>Broker</label><input type="text" id="broker" placeholder="mqtt.example.com"></div>
+    <div class="field"><label>Username</label><input type="text" id="username" placeholder="(optional)"></div>
+    <div class="field"><label>Password</label><input type="password" id="password" placeholder="(optional)"></div>
+    <div class="field"><label>Port</label><input type="number" id="port" value="1883" min="1" max="65535"></div>
+    <button type="submit" id="mqtt-save" disabled>Save MQTT</button>
+    <div class="status" id="mqtt-status"></div>
+  </form>
+
+  <h2>Firmware</h2>
+  <form id="fw-form">
+    <div class="field"><label>Firmware Binary URL</label><input type="text" id="fw-url" placeholder="http://example.com/firmware.bin"></div>
+    <button type="submit" id="fw-save" disabled>Save Firmware URL</button>
+    <div class="status" id="fw-status"></div>
+  </form>
+
+  <script>
+    (function() {
+      var wifiList = document.getElementById('wifi-list');
+      var wifiLoading = document.getElementById('wifi-loading');
+      var wifiJoinBtn = document.getElementById('wifi-join');
+      var wifiPassPanel = document.getElementById('wifi-pass-panel');
+      var wifiPassInput = document.getElementById('wifi-pass');
+      var wifiConnectBtn = document.getElementById('wifi-connect');
+      var wifiStatus = document.getElementById('wifi-status');
+      var mqttFields = document.querySelectorAll('#mqtt-form input');
+      var mqttBtn = document.getElementById('mqtt-save');
+      var mqttStatus = document.getElementById('mqtt-status');
+      var fwField = document.getElementById('fw-url');
+      var fwBtn = document.getElementById('fw-save');
+      var fwStatus = document.getElementById('fw-status');
+
+      function signalLabel(rssi) {
+        if (rssi >= -50) return 'Excellent';
+        if (rssi >= -60) return 'Good';
+        if (rssi >= -70) return 'Fair';
+        return 'Weak';
+      }
+
+      function renderNetworks(networks) {
+        wifiLoading.style.display = 'none';
+        wifiList.innerHTML = '';
+        if (networks.length === 0) {
+          wifiLoading.style.display = 'block';
+          wifiLoading.textContent = 'No networks found';
+          return;
+        }
+        for (var i = 0; i < networks.length; i++) {
+          var n = networks[i];
+          var li = document.createElement('li');
+          li.className = 'wifi-item' + (i === 0 ? ' selected' : '');
+          li.innerHTML = '<input type="radio" name="wifi" value="' + n.ssid.replace(/"/g, '&quot;') + '"' +
+            (i === 0 ? ' checked' : '') + '>' +
+            '<span class="wifi-ssid">' + n.ssid.replace(/</g, '&lt;') + '</span>' +
+            (n.secure ? '<span class="wifi-lock">&#x1f512;</span>' : '') +
+            '<span class="wifi-signal">' + signalLabel(n.rssi) + ' (' + n.rssi + ')</span>';
+          wifiList.appendChild(li);
+        }
+        wifiJoinBtn.disabled = false;
+
+        // Click on row selects the radio button
+        var items = wifiList.querySelectorAll('.wifi-item');
+        for (var j = 0; j < items.length; j++) {
+          items[j].addEventListener('click', function(e) {
+            if (e.target.tagName !== 'INPUT') {
+              this.querySelector('input[type=radio]').checked = true;
+            }
+            for (var k = 0; k < items.length; k++) { items[k].className = 'wifi-item'; }
+            this.className = 'wifi-item selected';
+          });
+        }
+      }
+
+      // Load WiFi networks
+      fetch('/api/wifi-scan')
+        .then(function(r) { return r.json(); })
+        .then(function(data) { renderNetworks(data); })
+        .catch(function() {
+          wifiLoading.textContent = 'Failed to scan networks';
+        });
+
+      // Join Network button reveals password panel
+      wifiJoinBtn.addEventListener('click', function() {
+        wifiPassPanel.className = 'wifi-pass-panel visible';
+        wifiPassInput.focus();
+      });
+
+      // Connect button sends WiFi credentials
+      wifiConnectBtn.addEventListener('click', function() {
+        var selected = document.querySelector('input[name=wifi]:checked');
+        if (!selected) return;
+        wifiConnectBtn.disabled = true;
+        wifiStatus.className = 'status';
+        wifiStatus.textContent = 'Saving...';
+        var body = JSON.stringify({ ssid: selected.value, password: wifiPassInput.value });
+        fetch('/api/wifi', { method: 'POST', headers: {'Content-Type':'application/json'}, body: body })
+          .then(function(r) { return r.json(); })
+          .then(function() {
+            wifiStatus.className = 'status ok';
+            wifiStatus.textContent = 'WiFi credentials saved.';
+          })
+          .catch(function(err) {
+            wifiStatus.className = 'status err';
+            wifiStatus.textContent = 'Error: ' + err.message;
+            wifiConnectBtn.disabled = false;
+          });
+      });
+
+      for (var i = 0; i < mqttFields.length; i++) {
+        mqttFields[i].addEventListener('input', function() { mqttBtn.disabled = false; });
+      }
+      fwField.addEventListener('input', function() { fwBtn.disabled = false; });
+
+      document.getElementById('mqtt-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        mqttBtn.disabled = true;
+        mqttStatus.className = 'status';
+        mqttStatus.textContent = 'Saving...';
+        var body = JSON.stringify({
+          broker: document.getElementById('broker').value,
+          username: document.getElementById('username').value,
+          password: document.getElementById('password').value,
+          port: parseInt(document.getElementById('port').value) || 1883
+        });
+        fetch('/api/mqtt', { method: 'POST', headers: {'Content-Type':'application/json'}, body: body })
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            mqttStatus.className = 'status ok';
+            mqttStatus.textContent = 'Saved. Device will connect to broker.';
+          })
+          .catch(function(err) {
+            mqttStatus.className = 'status err';
+            mqttStatus.textContent = 'Error: ' + err.message;
+            mqttBtn.disabled = false;
+          });
+      });
+
+      document.getElementById('fw-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        fwBtn.disabled = true;
+        fwStatus.className = 'status';
+        fwStatus.textContent = 'Saving...';
+        var body = JSON.stringify({ url: fwField.value });
+        fetch('/api/firmware', { method: 'POST', headers: {'Content-Type':'application/json'}, body: body })
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            fwStatus.className = 'status ok';
+            fwStatus.textContent = 'Firmware URL saved.';
+          })
+          .catch(function(err) {
+            fwStatus.className = 'status err';
+            fwStatus.textContent = 'Error: ' + err.message;
+            fwBtn.disabled = false;
+          });
+      });
+    })();
+  </script>
+</body>
+</html>

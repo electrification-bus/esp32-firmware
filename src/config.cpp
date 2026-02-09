@@ -10,6 +10,9 @@ static JsonObject config_json;
 static JsonDocument homie_config_json;
 static JsonDocument platform_config_json;
 static JsonDocument node_config_json;
+char wifi_ssid[33] = {0};
+char wifi_password[64] = {0};
+
 char mqtt_host[64] = {0};
 uint16_t mqtt_port;
 char mqtt_username[64] = {0};
@@ -24,6 +27,7 @@ char device_model[32] = "ESP32";
 char device_serial[32] = {0};
 char firmware_name[32] = {0};
 char firmware_version[16] = "1.0.0";
+char firmware_url[128] = {0};
 
 // Homie role: "device" or "controller"
 char homie_role[16] = "device";
@@ -132,6 +136,16 @@ bool loadPlatformConfiguration() {
   config_json = conf_array[0].as<JsonObject>();
 
   // Safely copy string values with null checks
+  if (config_json["wifi_ssid"].is<JsonString>()) {
+    strncpy(wifi_ssid, config_json["wifi_ssid"].as<JsonString>().c_str(), sizeof(wifi_ssid) - 1);
+    wifi_ssid[sizeof(wifi_ssid) - 1] = '\0';
+  }
+
+  if (config_json["wifi_password"].is<JsonString>()) {
+    strncpy(wifi_password, config_json["wifi_password"].as<JsonString>().c_str(), sizeof(wifi_password) - 1);
+    wifi_password[sizeof(wifi_password) - 1] = '\0';
+  }
+
   if (config_json["mqtt_host"].is<JsonString>()) {
     strncpy(mqtt_host, config_json["mqtt_host"].as<JsonString>().c_str(), sizeof(mqtt_host) - 1);
     mqtt_host[sizeof(mqtt_host) - 1] = '\0';
@@ -154,11 +168,7 @@ bool loadPlatformConfiguration() {
     device_id_prefix[sizeof(device_id_prefix) - 1] = '\0';
   }
 
-  // Device info for mDNS
-  if (config_json["device_name"].is<JsonString>()) {
-    strncpy(device_name, config_json["device_name"].as<JsonString>().c_str(), sizeof(device_name) - 1);
-    device_name[sizeof(device_name) - 1] = '\0';
-  }
+  // device_name is loaded from homie.yml (name field), not config.yml
 
   if (config_json["device_type"].is<JsonString>()) {
     strncpy(device_type, config_json["device_type"].as<JsonString>().c_str(), sizeof(device_type) - 1);
@@ -188,6 +198,11 @@ bool loadPlatformConfiguration() {
   if (config_json["firmware_version"].is<JsonString>()) {
     strncpy(firmware_version, config_json["firmware_version"].as<JsonString>().c_str(), sizeof(firmware_version) - 1);
     firmware_version[sizeof(firmware_version) - 1] = '\0';
+  }
+
+  if (config_json["firmware_url"].is<JsonString>()) {
+    strncpy(firmware_url, config_json["firmware_url"].as<JsonString>().c_str(), sizeof(firmware_url) - 1);
+    firmware_url[sizeof(firmware_url) - 1] = '\0';
   }
 
   if (config_json["homie_role"].is<JsonString>()) {
@@ -243,11 +258,9 @@ bool loadHomieConfiguration() {
 
   if (jsonExists(homie_root[HOMIE_NAME])) {
     homie_conf_obf[HOMIE_NAME] = homie_root[HOMIE_NAME];
-    // Use homie name as device_name if not already set from config.yml
-    if (strlen(device_name) == 0) {
-      strncpy(device_name, homie_root[HOMIE_NAME].as<const char*>(), sizeof(device_name) - 1);
-      device_name[sizeof(device_name) - 1] = '\0';
-    }
+    // Use homie name as device_name (homie.yml is authoritative for device name)
+    strncpy(device_name, homie_root[HOMIE_NAME].as<const char*>(), sizeof(device_name) - 1);
+    device_name[sizeof(device_name) - 1] = '\0';
   } else {Serial.printf("CONFIG:**ERROR: MISSING '%s'\n",HOMIE_NAME);return false;}
   if (jsonExists(homie_root[HOMIE_TYPE])) {
     homie_conf_obf[HOMIE_TYPE] = homie_root[HOMIE_TYPE];
