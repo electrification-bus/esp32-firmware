@@ -33,7 +33,7 @@ Device::Device() {
     _state = DeviceState::DEVICE_STATE_INIT;
 }
 
-void Device::addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json) {
+void Device::addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json, bool subscribe) {
     JsonVariant props = node_json[HOMIE_PROPERTIES].as<JsonArray>();
     for(JsonVariant json_prop : props.as<JsonArray>()) {
       if (json_prop.is<JsonObject>()) {
@@ -43,7 +43,7 @@ void Device::addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json) {
         JsonObject props_obj = json_prop.as<JsonObject>();
         prop->from_dict(&props_obj); // Initialize property from JsonObject
         n->addProperty(prop);
-        if (prop->settable()) {
+        if (subscribe && prop->settable()) {
           prop->subscribe();
         }
       }
