@@ -38,6 +38,9 @@ bool mqtt_is_secure();
 // Returns pointer to certificate data (static buffer) or nullptr on failure
 const char* mqtt_load_ca_cert();
 
+// Returns true if mqtt_host is configured (non-empty)
+bool has_mqtt_broker();
+
 void generateDeviceID();
 const char* getDeviceID();
 bool loadConfiguration();

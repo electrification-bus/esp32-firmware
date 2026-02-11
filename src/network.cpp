@@ -98,6 +98,78 @@ static void mdns_add_txt(const char* service, const char* proto, const char* key
   MDNS.addServiceTxt(service, proto, key, value);
 }
 
+// mDNS-discovered MQTT broker (separate from config broker)
+static char mdns_broker_host[64] = {0};
+static uint16_t mdns_broker_port = 0;
+
+#define MDNS_DISCOVERY_ATTEMPTS 3
+#define MDNS_DISCOVERY_DELAY_MS 3000
+
+// Query mDNS for _mqtt._tcp services and store result in mdns_broker_host/port
+// Does not modify mqtt_host/mqtt_port globals
+static bool mdns_query_mqtt_broker() {
+  Serial.println("mDNS: Searching for MQTT brokers (_mqtt._tcp)...");
+
+  for (int attempt = 0; attempt < MDNS_DISCOVERY_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      Serial.printf("mDNS: Discovery attempt %d of %d...\n", attempt + 1, MDNS_DISCOVERY_ATTEMPTS);
+      delay(MDNS_DISCOVERY_DELAY_MS);
+    }
+
+    int num_found = MDNS.queryService("mqtt", "tcp");
+    if (num_found <= 0) {
+      Serial.printf("mDNS: No _mqtt._tcp services found (attempt %d)\n", attempt + 1);
+      continue;
+    }
+
+    Serial.printf("mDNS: Found %d MQTT broker(s)\n", num_found);
+
+    for (int i = 0; i < num_found; i++) {
+      const char* hostname = MDNS.hostname(i).c_str();
+      uint16_t svc_port = MDNS.port(i);
+      Serial.printf("mDNS:   [%d] host=%s port=%u\n", i, hostname, svc_port);
+
+      // Log TXT records for debugging
+      int txt_count = MDNS.numTxt(i);
+      for (int j = 0; j < txt_count; j++) {
+        Serial.printf("mDNS:     TXT %s=%s\n",
+                       MDNS.txtKey(i, j).c_str(), MDNS.txt(i, j).c_str());
+      }
+
+      // Use the broker's IP address directly
+      IPAddress broker_ip = MDNS.IP(i);
+      if (broker_ip == IPAddress(0, 0, 0, 0)) {
+        Serial.printf("mDNS:   [%d] No IP resolved, skipping\n", i);
+        continue;
+      }
+
+      snprintf(mdns_broker_host, sizeof(mdns_broker_host), "%d.%d.%d.%d",
+               broker_ip[0], broker_ip[1], broker_ip[2], broker_ip[3]);
+      mdns_broker_port = svc_port > 0 ? svc_port : 1883;
+
+      Serial.printf("mDNS: Discovered %s broker: %s:%u (host=%s)\n",
+                     mdns_broker_port == MQTT_SECURE_PORT ? "MQTTS" : "MQTT",
+                     mdns_broker_host, mdns_broker_port, hostname);
+      return true;
+    }
+  }
+
+  Serial.println("mDNS: No MQTT broker found via mDNS");
+  return false;
+}
+
+const char* mdns_get_broker_host() {
+  return mdns_broker_host;
+}
+
+uint16_t mdns_get_broker_port() {
+  return mdns_broker_port;
+}
+
+bool mdns_has_broker() {
+  return mdns_broker_host[0] != '\0';
+}
+
 bool setup_mdns() {
   // Use device name as hostname (sanitized for mDNS)
   if (strlen(device_name) > 0) {
@@ -113,49 +185,17 @@ bool setup_mdns() {
   }
   Serial.printf("mDNS: Started for host: %s.local\n", mdns_hostname);
 
-  // ============================================================
-  // _homie._tcp service - Homie protocol device/controller discovery
-  // This is the primary service for Homie-compliant discovery
-  // Advertises: hostname.local with Homie device attributes
-  // ============================================================
-  MDNS.addService("_homie", "_tcp", mqtt_port);
-
-  // Homie protocol attributes (required and recommended)
-  mdns_add_txt("_homie", "_tcp", "homie", "5.0");  // Homie version without patch
-  mdns_add_txt("_homie", "_tcp", "version", "1");  // Description document version
-  mdns_add_txt("_homie", "_tcp", "id", getDeviceID());
-  mdns_add_txt("_homie", "_tcp", "name", device_name);
-  mdns_add_txt("_homie", "_tcp", "role", homie_role);  // "device" or "controller"
-
-  if (strlen(device_type) > 0) {
-    mdns_add_txt("_homie", "_tcp", "type", device_type);
+  // Discover MQTT brokers on the local network (only if no config broker)
+  if (!has_mqtt_broker()) {
+    mdns_query_mqtt_broker();
   }
-
-  // Build and publish base topic: homie/5/{device_id}/
-  char base_topic[96] = {0};
-  snprintf(base_topic, sizeof(base_topic), "%s/%s/", HOMIE_TOPIC_PREFIX, getDeviceID());
-  mdns_add_txt("_homie", "_tcp", "base", base_topic);
-
-  // MQTT broker discovery info - allows clients to find the MQTT broker
-  mdns_add_txt("_homie", "_tcp", "mqtt_host", mqtt_host);
-  char port_str[8] = {0};
-  snprintf(port_str, sizeof(port_str), "%u", mqtt_port);
-  mdns_add_txt("_homie", "_tcp", "mqtt_port", port_str);
-  mdns_add_txt("_homie", "_tcp", "mqtt_tls", mqtt_is_secure() ? "true" : "false");
-
-  // Device state (will be "init" at mDNS setup time)
-  mdns_add_txt("_homie", "_tcp", "state", device_state_to_cstr(theDevice.state()));
-
-  // Implementation info
-  mdns_add_txt("_homie", "_tcp", "implementation", "homie-esp32-sdk");
-
-  Serial.printf("mDNS: Added _homie._tcp service (role=%s, base=%s)\n", homie_role, base_topic);
 
   // ============================================================
   // _mqtt._tcp service - MQTT broker advertisement
   // Allows discovery of the MQTT broker this device uses
   // Standard service type for MQTT (RFC 6763)
   // ============================================================
+  /* mqtt broker should advertise this
   MDNS.addService("_mqtt", "_tcp", mqtt_port);
   mdns_add_txt("_mqtt", "_tcp", "host", mqtt_host);
   mdns_add_txt("_mqtt", "_tcp", "port", port_str);
@@ -167,7 +207,7 @@ bool setup_mdns() {
   }
 
   Serial.printf("mDNS: Added _mqtt._tcp service (host=%s, port=%u)\n", mqtt_host, mqtt_port);
-
+  */
   // ============================================================
   // _device-info._tcp service - Hardware/firmware information
   // Standard service type for device information
@@ -391,4 +431,16 @@ void setup_ethernet()
 
 
 void loop_ethernet() {
+}
+
+#define MDNS_BROKER_POLL_MS 30000
+static unsigned long mdns_last_poll = 0;
+
+void loop_mdns() {
+  if (mdns_has_broker()) return;
+
+  if (millis() - mdns_last_poll < MDNS_BROKER_POLL_MS) return;
+  mdns_last_poll = millis();
+
+  mdns_query_mqtt_broker();
 }

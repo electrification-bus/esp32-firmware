@@ -126,6 +126,8 @@ bool loadPlatformConfiguration() {
     return false;
   }
   Serial.println(F("CONFIG: DESERIALIZE OK"));
+  serializeJsonPretty(yml_config, Serial);
+  Serial.println();
 
   //TODO keys to #define header
   JsonArray conf_array = yml_config["config"].as<JsonArray>();
@@ -226,16 +228,8 @@ bool loadHomieConfiguration() {
     return false;
   }
   Serial.println(F("HOMIE CONFIG: DESERIALIZE OK"));
-
-  /*debug
-  serializeJsonPretty(yml_config, Serial);
-  Serial.println();
-  //the device
-  for (JsonPair kv : homie_root) {
-    if (kv.value().is<JsonObject>() || kv.value().is<JsonArray>())
-      continue;
-    Serial.printf("homie_root key: %s, value: %s\n", kv.key().c_str(), kv.value().as<const char*>());
-  }*/
+  //serializeJsonPretty(homie_yml_config, Serial);
+  //Serial.println();
 
   JsonObject homie_conf_obf = homie_config_json.to<JsonObject>();
   JsonObject homie_root = homie_yml_config.as<JsonObject>();
@@ -288,6 +282,10 @@ bool loadHomieConfiguration() {
   }*/
  return true;
 
+}
+
+bool has_mqtt_broker() {
+  return mqtt_host[0] != '\0';
 }
 
 bool mqtt_is_secure() {

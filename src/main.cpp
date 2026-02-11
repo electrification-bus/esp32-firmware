@@ -10,7 +10,6 @@
 #include <network.h>
 #include <config.h>
 #include <mqtt_client.h>
-#include <ESPmDNS.h>
 
 #ifdef ENABLE_CONTROLLER
 // ============================================================================
@@ -70,6 +69,7 @@ void setup() {
 }
 
 void loop() {
+    loop_mdns();
     loop_mqtt();
     controller_loop();
 
@@ -172,6 +172,7 @@ void setup() {
 }
 
 void loop() {
+    loop_mdns();
     // MQTT must run first and frequently to maintain keepalive
     loop_mqtt();
     loop_homie();
