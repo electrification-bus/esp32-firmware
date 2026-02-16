@@ -214,6 +214,8 @@ void test_modbus_queue() {
 }
 #endif
 ```
+## Source Control
+delete phantom windows 'nul' file if it appears in git change list
 
 ### Stability Rules
 
