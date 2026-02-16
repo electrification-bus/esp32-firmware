@@ -12,7 +12,10 @@
       "Bash(wsl mosquitto_sub:*)",
       "Bash(ping:*)",
       "Bash(echo:*)",
-      "Bash(cmd /c \"mode COM12 DTR=off & ping -n 2 localhost > nul & mode COM12 DTR=on\")"
+      "Bash(cmd /c \"mode COM12 DTR=off & ping -n 2 localhost > nul & mode COM12 DTR=on\")",
+      "Bash(git -C \"c:\\\\Users\\\\dougm\\\\git-nesl\\\\homie-esp32-sdk\" status --short)",
+      "Bash(where.exe:*)",
+      "Bash(npm root:*)"
     ]
   }
 }
