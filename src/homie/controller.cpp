@@ -475,7 +475,7 @@ static void create_device_from_description(ControllerDevice* ctrl_dev, JsonDocum
             snprintf(topic, sizeof(topic), "%s/%s/%s/", _domain, _version, dev->getId());
             Node* new_node = dev->addNode(node_doc.as<JsonVariant>(), topic);
             if (new_node) {
-                dev->addNodePropertiesFromConfigJson(new_node, node_doc.as<JsonVariant>());
+                dev->addNodePropertiesFromConfigJson(new_node, node_doc.as<JsonVariant>(), false);
                 Serial.printf("CONTROLLER: Added node %s with properties\n", node_id);
             }
         }

@@ -9,7 +9,42 @@
 
 static DNSServer dnsServer;
 static AsyncWebServer server(80);
-static volatile bool portal_config_saved = false;
+static volatile bool portal_mqtt_changed = false;  // set when MQTT config saved via portal
+
+// WiFi STA connection state tracked via event handler
+static volatile uint8_t wifi_disconnect_reason = 0;
+static volatile bool wifi_connected = false;
+static volatile bool wifi_connecting = false;  // true while connection attempt in progress
+
+static void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+    switch (event) {
+        case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+            Serial.println("PORTAL: WiFi STA associated");
+            break;
+        case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+            wifi_connected = true;
+            wifi_connecting = false;
+            wifi_disconnect_reason = 0;
+            Serial.printf("PORTAL: WiFi STA got IP: %s\n",
+                IPAddress(info.got_ip.ip_info.ip.addr).toString().c_str());
+            break;
+        case ARDUINO_EVENT_WIFI_STA_DISCONNECTED: {
+            uint8_t reason = info.wifi_sta_disconnected.reason;
+            wifi_connected = false;
+            // Reason 8 (ASSOC_LEAVE) is from our intentional WiFi.disconnect() - ignore it
+            if (reason == 8 && wifi_connecting) {
+                Serial.printf("PORTAL: WiFi STA disconnect ignored (intentional reset, reason=%d)\n", reason);
+            } else {
+                wifi_disconnect_reason = reason;
+                wifi_connecting = false;
+                Serial.printf("PORTAL: WiFi STA disconnected, reason=%d\n", reason);
+            }
+            break;
+        }
+        default:
+            break;
+    }
+}
 
 // WiFi scan results storage
 #define MAX_WIFI_NETWORKS 16
@@ -21,8 +56,13 @@ struct WifiNetwork {
 static WifiNetwork scanned_networks[MAX_WIFI_NETWORKS];
 static int scanned_count = 0;
 
-bool captive_portal_needed() {
-    return mqtt_host[0] == '\0';
+// Returns true (once) when MQTT config was changed via portal
+bool captive_portal_mqtt_changed() {
+    if (portal_mqtt_changed) {
+        portal_mqtt_changed = false;
+        return true;
+    }
+    return false;
 }
 
 // Perform WiFi scan and store deduplicated results sorted by RSSI
@@ -33,17 +73,23 @@ static void performWifiScan() {
 
     scanned_count = 0;
     for (int i = 0; i < found && scanned_count < MAX_WIFI_NETWORKS; i++) {
-        const char *ssid = WiFi.SSID(i).c_str();
+        // Copy SSID into local buffer immediately - WiFi.SSID() returns a temporary String
+        char ssid[33];
+        strncpy(ssid, WiFi.SSID(i).c_str(), 32);
+        ssid[32] = '\0';
         if (ssid[0] == '\0') continue;  // skip hidden networks
+
+        int8_t rssi = (int8_t)WiFi.RSSI(i);
+        bool secure = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
 
         // Check for duplicate SSID, keep strongest signal
         bool duplicate = false;
         for (int j = 0; j < scanned_count; j++) {
             if (strcmp(scanned_networks[j].ssid, ssid) == 0) {
                 duplicate = true;
-                if (WiFi.RSSI(i) > scanned_networks[j].rssi) {
-                    scanned_networks[j].rssi = (int8_t)WiFi.RSSI(i);
-                    scanned_networks[j].secure = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+                if (rssi > scanned_networks[j].rssi) {
+                    scanned_networks[j].rssi = rssi;
+                    scanned_networks[j].secure = secure;
                 }
                 break;
             }
@@ -51,8 +97,8 @@ static void performWifiScan() {
         if (!duplicate) {
             strncpy(scanned_networks[scanned_count].ssid, ssid, 32);
             scanned_networks[scanned_count].ssid[32] = '\0';
-            scanned_networks[scanned_count].rssi = (int8_t)WiFi.RSSI(i);
-            scanned_networks[scanned_count].secure = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+            scanned_networks[scanned_count].rssi = rssi;
+            scanned_networks[scanned_count].secure = secure;
             scanned_count++;
         }
     }
@@ -75,6 +121,7 @@ static void performWifiScan() {
 // Handle GET /api/wifi-scan - return JSON array of scanned networks
 static void handleWifiScan(AsyncWebServerRequest *request) {
     // Build JSON response in static buffer
+    Serial.println("handleWifiScan called  ");
     static char json_buf[1536];
     size_t offset = 0;
     offset += snprintf(json_buf + offset, sizeof(json_buf) - offset, "[");
@@ -105,7 +152,7 @@ static void handleWifiScan(AsyncWebServerRequest *request) {
     request->send(200, "application/json", json_buf);
 }
 
-// Handle POST /api/wifi - save WiFi credentials to global variables
+// Handle POST /api/wifi - save WiFi credentials and begin connection
 static void handleWifiSave(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     if (index + len != total) {
         return;
@@ -129,66 +176,83 @@ static void handleWifiSave(AsyncWebServerRequest *request, uint8_t *data, size_t
         wifi_password[sizeof(wifi_password) - 1] = '\0';
     }
 
-    Serial.printf("PORTAL: WiFi config saved - ssid='%s'\n", wifi_ssid);
-    request->send(200, "application/json", "{\"status\":\"ok\"}");
+    Serial.printf("PORTAL: WiFi connecting to '%s'...\n", wifi_ssid);
+
+    // Reset connection state and STA radio
+    wifi_connected = false;
+    wifi_disconnect_reason = 0;
+    wifi_connecting = true;
+    WiFi.disconnect(true);
+    delay(100);
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.begin(wifi_ssid, wifi_password);
+
+    request->send(200, "application/json", "{\"status\":\"connecting\"}");
 }
 
-// Serve config.html with %DEVICE_NAME% and %DEVICE_TOPIC% replaced
-// Uses C-string operations to avoid Arduino String class
+// Handle GET /api/wifi-status - return connection status from event handler
+static void handleWifiStatus(AsyncWebServerRequest *request) {
+    static char json_buf[192];
+    uint8_t reason = wifi_disconnect_reason;
+
+    if (wifi_connected) {
+        IPAddress ip = WiFi.localIP();
+        snprintf(json_buf, sizeof(json_buf),
+            "{\"status\":\"connected\",\"ip\":\"%d.%d.%d.%d\",\"ssid\":\"%s\"}",
+            ip[0], ip[1], ip[2], ip[3], wifi_ssid);
+        Serial.printf("PORTAL: wifi-status: connected IP=%d.%d.%d.%d\n",
+            ip[0], ip[1], ip[2], ip[3]);
+    } else if (reason == 15 || reason == 202 || reason == 204) {
+        // 15=4WAY_HANDSHAKE_TIMEOUT, 202=AUTH_FAIL, 204=HANDSHAKE_TIMEOUT
+        snprintf(json_buf, sizeof(json_buf),
+            "{\"status\":\"auth_fail\",\"reason\":%d,\"message\":\"Wrong password (reason %d)\"}",
+            reason, reason);
+        Serial.printf("PORTAL: wifi-status: auth failed reason=%d\n", reason);
+    } else if (reason == 201) {
+        // 201=NO_AP_FOUND
+        snprintf(json_buf, sizeof(json_buf),
+            "{\"status\":\"no_ssid\",\"reason\":%d,\"message\":\"Network not found\"}",
+            reason);
+        Serial.printf("PORTAL: wifi-status: no AP found reason=%d\n", reason);
+    } else if (reason != 0) {
+        // Other disconnect reason - report it
+        snprintf(json_buf, sizeof(json_buf),
+            "{\"status\":\"failed\",\"reason\":%d,\"message\":\"Connection failed (reason %d)\"}",
+            reason, reason);
+        Serial.printf("PORTAL: wifi-status: failed reason=%d\n", reason);
+    } else {
+        snprintf(json_buf, sizeof(json_buf), "{\"status\":\"connecting\"}");
+        Serial.printf("PORTAL: wifi-status: connecting wl=%d\n", WiFi.status());
+    }
+    request->send(200, "application/json", json_buf);
+}
+
+// Handle GET /api/device-info - return device name and topic as JSON
+static void handleDeviceInfo(AsyncWebServerRequest *request) {
+    static char json_buf[256];
+    snprintf(json_buf, sizeof(json_buf),
+        "{\"name\":\"%s\",\"topic\":\"%s/%s/\"}",
+        device_name, HOMIE_TOPIC_PREFIX, getDeviceID());
+    request->send(200, "application/json", json_buf);
+}
+
+// Serve config.html from SPIFFS - read into buffer and send
+// Buffer sized for config.html (~11KB) with headroom for future edits
+static char html_buf[16384];
 static void serveConfigPage(AsyncWebServerRequest *request) {
+    Serial.printf("PORTAL: serveConfigPage requested from %s\n", request->url().c_str());
     File f = SPIFFS.open("/html/config.html", "r");
     if (!f) {
+        Serial.println("PORTAL: ERROR - Failed to open /html/config.html");
         request->send(500, "text/plain", "Failed to open config page");
         return;
     }
-
-    // Read HTML template into static buffer
-    static char html_buf[8192];
+    size_t file_size = f.size();
     size_t bytes_read = f.readBytes(html_buf, sizeof(html_buf) - 1);
     f.close();
     html_buf[bytes_read] = '\0';
-
-    // Build device topic string
-    char topic[96];
-    snprintf(topic, sizeof(topic), "%s/%s/", HOMIE_TOPIC_PREFIX, getDeviceID());
-
-    // Replace %DEVICE_NAME% placeholder
-    static char out_buf[8192];
-    char *pos = strstr(html_buf, "%DEVICE_NAME%");
-    if (pos) {
-        size_t prefix_len = pos - html_buf;
-        memcpy(out_buf, html_buf, prefix_len);
-        size_t offset = prefix_len;
-        size_t name_len = strlen(device_name);
-        memcpy(out_buf + offset, device_name, name_len);
-        offset += name_len;
-        const char *after = pos + 13; // strlen("%DEVICE_NAME%")
-        size_t remaining = strlen(after);
-        memcpy(out_buf + offset, after, remaining);
-        offset += remaining;
-        out_buf[offset] = '\0';
-    } else {
-        strcpy(out_buf, html_buf);
-    }
-
-    // Replace %DEVICE_TOPIC% placeholder (work from out_buf into html_buf)
-    pos = strstr(out_buf, "%DEVICE_TOPIC%");
-    if (pos) {
-        size_t prefix_len = pos - out_buf;
-        memcpy(html_buf, out_buf, prefix_len);
-        size_t offset = prefix_len;
-        size_t topic_len = strlen(topic);
-        memcpy(html_buf + offset, topic, topic_len);
-        offset += topic_len;
-        const char *after = pos + 14; // strlen("%DEVICE_TOPIC%")
-        size_t remaining = strlen(after);
-        memcpy(html_buf + offset, after, remaining);
-        offset += remaining;
-        html_buf[offset] = '\0';
-        request->send(200, "text/html", html_buf);
-    } else {
-        request->send(200, "text/html", out_buf);
-    }
+    Serial.printf("PORTAL: Serving config.html (%d of %d bytes)\n", bytes_read, file_size);
+    request->send(200, "text/html", html_buf);
 }
 
 // Handle POST /api/mqtt - save MQTT configuration to global variables
@@ -231,7 +295,7 @@ static void handleMqttSave(AsyncWebServerRequest *request, uint8_t *data, size_t
                    mqtt_host, mqtt_port, mqtt_username);
 
     request->send(200, "application/json", "{\"status\":\"ok\"}");
-    portal_config_saved = true;
+    portal_mqtt_changed = true;
 }
 
 // Handle POST /api/firmware - save firmware URL to global variable
@@ -263,8 +327,13 @@ static void handleNoOp(AsyncWebServerRequest *request) {
 }
 
 // Redirect handler for captive portal detection endpoints
+// Uses absolute URL with AP IP - relative redirects can confuse Android captive portal WebView
+static char redirect_url[32];
 static void handleCaptiveRedirect(AsyncWebServerRequest *request) {
-    request->redirect("/");
+    IPAddress ip = WiFi.softAPIP();
+    snprintf(redirect_url, sizeof(redirect_url), "http://%d.%d.%d.%d/", ip[0], ip[1], ip[2], ip[3]);
+    Serial.printf("PORTAL: Redirecting %s -> %s\n", request->url().c_str(), redirect_url);
+    request->redirect(redirect_url);
 }
 
 void captive_portal_loop() {
@@ -273,7 +342,7 @@ void captive_portal_loop() {
 
 void captive_portal_start() {
     Serial.println("\n===== CAPTIVE PORTAL =====");
-    Serial.println("PORTAL: No MQTT broker configured, starting captive portal");
+    Serial.println("PORTAL: Starting configuration portal (always active)");
 
     // Mount SPIFFS to serve HTML
     if (!SPIFFS.begin(true)) {
@@ -281,10 +350,13 @@ void captive_portal_start() {
         return;
     }
 
-    // Start WiFi in AP+STA mode so we can scan while serving the portal
+    // Register WiFi event handler for STA connection tracking
+    WiFi.onEvent(onWifiEvent);
+
+    // Start WiFi in AP+STA mode: AP serves portal, STA connects to user's network
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP(device_name);
-    delay(100);  // Brief delay for AP to stabilize
+    delay(500);  // Allow AP and STA radio to stabilize before scanning
 
     IPAddress ap_ip = WiFi.softAPIP();
     Serial.printf("PORTAL: AP started, SSID='%s', IP=%d.%d.%d.%d\n",
@@ -296,7 +368,7 @@ void captive_portal_start() {
     // Start DNS server - redirect all domains to AP IP (captive portal behavior)
     dnsServer.start(53, "*", WiFi.softAPIP());
 
-    // Serve the config HTML page with device name/topic substitution
+    // Serve the config HTML page
     server.on("/", HTTP_GET, serveConfigPage);
 
     // Captive portal detection endpoints (Android, Windows, Apple)
@@ -306,33 +378,22 @@ void captive_portal_start() {
     server.on("/connecttest.txt", HTTP_GET, handleCaptiveRedirect);
     server.on("/redirect", HTTP_GET, handleCaptiveRedirect);
 
-    // WiFi scan and join endpoints
+    // Device info endpoint (name + topic for page header)
+    server.on("/api/device-info", HTTP_GET, handleDeviceInfo);
+
+    // WiFi scan, join, and status endpoints
     server.on("/api/wifi-scan", HTTP_GET, handleWifiScan);
     server.on("/api/wifi", HTTP_POST, handleNoOp, NULL, handleWifiSave);
+    server.on("/api/wifi-status", HTTP_GET, handleWifiStatus);
 
     // API endpoints for saving configuration
     server.on("/api/mqtt", HTTP_POST, handleNoOp, NULL, handleMqttSave);
-
     server.on("/api/firmware", HTTP_POST, handleNoOp, NULL, handleFirmwareSave);
+
+    // Catch-all: redirect any unknown URL to config page (improves Android captive portal detection)
+    server.onNotFound(handleCaptiveRedirect);
 
     server.begin();
     Serial.println("PORTAL: Web server started on port 80");
-    Serial.println("PORTAL: Waiting for configuration...");
-
-    // Block until MQTT config is saved
-    while (!portal_config_saved) {
-        dnsServer.processNextRequest();
-        delay(10);
-    }
-
-    Serial.println("PORTAL: Configuration saved, shutting down portal");
-
-    // Cleanup
-    server.end();
-    dnsServer.stop();
-    WiFi.softAPdisconnect(true);
-    WiFi.mode(WIFI_STA);
-    SPIFFS.end();
-
-    Serial.println("PORTAL: Portal stopped, resuming normal startup");
+    Serial.println("PORTAL: Portal running - connect to AP to configure device");
 }

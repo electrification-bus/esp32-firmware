@@ -2,11 +2,13 @@
 #include <Arduino.h>
 
 bool setup_wifi();
+bool setup_wifi_sta();  // Start WiFi STA using saved wifi_ssid/wifi_password credentials
 bool setup_mdns();
 void setup_ota();
 void setup_ethernet();
 
 void loop_ota();
+void loop_mdns();
 
 bool client_connected();
 
@@ -21,4 +23,8 @@ const char* get_wlan_mac();
 // Get the mDNS hostname (sanitized device name)
 const char* get_mdns_hostname();
 
-
+// mDNS-discovered MQTT broker (discovered independently from config)
+// setup_mdns() performs initial discovery; results are available via accessors
+bool mdns_has_broker();
+const char* mdns_get_broker_host();
+uint16_t mdns_get_broker_port();

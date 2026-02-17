@@ -4,6 +4,11 @@
  * Build modes:
  *   - Device mode (default): Publishes own nodes/properties to MQTT broker
  *   - Controller mode (ENABLE_CONTROLLER): Discovers and monitors other Homie devices
+ *
+ * Network architecture:
+ *   - Ethernet (preferred) and WiFi STA run simultaneously when available
+ *   - Captive portal (WiFi AP) always runs for configuration/reconfiguration
+ *   - Ethernet is preferred for MQTT and mDNS when connected
  */
 
 #include <Arduino.h>
@@ -42,18 +47,41 @@ void setup() {
         return;
     }
 
-    // If no MQTT broker configured, start captive portal for configuration
-    if (captive_portal_needed()) {
-        captive_portal_start();
-    }
+    // Start captive portal - always available for (re)configuration
+    // Sets WiFi to AP+STA mode: AP serves portal, STA for network
+    captive_portal_start();
 
+    // Start Ethernet (preferred interface for MQTT)
     setup_ethernet();
+
+    // Start WiFi STA if credentials are saved (from config or previous portal session)
+    setup_wifi_sta();
+
+    // Wait for at least one network interface to get an IP
     while (!client_connected()) {
+        captive_portal_loop();  // Keep portal responsive while waiting
         Serial.println("Waiting for network connection...");
         delay(1000);
     }
 
+    // Log which interfaces are active
+    const char* eth_ip = get_eth_ip();
+    const char* wifi_ip = get_wifi_ip();
+    if (eth_ip[0] != '\0') Serial.printf("Network: Ethernet IP=%s (preferred)\n", eth_ip);
+    if (wifi_ip[0] != '\0') Serial.printf("Network: WiFi STA IP=%s\n", wifi_ip);
+
+    // Start mDNS (also discovers MQTT brokers on LAN)
     setup_mdns();
+
+    // Wait for MQTT broker to be configured (via config file, portal, or mDNS)
+    while (!has_mqtt_broker() && !mdns_has_broker()) {
+        captive_portal_loop();
+        loop_mdns();  // Keep trying mDNS discovery
+        if (captive_portal_mqtt_changed()) break;  // User configured via portal
+        Serial.println("Waiting for MQTT broker configuration (use portal or mDNS)...");
+        delay(2000);
+    }
+
     setup_mqtt();
 
     // Register reconnect callback to re-publish state after reconnection
@@ -76,6 +104,16 @@ void setup() {
 }
 
 void loop() {
+    captive_portal_loop();
+
+    // Handle MQTT reconfiguration from portal
+    if (captive_portal_mqtt_changed()) {
+        Serial.println("MQTT config updated via portal, reconnecting...");
+        mqtt_restart();
+        setup_mqtt();
+    }
+
+    loop_mdns();
     loop_mqtt();
     controller_loop();
 
@@ -126,7 +164,7 @@ void loop() {
 void on_mqtt_reconnect() {
     theDevice.publishState();
     Serial.println("DEVICE: Re-published $state after reconnect");
-    
+
 }
 
 void setup() {
@@ -140,21 +178,44 @@ void setup() {
         return;
     }
 
-    // If no MQTT broker configured, start captive portal for configuration
-    if (captive_portal_needed()) {
-        captive_portal_start();
-    }
+    // Start captive portal - always available for (re)configuration
+    // Sets WiFi to AP+STA mode: AP serves portal, STA for network
+    captive_portal_start();
 
+    // Start Ethernet (preferred interface for MQTT)
     setup_ethernet();
+
+    // Start WiFi STA if credentials are saved (from config or previous portal session)
+    setup_wifi_sta();
+
+    // Wait for at least one network interface to get an IP
     while (!client_connected()) {
+        captive_portal_loop();  // Keep portal responsive while waiting
         Serial.println("Waiting for network connection...");
         delay(1000);
     }
 
+    // Log which interfaces are active
+    const char* eth_ip = get_eth_ip();
+    const char* wifi_ip = get_wifi_ip();
+    if (eth_ip[0] != '\0') Serial.printf("Network: Ethernet IP=%s (preferred)\n", eth_ip);
+    if (wifi_ip[0] != '\0') Serial.printf("Network: WiFi STA IP=%s\n", wifi_ip);
+
+    // Start mDNS (also discovers MQTT brokers on LAN)
     setup_mdns();
 
     // Initialize MQTT publish queue before setup_mqtt (for thread-safe publishing)
     mqtt_queue_init();
+
+    // Wait for MQTT broker to be configured (via config file, portal, or mDNS)
+    while (!has_mqtt_broker() && !mdns_has_broker()) {
+        captive_portal_loop();
+        loop_mdns();  // Keep trying mDNS discovery
+        if (captive_portal_mqtt_changed()) break;  // User configured via portal
+        Serial.println("Waiting for MQTT broker configuration (use portal or mDNS)...");
+        delay(2000);
+    }
+
     setup_mqtt();
 
     // Note: Modbus subsystem is lazily initialized by first ModbusRTUEntity device
@@ -183,6 +244,16 @@ void setup() {
 }
 
 void loop() {
+    captive_portal_loop();
+
+    // Handle MQTT reconfiguration from portal
+    if (captive_portal_mqtt_changed()) {
+        Serial.println("MQTT config updated via portal, reconnecting...");
+        mqtt_restart();
+        setup_mqtt();
+    }
+
+    loop_mdns();
     // MQTT must run first and frequently to maintain keepalive
     loop_mqtt();
     loop_homie();

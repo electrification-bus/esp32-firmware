@@ -27,7 +27,7 @@ class Device {
     void setState(DeviceState state);
     DeviceState state() { return _state;};
     Node* addNode(JsonVariant node, const char* topic);
-    void addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json);
+    void addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json, bool subscribe = true);
     //void setMQTTClient(MQTTClient* client);
     void setMQTTClient(MQTTClient* client);
     void mqttConnected();

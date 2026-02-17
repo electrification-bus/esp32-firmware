@@ -43,21 +43,25 @@
       border: 1px solid #444; border-radius: 6px; }
     .wifi-pass-panel.visible { display: block; }
     .loading { color: #888; font-size: 0.9em; padding: 20px 0; text-align: center; }
+    .pass-wrap { display: flex; align-items: center; }
+    .pass-wrap input { flex: 1; border-radius: 6px 0 0 6px; }
+    .pass-toggle { padding: 10px; background: #16213e; border: 1px solid #444; border-left: none;
+      border-radius: 0 6px 6px 0; color: #aaa; cursor: pointer; font-size: 1.1em; line-height: 1; }
   </style>
 </head>
 <body>
-  <h1>%DEVICE_NAME%</h1>
-  <div class="topic">%DEVICE_TOPIC%</div>
+  <h1 id="dev-name">Homie Device</h1>
+  <div class="topic" id="dev-topic"></div>
 
   <h2>Join Network</h2>
+  <div class="status" id="wifi-status"></div>
   <div id="wifi-loading" class="loading">Scanning for networks...</div>
   <ul id="wifi-list" class="wifi-list"></ul>
   <button type="button" id="wifi-join" disabled>Join Network</button>
   <div id="wifi-pass-panel" class="wifi-pass-panel">
-    <div class="field"><label>Password</label><input type="password" id="wifi-pass" placeholder="Network password"></div>
+    <div class="field"><label>Password</label><div class="pass-wrap"><input type="password" id="wifi-pass" placeholder="Network password"><span class="pass-toggle" id="wifi-pass-toggle">&#x1f441;</span></div></div>
     <button type="button" id="wifi-connect">Connect</button>
   </div>
-  <div class="status" id="wifi-status"></div>
 
   <h2>MQTT Configuration</h2>
   <form id="mqtt-form">
@@ -133,6 +137,15 @@
         }
       }
 
+      // Load device info
+      fetch('/api/device-info')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          document.getElementById('dev-name').textContent = d.name;
+          document.getElementById('dev-topic').textContent = d.topic;
+        })
+        .catch(function() {});
+
       // Load WiFi networks
       fetch('/api/wifi-scan')
         .then(function(r) { return r.json(); })
@@ -141,30 +154,71 @@
           wifiLoading.textContent = 'Failed to scan networks';
         });
 
+      // Toggle password visibility
+      document.getElementById('wifi-pass-toggle').addEventListener('click', function() {
+        var t = wifiPassInput.type === 'password' ? 'text' : 'password';
+        wifiPassInput.type = t;
+      });
+
+      // Reset WiFi UI so user can select a network and try again
+      function resetWifiUI() {
+        wifiJoinBtn.disabled = false;
+        wifiConnectBtn.disabled = false;
+        wifiPassPanel.className = 'wifi-pass-panel';
+        wifiPassInput.value = '';
+      }
+
       // Join Network button reveals password panel
       wifiJoinBtn.addEventListener('click', function() {
         wifiPassPanel.className = 'wifi-pass-panel visible';
         wifiPassInput.focus();
       });
 
-      // Connect button sends WiFi credentials
+      // Poll WiFi connection status until connected or failed
+      function pollWifiStatus(attempts) {
+        if (attempts <= 0) {
+          wifiStatus.className = 'status err';
+          wifiStatus.textContent = 'Connection timed out.';
+          resetWifiUI();
+          return;
+        }
+        setTimeout(function() {
+          fetch('/api/wifi-status')
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              if (d.status === 'connected') {
+                wifiStatus.className = 'status ok';
+                wifiStatus.textContent = 'Connected! IP: ' + d.ip;
+                wifiPassPanel.className = 'wifi-pass-panel';
+              } else if (d.status === 'auth_fail' || d.status === 'failed' || d.status === 'no_ssid') {
+                wifiStatus.className = 'status err';
+                wifiStatus.textContent = d.message || 'Connection failed.';
+                resetWifiUI();
+              } else {
+                wifiStatus.textContent = 'Connecting... (' + attempts + ')';
+                pollWifiStatus(attempts - 1);
+              }
+            })
+            .catch(function() { pollWifiStatus(attempts - 1); });
+        }, 1000);
+      }
+
+      // Connect button sends WiFi credentials and polls for result
       wifiConnectBtn.addEventListener('click', function() {
         var selected = document.querySelector('input[name=wifi]:checked');
         if (!selected) return;
         wifiConnectBtn.disabled = true;
+        wifiJoinBtn.disabled = true;
         wifiStatus.className = 'status';
-        wifiStatus.textContent = 'Saving...';
+        wifiStatus.textContent = 'Connecting...';
         var body = JSON.stringify({ ssid: selected.value, password: wifiPassInput.value });
         fetch('/api/wifi', { method: 'POST', headers: {'Content-Type':'application/json'}, body: body })
           .then(function(r) { return r.json(); })
-          .then(function() {
-            wifiStatus.className = 'status ok';
-            wifiStatus.textContent = 'WiFi credentials saved.';
-          })
+          .then(function() { pollWifiStatus(20); })
           .catch(function(err) {
             wifiStatus.className = 'status err';
             wifiStatus.textContent = 'Error: ' + err.message;
-            wifiConnectBtn.disabled = false;
+            resetWifiUI();
           });
       });
 

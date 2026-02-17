@@ -13,13 +13,9 @@
       "Bash(ping:*)",
       "Bash(echo:*)",
       "Bash(cmd /c \"mode COM12 DTR=off & ping -n 2 localhost > nul & mode COM12 DTR=on\")",
-      "WebFetch(domain:github.com)",
-      "WebFetch(domain:homieiot.github.io)",
-      "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(pip install:*)",
-      "Bash(openssl s_client:*)",
-      "Bash(openssl x509:*)",
-      "Bash(curl:*)"
+      "Bash(git -C \"c:\\\\Users\\\\dougm\\\\git-nesl\\\\homie-esp32-sdk\" status --short)",
+      "Bash(where.exe:*)",
+      "Bash(npm root:*)"
     ]
   }
 }

@@ -1,12 +1,15 @@
 #pragma once
 #include <Arduino.h>
 
-// Returns true if captive portal should be activated (no broker configured)
-bool captive_portal_needed();
-
 // Start WiFi AP + DNS + web server for captive portal
-// Blocks until MQTT config is saved, then returns for normal startup
+// Portal runs continuously in the background for (re)configuration
+// WiFi is set to AP+STA mode: AP serves the portal, STA connects to a network
 void captive_portal_start();
 
-// Loop handler for DNS processing (AsyncWebServer handles itself)
+// Loop handler - must be called from main loop for DNS processing
+// AsyncWebServer handles HTTP requests automatically
 void captive_portal_loop();
+
+// Returns true (once) when MQTT configuration has been saved via the portal
+// Caller should restart MQTT connection with new settings
+bool captive_portal_mqtt_changed();

@@ -33,7 +33,7 @@ extern char homie_role[16];
 
 // TLS/SSL support for MQTT (port 8883)
 #define MQTT_SECURE_PORT 8883
-#define MQTT_CA_CERT_PATH "/certs/shiftr.ca"
+#define MQTT_CA_CERT_PATH "/certs/shiftr.io.ca"
 
 // Returns true if MQTT should use TLS (port 8883)
 bool mqtt_is_secure();
@@ -41,6 +41,9 @@ bool mqtt_is_secure();
 // Load CA certificate from SPIFFS for TLS connection
 // Returns pointer to certificate data (static buffer) or nullptr on failure
 const char* mqtt_load_ca_cert();
+
+// Returns true if mqtt_host is configured (non-empty)
+bool has_mqtt_broker();
 
 void generateDeviceID();
 const char* getDeviceID();
