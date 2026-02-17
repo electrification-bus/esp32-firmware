@@ -6,6 +6,7 @@
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
 #include <homie/homie.h>
+#include <portal_prefs.h>
 
 static DNSServer dnsServer;
 static AsyncWebServer server(80);
@@ -176,6 +177,9 @@ static void handleWifiSave(AsyncWebServerRequest *request, uint8_t *data, size_t
         wifi_password[sizeof(wifi_password) - 1] = '\0';
     }
 
+    // Persist WiFi credentials to NVS for next boot
+    portal_prefs_save_wifi(wifi_ssid, wifi_password);
+
     Serial.printf("PORTAL: WiFi connecting to '%s'...\n", wifi_ssid);
 
     // Reset connection state and STA radio
@@ -290,6 +294,9 @@ static void handleMqttSave(AsyncWebServerRequest *request, uint8_t *data, size_t
     } else {
         mqtt_port = 1883;
     }
+
+    // Persist MQTT settings to NVS for next boot
+    portal_prefs_save_mqtt(mqtt_host, mqtt_port, mqtt_username, mqtt_password);
 
     Serial.printf("PORTAL: MQTT config saved - broker='%s', port=%d, user='%s'\n",
                    mqtt_host, mqtt_port, mqtt_username);

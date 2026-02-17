@@ -3,6 +3,7 @@
 #include <SPIFFS.h>
 #include <ArduinoYaml.h>
 #include <util/jsonUtils.h>
+#include <portal_prefs.h>
 
 Device theDevice;
 
@@ -91,6 +92,9 @@ bool loadConfiguration() {
     Serial.println("PLATFORM CONFIG: **ERROR -- failed to load platform configuration");
     return false;
   }
+  // Fill any gaps left by config.yml with previously saved portal preferences (NVS)
+  portal_prefs_load_fallbacks();
+
   if (!loadHomieConfiguration()) {
     Serial.println("HOMIE CONFIG: **ERROR -- failed to load homie configuration");
     return false;
@@ -153,7 +157,9 @@ bool loadPlatformConfiguration() {
     mqtt_host[sizeof(mqtt_host) - 1] = '\0';
   }
 
-  mqtt_port = config_json["mqtt_port"].as<uint16_t>();
+  if (config_json["mqtt_port"].is<uint16_t>()) {
+    mqtt_port = config_json["mqtt_port"].as<uint16_t>();
+  }
 
   if (config_json["mqtt_username"].is<JsonString>()) {
     strncpy(mqtt_username, config_json["mqtt_username"].as<JsonString>().c_str(), sizeof(mqtt_username) - 1);
