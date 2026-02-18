@@ -3,8 +3,8 @@
 // mDNS service types and protocols
 #define MDNS_PROTO_TCP          "_tcp"
 
-// _homie._tcp - Homie protocol device/controller discovery
-#define MDNS_SVC_HOMIE          "_homie"
+// _ebus._tcp - Energy bus device/controller discovery
+#define MDNS_SVC_HOMIE          "_ebus"
 #define MDNS_TXT_HOMIE_VERSION  "homie"
 #define MDNS_TXT_HOMIE_DOC_VER  "version"
 #define MDNS_TXT_HOMIE_ID       "id"
