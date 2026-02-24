@@ -38,6 +38,7 @@ void on_mqtt_reconnect() {
 
 void setup() {
     Serial.begin(115200);
+    delay(1000);
 
     Serial.println("\n\n===== HOMIE CONTROLLER =====");
 
@@ -171,6 +172,7 @@ void on_mqtt_reconnect() {
 
 void setup() {
     Serial.begin(115200);
+    delay(1000);
 
     Serial.println("\n\n===== HOMIE DEVICE =====");
 

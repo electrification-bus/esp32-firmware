@@ -91,6 +91,7 @@ bool loadConfiguration() {
   }
 
   // List saved certificates
+  Serial.println("CERTS: list certificates in /certs folder");
   File certsDir = SPIFFS.open("/certs");
   if (certsDir && certsDir.isDirectory()) {
     Serial.println("CERTS: /certs/");
