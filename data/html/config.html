@@ -78,7 +78,7 @@
 
   <h2>Firmware</h2>
   <div class="field"><label>Firmware Binary URL</label><input type="text" id="fw-url" placeholder="http://example.com/firmware.bin"></div>
-  <button type="button" id="fw-save">Save Firmware URL</button>
+  <button type="button" id="fw-save" disabled>Save Firmware URL</button>
   <div class="status" id="fw-status"></div>
 
   <h2>System</h2>
@@ -114,6 +114,13 @@
         return 'Weak';
       }
 
+      var connectedSSID = '';
+
+      function updateJoinBtn() {
+        var sel = document.querySelector('input[name=wifi]:checked');
+        wifiJoinBtn.disabled = !sel || sel.value === connectedSSID;
+      }
+
       function renderNetworks(networks) {
         wifiLoading.style.display = 'none';
         wifiList.innerHTML = '';
@@ -122,20 +129,27 @@
           wifiLoading.textContent = 'No networks found';
           return;
         }
+        // Find connected network index, default to first if not connected
+        var selIdx = 0;
+        if (connectedSSID) {
+          for (var i = 0; i < networks.length; i++) {
+            if (networks[i].ssid === connectedSSID) { selIdx = i; break; }
+          }
+        }
         for (var i = 0; i < networks.length; i++) {
           var n = networks[i];
+          var isSel = (i === selIdx);
           var li = document.createElement('li');
-          li.className = 'wifi-item' + (i === 0 ? ' selected' : '');
+          li.className = 'wifi-item' + (isSel ? ' selected' : '');
           li.innerHTML = '<input type="radio" name="wifi" value="' + n.ssid.replace(/"/g, '&quot;') + '"' +
-            (i === 0 ? ' checked' : '') + '>' +
+            (isSel ? ' checked' : '') + '>' +
             '<span class="wifi-ssid">' + n.ssid.replace(/</g, '&lt;') + '</span>' +
             (n.secure ? '<span class="wifi-lock">&#x1f512;</span>' : '') +
             '<span class="wifi-signal">' + signalLabel(n.rssi) + ' (' + n.rssi + ')</span>';
           wifiList.appendChild(li);
         }
-        wifiJoinBtn.disabled = false;
+        updateJoinBtn();
 
-        // Click on row selects the radio button
         var items = wifiList.querySelectorAll('.wifi-item');
         for (var j = 0; j < items.length; j++) {
           items[j].addEventListener('click', function(e) {
@@ -144,6 +158,7 @@
             }
             for (var k = 0; k < items.length; k++) { items[k].className = 'wifi-item'; }
             this.className = 'wifi-item selected';
+            updateJoinBtn();
           });
         }
       }
@@ -157,26 +172,38 @@
         })
         .catch(function() {});
 
-      // Check current WiFi STA connection on page load
+      // Check current WiFi STA connection, then load scan results
       var wifiCurrent = document.getElementById('wifi-current');
       function updateCurrentWifi() {
         fetch('/api/wifi-status')
           .then(function(r) { return r.json(); })
           .then(function(d) {
             if (d.status === 'connected') {
+              connectedSSID = d.ssid;
               document.getElementById('wifi-current-ssid').textContent = d.ssid;
               document.getElementById('wifi-current-ip').textContent = 'IP: ' + d.ip;
               wifiCurrent.style.display = 'block';
             } else {
+              connectedSSID = '';
               wifiCurrent.style.display = 'none';
             }
+            updateJoinBtn();
           })
           .catch(function() {});
       }
-      updateCurrentWifi();
 
-      // Load WiFi networks
-      fetch('/api/wifi-scan')
+      // Fetch wifi-status first so connectedSSID is set before rendering networks
+      fetch('/api/wifi-status')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.status === 'connected') {
+            connectedSSID = d.ssid;
+            document.getElementById('wifi-current-ssid').textContent = d.ssid;
+            document.getElementById('wifi-current-ip').textContent = 'IP: ' + d.ip;
+            wifiCurrent.style.display = 'block';
+          }
+          return fetch('/api/wifi-scan');
+        })
         .then(function(r) { return r.json(); })
         .then(function(data) { renderNetworks(data); })
         .catch(function() {
@@ -283,6 +310,7 @@
       var resetPanel = document.getElementById('reset-confirm');
       document.getElementById('btn-reset-prefs').addEventListener('click', function() {
         resetPanel.className = 'wifi-pass-panel visible';
+        resetPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
       });
       document.getElementById('reset-cancel').addEventListener('click', function() {
         resetPanel.className = 'wifi-pass-panel';
@@ -308,6 +336,7 @@
       var rebootPanel = document.getElementById('reboot-confirm');
       document.getElementById('btn-reboot').addEventListener('click', function() {
         rebootPanel.className = 'wifi-pass-panel visible';
+        rebootPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
       });
       document.getElementById('reboot-cancel').addEventListener('click', function() {
         rebootPanel.className = 'wifi-pass-panel';
@@ -328,8 +357,15 @@
           });
       });
 
+      // Enable Firmware URL button only when input changes
+      var fwUrlInput = document.getElementById('fw-url');
+      var fwSaveBtn = document.getElementById('fw-save');
+      fwUrlInput.addEventListener('input', function() {
+        fwSaveBtn.disabled = !fwUrlInput.value.trim();
+      });
+
       // Save Firmware URL button - click handler with fetch
-      document.getElementById('fw-save').addEventListener('click', function() {
+      fwSaveBtn.addEventListener('click', function() {
         var btn = document.getElementById('fw-save');
         var status = document.getElementById('fw-status');
         btn.disabled = true;
