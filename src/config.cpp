@@ -73,8 +73,9 @@ void generatefullDeviceID() {// includes OUI vendorid of the ethernet MAC inside
 void generateDeviceID() {
   uint8_t mac[6];
   esp_read_mac(mac, ESP_MAC_WIFI_STA);
-  //Serial.printf("MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-  sprintf(device_id, "%s%02X%02X%02X", device_id_prefix, mac[3], mac[4], mac[5]);
+  // Format: <device_name>_<last 3 MAC bytes uppercase>
+  // e.g. "ESP32POEISO_A1B2C3"
+  snprintf(device_id, sizeof(device_id), "%s_%02X%02X%02X", device_name, mac[3], mac[4], mac[5]);
   Serial.printf("Device ID: %s\n", device_id);
 }
 

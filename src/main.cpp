@@ -30,15 +30,14 @@ unsigned long lastStatsCheck = 0;
 
 // Callback to re-publish state after MQTT reconnection
 void on_mqtt_reconnect() {
-    char state_topic[64];
+    char state_topic[128];
     snprintf(state_topic, sizeof(state_topic), "%s/%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID(), HOMIE_$STATE);
-    mqtt_client.publish(state_topic, HOMIE_STATE_READY, true);
+    mqtt_client.publish(state_topic, HOMIE_STATE_READY, true, 0);
     Serial.println("CONTROLLER: Re-published $state after reconnect");
 }
 
 void setup() {
     Serial.begin(115200);
-    generateDeviceID();
 
     Serial.println("\n\n===== HOMIE CONTROLLER =====");
 
@@ -46,6 +45,9 @@ void setup() {
         Serial.println("CONFIG: **ERROR -- failed to load configuration");
         return;
     }
+
+    // Generate device ID after config (needs device_name from homie.yml)
+    generateDeviceID();
 
     // Start captive portal - always available for (re)configuration
     // Sets WiFi to AP+STA mode: AP serves portal, STA for network
@@ -169,7 +171,6 @@ void on_mqtt_reconnect() {
 
 void setup() {
     Serial.begin(115200);
-    generateDeviceID();
 
     Serial.println("\n\n===== HOMIE DEVICE =====");
 
@@ -177,6 +178,9 @@ void setup() {
         Serial.println("CONFIG: **ERROR -- failed to load configuration");
         return;
     }
+
+    // Generate device ID after config (needs device_name from homie.yml)
+    generateDeviceID();
 
     // Start captive portal - always available for (re)configuration
     // Sets WiFi to AP+STA mode: AP serves portal, STA for network

@@ -13,3 +13,6 @@ void portal_prefs_save_mqtt(const char* host, uint16_t port, const char* user, c
 // Load saved values into globals, overriding config.yml where portal values exist.
 // Call after loadPlatformConfiguration().
 void portal_prefs_load_fallbacks();
+
+// Clear all portal-saved settings (WiFi + MQTT) so next boot uses config.yml only.
+void portal_prefs_clear();

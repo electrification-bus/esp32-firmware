@@ -153,16 +153,32 @@ static void handleWifiScan(AsyncWebServerRequest *request) {
     request->send(200, "application/json", json_buf);
 }
 
-// Handle POST /api/wifi - save WiFi credentials and begin connection
-static void handleWifiSave(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-    if (index + len != total) {
-        return;
+// ============================================================================
+// POST body accumulation
+// ESPAsyncWebServer delivers body in chunks via onBody callback.
+// We accumulate into a static buffer, then parse JSON in the request handler.
+// ============================================================================
+static char post_body_buf[2048];
+static size_t post_body_len = 0;
+
+static void accumulateBody(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+    Serial.printf("PORTAL: accumulateBody url=%s len=%d index=%d total=%d\n",
+                   request->url().c_str(), len, index, total);
+    (void)total;
+    if (index == 0) post_body_len = 0;
+    if (post_body_len + len < sizeof(post_body_buf)) {
+        memcpy(post_body_buf + post_body_len, data, len);
+        post_body_len += len;
     }
+    post_body_buf[post_body_len] = '\0';
+}
+
+// Handle POST /api/wifi - save WiFi credentials and begin connection
+static void handleWifiSave(AsyncWebServerRequest *request) {
+    Serial.printf("PORTAL: handleWifiSave called, body=%d bytes\n", post_body_len);
 
     JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, data, len);
-    if (error) {
-        Serial.printf("PORTAL: JSON parse error: %s\n", error.c_str());
+    if (deserializeJson(doc, post_body_buf, post_body_len)) {
         request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid JSON\"}");
         return;
     }
@@ -199,7 +215,7 @@ static void handleWifiStatus(AsyncWebServerRequest *request) {
     static char json_buf[192];
     uint8_t reason = wifi_disconnect_reason;
 
-    if (wifi_connected) {
+    if (wifi_connected || WiFi.isConnected()) {
         IPAddress ip = WiFi.localIP();
         snprintf(json_buf, sizeof(json_buf),
             "{\"status\":\"connected\",\"ip\":\"%d.%d.%d.%d\",\"ssid\":\"%s\"}",
@@ -241,8 +257,7 @@ static void handleDeviceInfo(AsyncWebServerRequest *request) {
 }
 
 // Serve config.html from SPIFFS - read into buffer and send
-// Buffer sized for config.html (~11KB) with headroom for future edits
-static char html_buf[16384];
+static char html_buf[24576];
 static void serveConfigPage(AsyncWebServerRequest *request) {
     Serial.printf("PORTAL: serveConfigPage requested from %s\n", request->url().c_str());
     File f = SPIFFS.open("/html/config.html", "r");
@@ -256,20 +271,18 @@ static void serveConfigPage(AsyncWebServerRequest *request) {
     f.close();
     html_buf[bytes_read] = '\0';
     Serial.printf("PORTAL: Serving config.html (%d of %d bytes)\n", bytes_read, file_size);
-    request->send(200, "text/html", html_buf);
+    AsyncWebServerResponse *response = request->beginResponse(200, "text/html", html_buf);
+    response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    response->addHeader("Pragma", "no-cache");
+    request->send(response);
 }
 
-// Handle POST /api/mqtt - save MQTT configuration to global variables
-static void handleMqttSave(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-    // Only process when we have the complete body
-    if (index + len != total) {
-        return;
-    }
+// Handle POST /api/mqtt - save MQTT configuration from JSON body
+static void handleMqttSave(AsyncWebServerRequest *request) {
+    Serial.printf("PORTAL: handleMqttSave called, body=%d bytes\n", post_body_len);
 
     JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, data, len);
-    if (error) {
-        Serial.printf("PORTAL: JSON parse error: %s\n", error.c_str());
+    if (deserializeJson(doc, post_body_buf, post_body_len)) {
         request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid JSON\"}");
         return;
     }
@@ -301,20 +314,16 @@ static void handleMqttSave(AsyncWebServerRequest *request, uint8_t *data, size_t
     Serial.printf("PORTAL: MQTT config saved - broker='%s', port=%d, user='%s'\n",
                    mqtt_host, mqtt_port, mqtt_username);
 
-    request->send(200, "application/json", "{\"status\":\"ok\"}");
     portal_mqtt_changed = true;
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
-// Handle POST /api/firmware - save firmware URL to global variable
-static void handleFirmwareSave(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-    if (index + len != total) {
-        return;
-    }
+// Handle POST /api/firmware - save firmware URL from JSON body
+static void handleFirmwareSave(AsyncWebServerRequest *request) {
+    Serial.printf("PORTAL: handleFirmwareSave called, body=%d bytes\n", post_body_len);
 
     JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, data, len);
-    if (error) {
-        Serial.printf("PORTAL: JSON parse error: %s\n", error.c_str());
+    if (deserializeJson(doc, post_body_buf, post_body_len)) {
         request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid JSON\"}");
         return;
     }
@@ -328,9 +337,19 @@ static void handleFirmwareSave(AsyncWebServerRequest *request, uint8_t *data, si
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
-// No-op request handler for body-only POST endpoints
-static void handleNoOp(AsyncWebServerRequest *request) {
-    // Response is sent in the body handler
+// Handle POST /api/reset-prefs - clear all portal Preferences
+static void handleResetPrefs(AsyncWebServerRequest *request) {
+    Serial.println("PORTAL: Resetting all portal preferences");
+    portal_prefs_clear();
+    request->send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Preferences cleared. Reboot to use YML config.\"}");
+}
+
+// Handle POST /api/reboot - reboot the ESP32
+static void handleReboot(AsyncWebServerRequest *request) {
+    Serial.println("PORTAL: Reboot requested via portal");
+    request->send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Rebooting...\"}");
+    delay(500);
+    ESP.restart();
 }
 
 // Redirect handler for captive portal detection endpoints
@@ -339,7 +358,7 @@ static char redirect_url[32];
 static void handleCaptiveRedirect(AsyncWebServerRequest *request) {
     IPAddress ip = WiFi.softAPIP();
     snprintf(redirect_url, sizeof(redirect_url), "http://%d.%d.%d.%d/", ip[0], ip[1], ip[2], ip[3]);
-    Serial.printf("PORTAL: Redirecting %s -> %s\n", request->url().c_str(), redirect_url);
+    Serial.printf("PORTAL: Redirecting %s %s -> %s\n", request->methodToString(), request->url().c_str(), redirect_url);
     request->redirect(redirect_url);
 }
 
@@ -390,12 +409,16 @@ void captive_portal_start() {
 
     // WiFi scan, join, and status endpoints
     server.on("/api/wifi-scan", HTTP_GET, handleWifiScan);
-    server.on("/api/wifi", HTTP_POST, handleNoOp, NULL, handleWifiSave);
+    server.on("/api/wifi", HTTP_POST, handleWifiSave, NULL, accumulateBody);
     server.on("/api/wifi-status", HTTP_GET, handleWifiStatus);
 
-    // API endpoints for saving configuration
-    server.on("/api/mqtt", HTTP_POST, handleNoOp, NULL, handleMqttSave);
-    server.on("/api/firmware", HTTP_POST, handleNoOp, NULL, handleFirmwareSave);
+    // API endpoints for saving configuration (JSON body via fetch)
+    server.on("/api/mqtt", HTTP_POST, handleMqttSave, NULL, accumulateBody);
+    server.on("/api/firmware", HTTP_POST, handleFirmwareSave, NULL, accumulateBody);
+
+    // System actions (no body needed - just POST to trigger)
+    server.on("/api/reset-prefs", HTTP_POST, handleResetPrefs);
+    server.on("/api/reboot", HTTP_POST, handleReboot);
 
     // Catch-all: redirect any unknown URL to config page (improves Android captive portal detection)
     server.onNotFound(handleCaptiveRedirect);

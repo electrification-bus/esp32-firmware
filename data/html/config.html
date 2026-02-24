@@ -47,6 +47,10 @@
     .pass-wrap input { flex: 1; border-radius: 6px 0 0 6px; }
     .pass-toggle { padding: 10px; background: #16213e; border: 1px solid #444; border-left: none;
       border-radius: 0 6px 6px 0; color: #aaa; cursor: pointer; font-size: 1.1em; line-height: 1; }
+    .wifi-current { display: none; padding: 10px 12px; border-radius: 6px; margin-bottom: 12px;
+      background: #0a2a1a; border: 1px solid #1b5e20; font-size: 0.9em; }
+    .wifi-current .ssid { color: #4caf50; font-weight: bold; }
+    .wifi-current .ip { color: #aaa; font-size: 0.85em; margin-left: 8px; }
   </style>
 </head>
 <body>
@@ -54,6 +58,7 @@
   <div class="topic" id="dev-topic"></div>
 
   <h2>Join Network</h2>
+  <div class="wifi-current" id="wifi-current">Connected to <span class="ssid" id="wifi-current-ssid"></span><span class="ip" id="wifi-current-ip"></span></div>
   <div class="status" id="wifi-status"></div>
   <div id="wifi-loading" class="loading">Scanning for networks...</div>
   <ul id="wifi-list" class="wifi-list"></ul>
@@ -64,21 +69,33 @@
   </div>
 
   <h2>MQTT Configuration</h2>
-  <form id="mqtt-form">
-    <div class="field"><label>Broker</label><input type="text" id="broker" placeholder="mqtt.example.com"></div>
-    <div class="field"><label>Username</label><input type="text" id="username" placeholder="(optional)"></div>
-    <div class="field"><label>Password</label><input type="password" id="password" placeholder="(optional)"></div>
-    <div class="field"><label>Port</label><input type="number" id="port" value="1883" min="1" max="65535"></div>
-    <button type="submit" id="mqtt-save" disabled>Save MQTT</button>
-    <div class="status" id="mqtt-status"></div>
-  </form>
+  <div class="field"><label>Broker</label><input type="text" id="broker" placeholder="mqtt.example.com"></div>
+  <div class="field"><label>Username</label><input type="text" id="username" placeholder="(optional)"></div>
+  <div class="field"><label>Password</label><input type="password" id="password" placeholder="(optional)"></div>
+  <div class="field"><label>Port</label><input type="number" id="port" value="1883" min="1" max="65535"></div>
+  <button type="button" id="mqtt-save">Save MQTT</button>
+  <div class="status" id="mqtt-status"></div>
 
   <h2>Firmware</h2>
-  <form id="fw-form">
-    <div class="field"><label>Firmware Binary URL</label><input type="text" id="fw-url" placeholder="http://example.com/firmware.bin"></div>
-    <button type="submit" id="fw-save" disabled>Save Firmware URL</button>
-    <div class="status" id="fw-status"></div>
-  </form>
+  <div class="field"><label>Firmware Binary URL</label><input type="text" id="fw-url" placeholder="http://example.com/firmware.bin"></div>
+  <button type="button" id="fw-save">Save Firmware URL</button>
+  <div class="status" id="fw-status"></div>
+
+  <h2>System</h2>
+  <button type="button" id="btn-reset-prefs">Reset to YML Config Only</button>
+  <div id="reset-confirm" class="wifi-pass-panel">
+    <p style="margin-bottom:10px;font-size:0.9em;color:#f44336">Clear all portal-saved settings (WiFi + MQTT)?<br>Next boot will use only YML config.</p>
+    <button type="button" id="reset-yes" style="width:48%;margin-right:4%;background:#c62828;color:#fff">Yes, Clear</button>
+    <button type="button" id="reset-cancel" style="width:48%">Cancel</button>
+  </div>
+  <div class="status" id="reset-status"></div>
+  <button type="button" id="btn-reboot" style="margin-top:8px">Reboot</button>
+  <div id="reboot-confirm" class="wifi-pass-panel">
+    <p style="margin-bottom:10px;font-size:0.9em;color:#f44336">Reboot the device now?</p>
+    <button type="button" id="reboot-yes" style="width:48%;margin-right:4%;background:#c62828;color:#fff">Yes, Reboot</button>
+    <button type="button" id="reboot-cancel" style="width:48%">Cancel</button>
+  </div>
+  <div class="status" id="reboot-status"></div>
 
   <script>
     (function() {
@@ -89,12 +106,6 @@
       var wifiPassInput = document.getElementById('wifi-pass');
       var wifiConnectBtn = document.getElementById('wifi-connect');
       var wifiStatus = document.getElementById('wifi-status');
-      var mqttFields = document.querySelectorAll('#mqtt-form input');
-      var mqttBtn = document.getElementById('mqtt-save');
-      var mqttStatus = document.getElementById('mqtt-status');
-      var fwField = document.getElementById('fw-url');
-      var fwBtn = document.getElementById('fw-save');
-      var fwStatus = document.getElementById('fw-status');
 
       function signalLabel(rssi) {
         if (rssi >= -50) return 'Excellent';
@@ -146,6 +157,24 @@
         })
         .catch(function() {});
 
+      // Check current WiFi STA connection on page load
+      var wifiCurrent = document.getElementById('wifi-current');
+      function updateCurrentWifi() {
+        fetch('/api/wifi-status')
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (d.status === 'connected') {
+              document.getElementById('wifi-current-ssid').textContent = d.ssid;
+              document.getElementById('wifi-current-ip').textContent = 'IP: ' + d.ip;
+              wifiCurrent.style.display = 'block';
+            } else {
+              wifiCurrent.style.display = 'none';
+            }
+          })
+          .catch(function() {});
+      }
+      updateCurrentWifi();
+
       // Load WiFi networks
       fetch('/api/wifi-scan')
         .then(function(r) { return r.json(); })
@@ -190,6 +219,7 @@
                 wifiStatus.className = 'status ok';
                 wifiStatus.textContent = 'Connected! IP: ' + d.ip;
                 wifiPassPanel.className = 'wifi-pass-panel';
+                updateCurrentWifi();
               } else if (d.status === 'auth_fail' || d.status === 'failed' || d.status === 'no_ssid') {
                 wifiStatus.className = 'status err';
                 wifiStatus.textContent = d.message || 'Connection failed.';
@@ -222,16 +252,13 @@
           });
       });
 
-      for (var i = 0; i < mqttFields.length; i++) {
-        mqttFields[i].addEventListener('input', function() { mqttBtn.disabled = false; });
-      }
-      fwField.addEventListener('input', function() { fwBtn.disabled = false; });
-
-      document.getElementById('mqtt-form').addEventListener('submit', function(e) {
-        e.preventDefault();
-        mqttBtn.disabled = true;
-        mqttStatus.className = 'status';
-        mqttStatus.textContent = 'Saving...';
+      // Save MQTT button - click handler with fetch, same pattern as WiFi Connect
+      document.getElementById('mqtt-save').addEventListener('click', function() {
+        var btn = document.getElementById('mqtt-save');
+        var status = document.getElementById('mqtt-status');
+        btn.disabled = true;
+        status.className = 'status';
+        status.textContent = 'Saving...';
         var body = JSON.stringify({
           broker: document.getElementById('broker').value,
           username: document.getElementById('username').value,
@@ -240,33 +267,86 @@
         });
         fetch('/api/mqtt', { method: 'POST', headers: {'Content-Type':'application/json'}, body: body })
           .then(function(r) { return r.json(); })
-          .then(function(d) {
-            mqttStatus.className = 'status ok';
-            mqttStatus.textContent = 'Saved. Device will connect to broker.';
+          .then(function() {
+            status.className = 'status ok';
+            status.textContent = 'Saved. Device will connect to broker.';
+            btn.disabled = false;
           })
           .catch(function(err) {
-            mqttStatus.className = 'status err';
-            mqttStatus.textContent = 'Error: ' + err.message;
-            mqttBtn.disabled = false;
+            status.className = 'status err';
+            status.textContent = 'Error: ' + err.message;
+            btn.disabled = false;
           });
       });
 
-      document.getElementById('fw-form').addEventListener('submit', function(e) {
-        e.preventDefault();
-        fwBtn.disabled = true;
-        fwStatus.className = 'status';
-        fwStatus.textContent = 'Saving...';
-        var body = JSON.stringify({ url: fwField.value });
-        fetch('/api/firmware', { method: 'POST', headers: {'Content-Type':'application/json'}, body: body })
+      // Reset to YML Config - reveal confirmation panel
+      var resetPanel = document.getElementById('reset-confirm');
+      document.getElementById('btn-reset-prefs').addEventListener('click', function() {
+        resetPanel.className = 'wifi-pass-panel visible';
+      });
+      document.getElementById('reset-cancel').addEventListener('click', function() {
+        resetPanel.className = 'wifi-pass-panel';
+      });
+      document.getElementById('reset-yes').addEventListener('click', function() {
+        resetPanel.className = 'wifi-pass-panel';
+        var status = document.getElementById('reset-status');
+        status.className = 'status';
+        status.textContent = 'Clearing...';
+        fetch('/api/reset-prefs', { method: 'POST' })
           .then(function(r) { return r.json(); })
           .then(function(d) {
-            fwStatus.className = 'status ok';
-            fwStatus.textContent = 'Firmware URL saved.';
+            status.className = 'status ok';
+            status.textContent = d.message || 'Preferences cleared.';
           })
           .catch(function(err) {
-            fwStatus.className = 'status err';
-            fwStatus.textContent = 'Error: ' + err.message;
-            fwBtn.disabled = false;
+            status.className = 'status err';
+            status.textContent = 'Error: ' + err.message;
+          });
+      });
+
+      // Reboot - reveal confirmation panel
+      var rebootPanel = document.getElementById('reboot-confirm');
+      document.getElementById('btn-reboot').addEventListener('click', function() {
+        rebootPanel.className = 'wifi-pass-panel visible';
+      });
+      document.getElementById('reboot-cancel').addEventListener('click', function() {
+        rebootPanel.className = 'wifi-pass-panel';
+      });
+      document.getElementById('reboot-yes').addEventListener('click', function() {
+        rebootPanel.className = 'wifi-pass-panel';
+        var status = document.getElementById('reboot-status');
+        status.className = 'status';
+        status.textContent = 'Rebooting...';
+        fetch('/api/reboot', { method: 'POST' })
+          .then(function() {
+            status.className = 'status ok';
+            status.textContent = 'Device is rebooting...';
+          })
+          .catch(function() {
+            status.className = 'status ok';
+            status.textContent = 'Device is rebooting...';
+          });
+      });
+
+      // Save Firmware URL button - click handler with fetch
+      document.getElementById('fw-save').addEventListener('click', function() {
+        var btn = document.getElementById('fw-save');
+        var status = document.getElementById('fw-status');
+        btn.disabled = true;
+        status.className = 'status';
+        status.textContent = 'Saving...';
+        var body = JSON.stringify({ url: document.getElementById('fw-url').value });
+        fetch('/api/firmware', { method: 'POST', headers: {'Content-Type':'application/json'}, body: body })
+          .then(function(r) { return r.json(); })
+          .then(function() {
+            status.className = 'status ok';
+            status.textContent = 'Firmware URL saved.';
+            btn.disabled = false;
+          })
+          .catch(function(err) {
+            status.className = 'status err';
+            status.textContent = 'Error: ' + err.message;
+            btn.disabled = false;
           });
       });
     })();

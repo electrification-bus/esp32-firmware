@@ -47,11 +47,11 @@ class Device {
    Node* operator[](const char* node_id_key) { return getNode(node_id_key); };
 
  private:
-    char _id[16] = {0};
+    char _id[64] = {0};
     char _name[32] = {0};
     char _type[32] = {0};
     char _version[16] = {0};
-    char _topic[64] = {0};
+    char _topic[96] = {0};
     Node* _nodes[32] = {0};
     DeviceState _state = DEVICE_STATE_INIT;
     JsonDocument _serialized;

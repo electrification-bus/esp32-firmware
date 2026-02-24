@@ -55,7 +55,8 @@ void Device::init(const char* name, const char* id, const char* type, MQTTClient
   setId(id);
   setType(type);
   _mqtt_client = mqtt_client;
-  sprintf(_topic, "%s/%s/", HOMIE_TOPIC_PREFIX, name);
+  // Topic uses device ID (e.g. homie/5/ESP32POEISO_A1B2C3/)
+  snprintf(_topic, sizeof(_topic), "%s/%s/", HOMIE_TOPIC_PREFIX, id);
   
   //instantiate the nodes
   JsonDocument* nodes = get_node_config();
@@ -101,9 +102,10 @@ void Device::setState(DeviceState state) {
 }
 
 void Device::setId(const char* id) {
-    strcpy(_id,id);
+    strncpy(_id, id, sizeof(_id) - 1);
+    _id[sizeof(_id) - 1] = '\0';
     //SET-ID SIDE-EFFECT: set topic
-    sprintf(_topic, "%s/%s/", HOMIE_TOPIC_PREFIX, _id);
+    snprintf(_topic, sizeof(_topic), "%s/%s/", HOMIE_TOPIC_PREFIX, _id);
 }
 
 void Device::setName(const char* name) {

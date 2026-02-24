@@ -7,7 +7,7 @@
 #include <homie/Device.h>
 
 
-#define MAX_DEVICE_ID_CHARS   32 //TODO all string sizes
+#define MAX_DEVICE_ID_CHARS   64 // <device_name>_<6 hex MAC chars>
 
 extern char wifi_ssid[33];
 extern char wifi_password[64];

@@ -79,3 +79,10 @@ void portal_prefs_load_fallbacks() {
 
     prefs.end();
 }
+
+void portal_prefs_clear() {
+    prefs.begin(PREFS_NAMESPACE, false);
+    prefs.clear();
+    prefs.end();
+    Serial.println("PREFS: Cleared all portal settings (WiFi + MQTT)");
+}
