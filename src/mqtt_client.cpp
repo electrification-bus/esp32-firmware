@@ -36,6 +36,8 @@
 #include <homie/Property.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include <SPIFFS.h>
+#include <mbedtls/base64.h>
 #define ENABLE_DEBUG_MQTT = 1
 
 // Transport clients - use secure or insecure based on port
@@ -140,6 +142,119 @@ void mqtt_set_reconnect_callback(mqtt_reconnect_callback_t callback) {
 // Function prototype for mqtt_publish_json
 void mqtt_publish_json(const char* subtopic, const JsonDocument* payload);
 
+// Fetch root CA cert from broker via TLS on port 443 and save to SPIFFS
+// Connects insecurely, extracts cert chain, finds root, saves as PEM
+// Reuses post_body_buf (2048 bytes) as scratch for base64 encoding
+extern char post_body_buf[2048];
+
+static bool mqtt_fetch_and_save_root_cert() {
+  char cert_path[96];
+  mqtt_build_cert_path(mqtt_host, cert_path, sizeof(cert_path));
+
+  Serial.printf("TLS: Fetching root CA from %s:443\n", mqtt_host);
+
+  // Use a separate WiFiClientSecure for the probe connection
+  WiFiClientSecure probeClient;
+  probeClient.setInsecure();  // Accept any cert to extract the chain
+  probeClient.setTimeout(15);
+
+  Serial.printf("TLS: Connecting insecurely to %s:443...\n", mqtt_host);
+  if (!probeClient.connect(mqtt_host, 443)) {
+    Serial.println("TLS: ERROR - Failed to connect to broker on port 443");
+    probeClient.stop();
+    return false;
+  }
+  Serial.println("TLS: TLS handshake complete");
+
+  // Get the peer certificate chain from the underlying mbedTLS context
+  const mbedtls_x509_crt* peer_cert = probeClient.getPeerCertificate();
+  if (peer_cert == nullptr) {
+    Serial.println("TLS: ERROR - No peer certificate available");
+    probeClient.stop();
+    return false;
+  }
+
+  // Count certs in chain and find the root (last cert)
+  int chain_len = 0;
+  const mbedtls_x509_crt* cert = peer_cert;
+  const mbedtls_x509_crt* root_cert = nullptr;
+
+  while (cert != nullptr) {
+    char cn_buf[64] = {0};
+    mbedtls_x509_dn_gets(cn_buf, sizeof(cn_buf), &cert->subject);
+    Serial.printf("TLS: [%d] %s\n", chain_len, cn_buf);
+
+    root_cert = cert;  // Last cert in chain is the root
+    cert = cert->next;
+    chain_len++;
+  }
+
+  Serial.printf("TLS: Certificate chain has %d certificate(s)\n", chain_len);
+
+  if (root_cert == nullptr) {
+    Serial.println("TLS: ERROR - Could not identify root certificate");
+    probeClient.stop();
+    return false;
+  }
+
+  char root_cn[64] = {0};
+  mbedtls_x509_dn_gets(root_cn, sizeof(root_cn), &root_cert->subject);
+  Serial.printf("TLS: Root CA: %s\n", root_cn);
+
+  // Convert root cert DER to PEM format using post_body_buf as scratch
+  size_t der_len = root_cert->raw.len;
+  Serial.printf("TLS: Root cert DER size: %d bytes\n", der_len);
+
+  // Base64 encode DER into post_body_buf (scratch)
+  size_t b64_len = 0;
+  mbedtls_base64_encode(nullptr, 0, &b64_len, root_cert->raw.p, der_len);
+  if (b64_len > sizeof(post_body_buf)) {
+    Serial.printf("TLS: ERROR - Base64 too large (%d bytes)\n", b64_len);
+    probeClient.stop();
+    return false;
+  }
+
+  size_t b64_written = 0;
+  mbedtls_base64_encode((unsigned char*)post_body_buf, sizeof(post_body_buf),
+                         &b64_written, root_cert->raw.p, der_len);
+
+  // Done with TLS connection - free resources before SPIFFS work
+  probeClient.stop();
+
+  // Build PEM directly into SPIFFS file to avoid needing another large buffer
+  if (!SPIFFS.begin(true)) {
+    Serial.println("TLS: ERROR - Failed to mount SPIFFS to save cert");
+    return false;
+  }
+
+  File certFile = SPIFFS.open(cert_path, FILE_WRITE);
+  if (!certFile) {
+    Serial.printf("TLS: ERROR - Failed to create cert file '%s'\n", cert_path);
+    SPIFFS.end();
+    return false;
+  }
+
+  // Write PEM header
+  certFile.print("-----BEGIN CERTIFICATE-----\n");
+
+  // Write base64 in 64-char lines (PEM standard)
+  for (size_t i = 0; i < b64_written; i += 64) {
+    size_t line_len = (b64_written - i < 64) ? (b64_written - i) : 64;
+    certFile.write((const uint8_t*)(post_body_buf + i), line_len);
+    certFile.print("\n");
+  }
+
+  // Write PEM footer
+  certFile.print("-----END CERTIFICATE-----\n");
+
+  size_t file_size = certFile.size();
+  certFile.close();
+  SPIFFS.end();
+
+  Serial.printf("TLS: Root CA saved (%d bytes) to '%s'\n", file_size, cert_path);
+  return true;
+}
+
 // Initialize transport client (secure or insecure based on port)
 bool mqtt_init_transport() {
   mqtt_using_secure = mqtt_is_secure();
@@ -150,9 +265,14 @@ bool mqtt_init_transport() {
     // Load CA certificate from SPIFFS
     const char* caCert = mqtt_load_ca_cert();
     if (caCert == nullptr) {
-      Serial.println("MQTT: ERROR - No CA certificate available for TLS");
-      Serial.println("MQTT: Place CA cert at /data/certs/ca.crt");
-      return false;
+      Serial.println("TLS: No cached cert found, auto-fetching from broker...");
+      if (mqtt_fetch_and_save_root_cert()) {
+        caCert = mqtt_load_ca_cert();
+      }
+      if (caCert == nullptr) {
+        Serial.println("MQTT: ERROR - No CA certificate available for TLS");
+        return false;
+      }
     }
 
     // Configure secure client with CA certificate

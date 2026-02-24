@@ -158,7 +158,7 @@ static void handleWifiScan(AsyncWebServerRequest *request) {
 // ESPAsyncWebServer delivers body in chunks via onBody callback.
 // We accumulate into a static buffer, then parse JSON in the request handler.
 // ============================================================================
-static char post_body_buf[2048];
+char post_body_buf[2048];
 static size_t post_body_len = 0;
 
 static void accumulateBody(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
@@ -310,6 +310,9 @@ static void handleMqttSave(AsyncWebServerRequest *request) {
 
     // Persist MQTT settings to NVS for next boot
     portal_prefs_save_mqtt(mqtt_host, mqtt_port, mqtt_username, mqtt_password);
+
+    // Invalidate cached cert so next connect fetches cert for the (possibly new) broker
+    mqtt_invalidate_ca_cert();
 
     Serial.printf("PORTAL: MQTT config saved - broker='%s', port=%d, user='%s'\n",
                    mqtt_host, mqtt_port, mqtt_username);

@@ -89,6 +89,20 @@ bool loadConfiguration() {
     Serial.println("CONFIG: An Error has occurred while mounting SPIFFS");
     return false;
   }
+
+  // List saved certificates
+  File certsDir = SPIFFS.open("/certs");
+  if (certsDir && certsDir.isDirectory()) {
+    Serial.println("CERTS: /certs/");
+    File f = certsDir.openNextFile();
+    while (f) {
+      Serial.printf("CERTS:   %s (%d bytes)\n", f.name(), f.size());
+      f = certsDir.openNextFile();
+    }
+  } else {
+    Serial.println("CERTS: /certs/ not found (no saved certificates)");
+  }
+
   if (!loadPlatformConfiguration()) {
     Serial.println("PLATFORM CONFIG: **ERROR -- failed to load platform configuration");
     return false;
@@ -312,25 +326,59 @@ bool mqtt_is_secure() {
   return mqtt_port == MQTT_SECURE_PORT;
 }
 
+void mqtt_build_cert_path(const char* hostname, char* out, size_t out_len) {
+  // Convert "mqtt.example.com" -> "/certs/mqttExampleCom.ca"
+  size_t pos = 0;
+  pos += snprintf(out + pos, out_len - pos, "/certs/");
+
+  bool capitalize_next = false;
+  for (size_t i = 0; hostname[i] != '\0' && pos < out_len - 4; i++) {
+    if (hostname[i] == '.') {
+      capitalize_next = true;
+    } else {
+      if (capitalize_next && hostname[i] >= 'a' && hostname[i] <= 'z') {
+        out[pos++] = hostname[i] - 32;  // uppercase
+      } else {
+        out[pos++] = hostname[i];
+      }
+      capitalize_next = false;
+    }
+  }
+  out[pos] = '\0';
+  strncat(out, ".ca", out_len - pos - 1);
+
+  Serial.printf("TLS: Cert path for '%s' -> '%s'\n", hostname, out);
+}
+
+void mqtt_invalidate_ca_cert() {
+  ca_cert_loaded = false;
+  ca_cert_buffer[0] = '\0';
+  Serial.println("TLS: CA cert cache invalidated");
+}
+
 const char* mqtt_load_ca_cert() {
   if (ca_cert_loaded) {
     return ca_cert_buffer;
   }
+
+  // Build dynamic cert path from broker hostname
+  char cert_path[96];
+  mqtt_build_cert_path(mqtt_host, cert_path, sizeof(cert_path));
 
   if (!SPIFFS.begin(true)) {
     Serial.println("TLS: Failed to mount SPIFFS for certificate");
     return nullptr;
   }
 
-  if (!SPIFFS.exists(MQTT_CA_CERT_PATH)) {
-    Serial.printf("TLS: CA certificate not found at '%s'\n", MQTT_CA_CERT_PATH);
+  if (!SPIFFS.exists(cert_path)) {
+    Serial.printf("TLS: CA certificate not found at '%s'\n", cert_path);
     SPIFFS.end();
     return nullptr;
   }
 
-  File certFile = SPIFFS.open(MQTT_CA_CERT_PATH, FILE_READ);
+  File certFile = SPIFFS.open(cert_path, FILE_READ);
   if (!certFile) {
-    Serial.printf("TLS: Failed to open CA certificate '%s'\n", MQTT_CA_CERT_PATH);
+    Serial.printf("TLS: Failed to open CA certificate '%s'\n", cert_path);
     SPIFFS.end();
     return nullptr;
   }
@@ -344,7 +392,7 @@ const char* mqtt_load_ca_cert() {
   }
 
   size_t bytesRead = certFile.readBytes(ca_cert_buffer, certSize);
-  ca_cert_buffer[bytesRead] = '\0';  // Null-terminate
+  ca_cert_buffer[bytesRead] = '\0';
   certFile.close();
   SPIFFS.end();
 
@@ -354,6 +402,6 @@ const char* mqtt_load_ca_cert() {
   }
 
   ca_cert_loaded = true;
-  Serial.printf("TLS: CA certificate loaded (%d bytes) from '%s'\n", bytesRead, MQTT_CA_CERT_PATH);
+  Serial.printf("TLS: CA certificate loaded (%d bytes) from '%s'\n", bytesRead, cert_path);
   return ca_cert_buffer;
 }
