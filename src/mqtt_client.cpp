@@ -142,6 +142,7 @@ void mqtt_set_reconnect_callback(mqtt_reconnect_callback_t callback) {
 // Function prototype for mqtt_publish_json
 void mqtt_publish_json(const char* subtopic, const JsonDocument* payload);
 
+#ifndef ESP32_POE_ISO
 // Fetch root CA cert from broker via TLS on port 443 and save to SPIFFS
 // Connects insecurely, extracts cert chain, finds root, saves as PEM
 // Reuses post_body_buf (2048 bytes) as scratch for base64 encoding
@@ -151,26 +152,31 @@ static bool mqtt_fetch_and_save_root_cert() {
   char cert_path[96];
   mqtt_build_cert_path(mqtt_host, cert_path, sizeof(cert_path));
 
-  Serial.printf("TLS: Fetching root CA from %s:443\n", mqtt_host);
+  Serial.printf("TLS: Fetching root CA from %s:%u\n", mqtt_host, mqtt_port);
+  Serial.printf("TLS: Free heap before probe: %u bytes\n", ESP.getFreeHeap());
 
-  // Use a separate WiFiClientSecure for the probe connection
-  WiFiClientSecure probeClient;
-  probeClient.setInsecure();  // Accept any cert to extract the chain
-  probeClient.setTimeout(15);
+  // Reuse global secureClient for the probe to avoid allocating a second
+  // TLS context (~40KB heap). We set it insecure for the probe, then
+  // reconfigure it with the real CA cert afterward in mqtt_init_transport().
+  secureClient.stop();  // Ensure clean state (free any stale socket/TLS resources)
+  delay(100);           // Let LWIP release socket resources
+  secureClient.setInsecure();
+  secureClient.setTimeout(15);
 
-  Serial.printf("TLS: Connecting insecurely to %s:443...\n", mqtt_host);
-  if (!probeClient.connect(mqtt_host, 443)) {
-    Serial.println("TLS: ERROR - Failed to connect to broker on port 443");
-    probeClient.stop();
+  // Connect on the MQTTS port directly - same cert chain, guaranteed open
+  Serial.printf("TLS: Connecting insecurely to %s:%u...\n", mqtt_host, mqtt_port);
+  if (!secureClient.connect(mqtt_host, mqtt_port)) {
+    Serial.printf("TLS: ERROR - Failed to connect to %s:%u\n", mqtt_host, mqtt_port);
+    secureClient.stop();
     return false;
   }
   Serial.println("TLS: TLS handshake complete");
 
   // Get the peer certificate chain from the underlying mbedTLS context
-  const mbedtls_x509_crt* peer_cert = probeClient.getPeerCertificate();
+  const mbedtls_x509_crt* peer_cert = secureClient.getPeerCertificate();
   if (peer_cert == nullptr) {
     Serial.println("TLS: ERROR - No peer certificate available");
-    probeClient.stop();
+    secureClient.stop();
     return false;
   }
 
@@ -193,7 +199,7 @@ static bool mqtt_fetch_and_save_root_cert() {
 
   if (root_cert == nullptr) {
     Serial.println("TLS: ERROR - Could not identify root certificate");
-    probeClient.stop();
+    secureClient.stop();
     return false;
   }
 
@@ -210,7 +216,7 @@ static bool mqtt_fetch_and_save_root_cert() {
   mbedtls_base64_encode(nullptr, 0, &b64_len, root_cert->raw.p, der_len);
   if (b64_len > sizeof(post_body_buf)) {
     Serial.printf("TLS: ERROR - Base64 too large (%d bytes)\n", b64_len);
-    probeClient.stop();
+    secureClient.stop();
     return false;
   }
 
@@ -218,8 +224,8 @@ static bool mqtt_fetch_and_save_root_cert() {
   mbedtls_base64_encode((unsigned char*)post_body_buf, sizeof(post_body_buf),
                          &b64_written, root_cert->raw.p, der_len);
 
-  // Done with TLS connection - free resources before SPIFFS work
-  probeClient.stop();
+  // Done with TLS probe - disconnect and free TLS resources
+  secureClient.stop();
 
   // Build PEM directly into SPIFFS file to avoid needing another large buffer
   if (!SPIFFS.begin(true)) {
@@ -254,6 +260,7 @@ static bool mqtt_fetch_and_save_root_cert() {
   Serial.printf("TLS: Root CA saved (%d bytes) to '%s'\n", file_size, cert_path);
   return true;
 }
+#endif // ESP32_POE_ISO
 
 // Initialize transport client (secure or insecure based on port)
 bool mqtt_init_transport() {
@@ -264,25 +271,40 @@ bool mqtt_init_transport() {
 
     // Load CA certificate from SPIFFS
     const char* caCert = mqtt_load_ca_cert();
+#ifndef ESP32_POE_ISO
+    // On boards with enough heap, auto-fetch the root CA cert if not cached
     if (caCert == nullptr) {
       Serial.println("TLS: No cached cert found, auto-fetching from broker...");
       if (mqtt_fetch_and_save_root_cert()) {
         caCert = mqtt_load_ca_cert();
       }
-      if (caCert == nullptr) {
-        Serial.println("MQTT: ERROR - No CA certificate available for TLS");
-        return false;
-      }
     }
+#endif
 
-    // Configure secure client with CA certificate
-    secureClient.setCACert(caCert);
-
-    // Optional: Set connection timeout for TLS handshake
-    secureClient.setTimeout(15);  // 15 seconds for TLS handshake
-
-    transportClient = &secureClient;
-    Serial.println("MQTT: TLS transport configured with CA certificate");
+    if (caCert != nullptr) {
+      // Full TLS with CA verification
+      secureClient.setCACert(caCert);
+      Serial.println("MQTT: TLS transport configured with CA certificate");
+      secureClient.setTimeout(15);  // 15 seconds for TLS handshake
+      transportClient = &secureClient;
+    } else {
+#ifdef ESP32_POE_ISO
+      // POE-ISO: insufficient heap for TLS probe; fall back to plain MQTT
+      Serial.println("TLS: WARNING - No CA cert found in /certs/ SPIFFS folder");
+      Serial.println("TLS: To fix: place cert in data/certs/ and upload filesystem");
+      Serial.println("TLS: Falling back to insecure MQTT on port 1883");
+      mqtt_port = 1883;
+      mqtt_using_secure = false;
+      transportClient = &insecureClient;
+#else
+      // Other boards: cert fetch failed, connect without verification
+      Serial.println("TLS: WARNING - No CA cert available, connecting without verification");
+      Serial.println("TLS: To fix: place cert in data/certs/ and upload filesystem");
+      secureClient.setInsecure();
+      secureClient.setTimeout(15);
+      transportClient = &secureClient;
+#endif
+    }
   } else {
     Serial.printf("MQTT: Using insecure connection (port %d)\n", mqtt_port);
     transportClient = &insecureClient;
