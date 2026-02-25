@@ -51,6 +51,13 @@
       background: #0a2a1a; border: 1px solid #1b5e20; font-size: 0.9em; }
     .wifi-current .ssid { color: #4caf50; font-weight: bold; }
     .wifi-current .ip { color: #aaa; font-size: 0.85em; margin-left: 8px; }
+    .mqtt-status-banner { display: none; padding: 10px 12px; border-radius: 6px; margin-bottom: 12px; font-size: 0.9em; }
+    .mqtt-status-banner.connected { background: #0a2a1a; border: 1px solid #1b5e20; display: block; }
+    .mqtt-status-banner.failed { background: #2a0a0a; border: 1px solid #5e2020; display: block; }
+    .mqtt-status-banner.none { background: #1a1a1a; border: 1px solid #444; display: block; }
+    .mqtt-status-banner.broker { font-weight: bold; }
+    .mqtt-status-banner.connected .broker { color: #4caf50; }
+    .mqtt-status-banner.failed .broker { color: #f44336; }
   </style>
 </head>
 <body>
@@ -69,11 +76,12 @@
   </div>
 
   <h2>MQTT Configuration</h2>
+  <div class="mqtt-status-banner" id="mqtt-banner"></div>
   <div class="field"><label>Broker</label><input type="text" id="broker" placeholder="mqtt.example.com"></div>
   <div class="field"><label>Username</label><input type="text" id="username" placeholder="(optional)"></div>
   <div class="field"><label>Password</label><input type="password" id="password" placeholder="(optional)"></div>
   <div class="field"><label>Port</label><select id="port" style="width:100%;padding:10px;border:1px solid #444;border-radius:6px;background:#16213e;color:#e0e0e0;font-size:1em"><option value="1883">1883 (MQTT)</option><option value="8883">8883 (MQTTS / TLS)</option></select></div>
-  <button type="button" id="mqtt-save">Save MQTT</button>
+  <button type="button" id="mqtt-save" disabled>Save MQTT</button>
   <div class="status" id="mqtt-status"></div>
 
   <h2>Firmware</h2>
@@ -171,6 +179,27 @@
           document.getElementById('dev-topic').textContent = d.topic;
         })
         .catch(function() {});
+
+      // Load MQTT status banner
+      var mqttBanner = document.getElementById('mqtt-banner');
+      function updateMqttStatus() {
+        fetch('/api/mqtt-status')
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (d.status === 'connected') {
+              mqttBanner.className = 'mqtt-status-banner connected';
+              mqttBanner.innerHTML = 'Connected: <span class="broker">' + d.broker.replace(/</g, '&lt;') + ':' + d.port + '</span>';
+            } else if (d.status === 'failed') {
+              mqttBanner.className = 'mqtt-status-banner failed';
+              mqttBanner.innerHTML = 'Failed: <span class="broker">' + d.broker.replace(/</g, '&lt;') + '</span>';
+            } else {
+              mqttBanner.className = 'mqtt-status-banner none';
+              mqttBanner.textContent = 'No broker \u2013 not connected';
+            }
+          })
+          .catch(function() {});
+      }
+      updateMqttStatus();
 
       // Check current WiFi STA connection, then load scan results
       var wifiCurrent = document.getElementById('wifi-current');
@@ -279,6 +308,19 @@
           });
       });
 
+      // Enable Save MQTT button only when broker field is non-empty
+      var mqttSaveBtn = document.getElementById('mqtt-save');
+      var brokerInput = document.getElementById('broker');
+      var mqttInputs = [brokerInput, document.getElementById('username'), document.getElementById('password'), document.getElementById('port')];
+      for (var m = 0; m < mqttInputs.length; m++) {
+        mqttInputs[m].addEventListener('input', function() {
+          mqttSaveBtn.disabled = !brokerInput.value.trim();
+        });
+        mqttInputs[m].addEventListener('change', function() {
+          mqttSaveBtn.disabled = !brokerInput.value.trim();
+        });
+      }
+
       // Save MQTT button - click handler with fetch, same pattern as WiFi Connect
       document.getElementById('mqtt-save').addEventListener('click', function() {
         var btn = document.getElementById('mqtt-save');
@@ -297,7 +339,7 @@
           .then(function() {
             status.className = 'status ok';
             status.textContent = 'Saved. Device will connect to broker.';
-            btn.disabled = false;
+            setTimeout(updateMqttStatus, 3000);
           })
           .catch(function(err) {
             status.className = 'status err';

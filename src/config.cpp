@@ -116,7 +116,7 @@ bool loadConfiguration() {
     return false;
   }
   config_loaded = true;
-  SPIFFS.end();
+
   return true;
 }
 
@@ -133,7 +133,7 @@ bool loadPlatformConfiguration() {
   }
   if (!file) {
     Serial.println("CONFIG: NO SPIFFS CONFIG (overriding or backup)");
-    SPIFFS.end();
+  
     return false;
   }
   JsonObject dev_conf_obf = platform_config_json.to<JsonObject>();
@@ -146,7 +146,7 @@ bool loadPlatformConfiguration() {
   if (error) {
     Serial.printf("***** CONFIG: FAILED to read config: code:'%d'\n", error.code());
     //SD.end();
-    SPIFFS.end();
+  
     return false;
   }
   Serial.println(F("CONFIG: DESERIALIZE OK"));
@@ -249,7 +249,7 @@ bool loadHomieConfiguration() {
   }
   if (!file) {
     Serial.println("HOMIE CONFIG: NO SPIFFS CONFIG (overriding or backup)");
-    SPIFFS.end();
+  
     return false;
   }
   JsonDocument homie_yml_config; // https://arduinojson.org/v6/assistant to compute the capacity of static (deprecated).
@@ -261,7 +261,7 @@ bool loadHomieConfiguration() {
   if (error) {
     Serial.printf("***** HOMIE CONFIG: FAILED to read config: code:'%d'\n", error.code());
     //SD.end();
-    SPIFFS.end();
+  
     return false;
   }
   Serial.println(F("HOMIE CONFIG: DESERIALIZE OK"));
@@ -373,14 +373,14 @@ const char* mqtt_load_ca_cert() {
 
   if (!SPIFFS.exists(cert_path)) {
     Serial.printf("TLS: CA certificate not found at '%s'\n", cert_path);
-    SPIFFS.end();
+  
     return nullptr;
   }
 
   File certFile = SPIFFS.open(cert_path, FILE_READ);
   if (!certFile) {
     Serial.printf("TLS: Failed to open CA certificate '%s'\n", cert_path);
-    SPIFFS.end();
+  
     return nullptr;
   }
 
@@ -388,14 +388,14 @@ const char* mqtt_load_ca_cert() {
   if (certSize >= CA_CERT_MAX_SIZE) {
     Serial.printf("TLS: CA certificate too large (%d bytes, max %d)\n", certSize, CA_CERT_MAX_SIZE - 1);
     certFile.close();
-    SPIFFS.end();
+  
     return nullptr;
   }
 
   size_t bytesRead = certFile.readBytes(ca_cert_buffer, certSize);
   ca_cert_buffer[bytesRead] = '\0';
   certFile.close();
-  SPIFFS.end();
+
 
   if (bytesRead != certSize) {
     Serial.printf("TLS: Certificate read incomplete (%d of %d bytes)\n", bytesRead, certSize);

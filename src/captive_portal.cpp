@@ -7,6 +7,7 @@
 #include <ArduinoJson.h>
 #include <homie/homie.h>
 #include <portal_prefs.h>
+#include <mqtt_client.h>
 
 static DNSServer dnsServer;
 static AsyncWebServer server(80);
@@ -256,22 +257,31 @@ static void handleDeviceInfo(AsyncWebServerRequest *request) {
     request->send(200, "application/json", json_buf);
 }
 
-// Serve config.html from SPIFFS - read into buffer and send
-static char html_buf[24576];
+// Handle GET /api/mqtt-status - return MQTT connection status
+static void handleMqttStatus(AsyncWebServerRequest *request) {
+    static char json_buf[192];
+    if (mqtt_connected()) {
+        snprintf(json_buf, sizeof(json_buf),
+            "{\"status\":\"connected\",\"broker\":\"%s\",\"port\":%d}", mqtt_host, mqtt_port);
+    } else if (has_mqtt_broker()) {
+        snprintf(json_buf, sizeof(json_buf),
+            "{\"status\":\"failed\",\"broker\":\"%s\",\"port\":%d}", mqtt_host, mqtt_port);
+    } else {
+        snprintf(json_buf, sizeof(json_buf),
+            "{\"status\":\"none\"}");
+    }
+    request->send(200, "application/json", json_buf);
+}
+
+// Serve config.html directly from SPIFFS (no intermediate buffer needed)
 static void serveConfigPage(AsyncWebServerRequest *request) {
     Serial.printf("PORTAL: serveConfigPage requested from %s\n", request->url().c_str());
-    File f = SPIFFS.open("/html/config.html", "r");
-    if (!f) {
+    AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/html/config.html", "text/html");
+    if (!response) {
         Serial.println("PORTAL: ERROR - Failed to open /html/config.html");
         request->send(500, "text/plain", "Failed to open config page");
         return;
     }
-    size_t file_size = f.size();
-    size_t bytes_read = f.readBytes(html_buf, sizeof(html_buf) - 1);
-    f.close();
-    html_buf[bytes_read] = '\0';
-    Serial.printf("PORTAL: Serving config.html (%d of %d bytes)\n", bytes_read, file_size);
-    AsyncWebServerResponse *response = request->beginResponse(200, "text/html", html_buf);
     response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
     response->addHeader("Pragma", "no-cache");
     request->send(response);
@@ -415,7 +425,8 @@ void captive_portal_start() {
     server.on("/api/wifi", HTTP_POST, handleWifiSave, NULL, accumulateBody);
     server.on("/api/wifi-status", HTTP_GET, handleWifiStatus);
 
-    // API endpoints for saving configuration (JSON body via fetch)
+    // MQTT status and configuration endpoints
+    server.on("/api/mqtt-status", HTTP_GET, handleMqttStatus);
     server.on("/api/mqtt", HTTP_POST, handleMqttSave, NULL, accumulateBody);
     server.on("/api/firmware", HTTP_POST, handleFirmwareSave, NULL, accumulateBody);
 

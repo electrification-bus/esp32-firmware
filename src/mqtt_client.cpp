@@ -236,7 +236,6 @@ static bool mqtt_fetch_and_save_root_cert() {
   File certFile = SPIFFS.open(cert_path, FILE_WRITE);
   if (!certFile) {
     Serial.printf("TLS: ERROR - Failed to create cert file '%s'\n", cert_path);
-    SPIFFS.end();
     return false;
   }
 
@@ -255,7 +254,6 @@ static bool mqtt_fetch_and_save_root_cert() {
 
   size_t file_size = certFile.size();
   certFile.close();
-  SPIFFS.end();
 
   Serial.printf("TLS: Root CA saved (%d bytes) to '%s'\n", file_size, cert_path);
   return true;
