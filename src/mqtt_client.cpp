@@ -47,13 +47,12 @@ Client* transportClient = nullptr;  // Pointer to active client
 bool mqtt_using_secure = false;
 
 MQTTClient mqtt_client(MAX_DATA_LEN + 200);  // Buffer size for MQTT packets
-#define TOPIC_TOKEN_SIZ 64
+#define TOPIC_TOKEN_SIZ 80
 #define MQTT_DATA_SIZ 128
 unsigned long mqtt_interval_ts = 0;
 static char mqtt_data[MQTT_DATA_SIZ] = "";
-static int mqtt_connection_error_count = 0;
 char topic_device[TOPIC_TOKEN_SIZ] = {0};
-char topic_cmd[TOPIC_TOKEN_SIZ] = {0};
+char topic_cmd[TOPIC_TOKEN_SIZ + 8] = {0};  // topic_device + "/set"
 // Static LWT topic buffer - must persist after mqtt_connect() returns
 // (pointer corruption fix per arduino-mqtt issue #89)
 static char lwt_topic[64] = {0};
@@ -311,8 +310,8 @@ bool mqtt_init_transport() {
 }
 
 void generateTopics() {
-  sprintf(topic_device,"%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID());
-  sprintf(topic_cmd,"%s/%s",topic_device, HOMIE_TOPIC_SET);
+  snprintf(topic_device, sizeof(topic_device), "%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID());
+  snprintf(topic_cmd, sizeof(topic_cmd), "%s/%s", topic_device, HOMIE_TOPIC_SET);
 }
 
 void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb, Property* instance) {
@@ -432,7 +431,7 @@ void mqtt_publish_json(const char* subtopic, const JsonDocument * payload) {
 
 //pull apart a comma-sep colon-delim name:value string and publish the name:value pairs under 'subtopic'
 void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data) {
-    char topicBuf[256];
+    char topicBuf[384];
     char buf[256];
     Serial.printf("MQTT publish: size:%d chars", strlen(data));
     do {
