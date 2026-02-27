@@ -191,7 +191,7 @@
               mqttBanner.innerHTML = 'Connected: <span class="broker">' + d.broker.replace(/</g, '&lt;') + ':' + d.port + '</span>';
             } else if (d.status === 'failed') {
               mqttBanner.className = 'mqtt-status-banner failed';
-              mqttBanner.innerHTML = 'Failed: <span class="broker">' + d.broker.replace(/</g, '&lt;') + '</span>';
+              mqttBanner.innerHTML = 'Failed: <span class="broker">' + d.broker.replace(/</g, '&lt;') + ':' + d.port + '</span>';
             } else {
               mqttBanner.className = 'mqtt-status-banner none';
               mqttBanner.textContent = 'No broker \u2013 not connected';
