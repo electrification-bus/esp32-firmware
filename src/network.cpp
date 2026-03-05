@@ -255,6 +255,16 @@ bool setup_mdns() {
   Serial.printf("mDNS: ETH MAC: %s, WLAN MAC: %s\n", get_eth_mac(), get_wlan_mac());
 
   // ============================================================
+  // _http._tcp service - HTTP API with OpenAPI specification
+  // Allows clients to discover the REST API and fetch the spec
+  // ============================================================
+  MDNS.addService(MDNS_SVC_HTTP, MDNS_PROTO_TCP, 80);
+  mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_HTTP_PATH, MDNS_VAL_HTTP_PATH);
+  mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_HTTP_API, MDNS_VAL_HTTP_API);
+
+  Serial.printf("mDNS: Added _http._tcp service (path=%s)\n", MDNS_VAL_HTTP_PATH);
+
+  // ============================================================
   // _homie._tcp service - Homie protocol device/controller discovery
   // Advertises: hostname.local with Homie device attributes
   // ============================================================

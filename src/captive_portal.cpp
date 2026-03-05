@@ -431,6 +431,9 @@ void captive_portal_start() {
     server.on("/api/firmware", HTTP_POST, handleFirmwareSave, NULL, accumulateBody);
     server.on("/api/reset-prefs", HTTP_POST, handleResetPrefs);
     server.on("/api/reboot", HTTP_POST, handleReboot);
+    server.on("/api/openapi.yml", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(SPIFFS, "/openapi.yml", "text/yaml");
+    });
 
 #ifdef CONFIG_WIFI_AP
     // === WiFi AP-only endpoints ===

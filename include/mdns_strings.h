@@ -40,6 +40,13 @@
 #define MDNS_TXT_WLAN_IP        "wlan_ip"
 #define MDNS_VAL_PLATFORM       "ESP32"
 
+// _http._tcp - HTTP API with OpenAPI spec
+#define MDNS_SVC_HTTP           "_http"
+#define MDNS_TXT_HTTP_PATH      "path"
+#define MDNS_TXT_HTTP_API       "api"
+#define MDNS_VAL_HTTP_API       "openapi"
+#define MDNS_VAL_HTTP_PATH      "/api/openapi.yml"
+
 // Common TXT record values
 #define MDNS_VAL_TRUE           "true"
 #define MDNS_VAL_FALSE          "false"

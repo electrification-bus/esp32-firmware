@@ -1,0 +1,402 @@
+openapi: 3.0.3
+info:
+  title: Homie ESP32 Configuration API
+  description: |
+    REST API served by the ESP32 captive portal / HTTP server.
+    - With CONFIG_WIFI_AP: all endpoints available via WiFi AP captive portal.
+    - Without CONFIG_WIFI_AP: WiFi endpoints are excluded; API is served over ethernet on port 80.
+  version: 1.0.0
+
+servers:
+  - url: http://192.168.4.1
+    description: WiFi AP (captive portal mode)
+  - url: "http://{device_ip}"
+    description: Ethernet (POE-ISO / wESP32)
+    variables:
+      device_ip:
+        default: "192.168.1.100"
+        description: IP address assigned to the device via DHCP
+
+paths:
+  /:
+    get:
+      summary: Configuration page
+      description: Serves config.html from SPIFFS filesystem.
+      responses:
+        "200":
+          description: HTML configuration page
+          content:
+            text/html:
+              schema:
+                type: string
+        "500":
+          description: Failed to open config page from SPIFFS
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/device-info:
+    get:
+      summary: Device information
+      description: Returns device name and Homie MQTT topic.
+      responses:
+        "200":
+          description: Device info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    example: "greenhouse-controller"
+                  topic:
+                    type: string
+                    example: "homie/5/abc123def/"
+
+  /api/mqtt-status:
+    get:
+      summary: MQTT connection status
+      description: Returns current MQTT broker connection state.
+      responses:
+        "200":
+          description: MQTT status
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    enum: [connected, failed, none]
+                  broker:
+                    type: string
+                    example: "192.168.1.100"
+                  port:
+                    type: integer
+                    example: 1883
+              examples:
+                connected:
+                  value:
+                    status: connected
+                    broker: "192.168.1.100"
+                    port: 1883
+                failed:
+                  value:
+                    status: failed
+                    broker: "192.168.1.100"
+                    port: 1883
+                none:
+                  value:
+                    status: none
+
+  /api/mqtt:
+    post:
+      summary: Save MQTT configuration
+      description: |
+        Saves MQTT broker settings to NVS. Invalidates cached CA cert
+        so the next connection fetches a fresh cert for the (possibly new) broker.
+        Sets a flag so the main loop reconnects MQTT with the new settings.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - broker
+              properties:
+                broker:
+                  type: string
+                  description: MQTT broker hostname or IP
+                  example: "192.168.1.100"
+                port:
+                  type: integer
+                  description: MQTT broker port (default 1883)
+                  default: 1883
+                  example: 8883
+                username:
+                  type: string
+                  description: MQTT username
+                  example: "device1"
+                password:
+                  type: string
+                  description: MQTT password
+                  example: "secret"
+      responses:
+        "200":
+          description: Configuration saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+              example:
+                status: ok
+        "400":
+          description: Invalid JSON body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/firmware:
+    post:
+      summary: Save firmware URL
+      description: Saves the OTA firmware update URL.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+              properties:
+                url:
+                  type: string
+                  description: Firmware binary URL for OTA update
+                  example: "http://192.168.1.10/firmware.bin"
+      responses:
+        "200":
+          description: URL saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+              example:
+                status: ok
+        "400":
+          description: Invalid JSON body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/reset-prefs:
+    post:
+      summary: Reset all portal preferences
+      description: Clears all NVS preferences (WiFi, MQTT, etc). Reboot to use YML config.
+      responses:
+        "200":
+          description: Preferences cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  message:
+                    type: string
+                    example: "Preferences cleared. Reboot to use YML config."
+
+  /api/reboot:
+    post:
+      summary: Reboot the device
+      description: Triggers an ESP.restart() after a short delay.
+      responses:
+        "200":
+          description: Reboot acknowledged (device restarts ~500ms later)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  message:
+                    type: string
+                    example: "Rebooting..."
+
+  /api/openapi.yml:
+    get:
+      summary: OpenAPI specification
+      description: Returns this OpenAPI specification document from SPIFFS.
+      responses:
+        "200":
+          description: OpenAPI 3.0.3 specification in YAML format
+          content:
+            text/yaml:
+              schema:
+                type: string
+
+  # === WiFi AP-only endpoints (CONFIG_WIFI_AP) ===
+
+  /api/wifi-scan:
+    get:
+      summary: Get WiFi scan results
+      description: |
+        Returns cached WiFi scan results (deduplicated, sorted by signal strength).
+        Scan is performed at portal startup. Only available with CONFIG_WIFI_AP.
+      tags:
+        - WiFi AP only
+      responses:
+        "200":
+          description: Array of discovered WiFi networks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    ssid:
+                      type: string
+                      example: "MyNetwork"
+                    rssi:
+                      type: integer
+                      description: Signal strength in dBm (higher is stronger)
+                      example: -45
+                    secure:
+                      type: boolean
+                      description: Whether the network requires a password
+                      example: true
+
+  /api/wifi:
+    post:
+      summary: Connect to a WiFi network
+      description: |
+        Saves WiFi credentials to NVS and begins STA connection attempt.
+        Poll /api/wifi-status for connection result. Only available with CONFIG_WIFI_AP.
+      tags:
+        - WiFi AP only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ssid
+              properties:
+                ssid:
+                  type: string
+                  description: WiFi network name
+                  example: "MyNetwork"
+                password:
+                  type: string
+                  description: WiFi password
+                  example: "mypassword"
+      responses:
+        "200":
+          description: Connection attempt started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: connecting
+        "400":
+          description: Invalid JSON body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/wifi-status:
+    get:
+      summary: WiFi STA connection status
+      description: |
+        Returns current WiFi STA connection state. Poll after POST /api/wifi
+        to check if connection succeeded. Only available with CONFIG_WIFI_AP.
+      tags:
+        - WiFi AP only
+      responses:
+        "200":
+          description: WiFi connection status
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    enum: [connected, connecting, auth_fail, no_ssid, failed]
+                  ip:
+                    type: string
+                    description: Assigned IP address (when connected)
+                    example: "192.168.1.42"
+                  ssid:
+                    type: string
+                    description: Connected network name (when connected)
+                    example: "MyNetwork"
+                  reason:
+                    type: integer
+                    description: ESP32 WiFi disconnect reason code (on failure)
+                    example: 15
+                  message:
+                    type: string
+                    description: Human-readable error (on failure)
+                    example: "Wrong password (reason 15)"
+              examples:
+                connected:
+                  value:
+                    status: connected
+                    ip: "192.168.1.42"
+                    ssid: "MyNetwork"
+                connecting:
+                  value:
+                    status: connecting
+                auth_fail:
+                  value:
+                    status: auth_fail
+                    reason: 15
+                    message: "Wrong password (reason 15)"
+                no_ssid:
+                  value:
+                    status: no_ssid
+                    reason: 201
+                    message: "Network not found"
+
+  # Captive portal redirect endpoints (CONFIG_WIFI_AP only)
+  /generate_204:
+    get:
+      summary: Android captive portal detection
+      tags: [WiFi AP only]
+      responses:
+        "302":
+          description: Redirects to config page
+
+  /fwlink:
+    get:
+      summary: Windows captive portal detection
+      tags: [WiFi AP only]
+      responses:
+        "302":
+          description: Redirects to config page
+
+  /hotspot-detect.html:
+    get:
+      summary: Apple captive portal detection
+      tags: [WiFi AP only]
+      responses:
+        "302":
+          description: Redirects to config page
+
+components:
+  schemas:
+    StatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: error
+        message:
+          type: string
+          example: "Invalid JSON"
