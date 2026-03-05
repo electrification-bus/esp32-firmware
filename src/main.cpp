@@ -6,8 +6,8 @@
  *   - Controller mode (ENABLE_CONTROLLER): Discovers and monitors other Homie devices
  *
  * Network architecture:
- *   - Ethernet (preferred) and WiFi STA run simultaneously when available
- *   - Captive portal (WiFi AP) always runs on S3; skipped on non-S3 boards when MQTT is configured
+ *   - CONFIG_WIFI_AP: WiFi AP captive portal + API; WiFi STA for user network
+ *   - No CONFIG_WIFI_AP: HTTP API server over ethernet only
  *   - Ethernet is preferred for MQTT and mDNS when connected
  */
 
@@ -18,8 +18,7 @@
 #include <ESPmDNS.h>
 #include <captive_portal.h>
 
-// Track whether captive portal was started (POE-ISO skips it when MQTT is configured)
-static bool portal_active = false;
+// Web server is always started (captive portal on WiFi AP boards, HTTP API on ethernet boards)
 
 #ifdef ENABLE_CONTROLLER
 // ============================================================================
@@ -53,47 +52,40 @@ void setup() {
     // Generate device ID after config (needs device_name from homie.yml)
     generateDeviceID();
 
-    // ESP32-S3 always runs captive portal for configuration
-    // Non-S3 boards (e.g. POE-ISO) skip portal when MQTT is already configured (headless operation)
-#ifdef ARDUINO_ESP32S3_DEV
-    captive_portal_start();
-    portal_active = true;
-#else
-    if (!has_mqtt_broker()) {
-        captive_portal_start();
-        portal_active = true;
-    } else {
-        Serial.println("PORTAL: Skipping captive portal (MQTT already configured)");
-    }
-#endif
-
-    // Start Ethernet (preferred interface for MQTT)
+    // Start Ethernet first - initializes lwIP TCP/IP stack (required before HTTP server)
     setup_ethernet();
 
+    // Start web server (captive portal with WiFi AP, or HTTP API over ethernet)
+    captive_portal_start();
+
+#ifdef CONFIG_WIFI_AP
     // Start WiFi STA if credentials are saved (from config or previous portal session)
     setup_wifi_sta();
+#endif
 
     // Wait for at least one network interface to get an IP
     while (!client_connected()) {
-        if (portal_active) captive_portal_loop();  // Keep portal responsive while waiting
+        captive_portal_loop();  // Keep portal responsive while waiting
         Serial.println("Waiting for network connection...");
         delay(1000);
     }
 
     // Log which interfaces are active
     const char* eth_ip = get_eth_ip();
-    const char* wifi_ip = get_wifi_ip();
     if (eth_ip[0] != '\0') Serial.printf("Network: Ethernet IP=%s (preferred)\n", eth_ip);
+#ifdef CONFIG_WIFI_AP
+    const char* wifi_ip = get_wifi_ip();
     if (wifi_ip[0] != '\0') Serial.printf("Network: WiFi STA IP=%s\n", wifi_ip);
+#endif
 
     // Start mDNS (also discovers MQTT brokers on LAN)
     setup_mdns();
 
     // Wait for MQTT broker to be configured (via config file, portal, or mDNS)
     while (!has_mqtt_broker() && !mdns_has_broker()) {
-        if (portal_active) captive_portal_loop();
+        captive_portal_loop();
         loop_mdns();  // Keep trying mDNS discovery
-        if (portal_active && captive_portal_mqtt_changed()) break;  // User configured via portal
+        if (captive_portal_mqtt_changed()) break;  // User configured via web server
         Serial.println("Waiting for MQTT broker configuration (use portal or mDNS)...");
         delay(2000);
     }
@@ -120,15 +112,13 @@ void setup() {
 }
 
 void loop() {
-    if (portal_active) {
-        captive_portal_loop();
+    captive_portal_loop();
 
-        // Handle MQTT reconfiguration from portal
-        if (captive_portal_mqtt_changed()) {
-            Serial.println("MQTT config updated via portal, reconnecting...");
-            mqtt_restart();
-            setup_mqtt();
-        }
+    // Handle MQTT reconfiguration from web server
+    if (captive_portal_mqtt_changed()) {
+        Serial.println("MQTT config updated via web server, reconnecting...");
+        mqtt_restart();
+        setup_mqtt();
     }
 
     loop_mdns();
@@ -199,38 +189,31 @@ void setup() {
     // Generate device ID after config (needs device_name from homie.yml)
     generateDeviceID();
 
-    // ESP32-S3 always runs captive portal for configuration
-    // Non-S3 boards (e.g. POE-ISO) skip portal when MQTT is already configured (headless operation)
-#ifdef ARDUINO_ESP32S3_DEV
-    captive_portal_start();
-    portal_active = true;
-#else
-    if (!has_mqtt_broker()) {
-        captive_portal_start();
-        portal_active = true;
-    } else {
-        Serial.println("PORTAL: Skipping captive portal (MQTT already configured)");
-    }
-#endif
-
-    // Start Ethernet (preferred interface for MQTT)
+    // Start Ethernet first - initializes lwIP TCP/IP stack (required before HTTP server)
     setup_ethernet();
 
+    // Start web server (captive portal with WiFi AP, or HTTP API over ethernet)
+    captive_portal_start();
+
+#ifdef CONFIG_WIFI_AP
     // Start WiFi STA if credentials are saved (from config or previous portal session)
     setup_wifi_sta();
+#endif
 
     // Wait for at least one network interface to get an IP
     while (!client_connected()) {
-        if (portal_active) captive_portal_loop();  // Keep portal responsive while waiting
+        captive_portal_loop();  // Keep portal responsive while waiting
         Serial.println("Waiting for network connection...");
         delay(1000);
     }
 
     // Log which interfaces are active
     const char* eth_ip = get_eth_ip();
-    const char* wifi_ip = get_wifi_ip();
     if (eth_ip[0] != '\0') Serial.printf("Network: Ethernet IP=%s (preferred)\n", eth_ip);
+#ifdef CONFIG_WIFI_AP
+    const char* wifi_ip = get_wifi_ip();
     if (wifi_ip[0] != '\0') Serial.printf("Network: WiFi STA IP=%s\n", wifi_ip);
+#endif
 
     // Start mDNS (also discovers MQTT brokers on LAN)
     setup_mdns();
@@ -240,9 +223,9 @@ void setup() {
 
     // Wait for MQTT broker to be configured (via config file, portal, or mDNS)
     while (!has_mqtt_broker() && !mdns_has_broker()) {
-        if (portal_active) captive_portal_loop();
+        captive_portal_loop();
         loop_mdns();  // Keep trying mDNS discovery
-        if (portal_active && captive_portal_mqtt_changed()) break;  // User configured via portal
+        if (captive_portal_mqtt_changed()) break;  // User configured via web server
         Serial.println("Waiting for MQTT broker configuration (use portal or mDNS)...");
         delay(2000);
     }
@@ -275,15 +258,13 @@ void setup() {
 }
 
 void loop() {
-    if (portal_active) {
-        captive_portal_loop();
+    captive_portal_loop();
 
-        // Handle MQTT reconfiguration from portal
-        if (captive_portal_mqtt_changed()) {
-            Serial.println("MQTT config updated via portal, reconnecting...");
-            mqtt_restart();
-            setup_mqtt();
-        }
+    // Handle MQTT reconfiguration from web server
+    if (captive_portal_mqtt_changed()) {
+        Serial.println("MQTT config updated via web server, reconnecting...");
+        mqtt_restart();
+        setup_mqtt();
     }
 
     loop_mdns();

@@ -1,7 +1,6 @@
 #include <captive_portal.h>
 #include <config.h>
 #include <WiFi.h>
-#include <DNSServer.h>
 #include <ESPAsyncWebServer.h>
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
@@ -9,10 +8,15 @@
 #include <portal_prefs.h>
 #include <mqtt_client.h>
 
+#ifdef CONFIG_WIFI_AP
+#include <DNSServer.h>
 static DNSServer dnsServer;
+#endif
+
 static AsyncWebServer server(80);
 static volatile bool portal_mqtt_changed = false;  // set when MQTT config saved via portal
 
+#ifdef CONFIG_WIFI_AP
 // WiFi STA connection state tracked via event handler
 static volatile uint8_t wifi_disconnect_reason = 0;
 static volatile bool wifi_connected = false;
@@ -57,15 +61,6 @@ struct WifiNetwork {
 };
 static WifiNetwork scanned_networks[MAX_WIFI_NETWORKS];
 static int scanned_count = 0;
-
-// Returns true (once) when MQTT config was changed via portal
-bool captive_portal_mqtt_changed() {
-    if (portal_mqtt_changed) {
-        portal_mqtt_changed = false;
-        return true;
-    }
-    return false;
-}
 
 // Perform WiFi scan and store deduplicated results sorted by RSSI
 static void performWifiScan() {
@@ -153,6 +148,7 @@ static void handleWifiScan(AsyncWebServerRequest *request) {
     snprintf(json_buf + offset, sizeof(json_buf) - offset, "]");
     request->send(200, "application/json", json_buf);
 }
+#endif // CONFIG_WIFI_AP
 
 // ============================================================================
 // POST body accumulation
@@ -174,6 +170,7 @@ static void accumulateBody(AsyncWebServerRequest *request, uint8_t *data, size_t
     post_body_buf[post_body_len] = '\0';
 }
 
+#ifdef CONFIG_WIFI_AP
 // Handle POST /api/wifi - save WiFi credentials and begin connection
 static void handleWifiSave(AsyncWebServerRequest *request) {
     Serial.printf("PORTAL: handleWifiSave called, body=%d bytes\n", post_body_len);
@@ -246,6 +243,16 @@ static void handleWifiStatus(AsyncWebServerRequest *request) {
         Serial.printf("PORTAL: wifi-status: connecting wl=%d\n", WiFi.status());
     }
     request->send(200, "application/json", json_buf);
+}
+#endif // CONFIG_WIFI_AP
+
+// Returns true (once) when MQTT config was changed via portal
+bool captive_portal_mqtt_changed() {
+    if (portal_mqtt_changed) {
+        portal_mqtt_changed = false;
+        return true;
+    }
+    return false;
 }
 
 // Handle GET /api/device-info - return device name and topic as JSON
@@ -365,6 +372,7 @@ static void handleReboot(AsyncWebServerRequest *request) {
     ESP.restart();
 }
 
+#ifdef CONFIG_WIFI_AP
 // Redirect handler for captive portal detection endpoints
 // Uses absolute URL with AP IP - relative redirects can confuse Android captive portal WebView
 static char redirect_url[32];
@@ -374,20 +382,24 @@ static void handleCaptiveRedirect(AsyncWebServerRequest *request) {
     Serial.printf("PORTAL: Redirecting %s %s -> %s\n", request->methodToString(), request->url().c_str(), redirect_url);
     request->redirect(redirect_url);
 }
+#endif // CONFIG_WIFI_AP
 
 void captive_portal_loop() {
+#ifdef CONFIG_WIFI_AP
     dnsServer.processNextRequest();
+#endif
 }
 
 void captive_portal_start() {
-    Serial.println("\n===== CAPTIVE PORTAL =====");
-    Serial.println("PORTAL: Starting configuration portal (always active)");
-
     // Mount SPIFFS to serve HTML
     if (!SPIFFS.begin(true)) {
         Serial.println("PORTAL: ERROR - Failed to mount SPIFFS");
         return;
     }
+
+#ifdef CONFIG_WIFI_AP
+    Serial.println("\n===== CAPTIVE PORTAL =====");
+    Serial.println("PORTAL: Starting WiFi AP + captive portal");
 
     // Register WiFi event handler for STA connection tracking
     WiFi.onEvent(onWifiEvent);
@@ -406,10 +418,22 @@ void captive_portal_start() {
 
     // Start DNS server - redirect all domains to AP IP (captive portal behavior)
     dnsServer.start(53, "*", WiFi.softAPIP());
+#else
+    Serial.println("\n===== HTTP API SERVER =====");
+    Serial.println("PORTAL: Starting HTTP API server (ethernet mode)");
+#endif
 
-    // Serve the config HTML page
+    // === Common endpoints (available on all interfaces) ===
     server.on("/", HTTP_GET, serveConfigPage);
+    server.on("/api/device-info", HTTP_GET, handleDeviceInfo);
+    server.on("/api/mqtt-status", HTTP_GET, handleMqttStatus);
+    server.on("/api/mqtt", HTTP_POST, handleMqttSave, NULL, accumulateBody);
+    server.on("/api/firmware", HTTP_POST, handleFirmwareSave, NULL, accumulateBody);
+    server.on("/api/reset-prefs", HTTP_POST, handleResetPrefs);
+    server.on("/api/reboot", HTTP_POST, handleReboot);
 
+#ifdef CONFIG_WIFI_AP
+    // === WiFi AP-only endpoints ===
     // Captive portal detection endpoints (Android, Windows, Apple)
     server.on("/generate_204", HTTP_GET, handleCaptiveRedirect);
     server.on("/fwlink", HTTP_GET, handleCaptiveRedirect);
@@ -417,27 +441,15 @@ void captive_portal_start() {
     server.on("/connecttest.txt", HTTP_GET, handleCaptiveRedirect);
     server.on("/redirect", HTTP_GET, handleCaptiveRedirect);
 
-    // Device info endpoint (name + topic for page header)
-    server.on("/api/device-info", HTTP_GET, handleDeviceInfo);
-
     // WiFi scan, join, and status endpoints
     server.on("/api/wifi-scan", HTTP_GET, handleWifiScan);
     server.on("/api/wifi", HTTP_POST, handleWifiSave, NULL, accumulateBody);
     server.on("/api/wifi-status", HTTP_GET, handleWifiStatus);
 
-    // MQTT status and configuration endpoints
-    server.on("/api/mqtt-status", HTTP_GET, handleMqttStatus);
-    server.on("/api/mqtt", HTTP_POST, handleMqttSave, NULL, accumulateBody);
-    server.on("/api/firmware", HTTP_POST, handleFirmwareSave, NULL, accumulateBody);
-
-    // System actions (no body needed - just POST to trigger)
-    server.on("/api/reset-prefs", HTTP_POST, handleResetPrefs);
-    server.on("/api/reboot", HTTP_POST, handleReboot);
-
     // Catch-all: redirect any unknown URL to config page (improves Android captive portal detection)
     server.onNotFound(handleCaptiveRedirect);
+#endif
 
     server.begin();
     Serial.println("PORTAL: Web server started on port 80");
-    Serial.println("PORTAL: Portal running - connect to AP to configure device");
 }
