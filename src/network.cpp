@@ -468,8 +468,12 @@ void testClient(const char * host, uint16_t port)
 
 // Start WiFi STA using saved credentials from config/captive portal
 // Returns true if WiFi.begin() was called (credentials exist)
-// Safe to call alongside setup_ethernet() - both interfaces can coexist
+// Requires CONFIG_WIFI_AP - ethernet-only boards do not use WiFi radio
 bool setup_wifi_sta() {
+#ifndef CONFIG_WIFI_AP
+  Serial.println("WiFi STA: Disabled (no CONFIG_WIFI_AP)");
+  return false;
+#else
   if (wifi_ssid[0] == '\0') {
     Serial.println("WiFi STA: No SSID configured, skipping");
     return false;
@@ -496,6 +500,7 @@ bool setup_wifi_sta() {
   }
   WiFi.begin(wifi_ssid, wifi_password);
   return true;
+#endif // CONFIG_WIFI_AP
 }
 
 void setup_ethernet()
