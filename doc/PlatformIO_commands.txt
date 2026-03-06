@@ -1,0 +1,31 @@
+PlatformIO commands. Run from terminal in project folder
+
+<target> - choose one of the [env:] 'environments' from platformio.ini, one of:
+esp32-poe-iso
+esp32-s3-devkitc-1
+
+Build filesystem: 
+pio run -e <target> -t buildfs
+
+Flash filesystem: 
+pio run -e <target> -t uploadfs
+
+Build project: 
+pio run -e <target>
+
+Build & flash project: 
+pio run -e <target> -t upload
+
+Memory footprint: 
+pio run -e <target> -t size
+and
+pio run -e <target> -t checkprogsize
+
+
+esp32-poe-iso examples:
+---------------------------------------------
+pio run -e esp32-poe-iso
+pio run -e esp32-poe-iso -t buildfs
+pio run -e esp32-poe-iso -t uploadfs
+pio run -e esp32-poe-iso -t size
+pio run -e esp32-poe-iso -t checkprogsize
