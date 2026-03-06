@@ -15,3 +15,8 @@ config:
     model: ESP32-POE-ISO
     serial_number:   # leave empty to use device_id
     homie_role: device  # "device" or "controller"
+    # mqtt_mode controls how the MQTT broker is resolved:
+    #   configured-only         - use only the mqtt_host/port from this config file
+    #   discovery-with-fallback - try mDNS discovery first, fall back to config if none found
+    #   discovery-only          - use only mDNS discovery, ignore configured mqtt_host/port (default)
+    mqtt_mode: discovery-only
