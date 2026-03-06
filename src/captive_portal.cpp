@@ -357,6 +357,70 @@ static void handleFirmwareSave(AsyncWebServerRequest *request) {
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
+// Handle GET /api/broker-cert - download the CA cert for the current MQTT broker
+static void handleBrokerCert(AsyncWebServerRequest *request) {
+    if (!has_mqtt_broker()) {
+        request->send(404, "text/plain", "No MQTT broker configured");
+        return;
+    }
+
+    char cert_path[96];
+    mqtt_build_cert_path(mqtt_host, cert_path, sizeof(cert_path));
+
+    if (!SPIFFS.exists(cert_path)) {
+        static char msg[128];
+        snprintf(msg, sizeof(msg), "No certificate found for broker '%s'", mqtt_host);
+        request->send(404, "text/plain", msg);
+        return;
+    }
+
+    Serial.printf("PORTAL: Serving broker cert '%s'\n", cert_path);
+    request->send(SPIFFS, cert_path, "text/plain");
+}
+
+// Handle POST /api/broker-cert - upload a CA cert and save to SPIFFS
+static void handleBrokerCertUpload(AsyncWebServerRequest *request) {
+    Serial.printf("PORTAL: handleBrokerCertUpload called, body=%d bytes\n", post_body_len);
+
+    if (post_body_len == 0) {
+        request->send(400, "application/json",
+            "{\"status\":\"error\",\"message\":\"Empty body\"}");
+        return;
+    }
+
+    // Basic PEM sanity check
+    if (strstr(post_body_buf, "-----BEGIN CERTIFICATE-----") == nullptr) {
+        request->send(400, "application/json",
+            "{\"status\":\"error\",\"message\":\"Not a PEM certificate\"}");
+        return;
+    }
+
+    // Ensure /certs directory exists
+    if (!SPIFFS.exists("/certs")) {
+        SPIFFS.mkdir("/certs");
+    }
+
+    File certFile = SPIFFS.open("/certs/uploaded-cert.ca", FILE_WRITE);
+    if (!certFile) {
+        request->send(500, "application/json",
+            "{\"status\":\"error\",\"message\":\"Failed to write cert file\"}");
+        return;
+    }
+
+    size_t written = certFile.write((const uint8_t*)post_body_buf, post_body_len);
+    certFile.close();
+
+    // Invalidate cached cert so next MQTT connect picks up the new one
+    mqtt_invalidate_ca_cert();
+
+    Serial.printf("PORTAL: Uploaded broker cert saved (%d bytes) to /certs/uploaded-cert.ca\n", written);
+
+    static char resp[128];
+    snprintf(resp, sizeof(resp),
+        "{\"status\":\"ok\",\"bytes\":%d,\"path\":\"/certs/uploaded-cert.ca\"}", written);
+    request->send(200, "application/json", resp);
+}
+
 // Handle POST /api/reset-prefs - clear all portal Preferences
 static void handleResetPrefs(AsyncWebServerRequest *request) {
     Serial.println("PORTAL: Resetting all portal preferences");
@@ -431,6 +495,8 @@ void captive_portal_start() {
     server.on("/api/firmware", HTTP_POST, handleFirmwareSave, NULL, accumulateBody);
     server.on("/api/reset-prefs", HTTP_POST, handleResetPrefs);
     server.on("/api/reboot", HTTP_POST, handleReboot);
+    server.on("/api/broker-cert", HTTP_GET, handleBrokerCert);
+    server.on("/api/broker-cert", HTTP_POST, handleBrokerCertUpload, NULL, accumulateBody);
     server.on("/api/openapi.yml", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(SPIFFS, "/openapi.yml", "text/yaml");
     });

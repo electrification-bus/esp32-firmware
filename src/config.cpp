@@ -371,15 +371,21 @@ const char* mqtt_load_ca_cert() {
     return nullptr;
   }
 
-  if (!SPIFFS.exists(cert_path)) {
-    Serial.printf("TLS: CA certificate not found at '%s'\n", cert_path);
-  
+  // Try broker-specific cert first, then uploaded cert as fallback
+  const char* actual_path = nullptr;
+  if (SPIFFS.exists(cert_path)) {
+    actual_path = cert_path;
+  } else if (SPIFFS.exists("/certs/uploaded-cert.ca")) {
+    actual_path = "/certs/uploaded-cert.ca";
+    Serial.printf("TLS: Broker cert '%s' not found, using uploaded cert\n", cert_path);
+  } else {
+    Serial.printf("TLS: No CA certificate found at '%s' or '/certs/uploaded-cert.ca'\n", cert_path);
     return nullptr;
   }
 
-  File certFile = SPIFFS.open(cert_path, FILE_READ);
+  File certFile = SPIFFS.open(actual_path, FILE_READ);
   if (!certFile) {
-    Serial.printf("TLS: Failed to open CA certificate '%s'\n", cert_path);
+    Serial.printf("TLS: Failed to open CA certificate '%s'\n", actual_path);
   
     return nullptr;
   }
@@ -403,6 +409,6 @@ const char* mqtt_load_ca_cert() {
   }
 
   ca_cert_loaded = true;
-  Serial.printf("TLS: CA certificate loaded (%d bytes) from '%s'\n", bytesRead, cert_path);
+  Serial.printf("TLS: CA certificate loaded (%d bytes) from '%s'\n", bytesRead, actual_path);
   return ca_cert_buffer;
 }
