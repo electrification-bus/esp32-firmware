@@ -1,7 +1,7 @@
 #pragma once
 
 #define HOMIE_VERSION_NUM       "5"
-#define HOMIE_TOPIC_PREFIX      "homie/" HOMIE_VERSION_NUM
+#define HOMIE_TOPIC_PREFIX      "ebus/" HOMIE_VERSION_NUM
 #define HOMIE_TOPIC_SET         "set"
 
 #define HOMIE_DATATYPE_BOOLEAN  "boolean"
