@@ -255,6 +255,16 @@ bool setup_mdns() {
   Serial.printf("mDNS: ETH MAC: %s, WLAN MAC: %s\n", get_eth_mac(), get_wlan_mac());
 
   // ============================================================
+  // _http._tcp service - HTTP API with OpenAPI specification
+  // Allows clients to discover the REST API and fetch the spec
+  // ============================================================
+  MDNS.addService(MDNS_SVC_HTTP, MDNS_PROTO_TCP, 80);
+  mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_HTTP_PATH, MDNS_VAL_HTTP_PATH);
+  mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_HTTP_API, MDNS_VAL_HTTP_API);
+
+  Serial.printf("mDNS: Added _http._tcp service (path=%s)\n", MDNS_VAL_HTTP_PATH);
+
+  // ============================================================
   // _homie._tcp service - Homie protocol device/controller discovery
   // Advertises: hostname.local with Homie device attributes
   // ============================================================
@@ -468,8 +478,12 @@ void testClient(const char * host, uint16_t port)
 
 // Start WiFi STA using saved credentials from config/captive portal
 // Returns true if WiFi.begin() was called (credentials exist)
-// Safe to call alongside setup_ethernet() - both interfaces can coexist
+// Requires CONFIG_WIFI_AP - ethernet-only boards do not use WiFi radio
 bool setup_wifi_sta() {
+#ifndef CONFIG_WIFI_AP
+  Serial.println("WiFi STA: Disabled (no CONFIG_WIFI_AP)");
+  return false;
+#else
   if (wifi_ssid[0] == '\0') {
     Serial.println("WiFi STA: No SSID configured, skipping");
     return false;
@@ -496,6 +510,7 @@ bool setup_wifi_sta() {
   }
   WiFi.begin(wifi_ssid, wifi_password);
   return true;
+#endif // CONFIG_WIFI_AP
 }
 
 void setup_ethernet()
