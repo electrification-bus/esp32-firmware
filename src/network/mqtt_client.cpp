@@ -520,7 +520,11 @@ void setup_mqtt() {
       mqtt_host[sizeof(mqtt_host) - 1] = '\0';
       mqtt_port = mdns_get_broker_port();
       mqtt_invalidate_ca_cert();
-      Serial.printf("MQTT: Using mDNS broker %s:%u (mqtt_mode=discovery-with-fallback)\n",
+      // Discovered brokers use anonymous connection, ignore config credentials
+      //(temporary until credential negotiation)
+      mqtt_username[0] = '\0';
+      mqtt_password[0] = '\0';
+      Serial.printf("MQTT: Using mDNS broker %s:%u anonymous (mqtt_mode=discovery-with-fallback)\n",
                      mqtt_host, mqtt_port);
     } else if (has_mqtt_broker()) {
       Serial.println("MQTT: mDNS found nothing, using configured broker (mqtt_mode=discovery-with-fallback)");
@@ -535,7 +539,10 @@ void setup_mqtt() {
       mqtt_host[sizeof(mqtt_host) - 1] = '\0';
       mqtt_port = mdns_get_broker_port();
       mqtt_invalidate_ca_cert();
-      Serial.printf("MQTT: Using mDNS broker %s:%u (mqtt_mode=discovery-only)\n",
+      // Discovered brokers use anonymous connection, ignore config credentials
+      mqtt_username[0] = '\0';
+      mqtt_password[0] = '\0';
+      Serial.printf("MQTT: Using mDNS broker %s:%u anonymous (mqtt_mode=discovery-only)\n",
                      mqtt_host, mqtt_port);
     } else {
       Serial.println("MQTT: **ERROR -- no broker discovered via mDNS (mqtt_mode=discovery-only)");
