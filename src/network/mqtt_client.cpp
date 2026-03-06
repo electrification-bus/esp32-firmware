@@ -27,12 +27,12 @@
    Boston, MA 02111-1307, USA.
 */
 
-#include "mqtt_client.h"
+#include <network/mqtt_client.h>
 #include <TimeLib.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoYaml.h>
 #include <config.h>
-#include <network.h>
+#include <network/network.h>
 #include <homie/Property.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -505,18 +505,42 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
 }
 
 void setup_mqtt() {
-  // Use config broker; fall back to mDNS-discovered broker
-  if (!has_mqtt_broker() && mdns_has_broker()) {
-    strncpy(mqtt_host, mdns_get_broker_host(), sizeof(mqtt_host) - 1);
-    mqtt_host[sizeof(mqtt_host) - 1] = '\0';
-    mqtt_port = mdns_get_broker_port();
-    Serial.printf("MQTT: Using mDNS-discovered %s broker %s:%u\n",
-                   mqtt_is_secure() ? "MQTTS" : "MQTT", mqtt_host, mqtt_port);
-  }
-
-  if (!has_mqtt_broker()) {
-    Serial.println("MQTT: **ERROR -- no broker configured and none discovered via mDNS");
-    return;
+  // Resolve broker based on mqtt_mode
+  if (mqtt_mode == MQTT_MODE_CONFIGURED_ONLY) {
+    // Use only the configured broker
+    if (!has_mqtt_broker()) {
+      Serial.println("MQTT: **ERROR -- no broker configured (mqtt_mode=configured-only)");
+      return;
+    }
+    Serial.println("MQTT: Using configured broker (mqtt_mode=configured-only)");
+  } else if (mqtt_mode == MQTT_MODE_DISCOVERY_WITH_FALLBACK) {
+    // Prefer mDNS-discovered broker, fall back to config
+    if (mdns_has_broker()) {
+      strncpy(mqtt_host, mdns_get_broker_host(), sizeof(mqtt_host) - 1);
+      mqtt_host[sizeof(mqtt_host) - 1] = '\0';
+      mqtt_port = mdns_get_broker_port();
+      mqtt_invalidate_ca_cert();
+      Serial.printf("MQTT: Using mDNS broker %s:%u (mqtt_mode=discovery-with-fallback)\n",
+                     mqtt_host, mqtt_port);
+    } else if (has_mqtt_broker()) {
+      Serial.println("MQTT: mDNS found nothing, using configured broker (mqtt_mode=discovery-with-fallback)");
+    } else {
+      Serial.println("MQTT: **ERROR -- no mDNS broker and no config broker (mqtt_mode=discovery-with-fallback)");
+      return;
+    }
+  } else {
+    // MQTT_MODE_DISCOVERY_ONLY (default) - only mDNS, ignore config
+    if (mdns_has_broker()) {
+      strncpy(mqtt_host, mdns_get_broker_host(), sizeof(mqtt_host) - 1);
+      mqtt_host[sizeof(mqtt_host) - 1] = '\0';
+      mqtt_port = mdns_get_broker_port();
+      mqtt_invalidate_ca_cert();
+      Serial.printf("MQTT: Using mDNS broker %s:%u (mqtt_mode=discovery-only)\n",
+                     mqtt_host, mqtt_port);
+    } else {
+      Serial.println("MQTT: **ERROR -- no broker discovered via mDNS (mqtt_mode=discovery-only)");
+      return;
+    }
   }
 
   Serial.printf("MQTT: %s broker %s:%u\n",

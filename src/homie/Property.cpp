@@ -2,7 +2,7 @@
 #include "homie/Property.h"
 #include <homie/Node.h>
 #include <homie/Device.h>
-#include <mqtt_client.h>
+#include <network/mqtt_client.h>
 #include <util/jsonUtils.h>
 
 Property::Property() {

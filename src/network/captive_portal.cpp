@@ -1,4 +1,4 @@
-#include <captive_portal.h>
+#include <network/captive_portal.h>
 #include <config.h>
 #include <WiFi.h>
 #include <DNSServer.h>
@@ -7,7 +7,7 @@
 #include <ArduinoJson.h>
 #include <homie/homie.h>
 #include <portal_prefs.h>
-#include <mqtt_client.h>
+#include <network/mqtt_client.h>
 
 static DNSServer dnsServer;
 static AsyncWebServer server(80);

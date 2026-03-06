@@ -3,7 +3,7 @@
 #include <homie/homie.h>
 #include <homie/Device.h>
 #include <config.h>
-#include <mqtt_client.h>
+#include <network/mqtt_client.h>
 #include <util/jsonUtils.h>
 /*
   homie/5/device123/$state → ready

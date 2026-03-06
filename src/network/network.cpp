@@ -7,9 +7,9 @@
 #include <lwip/netif.h>
 #include <ETH.h>
 #include <config.h>
-#include <network.h>
+#include <network/network.h>
 #include <homie/homie.h>
-#include <mdns_strings.h>
+#include <network/mdns_strings.h>
 
 #define WIFI_SSID "foo"
 #define WIFI_PW   "bar"
@@ -187,8 +187,8 @@ bool setup_mdns() {
   }
   Serial.printf("mDNS: Started for host: %s.local\n", mdns_hostname);
 
-  // Discover MQTT brokers on the local network (only if no config broker)
-  if (!has_mqtt_broker()) {
+  // Discover MQTT brokers on the local network (based on mqtt_mode)
+  if (mqtt_mode != MQTT_MODE_CONFIGURED_ONLY) {
     mdns_query_mqtt_broker();
   }
 
@@ -513,8 +513,11 @@ void loop_ethernet() {
 static unsigned long mdns_last_poll = 0;
 
 void loop_mdns() {
-  // Stop searching once a broker is known (from config, portal, or previous mDNS discovery)
-  if (has_mqtt_broker() || mdns_has_broker()) return;
+  // No mDNS polling in configured-only mode
+  if (mqtt_mode == MQTT_MODE_CONFIGURED_ONLY) return;
+
+  // Stop searching once an mDNS broker is found
+  if (mdns_has_broker()) return;
 
   if (millis() - mdns_last_poll < MDNS_BROKER_POLL_MS) return;
   mdns_last_poll = millis();

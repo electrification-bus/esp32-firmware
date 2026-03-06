@@ -33,6 +33,9 @@ char firmware_url[128] = {0};
 // Homie role: "device" or "controller"
 char homie_role[16] = "device";
 
+// MQTT broker resolution mode (default: discovery-only)
+MqttMode mqtt_mode = MQTT_MODE_DISCOVERY_ONLY;
+
 const char* UNIQUE_ID = "";
 char device_id[MAX_DEVICE_ID_CHARS] = {0};
 
@@ -232,6 +235,18 @@ bool loadPlatformConfiguration() {
   if (config_json["homie_role"].is<JsonString>()) {
     strncpy(homie_role, config_json["homie_role"].as<JsonString>().c_str(), sizeof(homie_role) - 1);
     homie_role[sizeof(homie_role) - 1] = '\0';
+  }
+
+  if (config_json["mqtt_mode"].is<JsonString>()) {
+    const char* mode_str = config_json["mqtt_mode"].as<JsonString>().c_str();
+    if (strcmp(mode_str, "configured-only") == 0) {
+      mqtt_mode = MQTT_MODE_CONFIGURED_ONLY;
+    } else if (strcmp(mode_str, "discovery-with-fallback") == 0) {
+      mqtt_mode = MQTT_MODE_DISCOVERY_WITH_FALLBACK;
+    } else {
+      mqtt_mode = MQTT_MODE_DISCOVERY_ONLY;
+    }
+    Serial.printf("CONFIG: mqtt_mode=%s\n", mode_str);
   }
 
   return true;

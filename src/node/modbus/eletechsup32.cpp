@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <config.h>
 #include <node/modbus/eletechsup32.h>
-#include <mqtt_client.h>
+#include <network/mqtt_client.h>
 
 Modbus_Eletechsup32::Modbus_Eletechsup32(const char* homie_node_id, Stream& serial, uint8_t addr)
     : ModbusRTUEntity(homie_node_id) {

@@ -31,6 +31,15 @@ extern char firmware_url[128];
 // Homie role: "device" or "controller"
 extern char homie_role[16];
 
+// MQTT broker resolution mode
+enum MqttMode {
+  MQTT_MODE_DISCOVERY_ONLY = 0,      // mDNS only, ignore config (default)
+  MQTT_MODE_DISCOVERY_WITH_FALLBACK, // mDNS first, fall back to config
+  MQTT_MODE_CONFIGURED_ONLY          // config only, no mDNS discovery
+};
+
+extern MqttMode mqtt_mode;
+
 // TLS/SSL support for MQTT (port 8883)
 #define MQTT_SECURE_PORT 8883
 

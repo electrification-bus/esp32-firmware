@@ -12,11 +12,11 @@
  */
 
 #include <Arduino.h>
-#include <network.h>
+#include <network/network.h>
 #include <config.h>
-#include <mqtt_client.h>
+#include <network/mqtt_client.h>
 #include <ESPmDNS.h>
-#include <captive_portal.h>
+#include <network/captive_portal.h>
 
 // Track whether captive portal was started (POE-ISO skips it when MQTT is configured)
 static bool portal_active = false;

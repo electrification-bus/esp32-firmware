@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <SoftwareSerial.h>
 #include <config.h>
-#include <mqtt_client.h>
+#include <network/mqtt_client.h>
 #include <modbus/modbus_master.h>
 #include <modbus/modbus_queue.h>
 
