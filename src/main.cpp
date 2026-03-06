@@ -81,13 +81,24 @@ void setup() {
     // Start mDNS (also discovers MQTT brokers on LAN)
     setup_mdns();
 
-    // Wait for MQTT broker to be configured (via config file, portal, or mDNS)
-    while (!has_mqtt_broker() && !mdns_has_broker()) {
-        captive_portal_loop();
-        loop_mdns();  // Keep trying mDNS discovery
-        if (captive_portal_mqtt_changed()) break;  // User configured via web server
-        Serial.println("Waiting for MQTT broker configuration (use portal or mDNS)...");
-        delay(2000);
+    // Wait for MQTT broker to be available
+    // In discovery-only mode, only wait for mDNS (ignore configured broker)
+    if (mqtt_mode == MQTT_MODE_DISCOVERY_ONLY) {
+        while (!mdns_has_broker()) {
+            captive_portal_loop();
+            loop_mdns();
+            if (captive_portal_mqtt_changed()) break;
+            Serial.println("Waiting for MQTT broker via mDNS discovery...");
+            delay(2000);
+        }
+    } else {
+        while (!has_mqtt_broker() && !mdns_has_broker()) {
+            captive_portal_loop();
+            loop_mdns();
+            if (captive_portal_mqtt_changed()) break;
+            Serial.println("Waiting for MQTT broker configuration (use portal or mDNS)...");
+            delay(2000);
+        }
     }
 
     setup_mqtt();
@@ -221,13 +232,24 @@ void setup() {
     // Initialize MQTT publish queue before setup_mqtt (for thread-safe publishing)
     mqtt_queue_init();
 
-    // Wait for MQTT broker to be configured (via config file, portal, or mDNS)
-    while (!has_mqtt_broker() && !mdns_has_broker()) {
-        captive_portal_loop();
-        loop_mdns();  // Keep trying mDNS discovery
-        if (captive_portal_mqtt_changed()) break;  // User configured via web server
-        Serial.println("Waiting for MQTT broker configuration (use portal or mDNS)...");
-        delay(2000);
+    // Wait for MQTT broker to be available
+    // In discovery-only mode, only wait for mDNS (ignore configured broker)
+    if (mqtt_mode == MQTT_MODE_DISCOVERY_ONLY) {
+        while (!mdns_has_broker()) {
+            captive_portal_loop();
+            loop_mdns();
+            if (captive_portal_mqtt_changed()) break;
+            Serial.println("Waiting for MQTT broker via mDNS discovery...");
+            delay(2000);
+        }
+    } else {
+        while (!has_mqtt_broker() && !mdns_has_broker()) {
+            captive_portal_loop();
+            loop_mdns();
+            if (captive_portal_mqtt_changed()) break;
+            Serial.println("Waiting for MQTT broker configuration (use portal or mDNS)...");
+            delay(2000);
+        }
     }
 
     setup_mqtt();
