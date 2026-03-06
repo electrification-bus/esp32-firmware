@@ -4,6 +4,7 @@
 #include <ArduinoYaml.h>
 #include <util/jsonUtils.h>
 #include <portal_prefs.h>
+#include <network.h>
 
 Device theDevice;
 
@@ -116,6 +117,10 @@ bool loadConfiguration() {
     return false;
   }
   config_loaded = true;
+
+  // Emit MAC addresses for debugging/identification
+  Serial.printf("CONFIG: Ethernet MAC: %s\n", get_eth_mac());
+  Serial.printf("CONFIG: WiFi MAC: %s\n", get_wlan_mac());
 
   return true;
 }
