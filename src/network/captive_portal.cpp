@@ -7,6 +7,7 @@
 #include <homie/homie.h>
 #include <portal_prefs.h>
 #include <network/mqtt_client.h>
+#include <network/network.h>
 
 #ifdef CONFIG_WIFI_AP
 #include <DNSServer.h>
@@ -258,9 +259,14 @@ bool captive_portal_mqtt_changed() {
 // Handle GET /api/device-info - return device name and topic as JSON
 static void handleDeviceInfo(AsyncWebServerRequest *request) {
     static char json_buf[256];
+#ifdef CONFIG_WIFI_AP
+    const char* wifi_enabled = "true";
+#else
+    const char* wifi_enabled = "false";
+#endif
     snprintf(json_buf, sizeof(json_buf),
-        "{\"name\":\"%s\",\"topic\":\"%s/%s/\"}",
-        device_name, HOMIE_TOPIC_PREFIX, getDeviceID());
+        "{\"name\":\"%s\",\"topic\":\"%s/%s/\",\"wifi_enabled\":%s}",
+        device_name, HOMIE_TOPIC_PREFIX, getDeviceID(), wifi_enabled);
     request->send(200, "application/json", json_buf);
 }
 
@@ -270,6 +276,19 @@ static void handleMqttStatus(AsyncWebServerRequest *request) {
     if (mqtt_connected()) {
         snprintf(json_buf, sizeof(json_buf),
             "{\"status\":\"connected\",\"broker\":\"%s\",\"port\":%d}", mqtt_host, mqtt_port);
+    } else if (mqtt_mode == MQTT_MODE_DISCOVERY_ONLY && !mdns_has_broker()) {
+        // discovery-only: ignore config broker, still searching
+        snprintf(json_buf, sizeof(json_buf),
+            "{\"status\":\"searching\"}");
+    } else if (mqtt_mode == MQTT_MODE_DISCOVERY_WITH_FALLBACK && !mdns_has_broker()) {
+        // discovery-with-fallback: searching mDNS, show fallback status if configured
+        if (has_mqtt_broker()) {
+            snprintf(json_buf, sizeof(json_buf),
+                "{\"status\":\"searching\",\"fallback_broker\":\"%s\",\"fallback_port\":%d}", mqtt_host, mqtt_port);
+        } else {
+            snprintf(json_buf, sizeof(json_buf),
+                "{\"status\":\"searching\"}");
+        }
     } else if (has_mqtt_broker()) {
         snprintf(json_buf, sizeof(json_buf),
             "{\"status\":\"failed\",\"broker\":\"%s\",\"port\":%d}", mqtt_host, mqtt_port);

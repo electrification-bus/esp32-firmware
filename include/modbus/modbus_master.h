@@ -1,7 +1,7 @@
 #pragma once
 
 #include <ModbusMaster.h>
-#include <SoftwareSerial.h>
+#include <Arduino.h>
 
 #define SHT20_ADDR 0x01
 #define INPUT32_ADDR 0x04
@@ -10,6 +10,6 @@
 void setup_modbus_clients();
 void setup_modbus_master();
 void loop_modbus_master();
-SoftwareSerial& get_serial1();
+Stream& get_serial1();
 void update();
 

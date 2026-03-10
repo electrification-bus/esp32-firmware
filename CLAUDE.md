@@ -251,7 +251,7 @@ Serial.println("=== SUBSYSTEM INIT START ===");
 
 ## Build Verification
 
-After making changes, verify the build succeeds:
+**DO NOT** run builds automatically after code changes. Only build when the user explicitly asks.
 
 ```bash
 pio run                           # Build all environments
@@ -261,6 +261,7 @@ pio run -e esp32-s3-devkitc-1    # Build specific target
 Primary targets to verify:
 - `esp32-s3-devkitc-1`
 - `esp32-poe-iso`
+- `esp32-poe-iso-wrover`
 
 ---
 

@@ -1,7 +1,13 @@
 #pragma once
 
+#ifdef BOARD_HAS_PSRAM
+// WROVER: GPIO 16/17 used by PSRAM, move BME280 SCL to GPIO 14
+#define BME280_SDA_PIN 13
+#define BME280_SCL_PIN 14
+#else
 #define BME280_SDA_PIN 13
 #define BME280_SCL_PIN 16
+#endif
 
 #define SSR1_PIN      GPIO_NUM_3
 

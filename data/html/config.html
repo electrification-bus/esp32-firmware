@@ -55,6 +55,7 @@
     .mqtt-status-banner.connected { background: #0a2a1a; border: 1px solid #1b5e20; display: block; }
     .mqtt-status-banner.failed { background: #2a0a0a; border: 1px solid #5e2020; display: block; }
     .mqtt-status-banner.none { background: #1a1a1a; border: 1px solid #444; display: block; }
+    .mqtt-status-banner.searching { background: #0a1a2a; border: 1px solid #0077b6; display: block; color: #00d4ff; }
     .mqtt-status-banner.broker { font-weight: bold; }
     .mqtt-status-banner.connected .broker { color: #4caf50; }
     .mqtt-status-banner.failed .broker { color: #f44336; }
@@ -64,6 +65,7 @@
   <h1 id="dev-name">Homie Device</h1>
   <div class="topic" id="dev-topic"></div>
 
+  <div id="wifi-section" style="display:none">
   <h2>Join Network</h2>
   <div class="wifi-current" id="wifi-current">Connected to <span class="ssid" id="wifi-current-ssid"></span><span class="ip" id="wifi-current-ip"></span></div>
   <div class="status" id="wifi-status"></div>
@@ -73,6 +75,7 @@
   <div id="wifi-pass-panel" class="wifi-pass-panel">
     <div class="field"><label>Password</label><div class="pass-wrap"><input type="password" id="wifi-pass" placeholder="Network password"><span class="pass-toggle" id="wifi-pass-toggle">&#x1f441;</span></div></div>
     <button type="button" id="wifi-connect">Connect</button>
+  </div>
   </div>
 
   <h2>MQTT Configuration</h2>
@@ -171,12 +174,19 @@
         }
       }
 
+      var wifiEnabled = false;
+
       // Load device info
       fetch('/api/device-info')
         .then(function(r) { return r.json(); })
         .then(function(d) {
           document.getElementById('dev-name').textContent = d.name;
           document.getElementById('dev-topic').textContent = d.topic;
+          if (d.wifi_enabled) {
+            wifiEnabled = true;
+            document.getElementById('wifi-section').style.display = 'block';
+            loadWifiNetworks();
+          }
         })
         .catch(function() {});
 
@@ -192,6 +202,14 @@
             } else if (d.status === 'failed') {
               mqttBanner.className = 'mqtt-status-banner failed';
               mqttBanner.innerHTML = 'Failed: <span class="broker">' + d.broker.replace(/</g, '&lt;') + ':' + d.port + '</span>';
+            } else if (d.status === 'searching') {
+              mqttBanner.className = 'mqtt-status-banner searching';
+              if (d.fallback_broker) {
+                mqttBanner.textContent = 'Searching mDNS\u2026 (fallback: ' + d.fallback_broker + ':' + d.fallback_port;
+              } else {
+                mqttBanner.textContent = 'Searching mDNS\u2026';
+              }
+              setTimeout(updateMqttStatus, 5000);
             } else {
               mqttBanner.className = 'mqtt-status-banner none';
               mqttBanner.textContent = 'No broker \u2013 not connected';
@@ -221,23 +239,25 @@
           .catch(function() {});
       }
 
-      // Fetch wifi-status first so connectedSSID is set before rendering networks
-      fetch('/api/wifi-status')
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-          if (d.status === 'connected') {
-            connectedSSID = d.ssid;
-            document.getElementById('wifi-current-ssid').textContent = d.ssid;
-            document.getElementById('wifi-current-ip').textContent = 'IP: ' + d.ip;
-            wifiCurrent.style.display = 'block';
-          }
-          return fetch('/api/wifi-scan');
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) { renderNetworks(data); })
-        .catch(function() {
-          wifiLoading.textContent = 'Failed to scan networks';
-        });
+      // Load WiFi networks - called only when wifi_enabled is true
+      function loadWifiNetworks() {
+        fetch('/api/wifi-status')
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (d.status === 'connected') {
+              connectedSSID = d.ssid;
+              document.getElementById('wifi-current-ssid').textContent = d.ssid;
+              document.getElementById('wifi-current-ip').textContent = 'IP: ' + d.ip;
+              wifiCurrent.style.display = 'block';
+            }
+            return fetch('/api/wifi-scan');
+          })
+          .then(function(r) { return r.json(); })
+          .then(function(data) { renderNetworks(data); })
+          .catch(function() {
+            wifiLoading.textContent = 'Failed to scan networks';
+          });
+      }
 
       // Toggle password visibility
       document.getElementById('wifi-pass-toggle').addEventListener('click', function() {

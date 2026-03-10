@@ -11,6 +11,9 @@
 #include <homie/homie.h>
 #include <network/mdns_strings.h>
 
+// Forward declaration to avoid circular include with mqtt_client.h
+extern boolean mqtt_connected();
+
 #define WIFI_SSID "foo"
 #define WIFI_PW   "bar"
 
@@ -100,6 +103,9 @@ static void mdns_add_txt(const char* service, const char* proto, const char* key
   MDNS.addServiceTxt(service, proto, key, value);
 }
 
+// Forward declaration - registers all mDNS services
+void mdns_register_services();
+
 // mDNS-discovered MQTT broker (separate from config broker)
 static char mdns_broker_host[64] = {0};
 static uint16_t mdns_broker_port = 0;
@@ -174,16 +180,34 @@ bool mdns_has_broker() {
 
 bool setup_mdns() {
   // Use device name as hostname (sanitized for mDNS)
+  char base_hostname[48] = {0};
   if (strlen(device_name) > 0) {
-    sanitize_hostname(device_name, mdns_hostname, sizeof(mdns_hostname));
+    sanitize_hostname(device_name, base_hostname, sizeof(base_hostname));
   } else {
     // Fallback to device ID if no name set
-    strncpy(mdns_hostname, getDeviceID(), sizeof(mdns_hostname) - 1);
+    strncpy(base_hostname, getDeviceID(), sizeof(base_hostname) - 1);
   }
 
-  if (!MDNS.begin(mdns_hostname)) {
-    Serial.println("mDNS: Error starting responder!");
-    return false;
+  // Try base hostname first, then append incrementing number on conflict
+  strncpy(mdns_hostname, base_hostname, sizeof(mdns_hostname) - 1);
+  for (int suffix = 2; suffix <= 99; suffix++) {
+    if (MDNS.begin(mdns_hostname)) {
+      // Check for conflict: query our own hostname and see if another device responds
+      IPAddress resolved = MDNS.queryHost(mdns_hostname, 2000);
+      if (resolved == IPAddress(0, 0, 0, 0)) {
+        break;  // No conflict, hostname is ours
+      }
+      // Check if the resolved IP is one of our own interfaces
+      IPAddress our_eth = ETH.localIP();
+      IPAddress our_wifi = WiFi.localIP();
+      if (resolved == our_eth || resolved == our_wifi) {
+        break;  // It's us, no conflict
+      }
+      Serial.printf("mDNS: Hostname '%s.local' conflict (taken by %d.%d.%d.%d), trying next\n",
+                     mdns_hostname, resolved[0], resolved[1], resolved[2], resolved[3]);
+      MDNS.end();
+    }
+    snprintf(mdns_hostname, sizeof(mdns_hostname), "%s-%d", base_hostname, suffix);
   }
   Serial.printf("mDNS: Started for host: %s.local\n", mdns_hostname);
 
@@ -192,56 +216,33 @@ bool setup_mdns() {
     mdns_query_mqtt_broker();
   }
 
-  // ============================================================
-  // _mqtt._tcp service - MQTT broker advertisement
-  // Allows discovery of the MQTT broker this device uses
-  // Standard service type for MQTT (RFC 6763)
-  // ============================================================
-  /* mqtt broker should advertise this
-  MDNS.addService(MDNS_SVC_MQTT, MDNS_PROTO_TCP, mqtt_port);
-  mdns_add_txt(MDNS_SVC_MQTT, MDNS_PROTO_TCP, MDNS_TXT_MQTT_HOST, mqtt_host);
-  mdns_add_txt(MDNS_SVC_MQTT, MDNS_PROTO_TCP, MDNS_TXT_MQTT_PORT, port_str);
-  mdns_add_txt(MDNS_SVC_MQTT, MDNS_PROTO_TCP, MDNS_TXT_MQTT_TLS, mqtt_is_secure() ? MDNS_VAL_TRUE : MDNS_VAL_FALSE);
-  if (strlen(mqtt_username) > 0) {
-    mdns_add_txt(MDNS_SVC_MQTT, MDNS_PROTO_TCP, MDNS_TXT_MQTT_AUTH, MDNS_VAL_TRUE);
-  } else {
-    mdns_add_txt(MDNS_SVC_MQTT, MDNS_PROTO_TCP, MDNS_TXT_MQTT_AUTH, MDNS_VAL_FALSE);
-  }
+  mdns_register_services();
 
-  Serial.printf("mDNS: Added _mqtt._tcp service (host=%s, port=%u)\n", mqtt_host, mqtt_port);
-  */
+  return true;
+}
+
+// Register all mDNS services - called from setup_mdns() and after WiFi STA connects
+void mdns_register_services() {
   // ============================================================
   // _device-info._tcp service - Hardware/firmware information
-  // Standard service type for device information
   // ============================================================
   MDNS.addService(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, 80);
-
-  // Manufacturer and model
   mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_MANUFACTURER, device_manufacturer);
   mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_MODEL, device_model);
-
-  // Serial number (use device ID if not set)
   if (strlen(device_serial) > 0) {
     mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_SERIAL_NUMBER, device_serial);
   } else {
     mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_SERIAL_NUMBER, getDeviceID());
   }
-
-  // MAC addresses
   mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_ETH_MAC, get_eth_mac());
   mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_WLAN_MAC, get_wlan_mac());
-
-  // Firmware info
   if (strlen(firmware_name) > 0) {
     mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_FW_NAME, firmware_name);
   }
   mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_FW_VERSION, firmware_version);
-
-  // Platform info
   mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_PLATFORM, MDNS_VAL_PLATFORM);
   mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_SDK_VERSION, ESP.getSdkVersion());
 
-  // Network addresses (if available)
   const char* eth_ip = get_eth_ip();
   if (strlen(eth_ip) > 0) {
     mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_ETH_IP, eth_ip);
@@ -250,49 +251,34 @@ bool setup_mdns() {
   if (strlen(wifi_ip) > 0) {
     mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_WLAN_IP, wifi_ip);
   }
-
   Serial.printf("mDNS: Added _device-info._tcp service\n");
-  Serial.printf("mDNS: ETH MAC: %s, WLAN MAC: %s\n", get_eth_mac(), get_wlan_mac());
 
   // ============================================================
   // _http._tcp service - HTTP API with OpenAPI specification
-  // Allows clients to discover the REST API and fetch the spec
   // ============================================================
   MDNS.addService(MDNS_SVC_HTTP, MDNS_PROTO_TCP, 80);
   mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_HTTP_PATH, MDNS_VAL_HTTP_PATH);
   mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_HTTP_API, MDNS_VAL_HTTP_API);
-
   Serial.printf("mDNS: Added _http._tcp service (path=%s)\n", MDNS_VAL_HTTP_PATH);
 
   // ============================================================
   // _homie._tcp service - Homie protocol device/controller discovery
-  // Advertises: hostname.local with Homie device attributes
   // ============================================================
   MDNS.addService(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, mqtt_port);
-
   MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_VERSION, MDNS_VAL_HOMIE_VERSION);
   MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_DOC_VER, MDNS_VAL_HOMIE_DOC_VER);
   MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_ID, getDeviceID());
   MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_NAME, (const char*)device_name);
   MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_ROLE, (const char*)homie_role);
-
   if (strlen(device_type) > 0) {
     MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_TYPE, (const char*)device_type);
   }
-
-  // Base topic: homie/5/{device_id}/
   char base_topic[96] = {0};
   snprintf(base_topic, sizeof(base_topic), "%s/%s/", HOMIE_TOPIC_PREFIX, getDeviceID());
   MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_BASE, (const char*)base_topic);
-
-  // State is "init" at mDNS setup time (device not yet initialized)
   MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_STATE, HOMIE_STATE_INIT);
-
   MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_IMPL, MDNS_VAL_HOMIE_IMPL);
-
   Serial.printf("mDNS: Added _homie._tcp service (role=%s, base=%s)\n", homie_role, base_topic);
-
-  return true;
 }
 
 bool setup_wifi() {
@@ -447,6 +433,9 @@ void WiFiEvent(WiFiEvent_t event)
       Serial.println("ETH Stopped");
       eth_connected = false;
       break;
+    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+      Serial.printf("WiFi STA: Got IP %s\n", WiFi.localIP().toString().c_str());
+      break;
     default:
       break;
   }
@@ -533,6 +522,9 @@ void loop_mdns() {
 
   // Stop searching once an mDNS broker is found
   if (mdns_has_broker()) return;
+
+  // Stop searching if fallback broker is connected (discovery-with-fallback mode)
+  if (mqtt_mode == MQTT_MODE_DISCOVERY_WITH_FALLBACK && mqtt_connected()) return;
 
   if (millis() - mdns_last_poll < MDNS_BROKER_POLL_MS) return;
   mdns_last_poll = millis();
