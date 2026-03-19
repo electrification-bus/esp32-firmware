@@ -1,17 +1,16 @@
 #include <Arduino.h>
 #include <config.h>
 #include <node/bt/serial_bms.h>
+#include <radio/radio_broker.h>
+#include <Preferences.h>
 
-// ESP32 Arduino BLE client
-#include <BLEDevice.h>
-#include <BLEUtils.h>
-#include <BLEScan.h>
-#include <BLEClient.h>
+// NimBLE — lightweight BLE stack, supports direct connect by address
+#include <NimBLEDevice.h>
 
 // JBD BMS BLE GATT UUIDs
-static BLEUUID BMS_SERVICE_UUID("0000ff00-0000-1000-8000-00805f9b34fb");
-static BLEUUID BMS_NOTIFY_UUID("0000ff01-0000-1000-8000-00805f9b34fb");
-static BLEUUID BMS_WRITE_UUID("0000ff02-0000-1000-8000-00805f9b34fb");
+static NimBLEUUID BMS_SERVICE_UUID("0000ff00-0000-1000-8000-00805f9b34fb");
+static NimBLEUUID BMS_NOTIFY_UUID("0000ff01-0000-1000-8000-00805f9b34fb");
+static NimBLEUUID BMS_WRITE_UUID("0000ff02-0000-1000-8000-00805f9b34fb");
 
 // JBD BMS protocol commands (from BmsProtocol.kt)
 // Frame: 0xDD, R/W, reg, len, data..., checksum_hi, checksum_lo, 0x77
@@ -24,56 +23,38 @@ static const uint8_t CMD_MOSFET_CHG_OFF[] = {0xDD, 0x5A, 0xE1, 0x02, 0x00, 0x01,
 static const uint8_t CMD_MOSFET_DSG_OFF[] = {0xDD, 0x5A, 0xE1, 0x02, 0x00, 0x02, 0xFF, 0x1B, 0x77};
 static const uint8_t CMD_MOSFET_ALL_OFF[] = {0xDD, 0x5A, 0xE1, 0x02, 0x00, 0x03, 0xFF, 0x1A, 0x77};
 
-// Singleton pointer for BLE callback context (one BMS connection at a time)
+// NVS preferences
+#define BMS_PREFS_NAMESPACE "bms_ble"
+#define BMS_PREFS_KEY_ADDR  "addr"
+
+// Singleton pointer for BLE notification callback context
 static SerialBMS* _active_bms = nullptr;
 
-// BLE client and characteristic pointers (static, no dynamic alloc beyond BLE library internals)
-static BLEClient* _ble_client = nullptr;
-static BLERemoteCharacteristic* _write_char = nullptr;
-static BLERemoteCharacteristic* _notify_char = nullptr;
+// NimBLE client (persists across reconnects)
+static NimBLEClient* _ble_client = nullptr;
+static NimBLERemoteCharacteristic* _write_char = nullptr;
+static NimBLERemoteCharacteristic* _notify_char = nullptr;
 
+// ---- NimBLE notification callback ----
 
-// ---- Static callback trampoline ----
-
-void SerialBMS::notifyCallback(void* characteristic, uint8_t* data, size_t length, bool isNotify) {
-    if (_active_bms == nullptr) return;
-
-    SerialBMS* bms = _active_bms;
-
-    for (size_t i = 0; i < length; i++) {
-        if (bms->_rx_len < BMS_FRAME_MAX) {
-            bms->_rx_buf[bms->_rx_len++] = data[i];
-        }
-    }
-
-    // Check for complete frame: starts with 0xDD, ends with 0x77
-    if (bms->_rx_len >= 7 &&
-        bms->_rx_buf[0] == 0xDD &&
-        bms->_rx_buf[bms->_rx_len - 1] == 0x77) {
-        bms->_frame_ready = true;
-    }
-}
-// BLE notification callback - accumulates frame data
 static void ble_notify_callback(
-    BLERemoteCharacteristic* pChar,
+    NimBLERemoteCharacteristic* pChar,
     uint8_t* pData,
     size_t length,
     bool isNotify
 ) {
-    if (_active_bms == nullptr) return;
-
-    // Forward to instance method via the static trampoline
-    SerialBMS::notifyCallback(pChar, pData, length, isNotify);
+    if (_active_bms == nullptr || pData == nullptr || length == 0) return;
+    _active_bms->onNotifyData(pData, length);
 }
 
-// ---- BLE client callbacks ----
+// ---- NimBLE client callbacks ----
 
-class BmsClientCallbacks : public BLEClientCallbacks {
-    void onConnect(BLEClient* pClient) override {
-        Serial.println("BMS BLE: Connected");
+class BmsClientCallbacks : public NimBLEClientCallbacks {
+    void onConnect(NimBLEClient* pClient) override {
+        Serial.println("BMS BLE: GATT connected");
     }
-    void onDisconnect(BLEClient* pClient) override {
-        Serial.println("BMS BLE: Disconnected");
+    void onDisconnect(NimBLEClient* pClient) override {
+        Serial.printf("BMS BLE: Disconnected (reason=%d)\n", pClient->getLastError());
         if (_active_bms) {
             _active_bms->disconnect();
         }
@@ -81,6 +62,25 @@ class BmsClientCallbacks : public BLEClientCallbacks {
 };
 
 static BmsClientCallbacks _client_callbacks;
+
+// ---- Notification data handler ----
+
+void SerialBMS::onNotifyData(const uint8_t* data, size_t length) {
+    //Serial.printf("BMS BLE: RX %d bytes\n", length);
+    for (size_t i = 0; i < length; i++) {
+        if (_rx_len < BMS_FRAME_MAX) {
+            _rx_buf[_rx_len++] = data[i];
+        }
+    }
+
+    // Check for complete frame: starts with 0xDD, ends with 0x77
+    if (_rx_len >= 7 &&
+        _rx_buf[0] == 0xDD &&
+        _rx_buf[_rx_len - 1] == 0x77) {
+        Serial.printf("BMS BLE: Frame complete, %d bytes total\n", _rx_len);
+        _frame_ready = true;
+    }
+}
 
 // ---- Constructor ----
 
@@ -95,6 +95,12 @@ SerialBMS::SerialBMS(const char* homie_node_id) : NodeEntity(homie_node_id) {
     _last_success = 0;
     _last_failure = 0;
     _poll_interval = BMS_POLL_INTERVAL;
+    _last_reconnect_attempt = 0;
+    _consecutive_failures = 0;
+    _ble_initialized = false;
+
+    // Register BT radio need — resolved by radio_broker before setup()
+    radio_request(RADIO_BT, "battery_bms");
 }
 
 void SerialBMS::setBleAddress(const char* address) {
@@ -102,9 +108,48 @@ void SerialBMS::setBleAddress(const char* address) {
     _ble_address[sizeof(_ble_address) - 1] = '\0';
 }
 
+// ---- NVS Preferences ----
+
+void SerialBMS::loadPreferredAddress() {
+    Preferences prefs;
+    prefs.begin(BMS_PREFS_NAMESPACE, true);  // read-only
+    if (!prefs.isKey(BMS_PREFS_KEY_ADDR)) {
+        prefs.end();
+        _ble_address[0] = '\0';
+        Serial.println("BMS BLE: No preferred address in NVS");
+        return;
+    }
+    char buf[18] = {0};
+    size_t len = prefs.getString(BMS_PREFS_KEY_ADDR, buf, sizeof(buf));
+    prefs.end();
+
+    if (len > 0) {
+        setBleAddress(buf);
+        Serial.printf("BMS BLE: Loaded preferred address '%s' from NVS\n", _ble_address);
+    }
+}
+
+void SerialBMS::savePreferredAddress(const char* address) {
+    Preferences prefs;
+    prefs.begin(BMS_PREFS_NAMESPACE, false);
+    prefs.putString(BMS_PREFS_KEY_ADDR, address);
+    prefs.end();
+    Serial.printf("BMS BLE: Saved preferred address '%s' to NVS\n", address);
+}
+
+void SerialBMS::clearPreferredAddress() {
+    Preferences prefs;
+    prefs.begin(BMS_PREFS_NAMESPACE, false);
+    prefs.remove(BMS_PREFS_KEY_ADDR);
+    prefs.end();
+    _ble_address[0] = '\0';
+    Serial.println("BMS BLE: Cleared preferred address from NVS");
+}
+
 // ---- Setup ----
 
 bool SerialBMS::setup() {
+    Serial.println("=== BMS BLE SETUP START ===");
     NodeEntity::setup();
 
     // Setup Homie node properties
@@ -118,88 +163,230 @@ bool SerialBMS::setup() {
     _np_temperature.setup(getNodeId(), "temperature");
     _np_cell_voltages.setup(getNodeId(), "cell_voltages");
 
-    // Initialize BLE
-    BLEDevice::init("ESP32_BMS");
-    _poll_timestamp = millis();
-
-    // Auto-connect if address was set
-    if (_ble_address[0] != '\0') {
-        Serial.printf("BMS BLE: Auto-connecting to %s\n", _ble_address);
-        connectToDevice(_ble_address);
+    // Check if BT radio was granted by broker
+    if (radio_query(RADIO_BT) != RADIO_GRANT_ALLOWED) {
+        Serial.println("BMS BLE: BT radio not granted, BLE disabled");
+        _ble_initialized = false;
+        return true;  // graceful degradation — node exists but won't poll
     }
 
+    // Initialize NimBLE (radio_apply() already handled WiFi teardown if needed)
+    NimBLEDevice::init("ESP32_BMS");
+    _ble_initialized = true;
+    Serial.println("BMS BLE: NimBLE initialized");
+
+    _poll_timestamp = millis();
+
+    // Load preferred BMS address from NVS
+    loadPreferredAddress();
+
+    // Attempt initial connection
+    scanAndConnect();
+
+    Serial.println("=== BMS BLE SETUP COMPLETE ===");
     return true;
+}
+
+// ---- BLE Scan and Connect ----
+
+bool SerialBMS::scanAndConnect() {
+    if (!_ble_initialized) return false;
+
+    _last_reconnect_attempt = millis();
+
+    // If we have a preferred address, try direct connect (no scan needed!)
+    if (_ble_address[0] != '\0') {
+        Serial.printf("BMS BLE: Direct connect to preferred %s\n", _ble_address);
+        if (connectToDevice(_ble_address)) {
+            _consecutive_failures = 0;
+            return true;
+        }
+
+        _consecutive_failures++;
+        Serial.printf("BMS BLE: Preferred address failed (%d/%d)\n",
+            _consecutive_failures, BMS_MAX_PREF_FAILURES);
+
+        if (_consecutive_failures >= BMS_MAX_PREF_FAILURES) {
+            clearPreferredAddress();
+            _consecutive_failures = 0;
+        }
+    }
+
+    // No preferred address or it failed — scan for BMS devices
+    Serial.printf("BMS BLE: Scanning for BLE devices (%ds)...\n", BMS_SCAN_DURATION);
+
+    NimBLEScan* scan = NimBLEDevice::getScan();
+    scan->setActiveScan(true);
+    NimBLEScanResults results = scan->start(BMS_SCAN_DURATION);
+
+    int best_rssi = -999;
+    int best_idx = -1;
+    int match_idx = -1;
+
+    for (int i = 0; i < results.getCount(); i++) {
+        NimBLEAdvertisedDevice device = results.getDevice(i);
+        const char* name = device.getName().c_str();
+        char addr_str[18];
+        strncpy(addr_str, device.getAddress().toString().c_str(), sizeof(addr_str) - 1);
+        addr_str[sizeof(addr_str) - 1] = '\0';
+        int rssi = device.getRSSI();
+
+        Serial.printf("BMS BLE: Scan found: '%s' (%s) RSSI=%d\n", name, addr_str, rssi);
+
+        // Check for JBD BMS service UUID in advertisement
+        if (device.isAdvertisingService(BMS_SERVICE_UUID)) {
+            Serial.printf("BMS BLE: Service UUID match: %s\n", addr_str);
+            match_idx = i;
+            break;
+        }
+
+        // Check for known JBD BMS name patterns
+        if (name[0] != '\0') {
+            char lower_name[32] = {0};
+            for (int j = 0; j < 31 && name[j]; j++) {
+                lower_name[j] = tolower(name[j]);
+            }
+            if (strstr(lower_name, "xiaoxiang") != nullptr ||
+                strstr(lower_name, "jbd") != nullptr ||
+                strstr(lower_name, "bms") != nullptr) {
+                Serial.printf("BMS BLE: Name match: '%s' (%s)\n", name, addr_str);
+                match_idx = i;
+                break;
+            }
+        }
+
+        // Track strongest signal as fallback
+        if (rssi > best_rssi) {
+            best_rssi = rssi;
+            best_idx = i;
+        }
+    }
+
+    int target_idx = (match_idx >= 0) ? match_idx : best_idx;
+    if (target_idx < 0) {
+        Serial.println("BMS BLE: No BLE devices found");
+        return false;
+    }
+
+    NimBLEAdvertisedDevice target = results.getDevice(target_idx);
+
+    if (match_idx < 0) {
+        Serial.printf("BMS BLE: No name/UUID match, trying strongest: %s (RSSI=%d)\n",
+            target.getAddress().toString().c_str(), best_rssi);
+    }
+
+    char addr[18];
+    strncpy(addr, target.getAddress().toString().c_str(), sizeof(addr) - 1);
+    addr[sizeof(addr) - 1] = '\0';
+    setBleAddress(addr);
+
+    if (connectToDevice(_ble_address)) {
+        savePreferredAddress(_ble_address);
+        _consecutive_failures = 0;
+        return true;
+    }
+
+    return false;
 }
 
 // ---- BLE Connection ----
 
+// Direct connect by address — NimBLE does not require a prior scan
 bool SerialBMS::connectToDevice(const char* ble_address) {
     setBleAddress(ble_address);
 
     Serial.printf("BMS BLE: Connecting to %s\n", _ble_address);
 
-    BLEAddress addr(ble_address);
+    // Create or reuse client
+    if (_ble_client == nullptr) {
+        _ble_client = NimBLEDevice::createClient();
+        _ble_client->setClientCallbacks(&_client_callbacks, false);
+        _ble_client->setConnectionParams(12, 12, 0, 200);  // fast connection
+        _ble_client->setConnectTimeout(5);  // 5 seconds
+    }
 
-    // Create client (BLE library manages allocation internally)
-    _ble_client = BLEDevice::createClient();
-    _ble_client->setClientCallbacks(&_client_callbacks);
+    NimBLEAddress addr(ble_address);
 
+    unsigned long connect_start = millis();
     if (!_ble_client->connect(addr)) {
-        Serial.println("BMS BLE: Connection failed");
+        Serial.printf("BMS BLE: Connect failed (%lums)\n", millis() - connect_start);
         _last_failure = millis();
         return false;
     }
+    Serial.printf("BMS BLE: Connected (%lums)\n", millis() - connect_start);
 
     // Discover BMS service
-    BLERemoteService* service = _ble_client->getService(BMS_SERVICE_UUID);
+    NimBLERemoteService* service = _ble_client->getService(BMS_SERVICE_UUID);
     if (service == nullptr) {
-        Serial.println("BMS BLE: BMS service not found");
+        Serial.println("BMS BLE: Service ff00 not found — not a BMS device");
         _ble_client->disconnect();
         _last_failure = millis();
         return false;
     }
+    Serial.println("BMS BLE: Service ff00 found");
 
     // Get write characteristic (0xff02)
     _write_char = service->getCharacteristic(BMS_WRITE_UUID);
     if (_write_char == nullptr) {
-        Serial.println("BMS BLE: Write characteristic not found");
+        Serial.println("BMS BLE: Write char ff02 not found");
+        // Debug: list all characteristics in service
+        for (int i = 0; i < service->getCharacteristics()->size(); i++) {
+            NimBLERemoteCharacteristic* c = (*service->getCharacteristics())[i];
+            Serial.printf("BMS BLE:   char: %s\n",
+                c->getUUID().toString().c_str());
+        }
+        _ble_client->disconnect();
+        _last_failure = millis();
+        return false;
+    }
+    // JBD BMS uses write-no-response on ff02
+    if (!_write_char->canWrite() && !_write_char->canWriteNoResponse()) {
+        Serial.println("BMS BLE: ff02 not writable (props=0x%02X)");
         _ble_client->disconnect();
         _last_failure = millis();
         return false;
     }
 
-    // Get notify characteristic (0xff01) and register for notifications
+    // Get notify characteristic (0xff01) and subscribe
     _notify_char = service->getCharacteristic(BMS_NOTIFY_UUID);
-    if (_notify_char == nullptr) {
-        Serial.println("BMS BLE: Notify characteristic not found");
+    if (_notify_char == nullptr || !_notify_char->canNotify()) {
+        Serial.println("BMS BLE: Notify char ff01 not found or not subscribable");
+        _ble_client->disconnect();
+        _last_failure = millis();
+        return false;
+    }
+
+    if (!_notify_char->subscribe(true, ble_notify_callback)) {
+        Serial.println("BMS BLE: Failed to subscribe to ff01 notifications");
         _ble_client->disconnect();
         _last_failure = millis();
         return false;
     }
 
     _active_bms = this;
-    _notify_char->registerForNotify(ble_notify_callback);
-
     _connected = true;
     _last_success = millis();
-    Serial.println("BMS BLE: Connected and ready");
+    Serial.printf("BMS BLE: Connected and ready (%s)\n", _ble_address);
     return true;
 }
 
 void SerialBMS::disconnect() {
-    if (_ble_client != nullptr && _ble_client->isConnected()) {
-        _ble_client->disconnect();
-    }
     _connected = false;
     _write_char = nullptr;
     _notify_char = nullptr;
+    if (_ble_client != nullptr && _ble_client->isConnected()) {
+        _ble_client->disconnect();
+    }
     if (_active_bms == this) {
         _active_bms = nullptr;
     }
 }
 
 bool SerialBMS::isConnected() {
-    if (_ble_client == nullptr) return false;
+    if (_ble_client == nullptr) {
+        _connected = false;
+        return false;
+    }
     _connected = _ble_client->isConnected();
     return _connected;
 }
@@ -217,13 +404,18 @@ bool SerialBMS::sendCommand(const uint8_t* cmd, uint8_t cmd_len) {
     _frame_ready = false;
 
     // Write command to BMS
-    _write_char->writeValue((uint8_t*)cmd, cmd_len);
+    //Serial.printf("BMS BLE: TX %d bytes [%02X %02X ...]\n", cmd_len, cmd[0], cmd[1]);
+    if (!_write_char->writeValue(cmd, cmd_len)) {
+        Serial.println("BMS BLE: Write failed");
+        return false;
+    }
     return true;
 }
 
 bool SerialBMS::waitForFrame(unsigned long timeout_ms) {
     unsigned long start = millis();
     while (!_frame_ready && (millis() - start) < timeout_ms) {
+        // NimBLE runs on its own FreeRTOS task — just yield
         delay(10);
     }
     return _frame_ready;
@@ -405,10 +597,35 @@ bool SerialBMS::pollIntervalTrigger() {
 // ---- Main Loop ----
 
 void SerialBMS::loop() {
-    if (!isConnected()) return;
+    if (!_ble_initialized) {
+        static unsigned long last_noinit_log = 0;
+        if (millis() - last_noinit_log > 60000) {
+            Serial.println("BMS BLE: Not initialized, skipping loop");
+            last_noinit_log = millis();
+        }
+        return;
+    }
+
+    // If not connected, periodically attempt reconnect
+    if (!isConnected()) {
+        if (_connected) {
+            Serial.printf("BMS BLE: Connection lost to %s\n", _ble_address);
+            _connected = false;
+        }
+        unsigned long since_last = millis() - _last_reconnect_attempt;
+        if (since_last > BMS_RECONNECT_INTERVAL) {
+            Serial.printf("BMS BLE: Reconnecting (last attempt %lus ago)...\n",
+                since_last / 1000);
+            scanAndConnect();
+        }
+        return;
+    }
 
     if (pollIntervalTrigger()) {
+        Serial.printf("BMS BLE: Polling %s (last OK %lus ago)\n",
+            _ble_address, (millis() - _last_success) / 1000);
         queryBasicInfo();
         queryCellVoltages();
     }
 }
+

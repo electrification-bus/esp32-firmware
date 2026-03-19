@@ -13,8 +13,11 @@
 #define BMS_MAX_CELLS       16
 #define BMS_MAX_TEMPS        4
 #define BMS_FRAME_MAX      128
-#define BMS_POLL_INTERVAL 10000
+#define BMS_POLL_INTERVAL 30000
 #define BMS_BLE_TIMEOUT   3000
+#define BMS_SCAN_DURATION      5  // seconds
+#define BMS_RECONNECT_INTERVAL 30000  // ms between reconnect attempts
+#define BMS_MAX_PREF_FAILURES  3  // clear saved address after this many consecutive failures
 
 // Decoded basic info (register 0x03)
 struct BmsBasicInfo {
@@ -45,6 +48,7 @@ public:
     bool pollIntervalTrigger() override;
 
     // BLE connection management
+    bool scanAndConnect();  // scan for BMS, try preferred first, connect to first found
     bool connectToDevice(const char* ble_address);
     void disconnect();
     bool isConnected();
@@ -65,8 +69,9 @@ public:
 
     // Set BLE address to auto-connect on setup
     void setBleAddress(const char* address);
-   // Static BLE notification callback trampoline
-    static void notifyCallback(void* characteristic, uint8_t* data, size_t length, bool isNotify);
+
+    // BLE notification handler (called from static callback)
+    void onNotifyData(const uint8_t* data, size_t length);
 
 private:
     // BLE internals
@@ -84,6 +89,11 @@ private:
     bool decodeBasicInfo(const uint8_t* buf, uint8_t len);
     bool decodeCellVoltages(const uint8_t* buf, uint8_t len);
 
+    // NVS preferences for BLE address persistence
+    void loadPreferredAddress();
+    void savePreferredAddress(const char* address);
+    void clearPreferredAddress();
+
     // Decoded data
     BmsBasicInfo _basic_info;
     BmsCellVoltages _cell_voltages;
@@ -93,6 +103,11 @@ private:
     unsigned long _last_success;
     unsigned long _last_failure;
     int _poll_interval;
+
+    // Reconnect state
+    unsigned long _last_reconnect_attempt;
+    uint8_t _consecutive_failures;  // counts failed connection attempts on preferred address
+    bool _ble_initialized;
 
     // Homie properties
     NodeProperty _np_voltage;

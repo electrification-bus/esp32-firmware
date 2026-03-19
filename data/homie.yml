@@ -127,6 +127,73 @@ nodes:
         settable: false
         retained: true
         value: 0.0
+  - id: battery_bms
+    name: JBD Smart BMS
+    type: battery
+    properties:
+      - id: voltage
+        name: Pack Voltage
+        datatype: float
+        unit: V
+        settable: false
+        retained: true
+        value: 0.0
+      - id: current
+        name: Current
+        datatype: float
+        unit: A
+        settable: false
+        retained: true
+        value: 0.0
+      - id: soc
+        name: State of Charge
+        datatype: integer
+        unit: "%"
+        format: "0:100"
+        settable: false
+        retained: true
+        value: 0
+      - id: remain_capacity
+        name: Remaining Capacity
+        datatype: float
+        unit: Ah
+        settable: false
+        retained: true
+        value: 0.0
+      - id: nominal_capacity
+        name: Nominal Capacity
+        datatype: float
+        unit: Ah
+        settable: false
+        retained: true
+        value: 0.0
+      - id: cycles
+        name: Charge Cycles
+        datatype: integer
+        settable: false
+        retained: true
+        value: 0
+      - id: mosfet_status
+        name: MOSFET Status
+        datatype: string
+        settable: false
+        retained: true
+        value: ""
+        description: "CHG=ON/OFF,DSG=ON/OFF"
+      - id: temperature
+        name: Temperature
+        datatype: float
+        unit: °C
+        settable: false
+        retained: true
+        value: 0.0
+      - id: cell_voltages
+        name: Cell Voltages
+        datatype: string
+        settable: false
+        retained: true
+        value: ""
+        description: "Comma-separated cell voltages in V"
   - id: ota
     name: OTA Update
     type: ota

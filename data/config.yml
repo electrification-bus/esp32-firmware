@@ -5,7 +5,7 @@ config:
     #   configured-only         - use only the mqtt_host/port from this config file
     #   discovery-with-fallback - try mDNS discovery first, fall back to config if none found
     #   discovery-only          - use only mDNS discovery, ignore configured mqtt_host/port (default)
-    mqtt_mode: discovery-with-fallback
+    mqtt_mode: configured-only
     mqtt_host: public.cloud.shiftr.io
     mqtt_port: 1883
     mqtt_username: public

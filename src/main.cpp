@@ -13,6 +13,7 @@
 
 #include <Arduino.h>
 #include <network/network.h>
+#include <radio/radio_broker.h>
 #include <config.h>
 #include <network/mqtt_client.h>
 #include <ESPmDNS.h>
@@ -206,11 +207,6 @@ void setup() {
     // Start web server (captive portal with WiFi AP, or HTTP API over ethernet)
     captive_portal_start();
 
-#ifdef CONFIG_WIFI_AP
-    // Start WiFi STA if credentials are saved (from config or previous portal session)
-    setup_wifi_sta();
-#endif
-
     // Wait for at least one network interface to get an IP
     while (!client_connected()) {
         captive_portal_loop();  // Keep portal responsive while waiting
@@ -218,13 +214,24 @@ void setup() {
         delay(1000);
     }
 
+    // Resolve radio grants now that network status is known
+    radio_resolve();
+    radio_apply();  // tears down WiFi radio if BT was granted
+
+    // Start WiFi STA if granted and credentials are saved
+#ifdef CONFIG_WIFI_AP
+    if (radio_query(RADIO_WIFI) == RADIO_GRANT_ALLOWED) {
+        setup_wifi_sta();
+    }
+#endif
+
     // Log which interfaces are active
     const char* eth_ip = get_eth_ip();
     if (eth_ip[0] != '\0') Serial.printf("Network: Ethernet IP=%s (preferred)\n", eth_ip);
-#ifdef CONFIG_WIFI_AP
-    const char* wifi_ip = get_wifi_ip();
-    if (wifi_ip[0] != '\0') Serial.printf("Network: WiFi STA IP=%s\n", wifi_ip);
-#endif
+    if (radio_query(RADIO_WIFI) == RADIO_GRANT_ALLOWED) {
+        const char* wifi_ip = get_wifi_ip();
+        if (wifi_ip[0] != '\0') Serial.printf("Network: WiFi STA IP=%s\n", wifi_ip);
+    }
 
     // Start mDNS (also discovers MQTT brokers on LAN)
     setup_mdns();
