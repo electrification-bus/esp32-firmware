@@ -34,6 +34,7 @@
 #include <config.h>
 #include <network/network.h>
 #include <homie/Property.h>
+#include <node/NodeEntity.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <SPIFFS.h>
@@ -342,7 +343,21 @@ void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_
        return;
      }
    }
-   Serial.printf("ENTITY: Callback Subscription:FAIL - %s NOT FOUND\n", topic);
+   // Topic not found — create entry (Property::subscribe may not have run yet)
+   if (num_subscribers < 128) {
+     Serial.printf("ENTITY: Callback Subscription: %s CREATED NEW\n", topic);
+     strcpy(settable_properties[num_subscribers].topic, topic);
+     settable_properties[num_subscribers].property_callback = nullptr;
+     settable_properties[num_subscribers].instance = nullptr;
+     settable_properties[num_subscribers].entity_callback = cb;
+     settable_properties[num_subscribers].entity = entity;
+     num_subscribers++;
+     if (mqtt_connected()) {
+       mqtt_client.subscribe(topic);
+     }
+   } else {
+     Serial.printf("ENTITY: Callback Subscription: FAIL - table full\n");
+   }
 }
 
 boolean mqtt_connect() {
@@ -484,6 +499,7 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
   //route to subscriber property
   bool handled = false;
   for(int i=0;i<num_subscribers;i++) {
+    Serial.printf("MQTT CALLBACK: checking subscriber %d: topic '%s'\n", i, settable_properties[i].topic);
     if (strcmp(settable_properties[i].topic, topic) == 0) {
       handled = true;
       if (settable_properties[i].property_callback && settable_properties[i].instance) {
@@ -491,8 +507,26 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
           (settable_properties[i].instance->*settable_properties[i].property_callback)(topic, payload_buf);
       }
       if (settable_properties[i].entity_callback && settable_properties[i].entity) {
-          Serial.printf("MQTT: Invoking entity callback for topic '%s'\n", topic);
-          (settable_properties[i].entity->*settable_properties[i].entity_callback)(settable_properties[i].instance);
+          if (settable_properties[i].instance) {
+              // Homie Property exists — use Property* overload
+              Serial.printf("MQTT: Invoking entity callback for topic '%s'\n", topic);
+              (settable_properties[i].entity->*settable_properties[i].entity_callback)(settable_properties[i].instance);
+          } else {
+              // NodeProperty settable — extract property ID from topic, call name-based overload
+              const char* set_slash = strrchr(topic, '/');  // /set
+              if (set_slash && set_slash > topic) {
+                  const char* p = set_slash - 1;
+                  while (p > topic && *p != '/') p--;
+                  if (*p == '/') p++;
+                  char pid[32];
+                  int plen = set_slash - p;
+                  if (plen > 31) plen = 31;
+                  strncpy(pid, p, plen);
+                  pid[plen] = '\0';
+                  Serial.printf("MQTT: Invoking entity callback '%s'='%s'\n", pid, payload_buf);
+                  settable_properties[i].entity->entity_settable_callback(pid, payload_buf);
+              }
+          }
       }
     }
   }

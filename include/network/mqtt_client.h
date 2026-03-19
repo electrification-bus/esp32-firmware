@@ -52,6 +52,7 @@ void mqtt_publish(const char * data);
 void mqtt_restart();
 boolean mqtt_connected();
 
+
 // Thread-safe MQTT publish queue (for publishing from other tasks/cores)
 void mqtt_queue_init();
 bool mqtt_queue_publish(const char* topic, const char* payload, bool retained = false);

@@ -194,6 +194,12 @@ nodes:
         retained: true
         value: ""
         description: "Comma-separated cell voltages in V"
+      - id: charge_control
+        name: Charge Control
+        datatype: boolean
+        settable: true
+        retained: true
+        value: false
   - id: ota
     name: OTA Update
     type: ota

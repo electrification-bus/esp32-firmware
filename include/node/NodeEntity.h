@@ -27,9 +27,10 @@ class NodeEntity {
 
 
         virtual void entity_settable_callback(Property* property);
+        virtual void entity_settable_callback(const char* property_id, const char* value);
         virtual void set(bool onOff) {};
         virtual void set(int val) {};
-        virtual void set(float val) {}; 
+        virtual void set(float val) {};
         virtual void set(const char* val) {};
 
     protected:

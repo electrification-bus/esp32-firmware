@@ -36,6 +36,10 @@ const char* NodeEntity::getPropertyTopic(const char* property_id, char* buf) {
 }
 
 void NodeEntity::entity_settable_callback(Property* property) {
-    //Serial.printf("NodeEntity: entity_settable_callback() not implemented for node id: %s, property id: %s\n", _homie_node_id, property->id());
-    Serial.printf("NodeEntity: entity_settable_callback() not implemented for node id: %s\n", _homie_node_id);
+    Serial.printf("NodeEntity: entity_settable_callback(Property*) not implemented for node id: %s\n", _homie_node_id);
+}
+
+void NodeEntity::entity_settable_callback(const char* property_id, const char* value) {
+    Serial.printf("NodeEntity: entity_settable_callback('%s','%s') not implemented for node id: %s\n",
+        property_id, value, _homie_node_id);
 }

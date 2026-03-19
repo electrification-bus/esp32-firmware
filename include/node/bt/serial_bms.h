@@ -73,6 +73,11 @@ public:
     // BLE notification handler (called from static callback)
     void onNotifyData(const uint8_t* data, size_t length);
 
+    // Settable callback for MQTT charge control
+    void entity_settable_callback(Property* property) override;
+    void entity_settable_callback(const char* property_id, const char* value) override;
+    void set(bool onOff) override;
+
 private:
     // BLE internals
     bool _connected;
@@ -119,4 +124,5 @@ private:
     NodeProperty _np_mosfet;
     NodeProperty _np_temperature;
     NodeProperty _np_cell_voltages;
+    NodeProperty _np_charge_control;  // settable: on/off controls CHG MOSFET
 };

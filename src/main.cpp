@@ -216,7 +216,7 @@ void setup() {
 
     // Resolve radio grants now that network status is known
     radio_resolve();
-    radio_apply();  // tears down WiFi radio if BT was granted
+    radio_apply();  // log radio grants (no WiFi teardown — breaks ethernet sockets)
 
     // Start WiFi STA if granted and credentials are saved
 #ifdef CONFIG_WIFI_AP
@@ -277,11 +277,11 @@ void setup() {
                    (*dev_conf)[HOMIE_TYPE].as<const char*>(),
                    &mqtt_client);
     theDevice.publishState(); // default state is init
-    loop_mqtt();  // Flush MQTT messages
+    //loop_mqtt();  // Flush MQTT messages
     theDevice.publish();
-    loop_mqtt();  // Flush MQTT messages
+    //loop_mqtt();  // Flush MQTT messages
     theDevice.setState(DeviceState::DEVICE_STATE_READY); // setState will publish the $state
-    loop_mqtt();  // Flush MQTT messages - ensure $state=ready is sent before continuing
+    //loop_mqtt();  // Flush MQTT messages - ensure $state=ready is sent before continuing
 
     setup_homie();
 }

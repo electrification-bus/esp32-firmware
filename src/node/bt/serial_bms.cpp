@@ -163,6 +163,8 @@ bool SerialBMS::setup() {
     _np_mosfet.setup(getNodeId(), "mosfet_status");
     _np_temperature.setup(getNodeId(), "temperature");
     _np_cell_voltages.setup(getNodeId(), "cell_voltages");
+    _np_charge_control.setup_settable(getNodeId(), "charge_control",
+        &NodeEntity::entity_settable_callback, (NodeEntity*)this);
 
     // Check if BT radio was granted by broker
     if (radio_query(RADIO_BT) != RADIO_GRANT_ALLOWED) {
@@ -638,6 +640,39 @@ void SerialBMS::loop() {
             _ble_address, (millis() - _last_success) / 1000);
         queryBasicInfo();
         queryCellVoltages();
+    }
+}
+
+// ---- Settable: charge_control ----
+
+void SerialBMS::set(bool onOff) {
+    Serial.printf("BMS: Charge control SET: %s\n", onOff ? "ON" : "OFF");
+    if (onOff) {
+        setMosfetAllOn();
+    } else {
+        setMosfetChgOff();
+    }
+    _np_charge_control.set_value_and_publish(onOff);
+}
+
+void SerialBMS::entity_settable_callback(Property* property) {
+    Serial.printf("BMS: settable callback(Property*) '%s'='%s'\n", property->id(), property->value());
+    entity_settable_callback(property->id(), property->value());
+}
+
+void SerialBMS::entity_settable_callback(const char* property_id, const char* value) {
+    Serial.printf("BMS: settable callback '%s'='%s'\n", property_id, value);
+
+    if (strcmp(property_id, "charge_control") == 0) {
+        if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0 ||
+            strcmp(value, "on") == 0 || strcmp(value, "yes") == 0) {
+            set(true);
+        } else if (strcmp(value, "false") == 0 || strcmp(value, "0") == 0 ||
+                   strcmp(value, "off") == 0 || strcmp(value, "no") == 0) {
+            set(false);
+        } else {
+            Serial.printf("BMS: invalid value '%s' for charge_control\n", value);
+        }
     }
 }
 
