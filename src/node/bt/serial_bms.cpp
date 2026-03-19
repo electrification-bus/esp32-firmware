@@ -2,6 +2,7 @@
 #include <config.h>
 #include <node/bt/serial_bms.h>
 #include <radio/radio_broker.h>
+#include <network/mqtt_client.h>
 #include <Preferences.h>
 
 // NimBLE — lightweight BLE stack, supports direct connect by address
@@ -549,19 +550,30 @@ bool SerialBMS::queryCellVoltages() {
 
     _last_success = millis();
 
-    // Build cell voltage string for publishing
-    char cell_str[128];
+    // Publish cell voltages as JSON directly to MQTT (too large for NodeProperty's 32-byte buffer)
+    // Format: {"count":16,"cells":[3.379,3.378,...],"min":3.371,"max":3.381,"delta":0.010}
+    static char json[512];
     int pos = 0;
-    for (uint8_t i = 0; i < _cell_voltages.num_cells && pos < (int)sizeof(cell_str) - 8; i++) {
-        if (i > 0) {
-            cell_str[pos++] = ',';
-        }
-        pos += snprintf(&cell_str[pos], sizeof(cell_str) - pos, "%.3f", _cell_voltages.cells[i]);
-        Serial.printf("BMS: Cell %d: %.3fV\n", i + 1, _cell_voltages.cells[i]);
-    }
-    cell_str[pos] = '\0';
+    float min_v = 99.0f, max_v = 0.0f;
 
-    _np_cell_voltages.set_value_and_publish(cell_str);
+    pos += snprintf(&json[pos], sizeof(json) - pos, "{\"count\":%d,\"cells\":[", _cell_voltages.num_cells);
+
+    for (uint8_t i = 0; i < _cell_voltages.num_cells && pos < (int)sizeof(json) - 32; i++) {
+        float v = _cell_voltages.cells[i];
+        if (v < min_v) min_v = v;
+        if (v > max_v) max_v = v;
+        if (i > 0) json[pos++] = ',';
+        pos += snprintf(&json[pos], sizeof(json) - pos, "%.3f", v);
+        Serial.printf("BMS: Cell %d: %.3fV\n", i + 1, v);
+    }
+
+    pos += snprintf(&json[pos], sizeof(json) - pos,
+        "],\"min\":%.3f,\"max\":%.3f,\"delta\":%.3f}",
+        min_v, max_v, max_v - min_v);
+
+    // Publish directly — JSON exceeds mqtt_queue 64-byte payload limit
+    // Safe: BMS loop runs on core 1 same as MQTT client
+    mqtt_client.publish(_np_cell_voltages.topic(), json);
 
     return true;
 }
