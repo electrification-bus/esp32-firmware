@@ -499,7 +499,7 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
   //route to subscriber property
   bool handled = false;
   for(int i=0;i<num_subscribers;i++) {
-    Serial.printf("MQTT CALLBACK: checking subscriber %d: topic '%s'\n", i, settable_properties[i].topic);
+    //Serial.printf("MQTT CALLBACK: checking subscriber %d: topic '%s'\n", i, settable_properties[i].topic);
     if (strcmp(settable_properties[i].topic, topic) == 0) {
       handled = true;
       if (settable_properties[i].property_callback && settable_properties[i].instance) {
