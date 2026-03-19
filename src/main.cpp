@@ -193,6 +193,19 @@ void setup() {
 
     Serial.println("\n\n===== HOMIE DEVICE =====");
 
+    // Board/build sanity check
+    uint32_t flash_size = ESP.getFlashChipSize();
+    bool psram_available = psramFound();
+    Serial.printf("BOARD: Flash=%uMB  PSRAM=%s  Heap=%u\n",
+        flash_size / (1024 * 1024),
+        psram_available ? "yes" : "no",
+        ESP.getFreeHeap());
+#ifdef BOARD_HAS_PSRAM
+    if (!psram_available) Serial.println("BOARD: WARNING — built for PSRAM but none detected! Wrong firmware?");
+#else
+    if (psram_available) Serial.println("BOARD: WARNING — PSRAM detected but build has no PSRAM support. Use esp32-poe-iso-wrover env.");
+#endif
+
     if (!loadConfiguration()) {
         Serial.println("CONFIG: **ERROR -- failed to load configuration");
         return;
