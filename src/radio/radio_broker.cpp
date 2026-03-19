@@ -1,10 +1,6 @@
 #include <radio/radio_broker.h>
 #include <network/network.h>
 
-#ifdef CONFIG_ETH_ENABLED
-#include <WiFi.h>
-#endif
-
 // Request table
 static struct {
     RadioType type;
@@ -88,10 +84,12 @@ void radio_apply() {
 #ifdef CONFIG_ETH_ENABLED
     if (_grants[RADIO_BT] == RADIO_GRANT_ALLOWED &&
         _grants[RADIO_WIFI] == RADIO_GRANT_DENIED) {
-        Serial.println("RADIO: Disabling WiFi radio (BT granted, ethernet for connectivity)");
-        WiFi.disconnect(true);
-        WiFi.mode(WIFI_OFF);
-        delay(100);
+        // NimBLE coexists with WiFi on ESP32 — no need to disable WiFi.
+        // WiFi STA is never started on POE-ISO (ethernet provides connectivity),
+        // so the radio is already available for BLE without teardown.
+        // WiFi.disconnect()/WiFi.mode(WIFI_OFF) breaks WiFiClient sockets
+        // used by MQTT over ethernet — do not call them.
+        Serial.println("RADIO: BT granted (WiFi STA not started, radio available for BLE)");
     }
 #endif
 
