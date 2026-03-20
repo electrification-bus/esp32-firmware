@@ -278,7 +278,8 @@ void mdns_register_services() {
   MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_BASE, (const char*)base_topic);
   MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_STATE, HOMIE_STATE_INIT);
   MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_IMPL, MDNS_VAL_HOMIE_IMPL);
-  Serial.printf("mDNS: Added _homie._tcp service (role=%s, base=%s)\n", homie_role, base_topic);
+  MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_CA_CERT_PATH, MDNS_VAL_CA_CERT_PATH);
+  Serial.printf("mDNS: Added _ebus._tcp service (role=%s, base=%s, ca_cert_path=%s)\n", homie_role, base_topic, MDNS_VAL_CA_CERT_PATH);
 }
 
 bool setup_wifi() {

@@ -31,6 +31,7 @@ Primary service for Homie-compliant device/controller discovery. Port: MQTT port
 | `mqtt_tls` | `true` or `false` | TLS/SSL enabled |
 | `state` | `init`, `ready`, etc. | Current device state |
 | `implementation` | `homie-esp32-sdk` | Implementation identifier |
+| `ca_cert_path` | `/api/broker-cert` | REST path to download/upload broker CA cert |
 
 ### 2. `_mqtt._tcp` - MQTT Broker Discovery
 

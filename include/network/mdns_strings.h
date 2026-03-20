@@ -47,6 +47,10 @@
 #define MDNS_VAL_HTTP_API       "openapi"
 #define MDNS_VAL_HTTP_PATH      "/api/openapi.yml"
 
+// _ebus._tcp additional TXT records
+#define MDNS_TXT_CA_CERT_PATH   "ca_cert_path"
+#define MDNS_VAL_CA_CERT_PATH   "/api/broker-cert"
+
 // Common TXT record values
 #define MDNS_VAL_TRUE           "true"
 #define MDNS_VAL_FALSE          "false"
