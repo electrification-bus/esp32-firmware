@@ -173,14 +173,7 @@ bool SerialBMS::setup() {
         return true;  // graceful degradation — node exists but won't poll
     }
 
-    // BT controller needs ~60KB internal DRAM — check before init
-    uint32_t free_heap = ESP.getFreeHeap();
-    Serial.printf("BMS BLE: Free heap before init: %u bytes\n", free_heap);
-    if (free_heap < 80000) {
-        Serial.println("BMS BLE: Insufficient internal RAM for BT controller, BLE disabled");
-        _ble_initialized = false;
-        return true;
-    }
+    Serial.printf("BMS BLE: Free heap before init: %u bytes\n", ESP.getFreeHeap());
 
     // Initialize NimBLE
     NimBLEDevice::init("ESP32_BMS");
