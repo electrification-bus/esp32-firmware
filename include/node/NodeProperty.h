@@ -14,16 +14,13 @@ class NodeProperty {
             sprintf(_top, "%s%s/%s", theDevice.topic(), node_id, property_id);
             Serial.printf("NodeProperty: setup() topic: %s\n", _top);
             set_topic(_top);
-
         }
-        void setup_settable(const char* node_id, const char* property_id, entity_settable_callback_t cb, NodeEntity* ne) {
-            set_homie_property_id(property_id);
-            char _top[128] = {0};
-            sprintf(_top, "%s%s/%s", theDevice.topic(), node_id, property_id);
-            set_topic(_top);
 
+        void setup(const char* node_id, const char* property_id, entity_settable_callback_t cb, NodeEntity* ne) {
+            setup(node_id, property_id);
+            char _top[128] = {0};
             sprintf(_top, "%s%s/%s/%s", theDevice.topic(), node_id, property_id, HOMIE_TOPIC_SET);
-            entity_subscribe_for_callbacks(_top, cb, ne);   
+            entity_subscribe_for_callbacks(_top, cb, ne);
         }
         const char* homie_property_id()    const    {return _homie_property_id;}
         void set_homie_property_id(const char* id) {

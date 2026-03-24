@@ -163,7 +163,7 @@ bool SerialBMS::setup() {
     _np_mosfet.setup(getNodeId(), "mosfet_status");
     _np_temperature.setup(getNodeId(), "temperature");
     _np_cell_voltages.setup(getNodeId(), "cell_voltages");
-    _np_charge_control.setup_settable(getNodeId(), "charge_control",
+    _np_charge_control.setup(getNodeId(), "charge_control",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
 
     // Check if BT radio was granted by broker

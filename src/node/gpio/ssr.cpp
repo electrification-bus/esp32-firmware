@@ -14,7 +14,7 @@ SSR::SSR(const char* homie_node_id) : NodeEntity(homie_node_id) {
 
 bool SSR::setup() {
     NodeEntity::setup();  // Base class first
-    _state_property.setup_settable(getNodeId(), "state", &NodeEntity::entity_settable_callback, (NodeEntity*)this);
+    _state_property.setup(getNodeId(), "state", &NodeEntity::entity_settable_callback, (NodeEntity*)this);
     pinMode(SSR1_PIN, OUTPUT);
     set_off_state();
     return true;

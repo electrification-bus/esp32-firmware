@@ -22,14 +22,14 @@ bool OTANode::setup() {
     NodeEntity::setup();  // Base class first
 
     // Setup properties
-    _enabled_property.setup_settable(getNodeId(), "enabled",
+    _enabled_property.setup(getNodeId(), "enabled",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
     _state_property.setup(getNodeId(), "state");
     _progress_property.setup(getNodeId(), "progress");
     _version_property.setup(getNodeId(), "version");
-    _firmware_url_property.setup_settable(getNodeId(), "firmware-url",
+    _firmware_url_property.setup(getNodeId(), "firmware-url",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
-    _checksum_property.setup_settable(getNodeId(), "checksum",
+    _checksum_property.setup(getNodeId(), "checksum",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
     _message_property.setup(getNodeId(), "message");
 
