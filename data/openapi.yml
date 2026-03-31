@@ -99,6 +99,8 @@ paths:
   /api/mqtt:
     post:
       summary: Save MQTT configuration
+      security:
+        - basicAuth: []
       description: |
         Saves MQTT broker settings to NVS. Invalidates cached CA cert
         so the next connection fetches a fresh cert for the (possibly new) broker.
@@ -148,6 +150,8 @@ paths:
   /api/firmware:
     post:
       summary: Save firmware URL
+      security:
+        - basicAuth: []
       description: Saves the OTA firmware update URL.
       requestBody:
         required: true
@@ -181,6 +185,8 @@ paths:
   /api/reset-prefs:
     post:
       summary: Reset all portal preferences
+      security:
+        - basicAuth: []
       description: Clears all NVS preferences (WiFi, MQTT, etc). Reboot to use YML config.
       responses:
         "200":
@@ -200,6 +206,8 @@ paths:
   /api/reboot:
     post:
       summary: Reboot the device
+      security:
+        - basicAuth: []
       description: Triggers an ESP.restart() after a short delay.
       responses:
         "200":

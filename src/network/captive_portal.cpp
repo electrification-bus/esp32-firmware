@@ -313,8 +313,31 @@ static void serveConfigPage(AsyncWebServerRequest *request) {
     request->send(response);
 }
 
+// --- Basic Auth helper (shared by all admin POST endpoints) ---
+// Returns true if authorized, sends error response and returns false otherwise.
+static bool requireAuth(AsyncWebServerRequest *request) {
+    if (portal_auth_is_locked()) {
+        request->send(429, "application/json",
+            "{\"status\":\"error\",\"message\":\"Too many failed attempts. Try again later.\"}");
+        return false;
+    }
+    if (device_passphrase[0] == '\0') {
+        request->send(503, "application/json",
+            "{\"status\":\"error\",\"message\":\"No device_passphrase configured\"}");
+        return false;
+    }
+    if (!request->authenticate("admin", device_passphrase)) {
+        portal_auth_record_failure();
+        request->requestAuthentication();
+        return false;
+    }
+    portal_auth_reset();
+    return true;
+}
+
 // Handle POST /api/mqtt - save MQTT configuration from JSON body
 static void handleMqttSave(AsyncWebServerRequest *request) {
+    if (!requireAuth(request)) return;
     Serial.printf("PORTAL: handleMqttSave called, body=%d bytes\n", post_body_len);
 
     JsonDocument doc;
@@ -359,6 +382,7 @@ static void handleMqttSave(AsyncWebServerRequest *request) {
 
 // Handle POST /api/firmware - save firmware URL from JSON body
 static void handleFirmwareSave(AsyncWebServerRequest *request) {
+    if (!requireAuth(request)) return;
     Serial.printf("PORTAL: handleFirmwareSave called, body=%d bytes\n", post_body_len);
 
     JsonDocument doc;
@@ -374,28 +398,6 @@ static void handleFirmwareSave(AsyncWebServerRequest *request) {
 
     Serial.printf("PORTAL: Firmware URL saved - '%s'\n", firmware_url);
     request->send(200, "application/json", "{\"status\":\"ok\"}");
-}
-
-// --- Basic Auth helper (shared by OTA, cert upload, and future admin endpoints) ---
-// Returns true if authorized, sends error response and returns false otherwise.
-static bool requireAuth(AsyncWebServerRequest *request) {
-    if (portal_auth_is_locked()) {
-        request->send(429, "application/json",
-            "{\"status\":\"error\",\"message\":\"Too many failed attempts. Try again later.\"}");
-        return false;
-    }
-    if (device_passphrase[0] == '\0') {
-        request->send(503, "application/json",
-            "{\"status\":\"error\",\"message\":\"No device_passphrase configured\"}");
-        return false;
-    }
-    if (!request->authenticate("admin", device_passphrase)) {
-        portal_auth_record_failure();
-        request->requestAuthentication();
-        return false;
-    }
-    portal_auth_reset();
-    return true;
 }
 
 // Handle GET /api/broker-cert - download the CA cert for the current MQTT broker
@@ -504,6 +506,7 @@ static void handleOtaToggle(AsyncWebServerRequest *request) {
 
 // Handle POST /api/reset-prefs - clear all portal Preferences
 static void handleResetPrefs(AsyncWebServerRequest *request) {
+    if (!requireAuth(request)) return;
     Serial.println("PORTAL: Resetting all portal preferences");
     portal_prefs_clear();
     request->send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Preferences cleared. Reboot to use YML config.\"}");
@@ -511,6 +514,7 @@ static void handleResetPrefs(AsyncWebServerRequest *request) {
 
 // Handle POST /api/reboot - reboot the ESP32
 static void handleReboot(AsyncWebServerRequest *request) {
+    if (!requireAuth(request)) return;
     Serial.println("PORTAL: Reboot requested via portal");
     request->send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Rebooting...\"}");
     delay(500);
