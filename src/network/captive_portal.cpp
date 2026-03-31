@@ -376,6 +376,28 @@ static void handleFirmwareSave(AsyncWebServerRequest *request) {
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
+// --- Basic Auth helper (shared by OTA, cert upload, and future admin endpoints) ---
+// Returns true if authorized, sends error response and returns false otherwise.
+static bool requireAuth(AsyncWebServerRequest *request) {
+    if (portal_auth_is_locked()) {
+        request->send(429, "application/json",
+            "{\"status\":\"error\",\"message\":\"Too many failed attempts. Try again later.\"}");
+        return false;
+    }
+    if (device_passphrase[0] == '\0') {
+        request->send(503, "application/json",
+            "{\"status\":\"error\",\"message\":\"No device_passphrase configured\"}");
+        return false;
+    }
+    if (!request->authenticate("admin", device_passphrase)) {
+        portal_auth_record_failure();
+        request->requestAuthentication();
+        return false;
+    }
+    portal_auth_reset();
+    return true;
+}
+
 // Handle GET /api/broker-cert - download the CA cert for the current MQTT broker
 static void handleBrokerCert(AsyncWebServerRequest *request) {
     if (!has_mqtt_broker()) {
@@ -397,8 +419,10 @@ static void handleBrokerCert(AsyncWebServerRequest *request) {
     request->send(SPIFFS, cert_path, "text/plain");
 }
 
-// Handle POST /api/broker-cert - upload a CA cert and save to SPIFFS
+// Handle POST /api/broker-cert - upload a CA cert and save to SPIFFS (requires Basic Auth)
 static void handleBrokerCertUpload(AsyncWebServerRequest *request) {
+    if (!requireAuth(request)) return;
+
     Serial.printf("PORTAL: handleBrokerCertUpload called, body=%d bytes\n", post_body_len);
 
     if (post_body_len == 0) {
@@ -453,27 +477,7 @@ static void handleOtaStatus(AsyncWebServerRequest *request) {
 
 // Handle POST /api/ota - enable or disable OTA (requires Basic Auth)
 static void handleOtaToggle(AsyncWebServerRequest *request) {
-    // Rate limit check
-    if (portal_auth_is_locked()) {
-        request->send(429, "application/json",
-            "{\"status\":\"error\",\"message\":\"Too many failed attempts. Try again later.\"}");
-        return;
-    }
-
-    // Require passphrase to be configured
-    if (device_passphrase[0] == '\0') {
-        request->send(503, "application/json",
-            "{\"status\":\"error\",\"message\":\"No device_passphrase configured\"}");
-        return;
-    }
-
-    // Basic Auth: username "admin", password is device_passphrase
-    if (!request->authenticate("admin", device_passphrase)) {
-        portal_auth_record_failure();
-        return request->requestAuthentication();
-    }
-
-    portal_auth_reset();
+    if (!requireAuth(request)) return;
 
     JsonDocument doc;
     if (deserializeJson(doc, post_body_buf, post_body_len)) {

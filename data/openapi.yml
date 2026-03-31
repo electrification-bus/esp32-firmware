@@ -250,6 +250,9 @@ paths:
       description: |
         Uploads a PEM-encoded CA certificate and saves it to SPIFFS as /certs/uploaded-cert.ca.
         Invalidates the cached cert so the next MQTT connection uses the new one.
+        Requires HTTP Basic Auth (admin / device_passphrase).
+      security:
+        - basicAuth: []
       requestBody:
         required: true
         content:
