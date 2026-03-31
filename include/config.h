@@ -31,6 +31,19 @@ extern char firmware_url[128];
 // Homie role: "device" or "controller"
 extern char homie_role[16];
 
+// Device passphrase for authenticated REST endpoints (OTA, registration)
+extern char device_passphrase[64];
+
+// OTA enable/disable via REST API
+// OTA_ENABLED_TIMEOUT: minutes before OTA auto-disables (0 = no timeout)
+#ifndef OTA_ENABLED_TIMEOUT
+#define OTA_ENABLED_TIMEOUT 10
+#endif
+
+bool ota_is_enabled();
+void ota_set_enabled(bool enabled);
+void ota_check_timeout();
+
 // MQTT broker resolution mode
 enum MqttMode {
   MQTT_MODE_DISCOVERY_ONLY = 0,      // mDNS only, ignore config (default)

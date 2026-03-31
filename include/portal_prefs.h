@@ -16,3 +16,11 @@ void portal_prefs_load_fallbacks();
 
 // Clear all portal-saved settings (WiFi + MQTT) so next boot uses config.yml only.
 void portal_prefs_clear();
+
+// Auth rate limiting — returns true if locked out (too many failures)
+#define AUTH_MAX_FAILURES 5
+#define AUTH_LOCKOUT_MS   (5UL * 60UL * 1000UL)  // 5 minutes
+
+bool portal_auth_is_locked();
+void portal_auth_record_failure();
+void portal_auth_reset();

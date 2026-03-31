@@ -34,6 +34,13 @@ char firmware_url[128] = {0};
 // Homie role: "device" or "controller"
 char homie_role[16] = "device";
 
+// Device passphrase for authenticated REST endpoints
+char device_passphrase[64] = {0};
+
+// OTA enable state and timeout tracking
+static bool _ota_enabled = false;
+static unsigned long _ota_enabled_at = 0;
+
 // MQTT broker resolution mode (default: discovery-only)
 MqttMode mqtt_mode = MQTT_MODE_DISCOVERY_ONLY;
 
@@ -242,6 +249,11 @@ bool loadPlatformConfiguration() {
     homie_role[sizeof(homie_role) - 1] = '\0';
   }
 
+  if (config_json["device_passphrase"].is<JsonString>()) {
+    strncpy(device_passphrase, config_json["device_passphrase"].as<JsonString>().c_str(), sizeof(device_passphrase) - 1);
+    device_passphrase[sizeof(device_passphrase) - 1] = '\0';
+  }
+
   if (config_json["mqtt_mode"].is<JsonString>()) {
     const char* mode_str = config_json["mqtt_mode"].as<JsonString>().c_str();
     if (strcmp(mode_str, "configured-only") == 0) {
@@ -431,4 +443,30 @@ const char* mqtt_load_ca_cert() {
   ca_cert_loaded = true;
   Serial.printf("TLS: CA certificate loaded (%d bytes) from '%s'\n", bytesRead, actual_path);
   return ca_cert_buffer;
+}
+
+// --- OTA enable/disable with auto-timeout ---
+
+bool ota_is_enabled() {
+    return _ota_enabled;
+}
+
+void ota_set_enabled(bool enabled) {
+    _ota_enabled = enabled;
+    if (enabled) {
+        _ota_enabled_at = millis();
+        Serial.printf("OTA: Enabled (timeout=%d min)\n", OTA_ENABLED_TIMEOUT);
+    } else {
+        _ota_enabled_at = 0;
+        Serial.println("OTA: Disabled");
+    }
+}
+
+void ota_check_timeout() {
+    if (!_ota_enabled || OTA_ENABLED_TIMEOUT == 0) return;
+    unsigned long elapsed = millis() - _ota_enabled_at;
+    if (elapsed >= (unsigned long)OTA_ENABLED_TIMEOUT * 60UL * 1000UL) {
+        Serial.println("OTA: Auto-disabled after timeout");
+        ota_set_enabled(false);
+    }
 }

@@ -86,3 +86,30 @@ void portal_prefs_clear() {
     prefs.end();
     Serial.println("PREFS: Cleared all portal settings (WiFi + MQTT)");
 }
+
+// --- Auth rate limiting (RAM only, resets on reboot) ---
+static uint8_t _auth_failures = 0;
+static unsigned long _auth_lockout_start = 0;
+
+bool portal_auth_is_locked() {
+    if (_auth_failures < AUTH_MAX_FAILURES) return false;
+    if (millis() - _auth_lockout_start >= AUTH_LOCKOUT_MS) {
+        _auth_failures = 0;
+        Serial.println("AUTH: Lockout expired");
+        return false;
+    }
+    return true;
+}
+
+void portal_auth_record_failure() {
+    _auth_failures++;
+    Serial.printf("AUTH: Failure %d/%d\n", _auth_failures, AUTH_MAX_FAILURES);
+    if (_auth_failures >= AUTH_MAX_FAILURES) {
+        _auth_lockout_start = millis();
+        Serial.println("AUTH: Locked out for 5 minutes");
+    }
+}
+
+void portal_auth_reset() {
+    _auth_failures = 0;
+}

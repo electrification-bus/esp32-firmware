@@ -5,7 +5,7 @@ info:
     REST API served by the ESP32 captive portal / HTTP server.
     - With CONFIG_WIFI_AP: all endpoints available via WiFi AP captive portal.
     - Without CONFIG_WIFI_AP: WiFi endpoints are excluded; API is served over ethernet on port 80.
-  version: 1.0.0
+  version: 1.1.0
 
 servers:
   - url: http://192.168.4.1
@@ -54,6 +54,9 @@ paths:
                   topic:
                     type: string
                     example: "homie/5/abc123def/"
+                  wifi_enabled:
+                    type: boolean
+                    example: false
 
   /api/mqtt-status:
     get:
@@ -71,7 +74,7 @@ paths:
                 properties:
                   status:
                     type: string
-                    enum: [connected, failed, none]
+                    enum: [connected, searching, failed, none]
                   broker:
                     type: string
                     example: "192.168.1.100"
@@ -224,6 +227,143 @@ paths:
             text/yaml:
               schema:
                 type: string
+
+  /api/broker-cert:
+    get:
+      summary: Download broker CA certificate
+      description: Returns the saved CA certificate for the current MQTT broker from SPIFFS.
+      responses:
+        "200":
+          description: PEM-encoded CA certificate
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: No broker configured or no certificate found
+          content:
+            text/plain:
+              schema:
+                type: string
+    post:
+      summary: Upload broker CA certificate
+      description: |
+        Uploads a PEM-encoded CA certificate and saves it to SPIFFS as /certs/uploaded-cert.ca.
+        Invalidates the cached cert so the next MQTT connection uses the new one.
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+              description: PEM-encoded CA certificate (must contain BEGIN CERTIFICATE header)
+      responses:
+        "200":
+          description: Certificate saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  bytes:
+                    type: integer
+                    example: 1234
+                  path:
+                    type: string
+                    example: "/certs/uploaded-cert.ca"
+        "400":
+          description: Empty body or not a PEM certificate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/ota:
+    get:
+      summary: OTA update status
+      description: Returns whether OTA is currently enabled and the auto-disable timeout.
+      responses:
+        "200":
+          description: OTA status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ota_enabled:
+                    type: boolean
+                    example: false
+                  timeout_minutes:
+                    type: integer
+                    description: Minutes before OTA auto-disables (0 = no timeout)
+                    example: 10
+    post:
+      summary: Enable or disable OTA
+      description: |
+        Toggles OTA update capability. Requires HTTP Basic Auth with username "admin"
+        and the device_passphrase from config.yml. OTA auto-disables after timeout_minutes
+        (default 10) and always starts disabled on reboot.
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - enabled
+              properties:
+                enabled:
+                  type: boolean
+                  description: true to enable OTA, false to disable
+                  example: true
+      responses:
+        "200":
+          description: OTA state changed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  ota_enabled:
+                    type: boolean
+                    example: true
+                  timeout_minutes:
+                    type: integer
+                    example: 10
+        "400":
+          description: Invalid JSON or missing 'enabled' field
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid credentials (WWW-Authenticate challenge returned)
+        "429":
+          description: Too many failed auth attempts (5 failures = 5 min lockout)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                status: error
+                message: "Too many failed attempts. Try again later."
+        "503":
+          description: No device_passphrase configured in config.yml
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                status: error
+                message: "No device_passphrase configured"
 
   # === WiFi AP-only endpoints (CONFIG_WIFI_AP) ===
 
@@ -383,6 +523,14 @@ paths:
           description: Redirects to config page
 
 components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: |
+        Username: "admin", Password: device_passphrase from config.yml.
+        Rate limited: 5 failures triggers 5-minute lockout.
+
   schemas:
     StatusResponse:
       type: object

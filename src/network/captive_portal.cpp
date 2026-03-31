@@ -440,6 +440,64 @@ static void handleBrokerCertUpload(AsyncWebServerRequest *request) {
     request->send(200, "application/json", resp);
 }
 
+// --- OTA enable/disable with Basic Auth and rate limiting ---
+
+// Handle GET /api/ota - return OTA enabled status (no auth)
+static void handleOtaStatus(AsyncWebServerRequest *request) {
+    static char json_buf[128];
+    snprintf(json_buf, sizeof(json_buf),
+        "{\"ota_enabled\":%s,\"timeout_minutes\":%d}",
+        ota_is_enabled() ? "true" : "false", OTA_ENABLED_TIMEOUT);
+    request->send(200, "application/json", json_buf);
+}
+
+// Handle POST /api/ota - enable or disable OTA (requires Basic Auth)
+static void handleOtaToggle(AsyncWebServerRequest *request) {
+    // Rate limit check
+    if (portal_auth_is_locked()) {
+        request->send(429, "application/json",
+            "{\"status\":\"error\",\"message\":\"Too many failed attempts. Try again later.\"}");
+        return;
+    }
+
+    // Require passphrase to be configured
+    if (device_passphrase[0] == '\0') {
+        request->send(503, "application/json",
+            "{\"status\":\"error\",\"message\":\"No device_passphrase configured\"}");
+        return;
+    }
+
+    // Basic Auth: username "admin", password is device_passphrase
+    if (!request->authenticate("admin", device_passphrase)) {
+        portal_auth_record_failure();
+        return request->requestAuthentication();
+    }
+
+    portal_auth_reset();
+
+    JsonDocument doc;
+    if (deserializeJson(doc, post_body_buf, post_body_len)) {
+        request->send(400, "application/json",
+            "{\"status\":\"error\",\"message\":\"Invalid JSON\"}");
+        return;
+    }
+
+    if (!doc["enabled"].is<bool>()) {
+        request->send(400, "application/json",
+            "{\"status\":\"error\",\"message\":\"Missing 'enabled' boolean field\"}");
+        return;
+    }
+
+    bool enabled = doc["enabled"].as<bool>();
+    ota_set_enabled(enabled);
+
+    static char resp[128];
+    snprintf(resp, sizeof(resp),
+        "{\"status\":\"ok\",\"ota_enabled\":%s,\"timeout_minutes\":%d}",
+        enabled ? "true" : "false", OTA_ENABLED_TIMEOUT);
+    request->send(200, "application/json", resp);
+}
+
 // Handle POST /api/reset-prefs - clear all portal Preferences
 static void handleResetPrefs(AsyncWebServerRequest *request) {
     Serial.println("PORTAL: Resetting all portal preferences");
@@ -471,6 +529,7 @@ void captive_portal_loop() {
 #ifdef CONFIG_WIFI_AP
     dnsServer.processNextRequest();
 #endif
+    ota_check_timeout();
 }
 
 void captive_portal_start() {
@@ -516,6 +575,8 @@ void captive_portal_start() {
     server.on("/api/reboot", HTTP_POST, handleReboot);
     server.on("/api/broker-cert", HTTP_GET, handleBrokerCert);
     server.on("/api/broker-cert", HTTP_POST, handleBrokerCertUpload, NULL, accumulateBody);
+    server.on("/api/ota", HTTP_GET, handleOtaStatus);
+    server.on("/api/ota", HTTP_POST, handleOtaToggle, NULL, accumulateBody);
     server.on("/api/openapi.yml", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(SPIFFS, "/openapi.yml", "text/yaml");
     });
