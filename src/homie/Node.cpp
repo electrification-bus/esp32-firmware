@@ -19,6 +19,7 @@ JsonDocument Node::serialize() {
     JsonDocument props;
     JsonDocument obj;
     for(int i=0;i<_num_properties;i++) {
+        obj.clear();
         _properties[i]->serialize(obj);
         props[_properties[i]->id()] = obj;
     }
