@@ -1,8 +1,20 @@
 #pragma once
 
 #define HOMIE_VERSION_NUM       "5"
-#define HOMIE_TOPIC_PREFIX      "ebus/" HOMIE_VERSION_NUM
+#define HOMIE_HOMIE_DOMAIN      "homie"
+#define EBUS_HOMIE_DOMAIN       "ebus"
+
+// Select topic domain at compile time: -DUSE_EBUS_TOPIC → "ebus/5", default → "homie/5"
+#ifdef USE_EBUS_TOPIC
+  #define HOMIE_TOPIC_DOMAIN    EBUS_HOMIE_DOMAIN
+#else
+  #define HOMIE_TOPIC_DOMAIN    HOMIE_HOMIE_DOMAIN
+#endif
+
+#define HOMIE_TOPIC_PREFIX      HOMIE_TOPIC_DOMAIN "/" HOMIE_VERSION_NUM
 #define HOMIE_TOPIC_SET         "set"
+
+inline const char* top_level_topic() { return HOMIE_TOPIC_DOMAIN; }
 
 #define HOMIE_DATATYPE_BOOLEAN  "boolean"
 #define HOMIE_DATATYPE_STRING   "string"

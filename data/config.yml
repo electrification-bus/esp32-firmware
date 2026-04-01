@@ -11,7 +11,7 @@ config:
     mqtt_username: public
     mqtt_password: public
     device_id: esp32poeiso
-    device_type: sensor
+    device_type: ebus
     firmware_name: ESP32POEISO Firmware
     firmware_version: 1.0.0
     firmware_url: http://example.com/firmware.bin

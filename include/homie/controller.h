@@ -35,11 +35,11 @@ typedef struct {
 } ControllerStats;
 
 // Initialize the Homie controller
-// domain: the domain to use for publishing commands (e.g., "homie")
+// domain: the domain to use for publishing commands (e.g., HOMIE_HOMIE = "ebus")
 // discover_all_domains: if true, discover devices from any domain using wildcard (+)
 //                       if false, only discover devices from the specified domain
 //void controller_init(PubSubClient* mqtt_client, const char* domain = HOMIE_HOMIE, bool discover_all_domains = true);
-void controller_init(MQTTClient* mqtt_client, const char* domain = HOMIE_HOMIE, bool discover_all_domains = true);
+void controller_init(MQTTClient* mqtt_client, const char* domain = top_level_topic(), bool discover_all_domains = true);
 
 // Setup device discovery (subscribes to discovery topics)
 void controller_setup_discovery();

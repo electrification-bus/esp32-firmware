@@ -11,7 +11,11 @@
       background: #1a1a2e; color: #e0e0e0; padding: 16px; max-width: 480px; margin: 0 auto;
     }
     h1 { color: #00d4ff; font-size: 1.4em; margin-bottom: 4px; }
-    .topic { color: #888; font-size: 0.85em; margin-bottom: 20px; word-break: break-all; }
+    .topic-row { display: flex; align-items: baseline; justify-content: space-between; font-size: 0.85em; margin-bottom: 20px; }
+    .topic { color: #66e0ff; word-break: break-all; }
+    .role-label { font-weight: bold; letter-spacing: 0.08em; }
+    .role-label.device { color: #00d4ff; }
+    .role-label.controller { color: #f0a500; }
     h2 { color: #ccc; font-size: 1.1em; margin: 20px 0 10px; border-bottom: 1px solid #333; padding-bottom: 6px; }
     .field { margin-bottom: 12px; }
     .field label { display: block; font-size: 0.85em; color: #aaa; margin-bottom: 4px; }
@@ -63,7 +67,10 @@
 </head>
 <body>
   <h1 id="dev-name">Homie Device</h1>
-  <div class="topic" id="dev-topic"></div>
+  <div class="topic-row">
+    <span class="topic" id="dev-topic"></span>
+    <span class="role-label" id="dev-role"></span>
+  </div>
 
   <div id="wifi-section" style="display:none">
   <h2>Join Network</h2>
@@ -182,6 +189,10 @@
         .then(function(d) {
           document.getElementById('dev-name').textContent = d.name;
           document.getElementById('dev-topic').textContent = d.topic;
+          var roleEl = document.getElementById('dev-role');
+          var role = d.role || 'device';
+          roleEl.textContent = 'Role: ' + role;
+          roleEl.className = 'role-label ' + role;
           if (d.wifi_enabled) {
             wifiEnabled = true;
             document.getElementById('wifi-section').style.display = 'block';

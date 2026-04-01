@@ -265,8 +265,8 @@ static void handleDeviceInfo(AsyncWebServerRequest *request) {
     const char* wifi_enabled = "false";
 #endif
     snprintf(json_buf, sizeof(json_buf),
-        "{\"name\":\"%s\",\"topic\":\"%s/%s/\",\"wifi_enabled\":%s}",
-        device_name, HOMIE_TOPIC_PREFIX, getDeviceID(), wifi_enabled);
+        "{\"name\":\"%s\",\"topic\":\"%s/%s/\",\"wifi_enabled\":%s,\"role\":\"%s\"}",
+        device_name, HOMIE_TOPIC_PREFIX, getDeviceID(), wifi_enabled, homie_role);
     request->send(200, "application/json", json_buf);
 }
 

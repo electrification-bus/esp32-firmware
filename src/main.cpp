@@ -59,11 +59,6 @@ void setup() {
     // Start web server (captive portal with WiFi AP, or HTTP API over ethernet)
     captive_portal_start();
 
-#ifdef CONFIG_WIFI_AP
-    // Start WiFi STA if credentials are saved (from config or previous portal session)
-    setup_wifi_sta();
-#endif
-
     // Wait for at least one network interface to get an IP
     while (!client_connected()) {
         captive_portal_loop();  // Keep portal responsive while waiting
@@ -71,12 +66,25 @@ void setup() {
         delay(1000);
     }
 
+    // Resolve radio grants now that network status is known
+    radio_resolve();
+    radio_apply();  // log radio grants (no WiFi teardown — breaks ethernet sockets)
+
+    // Start WiFi STA if granted and credentials are saved
+#ifdef CONFIG_WIFI_AP
+    if (radio_query(RADIO_WIFI) == RADIO_GRANT_ALLOWED) {
+        setup_wifi_sta();
+    }
+#endif
+
     // Log which interfaces are active
     const char* eth_ip = get_eth_ip();
     if (eth_ip[0] != '\0') Serial.printf("Network: Ethernet IP=%s (preferred)\n", eth_ip);
 #ifdef CONFIG_WIFI_AP
-    const char* wifi_ip = get_wifi_ip();
-    if (wifi_ip[0] != '\0') Serial.printf("Network: WiFi STA IP=%s\n", wifi_ip);
+    if (radio_query(RADIO_WIFI) == RADIO_GRANT_ALLOWED) {
+        const char* wifi_ip = get_wifi_ip();
+        if (wifi_ip[0] != '\0') Serial.printf("Network: WiFi STA IP=%s\n", wifi_ip);
+    }
 #endif
 
     // Start mDNS (also discovers MQTT brokers on LAN)
@@ -112,7 +120,7 @@ void setup() {
 
     // Initialize the Homie controller
     Serial.println("CONTROLLER: Initializing controller mode");
-    controller_init(&mqtt_client, HOMIE_HOMIE, false);
+    controller_init(&mqtt_client, top_level_topic(), false);
 
     // Register controller callback to receive MQTT messages
     mqtt_set_fallback_callback(controller_mqtt_callback);

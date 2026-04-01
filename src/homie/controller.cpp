@@ -5,7 +5,7 @@
 
 // Module state
 static MQTTClient* _mqtt_client = nullptr;
-static char _domain[16] = HOMIE_HOMIE;
+static char _domain[16] = HOMIE_TOPIC_DOMAIN;
 static char _version[8] = HOMIE_VERSION_NUM;
 static bool _discover_all_domains = true;  // If true, use wildcard for domain discovery
 

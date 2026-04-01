@@ -505,7 +505,6 @@ bool setup_wifi_sta() {
 
 void setup_ethernet()
 {
-
   WiFi.onEvent(WiFiEvent);
   ETH.begin();
 }
