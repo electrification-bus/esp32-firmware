@@ -164,6 +164,8 @@ bool SerialBMS::setup() {
     _np_cell_voltages.setup(getNodeId(), "cell_voltages");
     _np_charge_control.setup(getNodeId(), "charge_control",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
+    _np_rescan.setup(getNodeId(), "rescan",
+        &NodeEntity::entity_settable_callback, (NodeEntity*)this);
 
     // Check if BT radio was granted by broker
     if (radio_query(RADIO_BT) != RADIO_GRANT_ALLOWED) {
@@ -198,14 +200,13 @@ bool SerialBMS::scanAndConnect() {
 
     _last_reconnect_attempt = millis();
 
-    // If we have a preferred address, try direct connect (no scan needed!)
     if (_ble_address[0] != '\0') {
-        Serial.printf("BMS BLE: Direct connect to preferred %s\n", _ble_address);
-        if (connectToDevice(_ble_address)) return true;
-        Serial.println("BMS BLE: Preferred address failed, falling back to scan");
+        // Preferred address known — retry it, never fall back to scan
+        Serial.printf("BMS BLE: Connecting to bms %s\n", _ble_address);
+        return connectToDevice(_ble_address);
     }
 
-    // No preferred address or it failed — scan for BMS devices
+    // No preferred address — scan for a BMS device
     Serial.printf("BMS BLE: Scanning for BLE devices (%ds)...\n", BMS_SCAN_DURATION);
 
     NimBLEScan* scan = NimBLEDevice::getScan();
@@ -226,14 +227,12 @@ bool SerialBMS::scanAndConnect() {
 
         Serial.printf("BMS BLE: Scan found: '%s' (%s) RSSI=%d\n", name, addr_str, rssi);
 
-        // Check for JBD BMS service UUID in advertisement
         if (device.isAdvertisingService(BMS_SERVICE_UUID)) {
             Serial.printf("BMS BLE: Service UUID match: %s\n", addr_str);
             match_idx = i;
             break;
         }
 
-        // Check for known JBD BMS name patterns
         if (name[0] != '\0') {
             char lower_name[32] = {0};
             for (int j = 0; j < 31 && name[j]; j++) {
@@ -248,7 +247,6 @@ bool SerialBMS::scanAndConnect() {
             }
         }
 
-        // Track strongest signal as fallback
         if (rssi > best_rssi) {
             best_rssi = rssi;
             best_idx = i;
@@ -652,7 +650,15 @@ void SerialBMS::entity_settable_callback(Property* property) {
 void SerialBMS::entity_settable_callback(const char* property_id, const char* value) {
     Serial.printf("BMS: settable callback '%s'='%s'\n", property_id, value);
 
-    if (strcmp(property_id, "charge_control") == 0) {
+    if (strcmp(property_id, "rescan") == 0) {
+        if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0) {
+            Serial.println("BMS: Rescan requested via MQTT — clearing preferred address");
+            clearPreferredAddress();
+            disconnect();
+            _last_reconnect_attempt = 0;  // loop() will call scanAndConnect() immediately
+            _np_rescan.set_value_and_publish(false);  // reset — it's a trigger, not state
+        }
+    } else if (strcmp(property_id, "charge_control") == 0) {
         if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0 ||
             strcmp(value, "on") == 0 || strcmp(value, "yes") == 0) {
             set(true);

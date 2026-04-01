@@ -210,6 +210,13 @@ nodes:
         settable: true
         retained: true
         value: false
+      - id: rescan
+        name: Rescan BLE
+        datatype: boolean
+        settable: true
+        retained: false
+        value: false
+        description: "Set true to clear saved BMS address and scan for a new device"
 # --- ota: Over-the-air firmware update management ---
 #  - id: ota
 #    name: OTA Update

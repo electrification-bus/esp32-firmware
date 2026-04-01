@@ -123,4 +123,5 @@ private:
     NodeProperty _np_temperature;
     NodeProperty _np_cell_voltages;
     NodeProperty _np_charge_control;  // settable: on/off controls CHG MOSFET
+    NodeProperty _np_rescan;          // settable: true clears saved BLE address and rescans
 };
