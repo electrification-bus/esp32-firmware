@@ -17,7 +17,6 @@
 #define BMS_BLE_TIMEOUT   3000
 #define BMS_SCAN_DURATION      5  // seconds
 #define BMS_RECONNECT_INTERVAL 30000  // ms between reconnect attempts
-#define BMS_MAX_PREF_FAILURES  3  // clear saved address after this many consecutive failures
 
 // Decoded basic info (register 0x03)
 struct BmsBasicInfo {
@@ -111,7 +110,6 @@ private:
 
     // Reconnect state
     unsigned long _last_reconnect_attempt;
-    uint8_t _consecutive_failures;  // counts failed connection attempts on preferred address
     bool _ble_initialized;
 
     // Homie properties

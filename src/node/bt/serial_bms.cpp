@@ -97,7 +97,6 @@ SerialBMS::SerialBMS(const char* homie_node_id) : NodeEntity(homie_node_id) {
     _last_failure = 0;
     _poll_interval = BMS_POLL_INTERVAL;
     _last_reconnect_attempt = 0;
-    _consecutive_failures = 0;
     _ble_initialized = false;
 
     // Register BT radio need — resolved by radio_broker before setup()
@@ -202,19 +201,8 @@ bool SerialBMS::scanAndConnect() {
     // If we have a preferred address, try direct connect (no scan needed!)
     if (_ble_address[0] != '\0') {
         Serial.printf("BMS BLE: Direct connect to preferred %s\n", _ble_address);
-        if (connectToDevice(_ble_address)) {
-            _consecutive_failures = 0;
-            return true;
-        }
-
-        _consecutive_failures++;
-        Serial.printf("BMS BLE: Preferred address failed (%d/%d)\n",
-            _consecutive_failures, BMS_MAX_PREF_FAILURES);
-
-        if (_consecutive_failures >= BMS_MAX_PREF_FAILURES) {
-            clearPreferredAddress();
-            _consecutive_failures = 0;
-        }
+        if (connectToDevice(_ble_address)) return true;
+        Serial.println("BMS BLE: Preferred address failed, falling back to scan");
     }
 
     // No preferred address or it failed — scan for BMS devices
@@ -287,7 +275,6 @@ bool SerialBMS::scanAndConnect() {
 
     if (connectToDevice(_ble_address)) {
         savePreferredAddress(_ble_address);
-        _consecutive_failures = 0;
         return true;
     }
 
