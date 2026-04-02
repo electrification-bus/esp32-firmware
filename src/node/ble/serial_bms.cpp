@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <config.h>
-#include <node/bt/serial_bms.h>
+#include <node/ble/serial_bms.h>
 #include <radio/radio_broker.h>
 #include <network/mqtt_client.h>
 #include <Preferences.h>

@@ -5,7 +5,7 @@
 #include <node/modbus/eletechsup32.h>
 #include <node/modbus/sht20.h>
 #include <node/gpio/ssr.h>
-#include <node/bt/serial_bms.h>
+#include <node/ble/serial_bms.h>
 #include <node/ota_node.h>
 #include <modbus/modbus_master.h>
 
