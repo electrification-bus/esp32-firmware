@@ -21,6 +21,18 @@
 
 // Web server is always started (captive portal on WiFi AP boards, HTTP API on ethernet boards)
 
+void memstats() {
+    multi_heap_info_t heap_info;
+    heap_caps_get_info(&heap_info, MALLOC_CAP_8BIT);
+    Serial.printf("Memory: Total=%u bytes, Free=%u bytes, Largest Free Block=%u bytes\n",
+                  heap_info.total_free_bytes, heap_info.total_free_bytes, heap_info.largest_free_block);
+
+    Serial.printf("Free heap: %u bytes\n", ESP.getFreeHeap());
+    Serial.printf("Total heap: %u bytes\n", ESP.getHeapSize());
+    Serial.printf("Min free heap: %u bytes\n", ESP.getMinFreeHeap());
+    Serial.printf("PSRAM size: %d bytes\n", ESP.getPsramSize());
+    Serial.printf("Free PSRAM: %d bytes\n", ESP.getFreePsram());
+}
 #ifdef ENABLE_CONTROLLER
 // ============================================================================
 // CONTROLLER MODE - discovers and monitors other Homie devices
@@ -128,6 +140,8 @@ void setup() {
     // Setup device discovery
     controller_setup_discovery();
 
+    memstats();
+
     Serial.println("CONTROLLER: Ready - discovering devices...");
 }
 
@@ -197,6 +211,10 @@ void on_mqtt_reconnect() {
 
 void setup() {
     Serial.begin(115200);
+
+    Serial.printf("PSRAM size: %d bytes\n", ESP.getPsramSize());
+    Serial.printf("Free PSRAM: %d bytes\n", ESP.getFreePsram());
+
     delay(1000);
 
     Serial.println("\n\n===== HOMIE DEVICE =====");
@@ -305,6 +323,8 @@ void setup() {
     //loop_mqtt();  // Flush MQTT messages - ensure $state=ready is sent before continuing
 
     setup_homie();
+
+    memstats();
 }
 
 void loop() {

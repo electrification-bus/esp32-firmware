@@ -14,7 +14,7 @@ static ControllerDevice _devices[MAX_DISCOVERED_DEVICES];
 static int _device_count = 0;
 
 // Statistics
-static ControllerStats _stats = {0};
+static ControllerStats _stats = {0, 0, 0, 0, 0};
 
 // Forward declarations for internal functions
 static void handle_state_message(const char* domain, const char* device_id, const char* payload);
@@ -196,7 +196,6 @@ void controller_get_stats(ControllerStats* stats) {
         int total_props = 0;
         for (int i = 0; i < MAX_DISCOVERED_DEVICES; i++) {
             if (_devices[i].is_active && _devices[i].device) {
-                Device* dev = _devices[i].device;
                 // Count properties in all nodes
                 // Note: We'd need to iterate through nodes, but for now use approximation
                 total_props += _devices[i].has_description ? 1 : 0;
@@ -325,8 +324,9 @@ static void handle_description_message(const char* domain, const char* device_id
 
     ControllerDevice* ctrl_dev = &_devices[idx];
 
-    // Parse JSON description
-    JsonDocument doc;
+    // Parse JSON description (static to avoid stack overflow in MQTT callback)
+    static JsonDocument doc;
+    doc.clear();
     DeserializationError error = deserializeJson(doc, payload);
 
     if (error) {

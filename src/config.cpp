@@ -151,7 +151,6 @@ bool loadPlatformConfiguration() {
   
     return false;
   }
-  JsonObject dev_conf_obf = platform_config_json.to<JsonObject>();
   JsonDocument yml_config; // https://arduinojson.org/v6/assistant to compute the capacity of static (deprecated).
   Serial.printf("CONFIG: YAML config:'%s'\n", platform_config_file);
   DeserializationError error = deserializeYml( yml_config, file ); // convert yaml to json
