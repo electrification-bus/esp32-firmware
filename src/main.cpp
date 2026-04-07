@@ -211,10 +211,6 @@ void on_mqtt_reconnect() {
 
 void setup() {
     Serial.begin(115200);
-
-    Serial.printf("PSRAM size: %d bytes\n", ESP.getPsramSize());
-    Serial.printf("Free PSRAM: %d bytes\n", ESP.getFreePsram());
-
     delay(1000);
 
     Serial.println("\n\n===== HOMIE DEVICE =====");
