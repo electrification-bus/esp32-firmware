@@ -3,7 +3,7 @@
 
 class SSR : public NodeEntity {
     public:
-        SSR(const char* homie_node_id);
+        SSR(const char* homie_node_id) : NodeEntity(homie_node_id), _state(false), _pin(-1) {};
         ~SSR(){};
 
         bool setup() override;
@@ -19,6 +19,8 @@ class SSR : public NodeEntity {
     private:
         const char _homie_node_id[32] = {0};
         NodeProperty _state_property;
+        NodeProperty _pin_property;
         bool _state;
         bool LOW_TRIGGER = true;
+        int _pin;
 };

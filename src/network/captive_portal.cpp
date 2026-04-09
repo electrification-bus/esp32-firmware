@@ -114,6 +114,9 @@ static void performWifiScan() {
 
     WiFi.scanDelete();
     Serial.printf("PORTAL: %d unique networks after dedup\n", scanned_count);
+
+    // scanNetworks() disrupts the WiFi radio — reconnect if credentials are configured
+    setup_wifi_sta();
 }
 
 // Handle GET /api/wifi-scan - return JSON array of scanned networks

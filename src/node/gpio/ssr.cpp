@@ -5,28 +5,26 @@
 
 #define DEBUG_SSR false
 
-bool LOW_TRIGGER = true;
 int last_toggle = millis();
-
-SSR::SSR(const char* homie_node_id) : NodeEntity(homie_node_id) {
-    _state = false;
-}
 
 bool SSR::setup() {
     NodeEntity::setup();  // Base class first
     _state_property.setup(getNodeId(), "state", &NodeEntity::entity_settable_callback, (NodeEntity*)this);
-    pinMode(SSR1_PIN, OUTPUT);
+    _pin_property  .setup(getNodeId(), "pin");
+    _pin = atoi(_pin_property.value());
+    Serial.printf("SSR: pin=%d\n", _pin);
+    pinMode(_pin, OUTPUT);
     set_off_state();
     return true;
 }
 
 void SSR::set_on_state() {
-    digitalWrite(SSR1_PIN, LOW_TRIGGER ? LOW : HIGH);
+    digitalWrite(_pin, LOW_TRIGGER ? LOW : HIGH);
     _state = true;
 }
 
 void SSR::set_off_state() {
-    digitalWrite(SSR1_PIN, LOW_TRIGGER ? HIGH : LOW);
+    digitalWrite(_pin, LOW_TRIGGER ? HIGH : LOW);
     _state = false;
 }
 

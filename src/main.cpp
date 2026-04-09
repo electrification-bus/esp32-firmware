@@ -82,22 +82,18 @@ void setup() {
     radio_resolve();
     radio_apply();  // log radio grants (no WiFi teardown — breaks ethernet sockets)
 
-    // Start WiFi STA if granted and credentials are saved
-#ifdef CONFIG_WIFI_AP
+    // Start WiFi STA if granted and credentials are configured
     if (radio_query(RADIO_WIFI) == RADIO_GRANT_ALLOWED) {
-        setup_wifi_sta();
+        setup_wifi_sta();  // no-op if no wifi_ssid configured
     }
-#endif
 
     // Log which interfaces are active
     const char* eth_ip = get_eth_ip();
     if (eth_ip[0] != '\0') Serial.printf("Network: Ethernet IP=%s (preferred)\n", eth_ip);
-#ifdef CONFIG_WIFI_AP
     if (radio_query(RADIO_WIFI) == RADIO_GRANT_ALLOWED) {
         const char* wifi_ip = get_wifi_ip();
         if (wifi_ip[0] != '\0') Serial.printf("Network: WiFi STA IP=%s\n", wifi_ip);
     }
-#endif
 
     // Start mDNS (also discovers MQTT brokers on LAN)
     setup_mdns();
@@ -253,12 +249,10 @@ void setup() {
     radio_resolve();
     radio_apply();  // log radio grants (no WiFi teardown — breaks ethernet sockets)
 
-    // Start WiFi STA if granted and credentials are saved
-#ifdef CONFIG_WIFI_AP
+    // Start WiFi STA if granted and credentials are configured
     if (radio_query(RADIO_WIFI) == RADIO_GRANT_ALLOWED) {
-        setup_wifi_sta();
+        setup_wifi_sta();  // no-op if no wifi_ssid configured
     }
-#endif
 
     // Log which interfaces are active
     const char* eth_ip = get_eth_ip();

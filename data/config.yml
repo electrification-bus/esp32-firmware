@@ -1,6 +1,6 @@
 config:
-  - wifi_ssid:
-    wifi_password:
+  - wifi_ssid: REDACTED_WIFI_SSID 
+    wifi_password: REDACTED_WIFI_PASSWORD 123$
     # mqtt_mode controls how the MQTT broker is resolved:
     #   configured-only         - use only the mqtt_host/port from this config file
     #   discovery-with-fallback - try mDNS discovery first, fall back to config if none found
@@ -10,14 +10,14 @@ config:
     mqtt_port: 1883
     mqtt_username: public
     mqtt_password: public
-    device_id: esp32poeiso
+    device_id: Sunkit-001
     device_type: ebus
     firmware_name: ESP32POEISO Firmware
     firmware_version: 1.0.0
     firmware_url: http://example.com/firmware.bin
     # mDNS device info
     manufacturer: NESL
-    model: ESP32-POE-ISO
+    model: ESP32-DEVKITC-1
     serial_number:   # leave empty to use device_id
     homie_role: device  # "device" or "controller"
     device_passphrase: changeme  # required for OTA and admin REST endpoints
