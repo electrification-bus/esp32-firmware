@@ -9,8 +9,6 @@
 #define BME280_SCL_PIN 16
 #endif
 
-#define SSR1_PIN      GPIO_NUM_3
-
 #ifdef CONFIG_ETH_ENABLED //TODO this indicates an olimex - change to something specific to the olimex board
 #define RS485_RX_1             GPIO_NUM_36
 #define RS485_TX_1             GPIO_NUM_4
