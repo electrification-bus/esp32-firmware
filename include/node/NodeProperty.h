@@ -14,6 +14,15 @@ class NodeProperty {
             sprintf(_top, "%s%s/%s", theDevice.topic(), node_id, property_id);
             Serial.printf("NodeProperty: setup() topic: %s\n", _top);
             set_topic(_top);
+            // Load initial value from theDevice (already populated from homie.yml)
+            Node* n = theDevice.getNode(node_id);
+            if (n) {
+                Property* p = n->getProperty(property_id);
+                if (p) {
+                    strncpy(_value, p->value(), sizeof(_value) - 1);
+                    _value[sizeof(_value) - 1] = '\0';
+                }
+            }
         }
 
         void setup(const char* node_id, const char* property_id, entity_settable_callback_t cb, NodeEntity* ne) {
