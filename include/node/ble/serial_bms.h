@@ -1,6 +1,7 @@
 #pragma once
 
 #include <node/NodeEntity.h>
+#include <node/gpio/ssr.h>
 
 // JBD/Jiabaidu Smart BMS over BLE (GATT)
 // Derived from BTBatApp: BmsProtocol.kt + BtManager.kt
@@ -62,6 +63,9 @@ public:
     bool setMosfetDsgOff();
     bool setMosfetAllOff();
 
+    //Charge control
+    void charge_manager();
+
     // Accessors
     const BmsBasicInfo* getBasicInfo() const { return &_basic_info; }
     const BmsCellVoltages* getCellVoltages() const { return &_cell_voltages; }
@@ -76,8 +80,11 @@ public:
     void entity_settable_callback(Property* property) override;
     void entity_settable_callback(const char* property_id, const char* value) override;
     void set(bool onOff) override;
+    void setSSR(SSR* ssr) { _ssr = ssr; }
 
 private:
+    SSR* _ssr;  // optional SSR to mirror charge_control state
+
     // BLE internals
     bool _connected;
     char _ble_address[18];  // "XX:XX:XX:XX:XX:XX"
@@ -124,4 +131,6 @@ private:
     NodeProperty _np_cell_voltages;
     NodeProperty _np_charge_control;  // settable: on/off controls CHG MOSFET
     NodeProperty _np_rescan;          // settable: true clears saved BLE address and rescans
+    NodeProperty _np_charge_threshold_low;    // settable: low voltage threshold for charge control (enable charge below)
+    NodeProperty _np_charge_threshold_high;   // settable: high voltage threshold for charge control (disable charge above)
 };

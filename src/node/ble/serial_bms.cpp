@@ -86,6 +86,7 @@ void SerialBMS::onNotifyData(const uint8_t* data, size_t length) {
 // ---- Constructor ----
 
 SerialBMS::SerialBMS(const char* homie_node_id) : NodeEntity(homie_node_id) {
+    _ssr = nullptr;
     _connected = false;
     _ble_address[0] = '\0';
     _rx_len = 0;
@@ -162,9 +163,15 @@ bool SerialBMS::setup() {
     _np_mosfet.setup(getNodeId(), "mosfet_status");
     _np_temperature.setup(getNodeId(), "temperature");
     _np_cell_voltages.setup(getNodeId(), "cell_voltages");
+    
+    //settables
     _np_charge_control.setup(getNodeId(), "charge_control",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
     _np_rescan.setup(getNodeId(), "rescan",
+        &NodeEntity::entity_settable_callback, (NodeEntity*)this);
+    _np_charge_threshold_low.setup(getNodeId(), "charge_threshold_low",
+        &NodeEntity::entity_settable_callback, (NodeEntity*)this); 
+    _np_charge_threshold_high.setup(getNodeId(), "charge_threshold_high",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
 
     // Check if BT radio was granted by broker
@@ -595,6 +602,36 @@ bool SerialBMS::pollIntervalTrigger() {
     return false;
 }
 
+void SerialBMS::charge_manager() {
+    // Simple charge control logic: if SOC < 20% and MOSFET is off, turn it on. If SOC > 80% and MOSFET is on, turn it off.
+    //bool chg_off = (_basic_info.mosfet_status & 0x01) != 0;
+    int LOW_THRESHOLD = atoi(_np_charge_threshold_low.value());
+    int HIGH_THRESHOLD = atoi(_np_charge_threshold_high.value());
+    //sanity - set defaults if thresholds not defined or invalid
+    if (LOW_THRESHOLD <= 0) LOW_THRESHOLD = 5;
+    if (HIGH_THRESHOLD <= 0) HIGH_THRESHOLD = 80;
+    Serial.printf("BMS: Charge manager check: SOC=%d%%, thresholds: LOW=%d%% HIGH=%d%%\n",
+        _basic_info.soc, LOW_THRESHOLD, HIGH_THRESHOLD);
+    if (_basic_info.soc < LOW_THRESHOLD) {
+        if (_ssr) _ssr->set(true); //energize the contactor before enabling the charge MOSFETs
+        delay(1000);
+        Serial.printf("*** \nBMS: SOC low threshold reached: %d%%, enabling charge MOSFET", LOW_THRESHOLD);
+        if (setMosfetAllOn()) {
+            Serial.println("BMS: Charge MOSFET enabled - starting charge");
+        } else {
+            Serial.println("BMS: Failed to enable charge MOSFET");
+        }
+    } else if (_basic_info.soc > HIGH_THRESHOLD) {
+        Serial.printf("*** \nBMS: SOC high threshold reached: %d%%, disabling charge MOSFET", HIGH_THRESHOLD);
+        if (setMosfetChgOff()) { //disable charge MOSFET before de-energizing the contactor
+            Serial.println("BMS: Charge MOSFET disabled - stopping charge");
+        } else {
+            Serial.println("BMS: Failed to disable charge MOSFET");
+        }
+        delay(1000);
+        if (_ssr) _ssr->set(false);
+    }
+}
 // ---- Main Loop ----
 
 void SerialBMS::loop() {
@@ -625,8 +662,14 @@ void SerialBMS::loop() {
     if (pollIntervalTrigger()) {
         Serial.printf("BMS BLE: Polling %s (last OK %lus ago)\n",
             _ble_address, (millis() - _last_success) / 1000);
-        queryBasicInfo();
         queryCellVoltages();
+        if (queryBasicInfo()) {
+            Serial.println("BMS BLE: Poll successful");
+            charge_manager();
+        } else {
+            Serial.println("BMS BLE: Poll failed");
+
+        }
     }
 }
 
@@ -635,9 +678,15 @@ void SerialBMS::loop() {
 void SerialBMS::set(bool onOff) {
     Serial.printf("BMS: Charge control SET: %s\n", onOff ? "ON" : "OFF");
     if (onOff) {
+        //energize the AC contactor before re-enabling the charge MOSFETs
+        if (_ssr) _ssr->set(true);
+        delay(3000);
         setMosfetAllOn();
     } else {
         setMosfetChgOff();
+        delay(3000);
+        //de-energize the AC contactor after disabling the charge MOSFETs
+        if (_ssr) _ssr->set(false);
     }
     _np_charge_control.set_value_and_publish(onOff);
 }
@@ -667,6 +716,22 @@ void SerialBMS::entity_settable_callback(const char* property_id, const char* va
             set(false);
         } else {
             Serial.printf("BMS: invalid value '%s' for charge_control\n", value);
+        }
+    } else if (strcmp(property_id, "charge_threshold_low") == 0) {
+        int threshold = atoi(value);
+        if (threshold > 0 && threshold < 100) {
+            Serial.printf("BMS: Setting charge low-threshold to %d%%\n", threshold);
+            _np_charge_threshold_low.set_value_and_publish(threshold);
+        } else {
+            Serial.printf("BMS: Invalid charge_threshold_low value '%s'\n", value);
+        }
+    } else if (strcmp(property_id, "charge_threshold_high") == 0) {
+        int threshold = atoi(value);
+        if (threshold > 0 && threshold < 100) {
+            Serial.printf("BMS: Setting charge high-threshold to %d%%\n", threshold);
+            _np_charge_threshold_high.set_value_and_publish(threshold);
+        } else {
+            Serial.printf("BMS: Invalid charge_threshold_high value '%s'\n", value);
         }
     }
 }

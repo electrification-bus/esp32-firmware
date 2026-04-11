@@ -14,16 +14,17 @@
 //BME280 bme280("environment_bme280");
 //Modbus_Eletechsup32 iv_detector("voltage_current_detector", get_serial1());
 //Modbus_SHT20 sht20("environment_sht20", get_serial1());
-//SSR ssr("relay1");
 //OTANode otaNode("ota");
+SSR ssr("relay1");
 SerialBMS bms("battery_bms");
 
 void setup_homie() {
   //bme280.setup();
   //iv_detector.setup();
   //sht20.setup();
-  //ssr.setup();
   //otaNode.setup();
+  ssr.setup();
+  bms.setSSR(&ssr);  // the BMS has direct access to the SSR
   bms.setup();
 }
 
@@ -31,7 +32,7 @@ void loop_homie() {
     //bme280.loop();
     //iv_detector.loop();
     //sht20.loop();
-    //ssr.loop();
     //otaNode.loop();
+    ssr.loop();
     bms.loop();
 }

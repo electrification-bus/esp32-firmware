@@ -8,8 +8,14 @@ nodes:
     name: Solid State Relay
     type: gpio
     properties:
+      - id: pin
+        name: GPIO Pin
+        datatype: integer
+        value: 9
+        settable: false
+        retained: false
+        description: "GPIO pin number connected to the SSR control input"
       - id: state
-        pin: 9
         name: State
         datatype: "boolean"
         settable: true
@@ -218,6 +224,22 @@ nodes:
         retained: false
         value: false
         description: "Set true to clear saved BMS address and scan for a new device"
+      - id: charge_threshold_low
+        name: Low SOC Threshold
+        datatype: integer
+        unit: "%"
+        value: 20
+        settable: true
+        retained: true
+        description: "SOC percentage below which charging will be enabled"
+      - id: charge_threshold_high
+        name: High SOC Threshold
+        datatype: integer
+        unit: "%"
+        value: 80
+        settable: true
+        retained: true
+        description: "SOC percentage above which charging will be disabled"
 # --- ota: Over-the-air firmware update management ---
 #  - id: ota
 #    name: OTA Update
