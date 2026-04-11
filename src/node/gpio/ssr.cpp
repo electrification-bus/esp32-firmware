@@ -14,7 +14,11 @@ bool SSR::setup() {
     _pin = atoi(_pin_property.value());
     Serial.printf("SSR: pin=%d\n", _pin);
     pinMode(_pin, OUTPUT);
-    set_off_state();
+    if (LOW_TRIGGER) {
+        set_off_state();
+    } else {
+        set_on_state();
+    }
     return true;
 }
 
