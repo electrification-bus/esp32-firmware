@@ -6,6 +6,7 @@
 #include <esp_mac.h>
 #include <lwip/netif.h>
 #include <ETH.h>
+#include <time.h>
 #include <config.h>
 #include <network/network.h>
 #include <homie/homie.h>
@@ -425,6 +426,10 @@ void WiFiEvent(WiFiEvent_t event)
           }
         }
       }
+      configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+      setenv("TZ", NTP_TIMEZONE, 1);
+      tzset();
+      Serial.printf("NTP: sync started, TZ=%s\n", NTP_TIMEZONE);
       break;
     case ARDUINO_EVENT_ETH_DISCONNECTED:
       Serial.println("ETH Disconnected");
@@ -436,6 +441,10 @@ void WiFiEvent(WiFiEvent_t event)
       break;
     case ARDUINO_EVENT_WIFI_STA_GOT_IP:
       Serial.printf("WiFi STA: Got IP %s\n", WiFi.localIP().toString().c_str());
+      configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+      setenv("TZ", NTP_TIMEZONE, 1);
+      tzset();
+      Serial.printf("NTP: sync started, TZ=%s\n", NTP_TIMEZONE);
       break;
     default:
       break;

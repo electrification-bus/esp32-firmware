@@ -1,5 +1,9 @@
 homie: 5.0.1
-name: ESP32POEISO
+name: ESP32S3DEVKITC1
+#name: ESP32POEISO
+#name: ESP32POEISOWR
+#name: ESP32POEISO16
+#name: WESP32POE
 type: ebus
 state: init
 nodes:
@@ -240,6 +244,22 @@ nodes:
         settable: true
         retained: true
         description: "SOC percentage above which charging will be disabled"
+# define peak start and end times in minutes from midnight 
+# 16:55 = 16*60 + 55 = 1015, 21:05 = 21*60 + 5 = 1265
+      - id: peak_begin_min
+        name: Peak Window Start Time in minutes-of-day
+        datatype: integer
+        value: 1015
+        settable: true
+        retained: true
+        description: "Peak window start in minutes-of-day (e.g. 955 = 15:55)"
+      - id: peak_end_min
+        name: Peak Window End Time in minutes-of-day
+        datatype: integer
+        value: 1265
+        settable: true
+        retained: true
+        description: "Peak window end in minutes-of-day (e.g. 1265 = 21:05)"
 # --- ota: Over-the-air firmware update management ---
 #  - id: ota
 #    name: OTA Update

@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <time.h>
 #include <config.h>
 #include <node/ble/serial_bms.h>
 #include <radio/radio_broker.h>
@@ -7,6 +8,8 @@
 
 // NimBLE — lightweight BLE stack, supports direct connect by address
 #include <NimBLEDevice.h>
+
+#define MOCK_DEBUG_BMS false
 
 // JBD BMS BLE GATT UUIDs
 static NimBLEUUID BMS_SERVICE_UUID("0000ff00-0000-1000-8000-00805f9b34fb");
@@ -87,6 +90,8 @@ void SerialBMS::onNotifyData(const uint8_t* data, size_t length) {
 
 SerialBMS::SerialBMS(const char* homie_node_id) : NodeEntity(homie_node_id) {
     _ssr = nullptr;
+    _peak_state_known = false;
+    _last_peak_state = false;
     _connected = false;
     _ble_address[0] = '\0';
     _rx_len = 0;
@@ -172,6 +177,10 @@ bool SerialBMS::setup() {
     _np_charge_threshold_low.setup(getNodeId(), "charge_threshold_low",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this); 
     _np_charge_threshold_high.setup(getNodeId(), "charge_threshold_high",
+        &NodeEntity::entity_settable_callback, (NodeEntity*)this);
+    _np_peak_begin_min.setup(getNodeId(), "peak_begin_min",
+        &NodeEntity::entity_settable_callback, (NodeEntity*)this);
+    _np_peak_end_min.setup(getNodeId(), "peak_end_min",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
 
     // Check if BT radio was granted by broker
@@ -482,6 +491,24 @@ bool SerialBMS::decodeCellVoltages(const uint8_t* buf, uint8_t len) {
 // ---- BMS Query Commands ----
 
 bool SerialBMS::queryBasicInfo() {
+#if MOCK_DEBUG_BMS
+    // Mock data for peak/off-peak testing — bypasses BLE entirely
+    // SOC is set to 50% which sits between the default thresholds (LOW=5%, HIGH=80%), 
+    // so the charge manager won't act on it — peak/off-peak transitions are the only 
+    // thing that will fire. If you want to test the SOC threshold logic too, 
+    // change _basic_info.soc to a value outside that range.
+    _basic_info.voltage     = 52.80f;   // 16S LiFePO4 nominal
+    _basic_info.current     = -5.00f;   // discharging
+    _basic_info.remain_cap  = 50.00f;
+    _basic_info.nominal_cap = 100.00f;
+    _basic_info.cycles      = 42;
+    _basic_info.soc         = 50;       // mid-range: won't trip SOC thresholds
+    _basic_info.mosfet_status = 0x00;   // CHG=ON, DSG=ON
+    _basic_info.num_temps   = 1;
+    _basic_info.temps[0]    = 25.0f;
+    Serial.println("BMS: [MOCK_DEBUG_BMS] Using mock basic info (SOC=50%)");
+    _last_success = millis();
+#else
     if (!sendCommand(CMD_BASIC_INFO, sizeof(CMD_BASIC_INFO))) return false;
     if (!waitForFrame(BMS_BLE_TIMEOUT)) {
         Serial.println("BMS: Basic info timeout");
@@ -496,6 +523,7 @@ bool SerialBMS::queryBasicInfo() {
     }
 
     _last_success = millis();
+#endif
 
     const char* chg = (_basic_info.mosfet_status & 0x01) ? "OFF" : "ON";
     const char* dsg = (_basic_info.mosfet_status & 0x02) ? "OFF" : "ON";
@@ -531,6 +559,19 @@ bool SerialBMS::queryBasicInfo() {
 }
 
 bool SerialBMS::queryCellVoltages() {
+#if MOCK_DEBUG_BMS
+    // Mock 16-cell pack at nominal LiFePO4 voltages with slight variation
+    _cell_voltages.num_cells = 16;
+    static const float mock_cells[16] = {
+        3.301f, 3.298f, 3.302f, 3.299f, 3.300f, 3.301f, 3.298f, 3.297f,
+        3.300f, 3.302f, 3.299f, 3.301f, 3.298f, 3.300f, 3.299f, 3.301f
+    };
+    for (uint8_t i = 0; i < 16; i++) {
+        _cell_voltages.cells[i] = mock_cells[i];
+    }
+    Serial.println("BMS: [DEBUG] Using mock cell voltages (16 cells ~3.300V)");
+    _last_success = millis();
+#else
     if (!sendCommand(CMD_CELL_VOLTAGES, sizeof(CMD_CELL_VOLTAGES))) return false;
     if (!waitForFrame(BMS_BLE_TIMEOUT)) {
         Serial.println("BMS: Cell voltages timeout");
@@ -545,6 +586,7 @@ bool SerialBMS::queryCellVoltages() {
     }
 
     _last_success = millis();
+#endif
 
     // Publish cell voltages as JSON directly to MQTT (too large for NodeProperty's 32-byte buffer)
     // Format: {"count":16,"cells":[3.379,3.378,...],"min":3.371,"max":3.381,"delta":0.010}
@@ -575,21 +617,36 @@ bool SerialBMS::queryCellVoltages() {
 }
 
 // ---- MOSFET Control ----
-
 bool SerialBMS::setMosfetAllOn() {
-    return sendCommand(CMD_MOSFET_ALL_ON, sizeof(CMD_MOSFET_ALL_ON));
+    return MOCK_DEBUG_BMS ? true : sendCommand(CMD_MOSFET_ALL_ON, sizeof(CMD_MOSFET_ALL_ON));
 }
 
 bool SerialBMS::setMosfetChgOff() {
-    return sendCommand(CMD_MOSFET_CHG_OFF, sizeof(CMD_MOSFET_CHG_OFF));
+    return MOCK_DEBUG_BMS ? true : sendCommand(CMD_MOSFET_CHG_OFF, sizeof(CMD_MOSFET_CHG_OFF));
 }
 
 bool SerialBMS::setMosfetDsgOff() {
-    return sendCommand(CMD_MOSFET_DSG_OFF, sizeof(CMD_MOSFET_DSG_OFF));
+    return MOCK_DEBUG_BMS ? true : sendCommand(CMD_MOSFET_DSG_OFF, sizeof(CMD_MOSFET_DSG_OFF));
 }
 
 bool SerialBMS::setMosfetAllOff() {
-    return sendCommand(CMD_MOSFET_ALL_OFF, sizeof(CMD_MOSFET_ALL_OFF));
+    return MOCK_DEBUG_BMS ? true : sendCommand(CMD_MOSFET_ALL_OFF, sizeof(CMD_MOSFET_ALL_OFF));
+}
+
+// ---- Peak-hour scheduling ----
+
+// Returns true if current local time falls inside the configured peak window.
+// Returns false if time is unavailable (NTP not yet synced) — safe default is off-peak.
+bool SerialBMS::isPeakTime() {
+    struct tm t;
+    if (!getLocalTime(&t, 0)) {
+        return false;  // NTP not synced yet — treat as off-peak
+    }
+    int peak_start = atoi(_np_peak_begin_min.value());
+    int peak_end   = atoi(_np_peak_end_min.value());
+    if (peak_start <= 0 || peak_end  <= 0) return false;
+    int minutes_of_day = t.tm_hour * 60 + t.tm_min;
+    return (minutes_of_day >= peak_start && minutes_of_day < peak_end);
 }
 
 // ---- Poll Interval ----
@@ -603,38 +660,65 @@ bool SerialBMS::pollIntervalTrigger() {
 }
 
 void SerialBMS::charge_manager() {
-    // Simple charge control logic: if SOC < 20% and MOSFET is off, turn it on. If SOC > 80% and MOSFET is on, turn it off.
-    //bool chg_off = (_basic_info.mosfet_status & 0x01) != 0;
     int LOW_THRESHOLD = atoi(_np_charge_threshold_low.value());
     int HIGH_THRESHOLD = atoi(_np_charge_threshold_high.value());
-    //sanity - set defaults if thresholds not defined or invalid
-    if (LOW_THRESHOLD <= 0) LOW_THRESHOLD = 5;
+    if (LOW_THRESHOLD <= 0) LOW_THRESHOLD = 30;
     if (HIGH_THRESHOLD <= 0) HIGH_THRESHOLD = 80;
-    Serial.printf("BMS: Charge manager check: SOC=%d%%, thresholds: LOW=%d%% HIGH=%d%%\n",
-        _basic_info.soc, LOW_THRESHOLD, HIGH_THRESHOLD);
-    if (_basic_info.soc < LOW_THRESHOLD) {
-        if (_ssr) _ssr->set(true); //energize the contactor before enabling the charge MOSFETs
-        delay(1000);
-        Serial.printf("*** \nBMS: SOC low threshold reached: %d%%, enabling charge MOSFET", LOW_THRESHOLD);
-        if (setMosfetAllOn()) {
-            Serial.println("BMS: Charge MOSFET enabled - starting charge");
+
+    bool peak = isPeakTime();
+
+    // --- SSR (AC contactor): transitions only at peak/off-peak boundary ---
+    if (!_peak_state_known || peak != _last_peak_state) {
+        if (peak) {
+            // Entering peak: MOSFET off first, then open contactor
+            Serial.println("BMS: Entering peak period - disabling charge MOSFET then contactor");
+            setMosfetChgOff();
+            delay(1000);
+            if (_ssr) _ssr->set(false);
         } else {
-            Serial.println("BMS: Failed to enable charge MOSFET");
+            // Entering off-peak: close contactor, then enable CHG MOSFET unless battery is full
+            Serial.println("BMS: Entering off-peak period - enabling contactor");
+            if (_ssr) _ssr->set(true);
+            if (_basic_info.soc < HIGH_THRESHOLD) {
+                Serial.printf("BMS: Entering off-peak - enabling charge MOSFET (SOC=%d%% < HIGH=%d%%)\n",
+                    _basic_info.soc, HIGH_THRESHOLD);
+                if (!setMosfetAllOn()) {
+                    Serial.println("BMS: Failed to enable charge MOSFET on off-peak entry");
+                }
+            } else {
+                Serial.printf("BMS: Entering off-peak - charge MOSFET stays off (SOC=%d%% >= HIGH=%d%%)\n",
+                    _basic_info.soc, HIGH_THRESHOLD);
+            }
         }
-    } else if (_basic_info.soc > HIGH_THRESHOLD) {
-        Serial.printf("*** \nBMS: SOC high threshold reached: %d%%, disabling charge MOSFET", HIGH_THRESHOLD);
-        if (setMosfetChgOff()) { //disable charge MOSFET before de-energizing the contactor
-            Serial.println("BMS: Charge MOSFET disabled - stopping charge");
-        } else {
-            Serial.println("BMS: Failed to disable charge MOSFET");
-        }
-        delay(1000);
-        if (_ssr) _ssr->set(false);
+        _last_peak_state = peak;
+        _peak_state_known = true;
     }
+
+    // --- CHG MOSFET: SOC threshold control, off-peak only ---
+    if (!peak) {
+        Serial.printf("BMS: Off-peak charge manager: SOC=%d%%, LOW=%d%% HIGH=%d%%\n",
+            _basic_info.soc, LOW_THRESHOLD, HIGH_THRESHOLD);
+
+        if (_basic_info.soc < LOW_THRESHOLD) {
+            Serial.printf("BMS: SOC below low threshold (%d%%) - enabling charge MOSFET\n", LOW_THRESHOLD);
+            if (!setMosfetAllOn()) {
+                Serial.println("BMS: Failed to enable charge MOSFET");
+            }
+        } else if (_basic_info.soc > HIGH_THRESHOLD) {
+            Serial.printf("BMS: SOC above high threshold (%d%%) - disabling charge MOSFET\n", HIGH_THRESHOLD);
+            if (!setMosfetChgOff()) {
+                Serial.println("BMS: Failed to disable charge MOSFET");
+            }
+        }
+    } else {
+        Serial.println("BMS: Peak period - charge MOSFET control disabled");
+    }
+
 }
 // ---- Main Loop ----
 
 void SerialBMS::loop() {
+#if !MOCK_DEBUG_BMS
     if (!_ble_initialized) {
         static unsigned long last_noinit_log = 0;
         if (millis() - last_noinit_log > 60000) {
@@ -658,10 +742,17 @@ void SerialBMS::loop() {
         }
         return;
     }
+#endif
 
     if (pollIntervalTrigger()) {
-        Serial.printf("BMS BLE: Polling %s (last OK %lus ago)\n",
-            _ble_address, (millis() - _last_success) / 1000);
+        struct tm t;
+        if (getLocalTime(&t, 0)) {
+            Serial.printf("BMS BLE: Time now: [%04d-%02d-%02d %02d:%02d:%02d]\n",
+                t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                t.tm_hour, t.tm_min, t.tm_sec);
+        } else {
+            Serial.printf("BMS BLE: Polling (last OK %lus ago)\n", (millis() - _last_success) / 1000);
+        }
         queryCellVoltages();
         if (queryBasicInfo()) {
             Serial.println("BMS BLE: Poll successful");
@@ -732,6 +823,24 @@ void SerialBMS::entity_settable_callback(const char* property_id, const char* va
             _np_charge_threshold_high.set_value_and_publish(threshold);
         } else {
             Serial.printf("BMS: Invalid charge_threshold_high value '%s'\n", value);
+        }
+    } else if (strcmp(property_id, "peak_begin_min") == 0) {
+        int minutes = atoi(value);
+        if (minutes > 0 && minutes < 1440) {
+            Serial.printf("BMS: Setting peak start to %d min (%02d:%02d)\n",
+                minutes, minutes / 60, minutes % 60);
+            _np_peak_begin_min.set_value_and_publish(minutes);
+        } else {
+            Serial.printf("BMS: Invalid peak_begin_min value '%s'\n", value);
+        }
+    } else if (strcmp(property_id, "peak_end_min") == 0) {
+        int minutes = atoi(value);
+        if (minutes > 0 && minutes < 1440) {
+            Serial.printf("BMS: Setting peak end to %d min (%02d:%02d)\n",
+                minutes, minutes / 60, minutes % 60);
+            _np_peak_end_min.set_value_and_publish(minutes);
+        } else {
+            Serial.printf("BMS: Invalid peak_end_min value '%s'\n", value);
         }
     }
 }

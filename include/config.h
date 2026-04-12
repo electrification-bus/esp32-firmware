@@ -9,6 +9,12 @@
 
 #define MAX_DEVICE_ID_CHARS   64 // <device_name>_<6 hex MAC chars>
 
+// POSIX TZ string for local time — override in platformio.ini build_flags if needed
+// Examples: "EST5EDT,M3.2.0,M11.1.0"  "PST8PDT,M3.2.0,M11.1.0"  "UTC0"
+#ifndef NTP_TIMEZONE
+#define NTP_TIMEZONE "PST8PDT,M3.2.0,M11.1.0"
+#endif
+
 extern char wifi_ssid[33];
 extern char wifi_password[64];
 

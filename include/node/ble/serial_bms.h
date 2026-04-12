@@ -85,6 +85,10 @@ public:
 private:
     SSR* _ssr;  // optional SSR to mirror charge_control state
 
+    // Peak/off-peak scheduling state
+    bool _peak_state_known;   // false until first charge_manager() run
+    bool _last_peak_state;    // last known peak/off-peak state
+
     // BLE internals
     bool _connected;
     char _ble_address[18];  // "XX:XX:XX:XX:XX:XX"
@@ -99,6 +103,9 @@ private:
     bool waitForFrame(unsigned long timeout_ms);
     bool decodeBasicInfo(const uint8_t* buf, uint8_t len);
     bool decodeCellVoltages(const uint8_t* buf, uint8_t len);
+
+    // Peak-hour scheduling
+    bool isPeakTime();  // true if current local time is in peak window (with buffer)
 
     // NVS preferences for BLE address persistence
     void loadPreferredAddress();
@@ -133,4 +140,6 @@ private:
     NodeProperty _np_rescan;          // settable: true clears saved BLE address and rescans
     NodeProperty _np_charge_threshold_low;    // settable: low voltage threshold for charge control (enable charge below)
     NodeProperty _np_charge_threshold_high;   // settable: high voltage threshold for charge control (disable charge above)
+    NodeProperty _np_peak_begin_min;          // settable: peak window start in minutes-of-day (default 955 = 15:55)
+    NodeProperty _np_peak_end_min;            // settable: peak window end in minutes-of-day (default 1265 = 21:05)
 };
