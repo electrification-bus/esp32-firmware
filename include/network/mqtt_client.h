@@ -20,7 +20,7 @@ typedef void (Property::*property_settable_callback_t)(const char*, const char*)
 typedef void (NodeEntity::*entity_settable_callback_t)(Property*);
 
 struct subscribed_settable_property_t {
-    char topic[64];
+    char topic[128];
     property_settable_callback_t property_callback;
     entity_settable_callback_t entity_callback;
     Property* instance; // store the instance to call the member function on
