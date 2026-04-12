@@ -165,7 +165,9 @@ bool SerialBMS::setup() {
     _np_remain_cap.setup(getNodeId(), "remain_capacity");
     _np_nominal_cap.setup(getNodeId(), "nominal_capacity");
     _np_cycles.setup(getNodeId(), "cycles");
-    _np_mosfet.setup(getNodeId(), "mosfet_status");
+    _np_mosfet_charge.setup(getNodeId(), "mosfet_charge",
+        &NodeEntity::entity_settable_callback, (NodeEntity*)this);
+    _np_mosfet_discharge.setup(getNodeId(), "mosfet_discharge");
     _np_temperature.setup(getNodeId(), "temperature");
     _np_cell_voltages.setup(getNodeId(), "cell_voltages");
     
@@ -525,8 +527,8 @@ bool SerialBMS::queryBasicInfo() {
     _last_success = millis();
 #endif
 
-    const char* chg = (_basic_info.mosfet_status & 0x01) ? "OFF" : "ON";
-    const char* dsg = (_basic_info.mosfet_status & 0x02) ? "OFF" : "ON";
+    const char* chg = (_basic_info.mosfet_status & 0x01) ? "false" : "true";
+    const char* dsg = (_basic_info.mosfet_status & 0x02) ? "false" : "true";
 
     Serial.printf("BMS: %.2fV %.3fA SOC=%d%% Cap=%.2f/%.2fAh Cycles=%d CHG=%s DSG=%s\n",
         _basic_info.voltage, _basic_info.current, _basic_info.soc,
@@ -545,10 +547,8 @@ bool SerialBMS::queryBasicInfo() {
     _np_nominal_cap.set_value_and_publish(_basic_info.nominal_cap);
     _np_cycles.set_value_and_publish((int)_basic_info.cycles);
 
-    // MOSFET status as string
-    char mosfet_str[16];
-    snprintf(mosfet_str, sizeof(mosfet_str), "CHG=%s,DSG=%s", chg, dsg);
-    _np_mosfet.set_value_and_publish(mosfet_str);
+    _np_mosfet_charge.set_value_and_publish(chg);
+    _np_mosfet_discharge.set_value_and_publish(dsg);
 
     // First temperature sensor if available
     if (_basic_info.num_temps > 0) {
@@ -701,6 +701,11 @@ void SerialBMS::charge_manager() {
 
         if (_basic_info.soc < LOW_THRESHOLD) {
             Serial.printf("BMS: SOC below low threshold (%d%%) - enabling charge MOSFET\n", LOW_THRESHOLD);
+            if (_ssr && !_ssr->getState()) {
+                Serial.println("BMS: Contactor open - closing before enabling charge MOSFET");
+                _ssr->set(true);
+                delay(1000);
+            }
             if (!setMosfetAllOn()) {
                 Serial.println("BMS: Failed to enable charge MOSFET");
             }
@@ -771,11 +776,11 @@ void SerialBMS::set(bool onOff) {
     if (onOff) {
         //energize the AC contactor before re-enabling the charge MOSFETs
         if (_ssr) _ssr->set(true);
-        delay(3000);
+        delay(1500);
         setMosfetAllOn();
     } else {
         setMosfetChgOff();
-        delay(3000);
+        delay(1500);
         //de-energize the AC contactor after disabling the charge MOSFETs
         if (_ssr) _ssr->set(false);
     }
@@ -797,6 +802,18 @@ void SerialBMS::entity_settable_callback(const char* property_id, const char* va
             disconnect();
             _last_reconnect_attempt = 0;  // loop() will call scanAndConnect() immediately
             _np_rescan.set_value_and_publish(false);  // reset — it's a trigger, not state
+        }
+    } else if (strcmp(property_id, "mosfet_charge") == 0) {
+        if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0) {
+            Serial.println("BMS: mosfet_charge SET true");
+            setMosfetAllOn();
+            _np_mosfet_charge.set_value_and_publish("true");
+        } else if (strcmp(value, "false") == 0 || strcmp(value, "0") == 0) {
+            Serial.println("BMS: mosfet_charge SET false");
+            setMosfetChgOff();
+            _np_mosfet_charge.set_value_and_publish("false");
+        } else {
+            Serial.printf("BMS: invalid value '%s' for mosfet_charge (expected true/false)\n", value);
         }
     } else if (strcmp(property_id, "charge_control") == 0) {
         if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0 ||

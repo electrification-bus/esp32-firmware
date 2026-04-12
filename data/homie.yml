@@ -194,13 +194,18 @@ nodes:
         settable: false
         retained: true
         value: 0
-      - id: mosfet_status
-        name: MOSFET Status
-        datatype: string
+      - id: mosfet_charge
+        name: Charge MOSFET
+        datatype: boolean
+        settable: true
+        retained: true
+        value: false
+      - id: mosfet_discharge
+        name: Discharge MOSFET
+        datatype: boolean
         settable: false
         retained: true
-        value: ""
-        description: "CHG=ON/OFF,DSG=ON/OFF"
+        value: false
       - id: temperature
         name: Temperature
         datatype: float
@@ -232,7 +237,7 @@ nodes:
         name: Low SOC Threshold
         datatype: integer
         unit: "%"
-        value: 20
+        value: 22
         settable: true
         retained: true
         description: "SOC percentage below which charging will be enabled"
@@ -240,7 +245,7 @@ nodes:
         name: High SOC Threshold
         datatype: integer
         unit: "%"
-        value: 90
+        value: 88
         settable: true
         retained: true
         description: "SOC percentage above which charging will be disabled"

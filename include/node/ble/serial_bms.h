@@ -133,7 +133,8 @@ private:
     NodeProperty _np_remain_cap;
     NodeProperty _np_nominal_cap;
     NodeProperty _np_cycles;
-    NodeProperty _np_mosfet;
+    NodeProperty _np_mosfet_charge;    // settable: ON/OFF controls CHG MOSFET
+    NodeProperty _np_mosfet_discharge; // read-only: DSG MOSFET state
     NodeProperty _np_temperature;
     NodeProperty _np_cell_voltages;
     NodeProperty _np_charge_control;  // settable: on/off controls CHG MOSFET
