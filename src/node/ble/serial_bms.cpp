@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <time.h>
+#include "esp_log.h"
 #include <config.h>
 #include <node/ble/serial_bms.h>
 #include <radio/radio_broker.h>
@@ -185,6 +186,12 @@ bool SerialBMS::setup() {
     _np_peak_end_min.setup(getNodeId(), "peak_end_min",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
 
+    // Publish initial values of settable properties so broker has retained state
+    _np_charge_threshold_low.publish();
+    _np_charge_threshold_high.publish();
+    _np_peak_begin_min.publish();
+    _np_peak_end_min.publish();
+
     // Check if BT radio was granted by broker
     if (radio_query(RADIO_BT) != RADIO_GRANT_ALLOWED) {
         Serial.println("BMS BLE: BT radio not granted, BLE disabled");
@@ -196,6 +203,7 @@ bool SerialBMS::setup() {
 
     // Initialize NimBLE
     NimBLEDevice::init("ESP32_BMS");
+    esp_log_level_set("NimBLEClient", ESP_LOG_WARN);
     _ble_initialized = true;
     Serial.printf("BMS BLE: NimBLE initialized (heap after: %u)\n", ESP.getFreeHeap());
 
@@ -505,7 +513,7 @@ bool SerialBMS::queryBasicInfo() {
     _basic_info.nominal_cap = 100.00f;
     _basic_info.cycles      = 42;
     _basic_info.soc         = 50;       // mid-range: won't trip SOC thresholds
-    _basic_info.mosfet_status = 0x00;   // CHG=ON, DSG=ON
+    _basic_info.mosfet_status = 0x03;   // bit0=1, bit1=1 → charging allowed, discharging allowed
     _basic_info.num_temps   = 1;
     _basic_info.temps[0]    = 25.0f;
     Serial.println("BMS: [MOCK_DEBUG_BMS] Using mock basic info (SOC=50%)");
@@ -527,19 +535,25 @@ bool SerialBMS::queryBasicInfo() {
     _last_success = millis();
 #endif
 
-    const char* chg = (_basic_info.mosfet_status & 0x01) ? "false" : "true";
-    const char* dsg = (_basic_info.mosfet_status & 0x02) ? "false" : "true";
+    // Status register bit convention (opposite of control commands):
+    //   bit0=1 → charging enabled    bit0=0 → charging disabled
+    //   bit1=1 → discharging enabled  bit1=0 → discharging disabled
+    // (Control commands use inverse: CMD_MOSFET_CHG_OFF sends 0x01 to disable)
+    bool charging_allowed    = (_basic_info.mosfet_status & 0x01);
+    bool discharging_allowed = (_basic_info.mosfet_status & 0x02);
 
     Serial.printf("BMS: %.2fV %.3fA SOC=%d%% Cap=%.2f/%.2fAh Cycles=%d CHG=%s DSG=%s\n",
         _basic_info.voltage, _basic_info.current, _basic_info.soc,
         _basic_info.remain_cap, _basic_info.nominal_cap,
-        _basic_info.cycles, chg, dsg);
+        _basic_info.cycles,
+        charging_allowed    ? "allowed" : "disabled",
+        discharging_allowed ? "allowed" : "disabled");
 
     for (uint8_t i = 0; i < _basic_info.num_temps; i++) {
         Serial.printf("BMS: Temp%d=%.1fC\n", i + 1, _basic_info.temps[i]);
     }
 
-    // Publish to Homie MQTT
+    // Publish to Homie MQTT — true = allowed, false = disabled
     _np_voltage.set_value_and_publish(_basic_info.voltage);
     _np_current.set_value_and_publish(_basic_info.current);
     _np_soc.set_value_and_publish((int)_basic_info.soc);
@@ -547,8 +561,8 @@ bool SerialBMS::queryBasicInfo() {
     _np_nominal_cap.set_value_and_publish(_basic_info.nominal_cap);
     _np_cycles.set_value_and_publish((int)_basic_info.cycles);
 
-    _np_mosfet_charge.set_value_and_publish(chg);
-    _np_mosfet_discharge.set_value_and_publish(dsg);
+    _np_mosfet_charge.set_value_and_publish(charging_allowed    ? "true" : "false");
+    _np_mosfet_discharge.set_value_and_publish(discharging_allowed ? "true" : "false");
 
     // First temperature sensor if available
     if (_basic_info.num_temps > 0) {
@@ -617,20 +631,29 @@ bool SerialBMS::queryCellVoltages() {
 }
 
 // ---- MOSFET Control ----
+// Update mosfet_status optimistically so charge_manager guard works until next poll.
 bool SerialBMS::setMosfetAllOn() {
-    return MOCK_DEBUG_BMS ? true : sendCommand(CMD_MOSFET_ALL_ON, sizeof(CMD_MOSFET_ALL_ON));
+    bool ok = MOCK_DEBUG_BMS ? true : sendCommand(CMD_MOSFET_ALL_ON, sizeof(CMD_MOSFET_ALL_ON));
+    if (ok) _basic_info.mosfet_status |= 0x03;
+    return ok;
 }
 
 bool SerialBMS::setMosfetChgOff() {
-    return MOCK_DEBUG_BMS ? true : sendCommand(CMD_MOSFET_CHG_OFF, sizeof(CMD_MOSFET_CHG_OFF));
+    bool ok = MOCK_DEBUG_BMS ? true : sendCommand(CMD_MOSFET_CHG_OFF, sizeof(CMD_MOSFET_CHG_OFF));
+    if (ok) _basic_info.mosfet_status &= ~0x01;
+    return ok;
 }
 
 bool SerialBMS::setMosfetDsgOff() {
-    return MOCK_DEBUG_BMS ? true : sendCommand(CMD_MOSFET_DSG_OFF, sizeof(CMD_MOSFET_DSG_OFF));
+    bool ok = MOCK_DEBUG_BMS ? true : sendCommand(CMD_MOSFET_DSG_OFF, sizeof(CMD_MOSFET_DSG_OFF));
+    if (ok) _basic_info.mosfet_status &= ~0x02;
+    return ok;
 }
 
 bool SerialBMS::setMosfetAllOff() {
-    return MOCK_DEBUG_BMS ? true : sendCommand(CMD_MOSFET_ALL_OFF, sizeof(CMD_MOSFET_ALL_OFF));
+    bool ok = MOCK_DEBUG_BMS ? true : sendCommand(CMD_MOSFET_ALL_OFF, sizeof(CMD_MOSFET_ALL_OFF));
+    if (ok) _basic_info.mosfet_status = 0x00;
+    return ok;
 }
 
 // ---- Peak-hour scheduling ----
@@ -699,22 +722,27 @@ void SerialBMS::charge_manager() {
         Serial.printf("BMS: Off-peak charge manager: SOC=%d%%, LOW=%d%% HIGH=%d%%\n",
             _basic_info.soc, LOW_THRESHOLD, HIGH_THRESHOLD);
 
-        if (_basic_info.soc < LOW_THRESHOLD) {
-            Serial.printf("BMS: SOC below low threshold (%d%%) - enabling charge MOSFET\n", LOW_THRESHOLD);
+        bool chg_enabled = (_basic_info.mosfet_status & 0x01);  // bit0=1 means charging enabled
+        if (_basic_info.soc >= HIGH_THRESHOLD) {
+            if (chg_enabled) {
+                Serial.printf("BMS: SOC at/above high threshold (%d%%) - disabling charge MOSFET\n", HIGH_THRESHOLD);
+                if (!setMosfetChgOff()) {
+                    Serial.println("BMS: Failed to disable charge MOSFET");
+                }
+            }
+        } else if (!chg_enabled) {
             if (_ssr && !_ssr->getState()) {
                 Serial.println("BMS: Contactor open - closing before enabling charge MOSFET");
                 _ssr->set(true);
                 delay(1000);
             }
+            Serial.printf("BMS: SOC=%d%% below HIGH=%d%% - enabling charge MOSFET\n",
+            _basic_info.soc, HIGH_THRESHOLD);
             if (!setMosfetAllOn()) {
                 Serial.println("BMS: Failed to enable charge MOSFET");
             }
-        } else if (_basic_info.soc > HIGH_THRESHOLD) {
-            Serial.printf("BMS: SOC above high threshold (%d%%) - disabling charge MOSFET\n", HIGH_THRESHOLD);
-            if (!setMosfetChgOff()) {
-                Serial.println("BMS: Failed to disable charge MOSFET");
-            }
         }
+        
     } else {
         Serial.println("BMS: Peak period - charge MOSFET control disabled");
     }
@@ -808,6 +836,7 @@ void SerialBMS::entity_settable_callback(const char* property_id, const char* va
             Serial.println("BMS: mosfet_charge SET true");
             setMosfetAllOn();
             _np_mosfet_charge.set_value_and_publish("true");
+            _np_mosfet_discharge.set_value_and_publish("true");
         } else if (strcmp(value, "false") == 0 || strcmp(value, "0") == 0) {
             Serial.println("BMS: mosfet_charge SET false");
             setMosfetChgOff();

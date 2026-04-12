@@ -27,7 +27,7 @@ struct BmsBasicInfo {
     float nominal_cap;      // Ah
     uint16_t cycles;
     uint8_t soc;            // %
-    uint8_t mosfet_status;  // bit0=chg, bit1=dsg (1=OFF)
+    uint8_t mosfet_status;  // bit0=CHG, bit1=DSG (status: 1=enabled; control cmd: 1=disable)
     uint8_t num_temps;
     float temps[BMS_MAX_TEMPS]; // degrees C
 };
