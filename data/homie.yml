@@ -249,15 +249,15 @@ nodes:
         settable: true
         retained: true
         description: "SOC percentage above which charging will be disabled"
-# define peak start and end times in minutes from midnight 
-# 16:55 = 16*60 + 55 = 1015, 21:05 = 21*60 + 5 = 1265
+# define peak start and end times in minutes from midnight
+# 15:55 = 15*60 + 55 = 955, 21:05 = 21*60 + 5 = 1265
       - id: peak_begin_min
         name: Peak Window Start Time in minutes-of-day
         datatype: integer
-        value: 1015
+        value: 955
         settable: true
         retained: true
-        description: "Peak window start in minutes-of-day (e.g. 955 = 15:55)"
+        description: "Peak window start in minutes-of-day (e.g. 955 = 15:55 = 3:55 PM)"
       - id: peak_end_min
         name: Peak Window End Time in minutes-of-day
         datatype: integer
