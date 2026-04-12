@@ -240,7 +240,7 @@ nodes:
         name: High SOC Threshold
         datatype: integer
         unit: "%"
-        value: 80
+        value: 90
         settable: true
         retained: true
         description: "SOC percentage above which charging will be disabled"
