@@ -91,8 +91,9 @@ void SerialBMS::onNotifyData(const uint8_t* data, size_t length) {
 
 SerialBMS::SerialBMS(const char* homie_node_id) : NodeEntity(homie_node_id) {
     _ssr = nullptr;
-    _peak_state_known = false;
-    _last_peak_state = false;
+    _peak_state_known    = false;
+    _last_peak_state     = false;
+    _in_discharge_phase  = false;
     _connected = false;
     _ble_address[0] = '\0';
     _rx_len = 0;
@@ -185,12 +186,15 @@ bool SerialBMS::setup() {
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
     _np_peak_end_min.setup(getNodeId(), "peak_end_min",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
+    _np_threshold_discharge_daily.setup(getNodeId(), "threshold_discharge_daily",
+        &NodeEntity::entity_settable_callback, (NodeEntity*)this);
 
     // Publish initial values of settable properties so broker has retained state
     _np_charge_threshold_low.publish();
     _np_charge_threshold_high.publish();
     _np_peak_begin_min.publish();
     _np_peak_end_min.publish();
+    _np_threshold_discharge_daily.publish();
 
     // Check if BT radio was granted by broker
     if (radio_query(RADIO_BT) != RADIO_GRANT_ALLOWED) {
@@ -699,18 +703,27 @@ void SerialBMS::charge_manager() {
             delay(1000);
             if (_ssr) _ssr->set(false);
         } else {
-            // Entering off-peak: close contactor, then enable CHG MOSFET unless battery is full
-            Serial.println("BMS: Entering off-peak period - enabling contactor");
-            if (_ssr) _ssr->set(true);
-            if (_basic_info.soc < HIGH_THRESHOLD) {
-                Serial.printf("BMS: Entering off-peak - enabling charge MOSFET (SOC=%d%% < HIGH=%d%%)\n",
-                    _basic_info.soc, HIGH_THRESHOLD);
-                if (!setMosfetAllOn()) {
-                    Serial.println("BMS: Failed to enable charge MOSFET on off-peak entry");
-                }
+            // Entering off-peak
+            bool threshold_discharge = (strcmp(_np_threshold_discharge_daily.value(), "true") == 0);
+            if (threshold_discharge && _basic_info.soc > LOW_THRESHOLD) {
+                // threshold_discharge_daily: hold off — discharge to LOW before charging
+                Serial.printf("BMS: Entering off-peak - range discharge mode, SOC=%d%% > LOW=%d%%, holding charge/SSR\n",
+                    _basic_info.soc, LOW_THRESHOLD);
+                _in_discharge_phase = true;
             } else {
-                Serial.printf("BMS: Entering off-peak - charge MOSFET stays off (SOC=%d%% >= HIGH=%d%%)\n",
-                    _basic_info.soc, HIGH_THRESHOLD);
+                _in_discharge_phase = false;
+                Serial.println("BMS: Entering off-peak period - enabling contactor");
+                if (_ssr) _ssr->set(true);
+                if (_basic_info.soc < HIGH_THRESHOLD) {
+                    Serial.printf("BMS: Entering off-peak - enabling charge MOSFET (SOC=%d%% < HIGH=%d%%)\n",
+                        _basic_info.soc, HIGH_THRESHOLD);
+                    if (!setMosfetAllOn()) {
+                        Serial.println("BMS: Failed to enable charge MOSFET on off-peak entry");
+                    }
+                } else {
+                    Serial.printf("BMS: Entering off-peak - charge MOSFET stays off (SOC=%d%% >= HIGH=%d%%)\n",
+                        _basic_info.soc, HIGH_THRESHOLD);
+                }
             }
         }
         _last_peak_state = peak;
@@ -719,8 +732,27 @@ void SerialBMS::charge_manager() {
 
     // --- CHG MOSFET: SOC threshold control, off-peak only ---
     if (!peak) {
-        Serial.printf("BMS: Off-peak charge manager: SOC=%d%%, LOW=%d%% HIGH=%d%%\n",
-            _basic_info.soc, LOW_THRESHOLD, HIGH_THRESHOLD);
+        Serial.printf("BMS: Off-peak charge manager: SOC=%d%%, LOW=%d%% HIGH=%d%%%s\n",
+            _basic_info.soc, LOW_THRESHOLD, HIGH_THRESHOLD,
+            _in_discharge_phase ? " [discharge phase]" : "");
+
+        // threshold_discharge_daily: wait until SOC drops to LOW before enabling charge
+        if (_in_discharge_phase) {
+            if (_basic_info.soc <= LOW_THRESHOLD) {
+                Serial.printf("BMS: Discharge phase complete, SOC=%d%% <= LOW=%d%% - enabling contactor and charge MOSFET\n",
+                    _basic_info.soc, LOW_THRESHOLD);
+                _in_discharge_phase = false;
+                if (_ssr) _ssr->set(true);
+                delay(1000);
+                if (!setMosfetAllOn()) {
+                    Serial.println("BMS: Failed to enable charge MOSFET after discharge phase");
+                }
+            } else {
+                Serial.printf("BMS: Discharge phase: SOC=%d%% > LOW=%d%%, holding charge off\n",
+                    _basic_info.soc, LOW_THRESHOLD);
+            }
+            return;
+        }
 
         bool chg_enabled = (_basic_info.mosfet_status & 0x01);  // bit0=1 means charging enabled
         if (_basic_info.soc >= HIGH_THRESHOLD) {
@@ -887,6 +919,13 @@ void SerialBMS::entity_settable_callback(const char* property_id, const char* va
             _np_peak_end_min.set_value_and_publish(minutes);
         } else {
             Serial.printf("BMS: Invalid peak_end_min value '%s'\n", value);
+        }
+    } else if (strcmp(property_id, "threshold_discharge_daily") == 0) {
+        bool enable = (strcmp(value, "true") == 0);
+        Serial.printf("BMS: threshold_discharge_daily -> %s\n", enable ? "true" : "false");
+        _np_threshold_discharge_daily.set_value_and_publish(enable ? "true" : "false");
+        if (!enable) {
+            _in_discharge_phase = false;  // cancel any active discharge wait
         }
     }
 }

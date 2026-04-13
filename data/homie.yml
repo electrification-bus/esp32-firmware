@@ -265,6 +265,13 @@ nodes:
         settable: true
         retained: true
         description: "Peak window end in minutes-of-day (e.g. 1265 = 21:05)"
+      - id: threshold_discharge_daily
+        name: Threshold Discharge Daily
+        datatype: boolean
+        value: false
+        settable: true
+        retained: true
+        description: "When true, discharge to low SOC threshold before charging at off-peak start"
 # --- ota: Over-the-air firmware update management ---
 #  - id: ota
 #    name: OTA Update

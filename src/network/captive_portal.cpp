@@ -2,7 +2,7 @@
 #include <config.h>
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
-#include <SPIFFS.h>
+#include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <homie/homie.h>
 #include <portal_prefs.h>
@@ -305,7 +305,7 @@ static void handleMqttStatus(AsyncWebServerRequest *request) {
 // Serve config.html directly from SPIFFS (no intermediate buffer needed)
 static void serveConfigPage(AsyncWebServerRequest *request) {
     Serial.printf("PORTAL: serveConfigPage requested from %s\n", request->url().c_str());
-    AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/html/config.html", "text/html");
+    AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/html/config.html", "text/html");
     if (!response) {
         Serial.println("PORTAL: ERROR - Failed to open /html/config.html");
         request->send(500, "text/plain", "Failed to open config page");
@@ -413,7 +413,7 @@ static void handleBrokerCert(AsyncWebServerRequest *request) {
     char cert_path[96];
     mqtt_build_cert_path(mqtt_host, cert_path, sizeof(cert_path));
 
-    if (!SPIFFS.exists(cert_path)) {
+    if (!LittleFS.exists(cert_path)) {
         static char msg[128];
         snprintf(msg, sizeof(msg), "No certificate found for broker '%s'", mqtt_host);
         request->send(404, "text/plain", msg);
@@ -421,7 +421,7 @@ static void handleBrokerCert(AsyncWebServerRequest *request) {
     }
 
     Serial.printf("PORTAL: Serving broker cert '%s'\n", cert_path);
-    request->send(SPIFFS, cert_path, "text/plain");
+    request->send(LittleFS, cert_path, "text/plain");
 }
 
 // Handle POST /api/broker-cert - upload a CA cert and save to SPIFFS (requires Basic Auth)
@@ -444,11 +444,11 @@ static void handleBrokerCertUpload(AsyncWebServerRequest *request) {
     }
 
     // Ensure /certs directory exists
-    if (!SPIFFS.exists("/certs")) {
-        SPIFFS.mkdir("/certs");
+    if (!LittleFS.exists("/certs")) {
+        LittleFS.mkdir("/certs");
     }
 
-    File certFile = SPIFFS.open("/certs/uploaded-cert.ca", FILE_WRITE);
+    File certFile = LittleFS.open("/certs/uploaded-cert.ca", FILE_WRITE);
     if (!certFile) {
         request->send(500, "application/json",
             "{\"status\":\"error\",\"message\":\"Failed to write cert file\"}");
@@ -545,7 +545,7 @@ void captive_portal_loop() {
 
 void captive_portal_start() {
     // Mount SPIFFS to serve HTML
-    if (!SPIFFS.begin(true)) {
+    if (!LittleFS.begin(true)) {
         Serial.println("PORTAL: ERROR - Failed to mount SPIFFS");
         return;
     }
@@ -589,7 +589,7 @@ void captive_portal_start() {
     server.on("/api/ota", HTTP_GET, handleOtaStatus);
     server.on("/api/ota", HTTP_POST, handleOtaToggle, NULL, accumulateBody);
     server.on("/api/openapi.yml", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(SPIFFS, "/openapi.yml", "text/yaml");
+        request->send(LittleFS, "/openapi.yml", "text/yaml");
     });
 
 #ifdef CONFIG_WIFI_AP

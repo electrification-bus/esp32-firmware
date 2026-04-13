@@ -86,8 +86,9 @@ private:
     SSR* _ssr;  // optional SSR to mirror charge_control state
 
     // Peak/off-peak scheduling state
-    bool _peak_state_known;   // false until first charge_manager() run
-    bool _last_peak_state;    // last known peak/off-peak state
+    bool _peak_state_known;      // false until first charge_manager() run
+    bool _last_peak_state;       // last known peak/off-peak state
+    bool _in_discharge_phase;    // true when threshold_discharge_daily waiting for SOC to reach LOW
 
     // BLE internals
     bool _connected;
@@ -143,4 +144,5 @@ private:
     NodeProperty _np_charge_threshold_high;   // settable: high voltage threshold for charge control (disable charge above)
     NodeProperty _np_peak_begin_min;          // settable: peak window start in minutes-of-day (default 955 = 15:55)
     NodeProperty _np_peak_end_min;            // settable: peak window end in minutes-of-day (default 1265 = 21:05)
+    NodeProperty _np_threshold_discharge_daily;   // settable: when true, discharge to low threshold before charging at off-peak start
 };

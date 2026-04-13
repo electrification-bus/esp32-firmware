@@ -37,7 +37,7 @@
 #include <node/NodeEntity.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
-#include <SPIFFS.h>
+#include <LittleFS.h>
 #include <mbedtls/base64.h>
 #define ENABLE_DEBUG_MQTT = 1
 
@@ -228,12 +228,12 @@ static bool mqtt_fetch_and_save_root_cert() {
   secureClient.stop();
 
   // Build PEM directly into SPIFFS file to avoid needing another large buffer
-  if (!SPIFFS.begin(true)) {
+  if (!LittleFS.begin(true)) {
     Serial.println("TLS: ERROR - Failed to mount SPIFFS to save cert");
     return false;
   }
 
-  File certFile = SPIFFS.open(cert_path, FILE_WRITE);
+  File certFile = LittleFS.open(cert_path, FILE_WRITE);
   if (!certFile) {
     Serial.printf("TLS: ERROR - Failed to create cert file '%s'\n", cert_path);
     return false;

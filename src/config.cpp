@@ -1,6 +1,6 @@
 #include <config.h>
 #include <Arduino.h>
-#include <SPIFFS.h>
+#include <LittleFS.h>
 #include <ArduinoYaml.h>
 #include <util/jsonUtils.h>
 #include <portal_prefs.h>
@@ -96,14 +96,14 @@ const char* getDeviceID() {
 
 bool loadConfiguration() {
   Serial.println("CONFIG: trying SPIFFS");
-  if(!SPIFFS.begin(true)){
+  if(!LittleFS.begin(true)){
     Serial.println("CONFIG: An Error has occurred while mounting SPIFFS");
     return false;
   }
 
   // List saved certificates
   Serial.println("CERTS: list certificates in /certs folder");
-  File certsDir = SPIFFS.open("/certs");
+  File certsDir = LittleFS.open("/certs");
   if (certsDir && certsDir.isDirectory()) {
     Serial.println("CERTS: /certs/");
     File f = certsDir.openNextFile();
@@ -139,11 +139,11 @@ bool loadPlatformConfiguration() {
   File file;
 
   //see if we have a config from the build (SPIFFS)
-  if (SPIFFS.exists(platform_config_file)) {
-    file = SPIFFS.open(platform_config_file, FILE_READ);
+  if (LittleFS.exists(platform_config_file)) {
+    file = LittleFS.open(platform_config_file, FILE_READ);
     Serial.println("CONFIG: LOAD from SPIFFS default");
-  } else if (SPIFFS.exists(config_file_backup)) {
-    file = SPIFFS.open(config_file_backup, FILE_READ);
+  } else if (LittleFS.exists(config_file_backup)) {
+    file = LittleFS.open(config_file_backup, FILE_READ);
     Serial.println("CONFIG: LOAD from SPIFFS backup (config_from_SD.json)");
   }
   if (!file) {
@@ -271,11 +271,11 @@ bool loadPlatformConfiguration() {
 bool loadHomieConfiguration() {
   File file;
   //HOMIE specific config
-  if (SPIFFS.exists(homie_config_file)) {
-    file = SPIFFS.open(homie_config_file, FILE_READ);
+  if (LittleFS.exists(homie_config_file)) {
+    file = LittleFS.open(homie_config_file, FILE_READ);
     Serial.println("HOMIE CONFIG: LOAD from SPIFFS default");
-  } else if (SPIFFS.exists(homie_config_file_backup)) {
-    file = SPIFFS.open(homie_config_file_backup, FILE_READ);
+  } else if (LittleFS.exists(homie_config_file_backup)) {
+    file = LittleFS.open(homie_config_file_backup, FILE_READ);
     Serial.println("HOMIE CONFIG: LOAD from SPIFFS backup (homie_config_from_SD.json)");
   }
   if (!file) {
@@ -397,16 +397,16 @@ const char* mqtt_load_ca_cert() {
   char cert_path[96];
   mqtt_build_cert_path(mqtt_host, cert_path, sizeof(cert_path));
 
-  if (!SPIFFS.begin(true)) {
+  if (!LittleFS.begin(true)) {
     Serial.println("TLS: Failed to mount SPIFFS for certificate");
     return nullptr;
   }
 
   // Try broker-specific cert first, then uploaded cert as fallback
   const char* actual_path = nullptr;
-  if (SPIFFS.exists(cert_path)) {
+  if (LittleFS.exists(cert_path)) {
     actual_path = cert_path;
-  } else if (SPIFFS.exists("/certs/uploaded-cert.ca")) {
+  } else if (LittleFS.exists("/certs/uploaded-cert.ca")) {
     actual_path = "/certs/uploaded-cert.ca";
     Serial.printf("TLS: Broker cert '%s' not found, using uploaded cert\n", cert_path);
   } else {
@@ -414,7 +414,7 @@ const char* mqtt_load_ca_cert() {
     return nullptr;
   }
 
-  File certFile = SPIFFS.open(actual_path, FILE_READ);
+  File certFile = LittleFS.open(actual_path, FILE_READ);
   if (!certFile) {
     Serial.printf("TLS: Failed to open CA certificate '%s'\n", actual_path);
   
