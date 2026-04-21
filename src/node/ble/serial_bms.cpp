@@ -3,7 +3,7 @@
 #include "esp_log.h"
 #include <config.h>
 #include <node/ble/serial_bms.h>
-#include <radio/radio_broker.h>
+#include <homie.h>
 #include <network/mqtt_client.h>
 #include <Preferences.h>
 
@@ -107,8 +107,7 @@ SerialBMS::SerialBMS(const char* homie_node_id) : NodeEntity(homie_node_id) {
     _last_reconnect_attempt = 0;
     _ble_initialized = false;
 
-    // Register BT radio need — resolved by radio_broker before setup()
-    radio_request(RADIO_BT, "battery_bms");
+    NODE_REQUIRES_BLUETOOTH = true;
 }
 
 void SerialBMS::setBleAddress(const char* address) {
@@ -196,9 +195,8 @@ bool SerialBMS::setup() {
     _np_peak_end_min.publish();
     _np_threshold_discharge_daily.publish();
 
-    // Check if BT radio was granted by broker
-    if (radio_query(RADIO_BT) != RADIO_GRANT_ALLOWED) {
-        Serial.println("BMS BLE: BT radio not granted, BLE disabled");
+    if (!NODE_REQUIRES_BLUETOOTH) {
+        Serial.println("BMS BLE: BT not available, BLE disabled");
         _ble_initialized = false;
         return true;  // graceful degradation — node exists but won't poll
     }

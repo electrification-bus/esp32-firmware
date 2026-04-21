@@ -13,11 +13,11 @@
 
 #include <Arduino.h>
 #include <network/network.h>
-#include <radio/radio_broker.h>
 #include <config.h>
 #include <network/mqtt_client.h>
 #include <ESPmDNS.h>
 #include <network/captive_portal.h>
+#include <homie.h>
 
 // Web server is always started (captive portal on WiFi AP boards, HTTP API on ethernet boards)
 
@@ -78,22 +78,16 @@ void setup() {
         delay(1000);
     }
 
-    // Resolve radio grants now that network status is known
-    radio_resolve();
-    radio_apply();  // log radio grants (no WiFi teardown — breaks ethernet sockets)
-
-    // Start WiFi STA if granted and credentials are configured
-    if (radio_query(RADIO_WIFI) == RADIO_GRANT_ALLOWED) {
+    // Start WiFi STA unless a node needs Bluetooth (shared radio — ETH provides MQTT transport)
+    if (!NODE_REQUIRES_BLUETOOTH) {
         setup_wifi_sta();  // no-op if no wifi_ssid configured
     }
 
     // Log which interfaces are active
     const char* eth_ip = get_eth_ip();
     if (eth_ip[0] != '\0') Serial.printf("Network: Ethernet IP=%s (preferred)\n", eth_ip);
-    if (radio_query(RADIO_WIFI) == RADIO_GRANT_ALLOWED) {
-        const char* wifi_ip = get_wifi_ip();
-        if (wifi_ip[0] != '\0') Serial.printf("Network: WiFi STA IP=%s\n", wifi_ip);
-    }
+    const char* wifi_ip = get_wifi_ip();
+    if (wifi_ip[0] != '\0') Serial.printf("Network: WiFi STA IP=%s\n", wifi_ip);
 
     // Start mDNS (also discovers MQTT brokers on LAN)
     setup_mdns();
@@ -245,22 +239,16 @@ void setup() {
         delay(1000);
     }
 
-    // Resolve radio grants now that network status is known
-    radio_resolve();
-    radio_apply();  // log radio grants (no WiFi teardown — breaks ethernet sockets)
-
-    // Start WiFi STA if granted and credentials are configured
-    if (radio_query(RADIO_WIFI) == RADIO_GRANT_ALLOWED) {
+    // Start WiFi STA unless a node needs Bluetooth (shared radio — ETH provides MQTT transport)
+    if (!NODE_REQUIRES_BLUETOOTH) {
         setup_wifi_sta();  // no-op if no wifi_ssid configured
     }
 
     // Log which interfaces are active
     const char* eth_ip = get_eth_ip();
     if (eth_ip[0] != '\0') Serial.printf("Network: Ethernet IP=%s (preferred)\n", eth_ip);
-    if (radio_query(RADIO_WIFI) == RADIO_GRANT_ALLOWED) {
-        const char* wifi_ip = get_wifi_ip();
-        if (wifi_ip[0] != '\0') Serial.printf("Network: WiFi STA IP=%s\n", wifi_ip);
-    }
+    const char* wifi_ip = get_wifi_ip();
+    if (wifi_ip[0] != '\0') Serial.printf("Network: WiFi STA IP=%s\n", wifi_ip);
 
     // Start mDNS (also discovers MQTT brokers on LAN)
     setup_mdns();
