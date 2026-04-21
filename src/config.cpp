@@ -95,9 +95,9 @@ const char* getDeviceID() {
 }
 
 bool loadConfiguration() {
-  Serial.println("CONFIG: trying SPIFFS");
-  if(!LittleFS.begin(true)){
-    Serial.println("CONFIG: An Error has occurred while mounting SPIFFS");
+  Serial.println("CONFIG: mounting LittleFS");
+  if (!LittleFS.begin(false)) {
+    Serial.println("CONFIG: LittleFS mount failed — filesystem may need formatting or re-uploading");
     return false;
   }
 
@@ -397,8 +397,8 @@ const char* mqtt_load_ca_cert() {
   char cert_path[96];
   mqtt_build_cert_path(mqtt_host, cert_path, sizeof(cert_path));
 
-  if (!LittleFS.begin(true)) {
-    Serial.println("TLS: Failed to mount SPIFFS for certificate");
+  if (!LittleFS.begin(false)) {
+    Serial.println("TLS: Failed to mount LittleFS for certificate");
     return nullptr;
   }
 
