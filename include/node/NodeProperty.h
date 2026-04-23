@@ -1,6 +1,6 @@
 #pragma once
 #include <homie/Node.h>
-#include <network/mqtt_client.h>
+#include <etc/mqtt_client.h>
 #include <config.h>
 
 class NodeProperty {

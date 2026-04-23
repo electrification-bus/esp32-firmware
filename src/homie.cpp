@@ -26,14 +26,14 @@
 bool NODE_REQUIRES_BLUETOOTH = false;
 
 // Example nodes supported by this Homie device (includes always active for IDE support)
-#include <node/i2c/bme280.h>
-#include <node/modbus/eletechsup32.h>
-#include <node/modbus/sht20.h>
-#include <node/gpio/ssr.h>
-#include <node/gpio/serial_modem.h>
-#include <node/ble/serial_bms.h>
-#include <node/spi/atm90e32_energy_meter.h>
-#include <node/ota_node.h>
+#include <i2c/bme280.h>
+#include <modbus/eletechsup32.h>
+#include <modbus/sht20.h>
+#include <gpio/ssr.h>
+#include <gpio/serial_modem.h>
+#include <ble/serial_bms.h>
+#include <spi/atm90e32_energy_meter.h>
+#include <ota/ota_node.h>
 #include <modbus/modbus_master.h>
 
 // Nodes (sensors/actuators) attached to this Homie device

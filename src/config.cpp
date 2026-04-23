@@ -4,7 +4,7 @@
 #include <ArduinoYaml.h>
 #include <util/jsonUtils.h>
 #include <portal_prefs.h>
-#include <network/network.h>
+#include <etc/network.h>
 
 Device theDevice;
 

@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <network/mqtt_client.h>
+#include <etc/mqtt_client.h>
 class Node;
 
 class Property {
