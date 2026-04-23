@@ -506,14 +506,9 @@ bool setup_wifi_sta() {
   return true;
 }
 
-void setup_ethernet()
-{
+void setup_ethernet() {
   WiFi.onEvent(WiFiEvent);
   ETH.begin();
-}
-
-
-void loop_ethernet() {
 }
 
 #define MDNS_BROKER_POLL_MS 30000

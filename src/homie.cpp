@@ -29,7 +29,7 @@ bool NODE_REQUIRES_BLUETOOTH = false;
  Example nodes supported by this Homie device:
 
  Uncomment the #include, the static instantiation, the setup() call, 
- and the loop() call for any nodes you want to use, and add their config 
+ and the loop() call for any nodes you want to use, and add their config .yml
  to homie.yml
 */
 
@@ -37,7 +37,6 @@ bool NODE_REQUIRES_BLUETOOTH = false;
 //#include <modbus/eletechsup32.h>
 //#include <modbus/sht20.h>
 //#include <gpio/ssr.h>
-//#include <gpio/serial_modem.h>
 //#include <ble/serial_bms.h>
 //#include <spi/atm90e32_energy_meter.h>
 //#include <ota/ota_node.h>
@@ -49,7 +48,7 @@ bool NODE_REQUIRES_BLUETOOTH = false;
 //Modbus_Eletechsup32 iv_detector("voltage_current_detector", get_serial1());
 //Modbus_SHT20 sht20("environment_sht20", get_serial1());
 //OTANode otaNode("ota");
-//SSR ssr("relay1");
+//SSR ssr("ssrelay");
 //SerialBMS bms("battery_bms");
 //EnergyMeter energyMeter("energy_meter");
 

@@ -1,9 +1,9 @@
 homie: 5.0.1
-name: MY_DEVICE
+name: EBUS
 type: ebus
 state: init
 nodes:
-  - id: relay1
+  - id: ssrelay
     name: Solid State Relay
     type: gpio
     properties:

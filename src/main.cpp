@@ -305,19 +305,20 @@ void setup() {
     memstats();
 }
 
-void loop() {
+void loop_housekeeping() {
     captive_portal_loop();
-
     // Handle MQTT reconfiguration from web server
     if (captive_portal_mqtt_changed()) {
         Serial.println("MQTT config updated via web server, reconnecting...");
         mqtt_restart();
         setup_mqtt();
     }
-
     loop_mdns();
-    // MQTT must run first and frequently to maintain keepalive
     loop_mqtt();
+}
+
+void loop() {
+    loop_housekeeping();
     loop_homie();
 }
 

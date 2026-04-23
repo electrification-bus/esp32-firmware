@@ -1,5 +1,5 @@
 homie: 5.0.1
-name: MY_DEVICE
+name: EBUS
 type: ebus
 state: init
 nodes:
