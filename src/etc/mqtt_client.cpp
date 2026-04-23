@@ -31,7 +31,7 @@
 #include <TimeLib.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoYaml.h>
-#include <config.h>
+#include <etc/config.h>
 #include <etc/network.h>
 #include <homie/Property.h>
 #include <node/NodeEntity.h>

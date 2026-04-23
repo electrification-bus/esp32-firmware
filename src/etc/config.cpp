@@ -1,9 +1,9 @@
-#include <config.h>
+#include <etc/config.h>
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <ArduinoYaml.h>
 #include <util/jsonUtils.h>
-#include <portal_prefs.h>
+#include <etc/portal_prefs.h>
 #include <etc/network.h>
 
 Device theDevice;

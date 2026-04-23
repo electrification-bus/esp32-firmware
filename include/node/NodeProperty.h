@@ -1,7 +1,7 @@
 #pragma once
 #include <homie/Node.h>
 #include <etc/mqtt_client.h>
-#include <config.h>
+#include <etc/config.h>
 
 class NodeProperty {
     public:

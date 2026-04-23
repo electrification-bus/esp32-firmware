@@ -1,5 +1,5 @@
 #include <node/ModbusRTUEntity.h>
-#include <config.h>
+#include <etc/config.h>
 
 // Static member initialization
 bool ModbusRTUEntity::_modbus_subsystem_initialized = false;

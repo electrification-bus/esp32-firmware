@@ -13,7 +13,7 @@
 
 #include <Arduino.h>
 #include <etc/network.h>
-#include <config.h>
+#include <etc/config.h>
 #include <etc/mqtt_client.h>
 #include <ESPmDNS.h>
 #include <etc/captive_portal.h>

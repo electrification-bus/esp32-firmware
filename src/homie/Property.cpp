@@ -1,4 +1,4 @@
-#include <config.h>
+#include <etc/config.h>
 #include "homie/Property.h"
 #include <homie/Node.h>
 #include <homie/Device.h>

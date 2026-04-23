@@ -7,7 +7,7 @@
 #include <lwip/netif.h>
 #include <ETH.h>
 #include <time.h>
-#include <config.h>
+#include <etc/config.h>
 #include <etc/network.h>
 #include <homie/homie.h>
 #include <etc/mdns_strings.h>
