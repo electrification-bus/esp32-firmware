@@ -12,40 +12,48 @@
  *   - Compatible with FreeRTOS tasks that reference node objects before the
  *     Arduino loop starts
  *
- * To add or remove a node: uncomment/comment its include, instantiation,
- * setup() call, and loop() call. Commented-out nodes consume no RAM or flash.
+ * To add a node:
+ *   1. Uncomment its object, setup(), and loop() lines below.
+ *   2. Copy the matching homie.yml from lib/node_examples/src/<type>/<node>.yml
+ *      into data/homie.yml (merge with any existing nodes you want to keep).
+ *   3. Build and flash.
+ *
+ * Commented-out nodes consume no RAM or flash.
  */
 
 #include <homie.h>
 
 bool NODE_REQUIRES_BLUETOOTH = false;
 
-//example nodes supported by this Homie device
+// Example nodes supported by this Homie device (includes always active for IDE support)
 #include <node/i2c/bme280.h>
 #include <node/modbus/eletechsup32.h>
 #include <node/modbus/sht20.h>
 #include <node/gpio/ssr.h>
+#include <node/gpio/serial_modem.h>
 #include <node/ble/serial_bms.h>
+#include <node/spi/atm90e32_energy_meter.h>
 #include <node/ota_node.h>
 #include <modbus/modbus_master.h>
 
-//Nodes (sensors/actuators) attached to this Homie device
-
+// Nodes (sensors/actuators) attached to this Homie device
 //BME280 bme280("environment_bme280");
 //Modbus_Eletechsup32 iv_detector("voltage_current_detector", get_serial1());
 //Modbus_SHT20 sht20("environment_sht20", get_serial1());
 //OTANode otaNode("ota");
-SSR ssr("relay1");
+//SSR ssr("relay1");
 //SerialBMS bms("battery_bms");
+//EnergyMeter energyMeter("energy_meter");
 
 void setup_homie() {
-  //bme280.setup();
-  //iv_detector.setup();
-  //sht20.setup();
-  //otaNode.setup();
-  ssr.setup();
-  //bms.setSSR(&ssr);  // the BMS has direct access to the SSR
-  //bms.setup();
+    //bme280.setup();
+    //iv_detector.setup();
+    //sht20.setup();
+    //otaNode.setup();
+    //ssr.setup();
+    //bms.setSSR(&ssr);
+    //bms.setup();
+    //energyMeter.setup();
 }
 
 void loop_homie() {
@@ -53,6 +61,7 @@ void loop_homie() {
     //iv_detector.loop();
     //sht20.loop();
     //otaNode.loop();
-    ssr.loop();
+    //ssr.loop();
     //bms.loop();
+    //energyMeter.loop();
 }

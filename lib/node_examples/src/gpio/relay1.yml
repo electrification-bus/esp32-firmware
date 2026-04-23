@@ -1,0 +1,25 @@
+homie: 5.0.1
+name: MY_DEVICE
+type: ebus
+state: init
+nodes:
+  - id: relay1
+    name: Solid State Relay
+    type: gpio
+    properties:
+      - id: pin
+        name: GPIO Pin
+        datatype: integer
+        value: 9
+        settable: false
+        retained: false
+        description: "GPIO pin number connected to the SSR control input"
+      - id: state
+        name: State
+        datatype: boolean
+        settable: true
+        retained: true
+        value: false
+        description: "The state of the relay (on/off)"
+extensions: []
+implementation: homie-esp32-sdk

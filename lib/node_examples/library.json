@@ -1,0 +1,11 @@
+{
+  "name": "node_examples",
+  "version": "1.0.0",
+  "description": "Homie ESP32 SDK example node implementations (BLE, GPIO, I2C, Modbus, SPI)",
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "include"
+  }
+}

@@ -1,0 +1,32 @@
+homie: 5.0.1
+name: MY_DEVICE
+type: ebus
+state: init
+nodes:
+  - id: environment_bme280
+    name: BME280 Temp/Pressure/Humidity Sensor
+    type: sensor
+    properties:
+      - id: temperature
+        name: Temperature
+        datatype: float
+        unit: "°C"
+        settable: false
+        retained: true
+        value: 0.0
+      - id: air_pressure
+        name: Air Pressure
+        datatype: float
+        unit: mb
+        settable: false
+        retained: true
+        value: 0.0
+      - id: relative_humidity
+        name: Humidity
+        datatype: float
+        unit: percent
+        settable: false
+        retained: true
+        value: 0.0
+extensions: []
+implementation: homie-esp32-sdk

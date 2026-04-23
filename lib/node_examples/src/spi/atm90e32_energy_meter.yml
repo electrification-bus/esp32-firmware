@@ -1,0 +1,51 @@
+homie: 5.0.1
+name: MY_DEVICE
+type: ebus
+state: init
+nodes:
+  - id: meter_volts
+    name: Voltage Sensor
+    type: energy
+    properties:
+      - id: volts
+        name: Voltage
+        datatype: float
+        unit: V
+        settable: false
+        retained: true
+        value: 0.0
+  - id: meter_current
+    name: Current Sensor
+    type: energy
+    properties:
+      - id: amps
+        name: Current
+        datatype: float
+        unit: A
+        settable: false
+        retained: true
+        value: 0.0
+  - id: meter_watts
+    name: Power Sensor
+    type: energy
+    properties:
+      - id: watts
+        name: Power
+        datatype: float
+        unit: W
+        settable: false
+        retained: true
+        value: 0.0
+  - id: meter_kwh
+    name: Energy Consumption
+    type: energy
+    properties:
+      - id: kwh
+        name: Energy
+        datatype: float
+        unit: kWh
+        settable: false
+        retained: true
+        value: 0.0
+extensions: []
+implementation: homie-esp32-sdk
