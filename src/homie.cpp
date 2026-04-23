@@ -25,18 +25,26 @@
 
 bool NODE_REQUIRES_BLUETOOTH = false;
 
-// Example nodes supported by this Homie device (includes always active for IDE support)
-#include <i2c/bme280.h>
-#include <modbus/eletechsup32.h>
-#include <modbus/sht20.h>
-#include <gpio/ssr.h>
-#include <gpio/serial_modem.h>
-#include <ble/serial_bms.h>
-#include <spi/atm90e32_energy_meter.h>
-#include <ota/ota_node.h>
-#include <modbus/modbus_master.h>
+/*
+ Example nodes supported by this Homie device:
 
-// Nodes (sensors/actuators) attached to this Homie device
+ Uncomment the #include, the static instantiation, the setup() call, 
+ and the loop() call for any nodes you want to use, and add their config 
+ to homie.yml
+*/
+
+//#include <i2c/bme280.h>
+//#include <modbus/eletechsup32.h>
+//#include <modbus/sht20.h>
+//#include <gpio/ssr.h>
+//#include <gpio/serial_modem.h>
+//#include <ble/serial_bms.h>
+//#include <spi/atm90e32_energy_meter.h>
+//#include <ota/ota_node.h>
+//#include <modbus/modbus_master.h>
+
+/* Static node instances */
+
 //BME280 bme280("environment_bme280");
 //Modbus_Eletechsup32 iv_detector("voltage_current_detector", get_serial1());
 //Modbus_SHT20 sht20("environment_sht20", get_serial1());
