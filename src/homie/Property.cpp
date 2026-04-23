@@ -1,8 +1,8 @@
-#include <etc/config.h>
+#include <platform/config.h>
 #include "homie/Property.h"
 #include <homie/Node.h>
 #include <homie/Device.h>
-#include <etc/mqtt_client.h>
+#include <platform/mqtt_client.h>
 #include <util/jsonUtils.h>
 
 Property::Property() {

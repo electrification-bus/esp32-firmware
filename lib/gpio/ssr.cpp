@@ -56,6 +56,7 @@ void SSR::set(bool onOff) {
     set_ssr_state(onOff);
 }
 
+
 void SSR::entity_settable_callback(Property* property) {
     //Serial.printf("SSR: entity_settable_callback called for property '%s' with value '%s'\n", property->id(), property->value());
     Serial.printf("SSR: entity_settable_callback called ON SSR\n");

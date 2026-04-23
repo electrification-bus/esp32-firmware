@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <ModbusMaster.h>
-#include <modbus/modbus_queue.h>
-#include <modbus/modbus_master.h>
+#include <platform/modbus/modbus_queue.h>
+#include <platform/modbus/modbus_master.h>
 #include <node/ModbusRTUEntity.h>
 
 // FreeRTOS queue handles

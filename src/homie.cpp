@@ -1,5 +1,5 @@
 /*
- * homie.cpp — Node instantiation and Arduino setup/loop for this Homie device
+ * homie.cpp — Node instance and Arduino setup/loop for this Homie device
  *
  * All nodes are statically allocated globals. Constructors run before setup(),
  * which allows nodes to register side effects at startup — e.g., setting
@@ -12,11 +12,11 @@
  *   - Compatible with FreeRTOS tasks that reference node objects before the
  *     Arduino loop starts
  *
- * To add a node:
- *   1. Uncomment its object, setup(), and loop() lines below.
+ * To add an example node:
+ *   1. Uncomment its #include, object, setup(), and loop() lines below.
  *   2. Copy the matching homie.yml from lib/node_examples/src/<type>/<node>.yml
  *      into data/homie.yml (merge with any existing nodes you want to keep).
- *   3. Build and flash.
+ *   3. Clean, then build and flash the filesystem; build and flash the firmware.
  *
  * Commented-out nodes consume no RAM or flash.
  */
@@ -25,22 +25,14 @@
 
 bool NODE_REQUIRES_BLUETOOTH = false;
 
-/*
- Example nodes supported by this Homie device:
-
- Uncomment the #include, the static instantiation, the setup() call, 
- and the loop() call for any nodes you want to use, and add their config .yml
- to homie.yml
-*/
-
 //#include <i2c/bme280.h>
 //#include <modbus/eletechsup32.h>
 //#include <modbus/sht20.h>
-//#include <gpio/ssr.h>
+#include <gpio/ssr.h>
 //#include <ble/serial_bms.h>
 //#include <spi/atm90e32_energy_meter.h>
 //#include <ota/ota_node.h>
-//#include <modbus/modbus_master.h>
+//#include <platform/modbus/modbus_master.h>
 
 /* Static node instances */
 
@@ -48,7 +40,7 @@ bool NODE_REQUIRES_BLUETOOTH = false;
 //Modbus_Eletechsup32 iv_detector("voltage_current_detector", get_serial1());
 //Modbus_SHT20 sht20("environment_sht20", get_serial1());
 //OTANode otaNode("ota");
-//SSR ssr("ssrelay");
+SSR ssr("ssrelay");
 //SerialBMS bms("battery_bms");
 //EnergyMeter energyMeter("energy_meter");
 
@@ -57,7 +49,7 @@ void setup_homie() {
     //iv_detector.setup();
     //sht20.setup();
     //otaNode.setup();
-    //ssr.setup();
+    ssr.setup();
     //bms.setSSR(&ssr);
     //bms.setup();
     //energyMeter.setup();
@@ -68,7 +60,7 @@ void loop_homie() {
     //iv_detector.loop();
     //sht20.loop();
     //otaNode.loop();
-    //ssr.loop();
+    ssr.loop();
     //bms.loop();
     //energyMeter.loop();
 }

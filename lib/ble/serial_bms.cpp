@@ -4,7 +4,7 @@
 #include <config.h>
 #include <ble/serial_bms.h>
 #include <homie.h>
-#include <etc/mqtt_client.h>
+#include <platform/mqtt_client.h>
 #include <Preferences.h>
 
 // NimBLE — lightweight BLE stack, supports direct connect by address

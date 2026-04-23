@@ -2,8 +2,8 @@
 #include <ArduinoYaml.h>
 #include <homie/homie.h>
 #include <homie/Device.h>
-#include <etc/config.h>
-#include <etc/mqtt_client.h>
+#include <platform/config.h>
+#include <platform/mqtt_client.h>
 #include <util/jsonUtils.h>
 /*
   homie/5/device123/$state → ready

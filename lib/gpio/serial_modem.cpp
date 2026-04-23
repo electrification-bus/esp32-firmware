@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <gpio/serial_modem.h>
-#include <etc/mqtt_client.h>
+#include <platform/mqtt_client.h>
 
 #define MODEM_PROBE_INTERVAL_MS     200
 #define MODEM_PROBE_MAX_ATTEMPTS    30

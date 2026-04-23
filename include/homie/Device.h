@@ -1,6 +1,6 @@
 #pragma once
 #include <ArduinoJson.h>
-#include <etc/mqtt_client.h>
+#include <platform/mqtt_client.h>
 #include <homie/Node.h>
 #include <homie/Property.h>
 

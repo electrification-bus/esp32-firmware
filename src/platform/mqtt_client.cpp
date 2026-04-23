@@ -27,12 +27,12 @@
    Boston, MA 02111-1307, USA.
 */
 
-#include <etc/mqtt_client.h>
+#include <platform/mqtt_client.h>
 #include <TimeLib.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoYaml.h>
-#include <etc/config.h>
-#include <etc/network.h>
+#include <platform/config.h>
+#include <platform/network.h>
 #include <homie/Property.h>
 #include <node/NodeEntity.h>
 #include <freertos/FreeRTOS.h>

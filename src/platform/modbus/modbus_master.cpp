@@ -1,7 +1,7 @@
 #include <Arduino.h>
-#include <etc/config.h>
-#include <modbus/modbus_master.h>
-#include <modbus/modbus_queue.h>
+#include <platform/config.h>
+#include <platform/modbus/modbus_master.h>
+#include <platform/modbus/modbus_queue.h>
 
 #ifdef USE_SOFTWARE_SERIAL
 #include <SoftwareSerial.h>

@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <etc/config.h>
+#include <platform/config.h>
 #include <util/jsonUtils.h>
 #include <node/NodeEntity.h>
 

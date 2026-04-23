@@ -1,0 +1,8 @@
+{
+  "name": "spi",
+  "version": "0.0.1",
+  "build": {
+    "includeDir": "..",
+    "srcDir": "."
+  }
+}

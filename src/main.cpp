@@ -12,11 +12,11 @@
  */
 
 #include <Arduino.h>
-#include <etc/network.h>
-#include <etc/config.h>
-#include <etc/mqtt_client.h>
+#include <platform/network.h>
+#include <platform/config.h>
+#include <platform/mqtt_client.h>
 #include <ESPmDNS.h>
-#include <etc/captive_portal.h>
+#include <platform/captive_portal.h>
 #include <homie.h>
 
 // Web server is always started (captive portal on WiFi AP boards, HTTP API on ethernet boards)

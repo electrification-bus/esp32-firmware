@@ -7,10 +7,10 @@
 #include <lwip/netif.h>
 #include <ETH.h>
 #include <time.h>
-#include <etc/config.h>
-#include <etc/network.h>
+#include <platform/config.h>
+#include <platform/network.h>
 #include <homie/homie.h>
-#include <etc/mdns_strings.h>
+#include <platform/mdns_strings.h>
 
 // Forward declaration to avoid circular include with mqtt_client.h
 extern boolean mqtt_connected();

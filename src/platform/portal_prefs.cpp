@@ -1,6 +1,6 @@
-#include <etc/portal_prefs.h>
+#include <platform/portal_prefs.h>
 #include <Preferences.h>
-#include <etc/config.h>
+#include <platform/config.h>
 
 #define PREFS_NAMESPACE "portal"
 #define PREFS_KEY_WIFI_SSID "wifi_ssid"

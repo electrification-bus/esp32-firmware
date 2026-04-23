@@ -1,13 +1,13 @@
-#include <etc/captive_portal.h>
-#include <etc/config.h>
+#include <platform/captive_portal.h>
+#include <platform/config.h>
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <homie/homie.h>
-#include <etc/portal_prefs.h>
-#include <etc/mqtt_client.h>
-#include <etc/network.h>
+#include <platform/portal_prefs.h>
+#include <platform/mqtt_client.h>
+#include <platform/network.h>
 
 #ifdef CONFIG_WIFI_AP
 #include <DNSServer.h>

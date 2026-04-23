@@ -1,0 +1,8 @@
+{
+  "name": "gpio",
+  "version": "0.0.1",
+  "build": {
+    "includeDir": "..",
+    "srcDir": "."
+  }
+}
