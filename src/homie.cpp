@@ -27,7 +27,7 @@ bool NODE_REQUIRES_BLUETOOTH = false;
 
 //#include <i2c/bme280.h>
 //#include <modbus/eletechsup32.h>
-#include <modbus/sht20.h>
+//#include <modbus/sht20.h>
 //#include <gpio/ssr.h>
 //#include <ble/serial_bms.h>
 //#include <spi/atm90e32_energy_meter.h>
@@ -38,7 +38,7 @@ bool NODE_REQUIRES_BLUETOOTH = false;
 
 //BME280 bme280("environment_bme280");
 //Modbus_Eletechsup32 iv_detector("voltage_current_detector", get_serial1());
-Modbus_SHT20 sht20("environment_sht20", get_serial1());
+//Modbus_SHT20 sht20("environment_sht20", get_serial1());
 //OTANode otaNode("ota");
 //SSR ssr("ssrelay");
 //SerialBMS bms("battery_bms");
@@ -47,7 +47,7 @@ Modbus_SHT20 sht20("environment_sht20", get_serial1());
 void setup_homie() {
     //bme280.setup();
     //iv_detector.setup();
-    sht20.setup();
+    //sht20.setup();
     //otaNode.setup();
     //ssr.setup();
     //bms.setSSR(&ssr);
@@ -58,7 +58,7 @@ void setup_homie() {
 void loop_homie() {
     //bme280.loop();
     //iv_detector.loop();
-    sht20.loop();
+    //sht20.loop();
     //otaNode.loop();
     //ssr.loop();
     //bms.loop();
