@@ -5,7 +5,9 @@
 #include <WiFiUdp.h>
 #include <esp_mac.h>
 #include <lwip/netif.h>
+#ifndef CONFIG_WIFI_AP
 #include <ETH.h>
+#endif
 #include <time.h>
 #include <platform/config.h>
 #include <platform/network.h>
@@ -20,13 +22,19 @@ extern boolean mqtt_connected();
 
 int CONNECT_ATTEMPTS = 6;
 WiFiMulti wifiMulti;
+#ifndef CONFIG_WIFI_AP
 static bool eth_connected = false;
+#endif
 
 // Static buffer for sanitized hostname (shared across functions)
 static char mdns_hostname[64] = {0};
 
 bool client_connected() {
+#ifndef CONFIG_WIFI_AP
   return eth_connected || (WiFi.isConnected() && (WIFI_STA == (WiFi.getMode() & WIFI_STA)));
+#else
+  return WiFi.isConnected() && (WIFI_STA == (WiFi.getMode() & WIFI_STA));
+#endif
 }
 
 // Static buffers for IP address strings
@@ -45,11 +53,13 @@ const char* get_wifi_ip() {
 
 // Function to get the Ethernet IP address as a string
 const char* get_eth_ip() {
+#ifndef CONFIG_WIFI_AP
   if (eth_connected) {
     IPAddress ip = ETH.localIP();
     snprintf(eth_ip_str, sizeof(eth_ip_str), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
     return eth_ip_str;
   }
+#endif
   return "";
 }
 
@@ -199,9 +209,13 @@ bool setup_mdns() {
         break;  // No conflict, hostname is ours
       }
       // Check if the resolved IP is one of our own interfaces
-      IPAddress our_eth = ETH.localIP();
       IPAddress our_wifi = WiFi.localIP();
+#ifndef CONFIG_WIFI_AP
+      IPAddress our_eth = ETH.localIP();
       if (resolved == our_eth || resolved == our_wifi) {
+#else
+      if (resolved == our_wifi) {
+#endif
         break;  // It's us, no conflict
       }
       Serial.printf("mDNS: Hostname '%s.local' conflict (taken by %d.%d.%d.%d), trying next\n",
@@ -383,10 +397,9 @@ void loop_ota() {
 void WiFiEvent(WiFiEvent_t event)
 {
   switch (event) {
+#ifndef CONFIG_WIFI_AP
     case ARDUINO_EVENT_ETH_START:
       Serial.println("ETH Started");
-      // Set eth hostname to match mDNS hostname
-      // Use the same sanitized hostname that mDNS uses
       if (strlen(mdns_hostname) > 0) {
         ETH.setHostname(mdns_hostname);
       } else if (strlen(device_name) > 0) {
@@ -412,9 +425,6 @@ void WiFiEvent(WiFiEvent_t event)
       Serial.print(ETH.linkSpeed());
       Serial.println("Mbps");
       eth_connected = true;
-
-      // Set Ethernet as preferred default route (over WiFi) for MQTT and other connections
-      // Match the netif by IP address and set it as LWIP default
       {
         uint32_t eth_ip_u32 = (uint32_t)ETH.localIP();
         struct netif *nif;
@@ -439,6 +449,7 @@ void WiFiEvent(WiFiEvent_t event)
       Serial.println("ETH Stopped");
       eth_connected = false;
       break;
+#endif // !CONFIG_WIFI_AP
     case ARDUINO_EVENT_WIFI_STA_GOT_IP:
       Serial.printf("WiFi STA: Got IP %s\n", WiFi.localIP().toString().c_str());
       configTime(0, 0, "pool.ntp.org", "time.nist.gov");
@@ -508,7 +519,9 @@ bool setup_wifi_sta() {
 
 void setup_ethernet() {
   WiFi.onEvent(WiFiEvent);
+#ifndef CONFIG_WIFI_AP
   ETH.begin();
+#endif
 }
 
 #define MDNS_BROKER_POLL_MS 30000

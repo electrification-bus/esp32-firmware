@@ -72,7 +72,7 @@ uint8_t Modbus_SHT20::query_register(uint16_t reg) {
 // Async queue support - queue a read request (non-blocking)
 void Modbus_SHT20::pollAsync() {
     // Queue read of 2 input registers: temp and humidity
-    uint32_t cmd_id = queueReadInputRegisters(rTEMPERATURE, 2);
+    queueReadInputRegisters(rTEMPERATURE, 2);
 }
 
 // Handle async response callback - called from modbus_process_responses()
