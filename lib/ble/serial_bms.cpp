@@ -3,7 +3,6 @@
 #include "esp_log.h"
 #include <config.h>
 #include <ble/serial_bms.h>
-#include <homie.h>
 #include <platform/mqtt_client.h>
 #include <Preferences.h>
 
@@ -107,7 +106,6 @@ SerialBMS::SerialBMS(const char* homie_node_id) : NodeEntity(homie_node_id) {
     _last_reconnect_attempt = 0;
     _ble_initialized = false;
 
-    NODE_REQUIRES_BLUETOOTH = true;
 }
 
 void SerialBMS::setBleAddress(const char* address) {
@@ -194,12 +192,6 @@ bool SerialBMS::setup() {
     _np_peak_begin_min.publish();
     _np_peak_end_min.publish();
     _np_threshold_discharge_daily.publish();
-
-    if (!NODE_REQUIRES_BLUETOOTH) {
-        Serial.println("BMS BLE: BT not available, BLE disabled");
-        _ble_initialized = false;
-        return true;  // graceful degradation — node exists but won't poll
-    }
 
     Serial.printf("BMS BLE: Free heap before init: %u bytes\n", ESP.getFreeHeap());
 

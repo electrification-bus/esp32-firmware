@@ -2,8 +2,8 @@
  * homie.cpp — Node instance and Arduino setup/loop for this Homie device
  *
  * All nodes are statically allocated globals. Constructors run before setup(),
- * which allows nodes to register side effects at startup — e.g., setting
- * NODE_REQUIRES_BLUETOOTH — before any network or hardware initialization occurs.
+ * which allows nodes to register side effects at startup before any network
+ * or hardware initialization occurs.
  *
  * Static allocation guarantees:
  *   - No heap fragmentation; memory footprint is fixed and known at link time
@@ -22,8 +22,6 @@
  */
 
 #include <homie.h>
-
-bool NODE_REQUIRES_BLUETOOTH = false;
 
 //#include <i2c/bme280.h>
 //#include <modbus/eletechsup32.h>

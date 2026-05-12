@@ -78,10 +78,7 @@ void setup() {
         delay(1000);
     }
 
-    // Start WiFi STA unless a node needs Bluetooth (shared radio — ETH provides MQTT transport)
-    if (!NODE_REQUIRES_BLUETOOTH) {
-        setup_wifi_sta();  // no-op if no wifi_ssid configured
-    }
+    setup_wifi_sta();  // no-op if no wifi_ssid configured
 
     // Log which interfaces are active
     const char* eth_ip = get_eth_ip();
@@ -239,10 +236,7 @@ void setup() {
         delay(1000);
     }
 
-    // Start WiFi STA unless a node needs Bluetooth (shared radio — ETH provides MQTT transport)
-    if (!NODE_REQUIRES_BLUETOOTH) {
-        setup_wifi_sta();  // no-op if no wifi_ssid configured
-    }
+    setup_wifi_sta();  // no-op if no wifi_ssid configured
 
     // Log which interfaces are active
     const char* eth_ip = get_eth_ip();
