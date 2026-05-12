@@ -18,7 +18,9 @@
       "Bash(npm root:*)",
       "Bash(~/.platformio/penv/Scripts/pio.exe run:*)",
       "Bash(git rm *)",
-      "Bash(awk ' *)"
+      "Bash(awk ' *)",
+      "Read(//c/Users/dougm/.platformio/packages/tool-esptoolpy/**)",
+      "Read(//c/Users/dougm/.platformio/platforms/**)"
     ]
   }
 }

@@ -2,6 +2,42 @@ homie: 5.0.1
 name: EBUS
 type: ebus
 state: init
-nodes: []
+nodes:
+  - id: environment_sht20
+    name: SHT20 Modbus Temp/Humidity Sensor
+    type: sensor
+    properties:
+      - id: temperature
+        name: Temperature
+        datatype: float
+        unit: "°C"
+        settable: false
+        retained: true
+        value: 0.0
+      - id: relative_humidity
+        name: Humidity
+        datatype: float
+        unit: percent
+        settable: false
+        retained: true
+        value: 0.0
+  - id: ssrelay
+    name: Solid State Relay
+    type: gpio
+    properties:
+      - id: pin
+        name: GPIO Pin
+        datatype: integer
+        value: 9
+        settable: false
+        retained: false
+        description: "GPIO pin number connected to the SSR control input"
+      - id: state
+        name: State
+        datatype: boolean
+        settable: true
+        retained: true
+        value: false
+        description: "The state of the relay (on/off)"
 extensions: []
 implementation: homie-esp32-sdk

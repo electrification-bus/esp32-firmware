@@ -154,9 +154,9 @@ size_t Device::serialize(char* buffer, size_t bufferSize) {
   //nodes
   JsonDocument json_nodes;
   for(int i=0;i<_num_nodes;i++) {
-    json_nodes[_nodes[i]->id()] = _nodes[i]->serialize();
+    json_nodes[_nodes[i]->id()] = _nodes[i]->serialize().as<JsonObject>();
   }
-  json[HOMIE_NODES] = json_nodes;
+  json[HOMIE_NODES] = json_nodes.as<JsonObject>();
   return serializeJson(json, buffer, bufferSize);
 }
 
