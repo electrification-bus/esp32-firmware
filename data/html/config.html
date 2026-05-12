@@ -110,6 +110,13 @@
   <button type="button" id="btn-reboot" style="margin-top:8px">Reboot</button>
   <div id="reboot-confirm" class="wifi-pass-panel">
     <p style="margin-bottom:10px;font-size:0.9em;color:#f44336">Reboot the device now?</p>
+    <div class="field" style="margin-bottom:10px">
+      <label>Device passphrase</label>
+      <div class="pass-wrap">
+        <input type="password" id="reboot-passphrase" placeholder="device_passphrase from config.yml">
+        <span class="pass-toggle" id="reboot-pass-toggle">&#x1f441;</span>
+      </div>
+    </div>
     <button type="button" id="reboot-yes" style="width:48%;margin-right:4%;background:#c62828;color:#fff">Yes, Reboot</button>
     <button type="button" id="reboot-cancel" style="width:48%">Cancel</button>
   </div>
@@ -407,7 +414,12 @@
 
       // Reboot - reveal confirmation panel
       var rebootPanel = document.getElementById('reboot-confirm');
+      var rebootPassInput = document.getElementById('reboot-passphrase');
+      document.getElementById('reboot-pass-toggle').addEventListener('click', function() {
+        rebootPassInput.type = rebootPassInput.type === 'password' ? 'text' : 'password';
+      });
       document.getElementById('btn-reboot').addEventListener('click', function() {
+        rebootPassInput.value = '';
         rebootPanel.className = 'wifi-pass-panel visible';
         rebootPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
       });
@@ -415,16 +427,34 @@
         rebootPanel.className = 'wifi-pass-panel';
       });
       document.getElementById('reboot-yes').addEventListener('click', function() {
-        rebootPanel.className = 'wifi-pass-panel';
         var status = document.getElementById('reboot-status');
+        var pass = rebootPassInput.value;
+        if (!pass) {
+          status.className = 'status error';
+          status.textContent = 'Enter the device passphrase.';
+          return;
+        }
+        rebootPanel.className = 'wifi-pass-panel';
         status.className = 'status';
-        status.textContent = 'Rebooting...';
-        fetch('/api/reboot', { method: 'POST' })
-          .then(function() {
-            status.className = 'status ok';
-            status.textContent = 'Device is rebooting...';
+        status.textContent = 'Sending reboot request...';
+        fetch('/api/reboot', {
+          method: 'POST',
+          headers: { 'Authorization': 'Basic ' + btoa('admin:' + pass) }
+        })
+          .then(function(r) {
+            if (r.status === 401) {
+              status.className = 'status error';
+              status.textContent = 'Wrong passphrase.';
+            } else if (r.status === 429) {
+              status.className = 'status error';
+              status.textContent = 'Too many failed attempts. Try again later.';
+            } else {
+              status.className = 'status ok';
+              status.textContent = 'Device is rebooting...';
+            }
           })
           .catch(function() {
+            // Network drop after reboot command is expected
             status.className = 'status ok';
             status.textContent = 'Device is rebooting...';
           });

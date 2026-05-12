@@ -330,7 +330,12 @@ static bool requireAuth(AsyncWebServerRequest *request) {
         return false;
     }
     if (!request->authenticate("admin", device_passphrase)) {
-        portal_auth_record_failure();
+        // Only penalise wrong credentials, not an unauthenticated first attempt.
+        // fetch() calls from the portal arrive without an Authorization header;
+        // counting those as failures would exhaust the limit on legitimate use.
+        if (request->hasHeader("Authorization")) {
+            portal_auth_record_failure();
+        }
         request->requestAuthentication();
         return false;
     }
