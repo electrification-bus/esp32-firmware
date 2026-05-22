@@ -29,7 +29,6 @@
 //#include <gpio/ssr.h>
 //#include <ble/serial_bms.h>
 //#include <spi/atm90e32_energy_meter.h>
-//#include <ota/ota_node.h>
 //#include <platform/modbus/modbus_master.h>
 
 /* Static node instances */
@@ -37,7 +36,6 @@
 //BME280 bme280("environment_bme280");
 //Modbus_Eletechsup32 iv_detector("voltage_current_detector", get_serial1());
 //Modbus_SHT20 sht20("environment_sht20", get_serial1());
-//OTANode otaNode("ota");
 //SSR ssr("ssrelay");
 //SerialBMS bms("battery_bms");
 //EnergyMeter energyMeter("energy_meter");

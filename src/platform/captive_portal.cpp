@@ -1,5 +1,6 @@
 #include <platform/captive_portal.h>
 #include <platform/config.h>
+#include <platform/ota.h>
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
@@ -405,6 +406,8 @@ static void handleFirmwareSave(AsyncWebServerRequest *request) {
     }
 
     Serial.printf("PORTAL: Firmware URL saved - '%s'\n", firmware_url);
+    ota_set_enabled(true);
+    ota_start_update();
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
@@ -476,12 +479,27 @@ static void handleBrokerCertUpload(AsyncWebServerRequest *request) {
 
 // --- OTA enable/disable with Basic Auth and rate limiting ---
 
-// Handle GET /api/ota - return OTA enabled status (no auth)
+// Handle GET /api/ota - return OTA status (no auth)
 static void handleOtaStatus(AsyncWebServerRequest *request) {
-    static char json_buf[128];
-    snprintf(json_buf, sizeof(json_buf),
-        "{\"ota_enabled\":%s,\"timeout_minutes\":%d}",
-        ota_is_enabled() ? "true" : "false", OTA_ENABLED_TIMEOUT);
+    static char json_buf[512];
+    OtaStatus status = ota_get_status();
+    const char* status_str = ota_get_status_str();
+    const char* url  = ota_get_last_url();
+    const char* host = ota_get_last_host();
+    const char* file = ota_get_last_file();
+    int http_code    = ota_get_last_http_code();
+
+    if (status == OTA_STATUS_IDLE) {
+        snprintf(json_buf, sizeof(json_buf), "{\"status\":\"idle\"}");
+    } else if (status == OTA_STATUS_HTTP_ERROR) {
+        snprintf(json_buf, sizeof(json_buf),
+            "{\"status\":\"%s\",\"http_code\":%d,\"host\":\"%s\",\"file\":\"%s\",\"url\":\"%s\"}",
+            status_str, http_code, host, file, url);
+    } else {
+        snprintf(json_buf, sizeof(json_buf),
+            "{\"status\":\"%s\",\"host\":\"%s\",\"file\":\"%s\",\"url\":\"%s\"}",
+            status_str, host, file, url);
+    }
     request->send(200, "application/json", json_buf);
 }
 
@@ -546,6 +564,7 @@ void captive_portal_loop() {
     dnsServer.processNextRequest();
 #endif
     ota_check_timeout();
+    ota_loop();
 }
 
 void captive_portal_start() {

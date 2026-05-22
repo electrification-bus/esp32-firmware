@@ -97,6 +97,18 @@
   <h2>Firmware</h2>
   <div class="field"><label>Firmware Binary URL</label><input type="text" id="fw-url" placeholder="http://example.com/firmware.bin"></div>
   <button type="button" id="fw-save" disabled>Save Firmware URL</button>
+  <div id="fw-confirm" class="wifi-pass-panel">
+    <p style="margin-bottom:10px;font-size:0.9em;color:#f44336">Start OTA update from this URL?</p>
+    <div class="field" style="margin-bottom:10px">
+      <label>Device passphrase</label>
+      <div class="pass-wrap">
+        <input type="password" id="fw-passphrase" placeholder="device_passphrase from config.yml">
+        <span class="pass-toggle" id="fw-pass-toggle">&#x1f441;</span>
+      </div>
+    </div>
+    <button type="button" id="fw-confirm-yes" style="width:48%;margin-right:4%;background:#1565c0;color:#fff">Start Update</button>
+    <button type="button" id="fw-confirm-cancel" style="width:48%">Cancel</button>
+  </div>
   <div class="status" id="fw-status"></div>
 
   <h2>System</h2>
@@ -463,29 +475,57 @@
       // Enable Firmware URL button only when input changes
       var fwUrlInput = document.getElementById('fw-url');
       var fwSaveBtn = document.getElementById('fw-save');
+      var fwConfirmPanel = document.getElementById('fw-confirm');
+      var fwPassInput = document.getElementById('fw-passphrase');
       fwUrlInput.addEventListener('input', function() {
         fwSaveBtn.disabled = !fwUrlInput.value.trim();
       });
-
-      // Save Firmware URL button - click handler with fetch
+      document.getElementById('fw-pass-toggle').addEventListener('click', function() {
+        fwPassInput.type = fwPassInput.type === 'password' ? 'text' : 'password';
+      });
       fwSaveBtn.addEventListener('click', function() {
-        var btn = document.getElementById('fw-save');
+        fwPassInput.value = '';
+        fwConfirmPanel.className = 'wifi-pass-panel visible';
+        fwConfirmPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
+      });
+      document.getElementById('fw-confirm-cancel').addEventListener('click', function() {
+        fwConfirmPanel.className = 'wifi-pass-panel';
+      });
+      document.getElementById('fw-confirm-yes').addEventListener('click', function() {
         var status = document.getElementById('fw-status');
-        btn.disabled = true;
+        var pass = fwPassInput.value;
+        if (!pass) {
+          status.className = 'status error';
+          status.textContent = 'Enter the device passphrase.';
+          return;
+        }
+        fwConfirmPanel.className = 'wifi-pass-panel';
         status.className = 'status';
         status.textContent = 'Saving...';
-        var body = JSON.stringify({ url: document.getElementById('fw-url').value });
-        fetch('/api/firmware', { method: 'POST', headers: {'Content-Type':'application/json'}, body: body })
-          .then(function(r) { return r.json(); })
-          .then(function() {
-            status.className = 'status ok';
-            status.textContent = 'Firmware URL saved.';
-            btn.disabled = false;
+        var body = JSON.stringify({ url: fwUrlInput.value });
+        fetch('/api/firmware', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Basic ' + btoa('admin:' + pass)
+          },
+          body: body
+        })
+          .then(function(r) {
+            if (r.status === 401) {
+              status.className = 'status error';
+              status.textContent = 'Wrong passphrase.';
+            } else if (r.status === 429) {
+              status.className = 'status error';
+              status.textContent = 'Too many failed attempts. Try again later.';
+            } else {
+              status.className = 'status ok';
+              status.textContent = 'Update started. Device will reboot when complete.';
+            }
           })
           .catch(function(err) {
-            status.className = 'status err';
+            status.className = 'status error';
             status.textContent = 'Error: ' + err.message;
-            btn.disabled = false;
           });
       });
     })();
