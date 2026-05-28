@@ -5,6 +5,7 @@
 #include <Update.h>
 
 static bool      _ota_pending      = false;
+static bool      _fs_pending       = false;
 static OtaStatus _ota_status       = OTA_STATUS_IDLE;
 static char      _last_url[256]    = {0};
 static char      _last_host[128]   = {0};
@@ -67,20 +68,35 @@ void ota_start_update() {
     Serial.printf("OTA: Update queued from %s\n", _last_url);
 }
 
-void ota_loop() {
-    if (!_ota_pending) return;
-    _ota_pending = false;
+void ota_start_fs_update() {
+    if (!ota_is_enabled()) {
+        Serial.println("OTA: FS update rejected - OTA not enabled");
+        return;
+    }
+    if (fs_url[0] == '\0') {
+        Serial.println("OTA: FS update rejected - no fs URL");
+        return;
+    }
+    strncpy(_last_url, fs_url, sizeof(_last_url) - 1);
+    _last_url[sizeof(_last_url) - 1] = '\0';
+    parse_url(_last_url);
+    _last_http_code = 0;
+    _fs_pending = true;
+    Serial.printf("OTA: FS update queued from %s\n", _last_url);
+}
 
+static bool run_update(int update_type) {
     HTTPClient http;
     WiFiClient client;
 
-    Serial.printf("OTA: Starting update from %s\n", _last_url);
+    Serial.printf("OTA: Starting %s update from %s\n",
+                  update_type == U_SPIFFS ? "filesystem" : "firmware", _last_url);
     _ota_status = OTA_STATUS_DOWNLOADING;
 
     if (!http.begin(client, _last_url)) {
         Serial.println("OTA: Failed to connect to server");
         _ota_status = OTA_STATUS_HOST_NOT_FOUND;
-        return;
+        return false;
     }
 
     int httpCode = http.GET();
@@ -90,13 +106,13 @@ void ota_loop() {
         Serial.printf("OTA: File not found (404): %s\n", _last_url);
         _ota_status = OTA_STATUS_FILE_NOT_FOUND;
         http.end();
-        return;
+        return false;
     }
     if (httpCode != HTTP_CODE_OK) {
         Serial.printf("OTA: HTTP error: %d\n", httpCode);
         _ota_status = OTA_STATUS_HTTP_ERROR;
         http.end();
-        return;
+        return false;
     }
 
     int contentLength = http.getSize();
@@ -104,16 +120,16 @@ void ota_loop() {
         Serial.println("OTA: Invalid content length");
         _ota_status = OTA_STATUS_HTTP_ERROR;
         http.end();
-        return;
+        return false;
     }
 
-    Serial.printf("OTA: Firmware size: %d bytes\n", contentLength);
+    Serial.printf("OTA: Image size: %d bytes\n", contentLength);
 
-    if (!Update.begin(contentLength)) {
+    if (!Update.begin(contentLength, update_type)) {
         Serial.printf("OTA: Not enough space: %s\n", Update.errorString());
         _ota_status = OTA_STATUS_WRITE_ERROR;
         http.end();
-        return;
+        return false;
     }
 
     WiFiClient* stream = http.getStreamPtr();
@@ -134,7 +150,7 @@ void ota_loop() {
                 Update.abort();
                 _ota_status = OTA_STATUS_WRITE_ERROR;
                 http.end();
-                return;
+                return false;
             }
 
             written += written_bytes;
@@ -149,16 +165,42 @@ void ota_loop() {
         delay(1);
     }
 
+    // Drain any TCP data buffered ahead by the stack so HTTPClient closes cleanly.
+    uint8_t drain[64];
+    while (stream->available()) {
+        stream->readBytes(drain, min((size_t)stream->available(), sizeof(drain)));
+    }
+
     if (!Update.end(true)) {
         Serial.printf("OTA: Update failed: %s\n", Update.errorString());
         _ota_status = OTA_STATUS_WRITE_ERROR;
         http.end();
-        return;
+        return false;
     }
 
     http.end();
-    _ota_status = OTA_STATUS_COMPLETE;
-    Serial.println("OTA: Update complete, rebooting...");
-    delay(500);
-    ESP.restart();
+    Serial.printf("OTA: %s update complete\n", update_type == U_SPIFFS ? "Filesystem" : "Firmware");
+    return true;
+}
+
+void ota_loop() {
+    if (!_ota_pending && !_fs_pending) return;
+
+    bool ok = true;
+
+    if (_fs_pending) {
+        _fs_pending = false;
+        ok = run_update(U_SPIFFS);
+    }
+    if (ok && _ota_pending) {
+        _ota_pending = false;
+        ok = run_update(U_FLASH);
+    }
+
+    if (ok) {
+        _ota_status = OTA_STATUS_COMPLETE;
+        Serial.println("OTA: All updates complete, rebooting...");
+        delay(500);
+        ESP.restart();
+    }
 }

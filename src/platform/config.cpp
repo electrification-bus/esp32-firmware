@@ -30,6 +30,7 @@ char device_serial[32] = {0};
 char firmware_name[32] = {0};
 char firmware_version[16] = "1.0.0";
 char firmware_url[128] = {0};
+char fs_url[128] = {0};
 
 // Homie role: "device" or "controller"
 char homie_role[16] = "device";

@@ -11,9 +11,13 @@ typedef enum {
     OTA_STATUS_COMPLETE
 } OtaStatus;
 
-// Queue a firmware update from the configured firmware_url.
+// Queue a firmware (app partition) update from the configured firmware_url.
 // Has no effect if OTA is not enabled or no URL is configured.
 void ota_start_update();
+
+// Queue a filesystem (LittleFS) update from the configured fs_url.
+// Has no effect if OTA is not enabled or no URL is configured.
+void ota_start_fs_update();
 
 // Process pending OTA update - call from main loop.
 void ota_loop();

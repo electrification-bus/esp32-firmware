@@ -96,9 +96,11 @@
 
   <h2>Firmware</h2>
   <div class="field"><label>Firmware Binary URL</label><input type="text" id="fw-url" placeholder="http://example.com/firmware.bin"></div>
-  <button type="button" id="fw-save" disabled>Save Firmware URL</button>
+  <div class="field"><label>Filesystem Binary URL</label><input type="text" id="fs-url" placeholder="http://example.com/littlefs.bin"></div>
+  <button type="button" id="fw-save" disabled>Start Update&hellip;</button>
   <div id="fw-confirm" class="wifi-pass-panel">
-    <p style="margin-bottom:10px;font-size:0.9em;color:#f44336">Start OTA update from this URL?</p>
+    <p style="margin-bottom:6px;font-size:0.9em;color:#f44336">Start OTA update?</p>
+    <div id="fw-confirm-urls" style="font-size:0.8em;color:#aaa;margin-bottom:10px;line-height:1.6"></div>
     <div class="field" style="margin-bottom:10px">
       <label>Device passphrase</label>
       <div class="pass-wrap">
@@ -472,25 +474,38 @@
           });
       });
 
-      // Enable Firmware URL button only when input changes
+      // Firmware / Filesystem OTA
       var fwUrlInput = document.getElementById('fw-url');
+      var fsUrlInput = document.getElementById('fs-url');
       var fwSaveBtn = document.getElementById('fw-save');
       var fwConfirmPanel = document.getElementById('fw-confirm');
       var fwPassInput = document.getElementById('fw-passphrase');
-      fwUrlInput.addEventListener('input', function() {
-        fwSaveBtn.disabled = !fwUrlInput.value.trim();
-      });
+      var fwConfirmUrls = document.getElementById('fw-confirm-urls');
+
+      function updateFwSaveBtn() {
+        fwSaveBtn.disabled = !fwUrlInput.value.trim() && !fsUrlInput.value.trim();
+      }
+      fwUrlInput.addEventListener('input', updateFwSaveBtn);
+      fsUrlInput.addEventListener('input', updateFwSaveBtn);
+
       document.getElementById('fw-pass-toggle').addEventListener('click', function() {
         fwPassInput.type = fwPassInput.type === 'password' ? 'text' : 'password';
       });
+
       fwSaveBtn.addEventListener('click', function() {
+        var lines = '';
+        if (fsUrlInput.value.trim()) lines += 'FS: ' + fsUrlInput.value.trim() + '<br>';
+        if (fwUrlInput.value.trim()) lines += 'FW: ' + fwUrlInput.value.trim();
+        fwConfirmUrls.innerHTML = lines;
         fwPassInput.value = '';
         fwConfirmPanel.className = 'wifi-pass-panel visible';
         fwConfirmPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
       });
+
       document.getElementById('fw-confirm-cancel').addEventListener('click', function() {
         fwConfirmPanel.className = 'wifi-pass-panel';
       });
+
       document.getElementById('fw-confirm-yes').addEventListener('click', function() {
         var status = document.getElementById('fw-status');
         var pass = fwPassInput.value;
@@ -501,32 +516,39 @@
         }
         fwConfirmPanel.className = 'wifi-pass-panel';
         status.className = 'status';
-        status.textContent = 'Saving...';
-        var body = JSON.stringify({ url: fwUrlInput.value });
-        fetch('/api/firmware', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Basic ' + btoa('admin:' + pass)
-          },
-          body: body
-        })
-          .then(function(r) {
-            if (r.status === 401) {
-              status.className = 'status error';
-              status.textContent = 'Wrong passphrase.';
-            } else if (r.status === 429) {
-              status.className = 'status error';
-              status.textContent = 'Too many failed attempts. Try again later.';
-            } else {
-              status.className = 'status ok';
-              status.textContent = 'Update started. Device will reboot when complete.';
-            }
-          })
-          .catch(function(err) {
-            status.className = 'status error';
-            status.textContent = 'Error: ' + err.message;
-          });
+
+        var auth = { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa('admin:' + pass) };
+        var fsUrl = fsUrlInput.value.trim();
+        var fwUrl = fwUrlInput.value.trim();
+
+        function postFirmware() {
+          if (!fwUrl) {
+            status.className = 'status ok';
+            status.textContent = 'Update started. Device will reboot when complete.';
+            return;
+          }
+          status.textContent = 'Queuing firmware update...';
+          fetch('/api/firmware', { method: 'POST', headers: auth, body: JSON.stringify({ url: fwUrl }) })
+            .then(function(r) {
+              if (r.status === 401) { status.className = 'status error'; status.textContent = 'Wrong passphrase.'; }
+              else if (r.status === 429) { status.className = 'status error'; status.textContent = 'Too many failed attempts. Try again later.'; }
+              else { status.className = 'status ok'; status.textContent = 'Update started. Device will reboot when complete.'; }
+            })
+            .catch(function(err) { status.className = 'status error'; status.textContent = 'Error: ' + err.message; });
+        }
+
+        if (fsUrl) {
+          status.textContent = 'Queuing filesystem update...';
+          fetch('/api/filesystem', { method: 'POST', headers: auth, body: JSON.stringify({ url: fsUrl }) })
+            .then(function(r) {
+              if (r.status === 401) { status.className = 'status error'; status.textContent = 'Wrong passphrase.'; }
+              else if (r.status === 429) { status.className = 'status error'; status.textContent = 'Too many failed attempts. Try again later.'; }
+              else { postFirmware(); }
+            })
+            .catch(function(err) { status.className = 'status error'; status.textContent = 'Error: ' + err.message; });
+        } else {
+          postFirmware();
+        }
       });
     })();
   </script>

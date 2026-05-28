@@ -411,6 +411,28 @@ static void handleFirmwareSave(AsyncWebServerRequest *request) {
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
+// Handle POST /api/filesystem - save filesystem image URL from JSON body and trigger LittleFS OTA
+static void handleFilesystemSave(AsyncWebServerRequest *request) {
+    if (!requireAuth(request)) return;
+    Serial.printf("PORTAL: handleFilesystemSave called, body=%d bytes\n", post_body_len);
+
+    JsonDocument doc;
+    if (deserializeJson(doc, post_body_buf, post_body_len)) {
+        request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid JSON\"}");
+        return;
+    }
+
+    if (doc["url"].is<const char*>()) {
+        strncpy(fs_url, doc["url"].as<const char*>(), sizeof(fs_url) - 1);
+        fs_url[sizeof(fs_url) - 1] = '\0';
+    }
+
+    Serial.printf("PORTAL: Filesystem URL saved - '%s'\n", fs_url);
+    ota_set_enabled(true);
+    ota_start_fs_update();
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
 // Handle GET /api/broker-cert - download the CA cert for the current MQTT broker
 static void handleBrokerCert(AsyncWebServerRequest *request) {
     if (!has_mqtt_broker()) {
@@ -606,6 +628,7 @@ void captive_portal_start() {
     server.on("/api/mqtt-status", HTTP_GET, handleMqttStatus);
     server.on("/api/mqtt", HTTP_POST, handleMqttSave, NULL, accumulateBody);
     server.on("/api/firmware", HTTP_POST, handleFirmwareSave, NULL, accumulateBody);
+    server.on("/api/filesystem", HTTP_POST, handleFilesystemSave, NULL, accumulateBody);
     server.on("/api/reset-prefs", HTTP_POST, handleResetPrefs);
     server.on("/api/reboot", HTTP_POST, handleReboot);
     server.on("/api/broker-cert", HTTP_GET, handleBrokerCert);

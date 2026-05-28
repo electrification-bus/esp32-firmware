@@ -33,6 +33,7 @@ extern char device_serial[32];
 extern char firmware_name[32];
 extern char firmware_version[16];
 extern char firmware_url[128];
+extern char fs_url[128];
 
 // Homie role: "device" or "controller"
 extern char homie_role[16];
