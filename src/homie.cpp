@@ -36,7 +36,7 @@
 //BME280 bme280("environment_bme280");
 //Modbus_Eletechsup32 iv_detector("voltage_current_detector", get_serial1());
 //Modbus_SHT20 sht20("environment_sht20", get_serial1());
-//SSR ssr("ssrelay");
+//SSR ssr("ssr");
 //SerialBMS bms("battery_bms");
 //EnergyMeter energyMeter("energy_meter");
 

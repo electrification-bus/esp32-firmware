@@ -3,7 +3,7 @@ name: EBUS
 type: ebus
 state: init
 nodes:
-  - id: ssrelay
+  - id: ssr
     name: Solid State Relay
     type: gpio
     properties:
