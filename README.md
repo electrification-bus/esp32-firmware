@@ -12,8 +12,8 @@ Pick the path that matches how you work:
 
 | Editor surface | Onboarding doc |
 |---|---|
-| **VSCode + PlatformIO extension** (Doug's path) | [doc/GettingStarted_VSCode.md](doc/GettingStarted_VSCode.md) |
-| **Terminal + Makefile + Emacs/vim** (DCJ's path) | [doc/GettingStarted_CLI.md](doc/GettingStarted_CLI.md) |
+| **VSCode + PlatformIO extension** | [doc/GettingStarted_VSCode.md](doc/GettingStarted_VSCode.md) |
+| **Terminal + Makefile + Emacs/vim** | [doc/GettingStarted_CLI.md](doc/GettingStarted_CLI.md) |
 
 Both produce the same firmware. The CLI path uses a small `Makefile` and a `./bin/pio` shim; the VSCode path drives the same `pio` CLI through the PlatformIO IDE extension.
 
@@ -78,7 +78,7 @@ VSCode users: use the PlatformIO IDE's project-tasks pane; same targets, differe
 - **Onboarding**: [GettingStarted_VSCode.md](doc/GettingStarted_VSCode.md), [GettingStarted_CLI.md](doc/GettingStarted_CLI.md)
 - **Configuration overlays**: [Configuration.md](doc/Configuration.md)
 - **Design proposals**: [proposal-runtime-config-via-nvs.md](doc/proposal-runtime-config-via-nvs.md), [OTA_Proposal.md](doc/OTA_Proposal.md), [API_proposal.md](doc/API_proposal.md)
-- **PlatformIO command cheatsheet**: [PlatformIO_commands.txt](doc/PlatformIO_commands.txt)
+- **PlatformIO command cheatsheet**: [PlatformIO_commands.md](doc/PlatformIO_commands.md)
 - **Subsystem notes**: [ESP32_HOMIE_OTA.md](doc/ESP32_HOMIE_OTA.md), [HOWTO_Homie_Node.md](doc/HOWTO_Homie_Node.md), [mDNS.md](doc/mDNS.md), [Authentication.md](doc/Authentication.md), [CONTROLLER_FEATURES.md](doc/CONTROLLER_FEATURES.md), [CONTROLLER_README.md](doc/CONTROLLER_README.md), [test_deployment.md](doc/test_deployment.md), [ota_server.md](doc/ota_server.md), [ESP32_Notes.md](doc/ESP32_Notes.md)
 
 ## Hardware Targets

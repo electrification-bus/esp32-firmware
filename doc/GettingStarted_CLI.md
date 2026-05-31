@@ -115,5 +115,5 @@ For the long-term plan to move credentials out of LittleFS entirely and into NVS
 
 - [`Makefile`](../Makefile) — the canonical source of truth for all targets; `make help` regenerates from it
 - [`bin/pio`](../bin/pio) — the PlatformIO Core shim
-- [`PlatformIO_commands.txt`](PlatformIO_commands.txt) — Doug's raw-command cheatsheet, no narrative; useful when you want to invoke `pio` directly without `make`
+- [`PlatformIO_commands.md`](PlatformIO_commands.md) — raw `pio` command cheatsheet; useful when you want to invoke `pio` directly without `make`
 - [`proposal-runtime-config-via-nvs.md`](proposal-runtime-config-via-nvs.md) — design note for the future NVS-backed runtime credential model
