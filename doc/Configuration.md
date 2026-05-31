@@ -36,6 +36,8 @@ make config-status                        # confirm overlay present and target i
 
 `make config-init` is idempotent — running it a second time will refuse to clobber. `make config-status` reports three possible states: overlay missing (run `config-init`), overlay present and target in sync (ready to build), overlay present but target drifted (you edited `data/config.yml` directly — run `config-stage` to re-sync).
 
+> **From VSCode**: these are also wrapped as VSCode tasks. Cmd-Shift-P → "Tasks: Run Task" → pick **Config: Bootstrap personal overlay** / **Config: Show overlay status** / **Config: Stage overlay → data/config.yml**. See [`GettingStarted_VSCode.md`](GettingStarted_VSCode.md) for the full task list.
+
 ### Variables you'll commonly set
 
 | Key | Notes |
