@@ -22,27 +22,38 @@ After initial setup, read [doc/Configuration.md](doc/Configuration.md) once to u
 ## Project Layout
 
 ```
-src/                Implementation files (mirror include/ structure)
-include/            Header files
-  config.h          Device-level config (gitignored)
-  pins.h            GPIO pin definitions
-  homie/            Homie protocol implementation
-  modbus/           Modbus RTU support
-  node/             NodeEntity classes by subsystem (gpio/, i2c/, modbus/, spi/)
-data/               LittleFS image source
-  config.yml.example  Schema + safe-defaults template (tracked)
-  config.yml          Per-developer staged config (gitignored, derived from overlay)
-doc/                Documentation
-  GettingStarted_VSCode.md
-  GettingStarted_CLI.md
-  Configuration.md
-  proposal-runtime-config-via-nvs.md
-  ...
-bin/pio             Repo-local shim to PlatformIO Core (~/.platformio/penv/bin/pio)
-Makefile            CLI build / flash / monitor wrappers
+src/                          Implementation files (mirror include/ structure)
+include/                      Header files
+  homie/                      Homie protocol implementation
+  node/                       NodeEntity classes by subsystem (gpio/, i2c/, modbus/, spi/)
+  platform/                   Platform-specific helpers
+  util/                       Shared utility code
+  pins.h, homie.h             Top-level project headers
+lib/                          Project-local C++ libraries — custom code and forks
+                              (ble/, gpio/, i2c/, modbus/, spi/)
+data/                         LittleFS image source
+  config.yml.example          Schema + safe-defaults template (tracked)
+  config.yml                  Per-developer staged config (gitignored, derived from overlay)
+partitions/                   ESP32 flash partition tables — one CSV per flash size
+examples/                     Standalone example sketches
+scripts/                      PlatformIO build hooks (e.g. add_project_include.py)
+test/                         Device-side Python test harness (device_test.py, Test_Guide.md)
+doc/                          Documentation
+  GettingStarted_VSCode.md    VSCode + PlatformIO IDE onboarding
+  GettingStarted_CLI.md       Terminal / Makefile / Emacs onboarding
+  Configuration.md            Per-developer overlay model (config.yml + platformio_local.ini)
+  proposal-runtime-config-via-nvs.md   Design note: future NVS-backed runtime credentials
+  ...                         + several legacy proposal and subsystem notes
+.vscode/                      Tracked: extensions.json, settings.json, tasks.json
+                              (debug configs, C/C++ properties, IPCH cache: gitignored)
+.llm/                         Historical LLM context preserved from initial handoff
+                              (see "Personal LLM Configuration" below)
+bin/pio                       Repo-local shim to PlatformIO Core (~/.platformio/penv/bin/pio)
+Makefile                      CLI build / flash / monitor wrappers
 platformio.ini                Shared build config (tracked)
 platformio_local.ini.example  Per-developer overrides template (tracked)
 platformio_local.ini          Your local overrides (gitignored, optional)
+LICENSE                       MIT
 ```
 
 ## Common Commands (CLI path)
