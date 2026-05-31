@@ -8,6 +8,20 @@ include/config.h
 # macOS Finder metadata — never track
 .DS_Store
 
+# Personal LLM coding-assistant configs. See README "Personal LLM
+# Configuration" section. Project-wide LLM context, if any, lives at
+# .llm/ (tracked separately and NOT matched by these patterns).
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+.claude/
+.cursor/
+.codeium/
+.windsurf/
+.aider*
+.continuerules
+.beads/
+
 # Per-developer config (staged from ~/.config/eBus/config.yml by `make fs`).
 # data/config.yml.example holds the schema + safe defaults.
 data/config.yml

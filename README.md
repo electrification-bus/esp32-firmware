@@ -82,6 +82,19 @@ Defined in [`platformio.ini`](platformio.ini). Run `make envs` to list, or `make
 | `esp32-s3-devkitc-1` | Espressif ESP32-S3-DevKitC | Native USB CDC |
 | `esp8266-homie`, `wesp32-poe`, `spiffs` | Other / legacy / utility envs | See `platformio.ini` |
 
+## Personal LLM Configuration
+
+If you use an LLM coding assistant (Claude Code, Cursor, Aider, etc.), please **do not commit your personal LLM config files** (`CLAUDE.md`, `AGENTS.md`, `.claude/`, `.cursor/`, etc.) into this repo. Personal LLM configs trample on each other the same way personal `config.yml` files do — different contributors have different setups, different memory, different tool permissions, and nobody benefits from seeing yours in their working tree.
+
+Two patterns we recommend:
+
+- **Shadow repo** — Keep your personal LLM configs in a separate git repo (e.g. `~/projects/eBus/shadow-repo/esp32-sdk/`) and symlink them into this working tree. Gives you version control over your own configs without polluting the project repo. See the [`shadow-repo-init`](https://github.com/anthropics/claude-code) pattern for one implementation.
+- **Local exclude** — Add the paths to `.git/info/exclude` (the per-clone gitignore that's never tracked or shared). Simpler, but doesn't survive a fresh clone.
+
+The project `.gitignore` already lists common personal-LLM paths as a defensive measure, so accidental commits are caught even without either pattern above. If you have a use case for project-wide LLM context that *should* be tracked (e.g. a shared coding-standards `CLAUDE.md`), discuss with the maintainers first.
+
+The `.llm/` directory in this repo (currently `.llm/CLAUDE.md` and `.llm/claude/`) holds preserved historical LLM context from the initial handoff to Doug. That is tracked intentionally as project history; new contributors should leave it alone unless changing the historical record explicitly.
+
 ## License
 
 [MIT License](LICENSE) — Copyright (c) 2026 Clark Communications Corporation
