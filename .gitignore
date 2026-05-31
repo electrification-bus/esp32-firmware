@@ -5,6 +5,10 @@
 .vscode/ipch
 include/config.h
 
+# LSP / clangd compilation database — per-developer, regenerable.
+# Run `make compiledb` (or `pio run -t compiledb`) to refresh locally.
+compile_commands.json
+
 # macOS Finder metadata — never track
 .DS_Store
 

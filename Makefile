@@ -38,7 +38,7 @@ CONFIG_EXAMPLE := data/config.yml.example
 .DEFAULT_GOAL := help
 
 .PHONY: help build flash fs uploadfs flash-all monitor clean devices envs check \
-        config-status config-init config-stage
+        config-status config-init config-stage compiledb
 
 help: ## Show this help and exit
 	@printf 'esp32-sdk make targets (default PIO_ENV=$(PIO_ENV)):\n\n'
@@ -78,6 +78,9 @@ envs: ## List PlatformIO envs defined in platformio.ini
 
 check: ## Run pio static analysis (cppcheck)
 	$(PIO) check -e $(PIO_ENV)
+
+compiledb: ## Regenerate compile_commands.json for clangd / LSP
+	$(PIO) run -e $(PIO_ENV) -t compiledb
 
 config-status: ## Show config overlay paths and sync state
 	@printf 'overlay path:   %s\n' '$(CONFIG_OVERLAY)'
