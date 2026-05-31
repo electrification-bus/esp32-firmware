@@ -35,7 +35,7 @@ config:
     firmware_url: http://example.com/firmware.bin
     # mDNS device info
     manufacturer: NESL
-    model: ESP32-DEVKITC-1
+    model: ESP32-POE-ISO
     serial_number:   # leave empty to use device_id
     homie_role: device  # "device" or "controller"
     device_passphrase: changeme  # required for OTA and admin REST endpoints
