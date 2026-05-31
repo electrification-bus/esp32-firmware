@@ -75,11 +75,25 @@ VSCode users: use the PlatformIO IDE's project-tasks pane; same targets, differe
 
 ## Documentation Index
 
-- **Onboarding**: [GettingStarted_VSCode.md](doc/GettingStarted_VSCode.md), [GettingStarted_CLI.md](doc/GettingStarted_CLI.md)
+- **Onboarding**
+  - [GettingStarted_VSCode.md](doc/GettingStarted_VSCode.md)
+  - [GettingStarted_CLI.md](doc/GettingStarted_CLI.md)
 - **Configuration overlays**: [Configuration.md](doc/Configuration.md)
-- **Design proposals**: [proposal-runtime-config-via-nvs.md](doc/proposal-runtime-config-via-nvs.md), [OTA_Proposal.md](doc/OTA_Proposal.md), [API_proposal.md](doc/API_proposal.md)
 - **PlatformIO command cheatsheet**: [PlatformIO_commands.md](doc/PlatformIO_commands.md)
-- **Subsystem notes**: [ESP32_HOMIE_OTA.md](doc/ESP32_HOMIE_OTA.md), [HOWTO_Homie_Node.md](doc/HOWTO_Homie_Node.md), [mDNS.md](doc/mDNS.md), [Authentication.md](doc/Authentication.md), [CONTROLLER_FEATURES.md](doc/CONTROLLER_FEATURES.md), [CONTROLLER_README.md](doc/CONTROLLER_README.md), [test_deployment.md](doc/test_deployment.md), [ota_server.md](doc/ota_server.md), [ESP32_Notes.md](doc/ESP32_Notes.md)
+- **Design proposals**
+  - [proposal-runtime-config-via-nvs.md](doc/proposal-runtime-config-via-nvs.md)
+  - [OTA_Proposal.md](doc/OTA_Proposal.md)
+  - [API_proposal.md](doc/API_proposal.md)
+- **Subsystem notes**
+  - [ESP32_HOMIE_OTA.md](doc/ESP32_HOMIE_OTA.md)
+  - [HOWTO_Homie_Node.md](doc/HOWTO_Homie_Node.md)
+  - [mDNS.md](doc/mDNS.md)
+  - [Authentication.md](doc/Authentication.md)
+  - [CONTROLLER_FEATURES.md](doc/CONTROLLER_FEATURES.md)
+  - [CONTROLLER_README.md](doc/CONTROLLER_README.md)
+  - [test_deployment.md](doc/test_deployment.md)
+  - [ota_server.md](doc/ota_server.md)
+  - [ESP32_Notes.md](doc/ESP32_Notes.md)
 
 ## Hardware Targets
 
