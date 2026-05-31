@@ -3,5 +3,17 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
-platformio.ini
 include/config.h
+
+# macOS Finder metadata — never track
+.DS_Store
+
+# Per-developer config (staged from ~/.config/eBus/config.yml by `make fs`).
+# data/config.yml.example holds the schema + safe defaults.
+data/config.yml
+data/config.yml~
+data/config.yml.bak
+
+# Per-developer PlatformIO overrides (merged in via [platformio] extra_configs).
+# platformio_local.ini.example holds a documented template.
+platformio_local.ini

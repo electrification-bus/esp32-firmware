@@ -1,0 +1,46 @@
+; Per-developer PlatformIO overrides.
+;
+; This file (platformio_local.ini.example) is committed to the repo as a
+; documented template. To use it, copy to platformio_local.ini and edit.
+; platformio_local.ini is GITIGNORED — your tweaks never leak upstream.
+;
+; PlatformIO merges this into platformio.ini at config-read time. Values
+; here override the same keys in platformio.ini. Add ONLY the keys you
+; want to override; everything else inherits from the tracked base.
+;
+; Common things to override:
+;   - upload_speed (slow down for sketchy USB cables / CH340 chips)
+;   - upload_port  (pin to a specific /dev/cu.* device)
+;   - monitor_speed (rare; usually keep matching the firmware)
+;   - extra build_flags (debug defines, feature toggles)
+;
+; Examples below — UNCOMMENT and edit. All commented-out.
+
+; ----------------------------------------------------------------------
+; Example: slow down the upload_speed on the Olimex POE-ISO board
+; (CH340 USB-serial chip sometimes drops bytes at 921600).
+; ----------------------------------------------------------------------
+; [env:esp32-poe-iso]
+; upload_speed = 115200
+
+; ----------------------------------------------------------------------
+; Example: pin a specific serial port (skip pio's auto-detection).
+; ----------------------------------------------------------------------
+; [env:esp32-poe-iso]
+; upload_port  = /dev/cu.usbserial-21130
+; monitor_port = /dev/cu.usbserial-21130
+
+; ----------------------------------------------------------------------
+; Example: add a debug build flag without modifying the shared base.
+; Note: use ${env.build_flags} or ${common.build_flags} to APPEND
+; rather than replace; bare assignment replaces.
+; ----------------------------------------------------------------------
+; [env:esp32-poe-iso]
+; build_flags = ${common.build_flags}
+;     -DMY_DEBUG_THING=1
+
+; ----------------------------------------------------------------------
+; Example: change the default_envs for `pio run` (no -e flag needed).
+; ----------------------------------------------------------------------
+; [platformio]
+; default_envs = esp32-poe-iso

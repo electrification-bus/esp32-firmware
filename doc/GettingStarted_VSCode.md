@@ -1,4 +1,8 @@
-# This is the title
+# Getting Started — VSCode / PlatformIO IDE workflow
+
+This is the VSCode-centric onboarding. If you'd rather work from a terminal (Makefile, `pio` CLI, Emacs/vim), see [`GettingStarted_CLI.md`](GettingStarted_CLI.md) instead — same project, different editor surface.
+
+> **Configuration overlays**: both onboarding paths use per-developer overlay files for MQTT credentials, PlatformIO build tweaks, etc. After the setup steps below, read [`Configuration.md`](Configuration.md) once to understand where your personal `config.yml` and `platformio_local.ini` live and how they're merged with the repo's tracked defaults.
 
 ## Overview
 This is what this is
