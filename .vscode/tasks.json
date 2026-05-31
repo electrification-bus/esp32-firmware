@@ -1,0 +1,74 @@
+// VSCode tasks that wrap the new Makefile targets which aren't already
+// exposed by the PlatformIO IDE extension's "Project Tasks" sidebar.
+//
+// PIO IDE already gives you Build / Upload / Build Filesystem Image /
+// Upload Filesystem Image / Monitor / Clean — don't duplicate those here.
+// These are the per-developer overlay + LSP helpers that only exist as
+// Makefile targets.
+//
+// Trigger via Cmd-Shift-P → "Tasks: Run Task" (or Ctrl-Shift-P on Win/Linux).
+//
+// Windows note: requires `make` on PATH. Git for Windows' Git Bash
+// includes it; alternatively `choco install make` or `winget install
+// GnuWin32.Make`. macOS / Linux have `make` out of the box.
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Config: Bootstrap personal overlay (make config-init)",
+            "detail": "Create ~/.config/eBus/config.yml from data/config.yml.example. Idempotent — refuses to clobber if overlay already exists.",
+            "type": "shell",
+            "command": "make config-init",
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "clear": true
+            }
+        },
+        {
+            "label": "Config: Show overlay status (make config-status)",
+            "detail": "Print overlay path, overlay state (present/missing), and whether data/config.yml is in sync with the overlay.",
+            "type": "shell",
+            "command": "make config-status",
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "clear": true
+            }
+        },
+        {
+            "label": "Config: Stage overlay → data/config.yml (make config-stage)",
+            "detail": "Copy ~/.config/eBus/config.yml into data/config.yml. Normally auto-triggered by `make fs` / `uploadfs` / `flash-all`; run this manually only when re-syncing after editing the overlay.",
+            "type": "shell",
+            "command": "make config-stage",
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "clear": true
+            }
+        },
+        {
+            "label": "LSP: Regenerate compile_commands.json (make compiledb)",
+            "detail": "Run after a fresh clone, after lib_deps changes, or when IntelliSense / clangd gets confused. Produces a per-machine compilation database (gitignored).",
+            "type": "shell",
+            "command": "make compiledb",
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "clear": true
+            }
+        }
+    ]
+}
