@@ -98,20 +98,66 @@ If you run `make monitor` **outside tmux**, no breadcrumb is recorded and there'
 
 > **Emacs users**: nothing here is tmux-specific in a way that excludes you. If you'd rather host the serial session inside Emacs, run tmux inside an Emacs `vterm` (or `eat`) buffer and `make monitor` inside that. The coordination identifies panes by tmux's `pane_id`, not by terminal type, so it works the same regardless of whether the tmux pane is rendered by iTerm, Terminal.app, or Emacs vterm.
 
-### Multi-board support
+### Setting up the tmux session
 
-Breadcrumbs are keyed by port (`monitor-cu.usbserial-21130.state`, `monitor-cu.SLAB_USBtoUART.state`, …) so monitoring two boards in parallel — each in its own tmux pane — works fine:
+The session name is entirely up to you — the coord scripts identify panes by tmux's `pane_id` (the stable `@N` / `%N` form), not by the session/window/pane name. Pick something memorable; the session name only shows up in log messages and `make monitors` output.
 
-- `make flash PORT=/dev/cu.usbserial-21130` only pauses/restarts the monitor on that port.
-- `make flash` (no PORT) and exactly one monitor running: acts on that one.
-- `make flash` (no PORT) and multiple monitors running: errors with the list and asks you to specify `PORT=`.
-
-Stale breadcrumbs (left behind by a force-killed tmux session) are detected and cleaned up automatically the next time a coord script runs.
-
-### Inspecting state
+**Single board** — name the session after the project or the role:
 
 ```sh
-ls -la .run/                                   # active breadcrumbs
+tmux new -s ebus           # creates and attaches; sets up your serial session
+make monitor               # auto-detects the single attached USB-serial port
+```
+
+**Multiple boards** — name each session after the specific device, so you can tell them apart at a glance:
+
+```sh
+# Terminal 1
+tmux new -s ebus-poe
+make monitor PIO_ENV=esp32-poe-iso PORT=/dev/cu.usbserial-21130
+
+# Terminal 2
+tmux new -s ebus-s3
+make monitor PIO_ENV=esp32-s3-devkitc-1 PORT=/dev/cu.usbmodem14201
+```
+
+Run `make flash` (or `flash-all` / `uploadfs`) from any other shell — pass the same `PORT=` so the coord scripts target the right monitor:
+
+```sh
+make flash PORT=/dev/cu.usbserial-21130 PIO_ENV=esp32-poe-iso
+```
+
+### Multi-board support
+
+Breadcrumbs are keyed by port (`monitor-cu.usbserial-21130.state`, `monitor-cu.usbmodem14201.state`, …) so monitoring multiple boards in parallel — each in its own tmux session — works fine:
+
+- `make flash PORT=<port>` only pauses/restarts the monitor on that specific port; other sessions are untouched.
+- `make flash` (no `PORT=`) with exactly one monitor running: acts on that one.
+- `make flash` (no `PORT=`) with multiple monitors running: errors with a per-session listing of port/env/pane and asks you to specify `PORT=`.
+
+Stale breadcrumbs (left behind by a force-killed tmux session) are detected via `tmux list-panes` and cleaned up the next time any coord script runs.
+
+### `make monitors` — what's currently active
+
+```
+$ make monitors
+1) /dev/cu.usbserial-21130
+   env:     esp32-poe-iso
+   pane:    ebus-poe:make.0 [%7]
+   started: 2026-06-01T14:13:53Z
+
+2) /dev/cu.usbmodem14201
+   env:     esp32-s3-devkitc-1
+   pane:    ebus-s3:zsh.0 [%12]
+   started: 2026-06-01T14:18:42Z
+```
+
+If no sessions are running it prints `no active monitor sessions`. Pure cleanup helper — calling it also reaps any stale breadcrumbs as a side effect.
+
+### Inspecting state (raw)
+
+```sh
+ls -la .run/                                   # raw breadcrumb files
 cat .run/monitor-cu.usbserial-21130.state      # human-readable; cleanly removable if needed
 ```
 

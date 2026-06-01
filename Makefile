@@ -38,7 +38,7 @@ CONFIG_EXAMPLE := data/config.yml.example
 .DEFAULT_GOAL := help
 
 .PHONY: help build flash fs uploadfs flash-all monitor clean devices envs check \
-        config-status config-init config-stage compiledb
+        config-status config-init config-stage compiledb monitors
 
 help: ## Show this help and exit
 	@printf 'esp32-sdk make targets (default PIO_ENV=$(PIO_ENV)):\n\n'
@@ -79,6 +79,9 @@ clean: ## Clean build artifacts for the current env
 
 devices: ## List attached serial devices
 	$(PIO) device list --serial
+
+monitors: ## List active serial monitor sessions (live breadcrumbs in .run/)
+	@./bin/_monitors-list
 
 envs: ## List PlatformIO envs defined in platformio.ini
 	@$(PIO) project config --json-output 2>/dev/null | \
