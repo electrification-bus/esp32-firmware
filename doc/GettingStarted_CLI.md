@@ -81,6 +81,42 @@ stty -f /dev/cu.usbserial-21130 115200 cs8 -cstopb -parenb raw -echo
 cat /dev/cu.usbserial-21130 | tee /tmp/serial.log
 ```
 
+## Monitor ↔ flash port handoff (when monitor runs in tmux)
+
+`make monitor` and `make flash` (and `uploadfs`, `flash-all`) both need exclusive access to the serial port — the macOS kernel only grants `/dev/cu.usbserial-*` to one process at a time. When monitor is running, flash can't open the port and vice versa.
+
+If you run `make monitor` **inside a tmux pane**, the Makefile drops a breadcrumb at `.run/monitor-<port>.state` recording which tmux pane is holding which port. Subsequent `make flash` invocations (from any shell, including from inside the monitor pane itself) automatically:
+
+1. read the breadcrumb,
+2. send `Ctrl-C` to the monitor's tmux pane to release the port,
+3. run the upload,
+4. send a fresh `make monitor` invocation back into the same pane to resume.
+
+Net effect: the tmux pane *is* the serial session for that port — scrollback preserved, monitor restarts in place. You can run flash commands from anywhere, including from inside that same monitor pane, and the upload/monitor swap happens automatically.
+
+If you run `make monitor` **outside tmux**, no breadcrumb is recorded and there's no coordination — flash will fail with "port busy" until you Ctrl-C the monitor yourself. So: tmux is recommended for the serial session.
+
+> **Emacs users**: nothing here is tmux-specific in a way that excludes you. If you'd rather host the serial session inside Emacs, run tmux inside an Emacs `vterm` (or `eat`) buffer and `make monitor` inside that. The coordination identifies panes by tmux's `pane_id`, not by terminal type, so it works the same regardless of whether the tmux pane is rendered by iTerm, Terminal.app, or Emacs vterm.
+
+### Multi-board support
+
+Breadcrumbs are keyed by port (`monitor-cu.usbserial-21130.state`, `monitor-cu.SLAB_USBtoUART.state`, …) so monitoring two boards in parallel — each in its own tmux pane — works fine:
+
+- `make flash PORT=/dev/cu.usbserial-21130` only pauses/restarts the monitor on that port.
+- `make flash` (no PORT) and exactly one monitor running: acts on that one.
+- `make flash` (no PORT) and multiple monitors running: errors with the list and asks you to specify `PORT=`.
+
+Stale breadcrumbs (left behind by a force-killed tmux session) are detected and cleaned up automatically the next time a coord script runs.
+
+### Inspecting state
+
+```sh
+ls -la .run/                                   # active breadcrumbs
+cat .run/monitor-cu.usbserial-21130.state      # human-readable; cleanly removable if needed
+```
+
+`.run/` is gitignored.
+
 ## Config overlays — see Configuration.md
 
 Two overlay files keep per-developer settings (MQTT credentials, upload-speed tweaks, etc.) out of the shared repo: `~/.config/eBus/config.yml` for firmware runtime config and `platformio_local.ini` for PlatformIO build/upload tweaks. The full model — flows, bootstrap commands, schemas, common overrides — lives in [`Configuration.md`](Configuration.md). Read that doc once after `make config-init` to understand both overlays end-to-end.

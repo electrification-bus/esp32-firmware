@@ -1,0 +1,47 @@
+#!/bin/sh
+# Internal helper: drop a breadcrumb so `make flash` can coordinate with a
+# running `make monitor`. Silent no-op outside tmux.
+#
+# Usage: _monitor-record <PIO_ENV> [<PORT>]
+#
+# - PIO_ENV: the env that was being monitored (recorded so restart uses the same).
+# - PORT:    explicit /dev/cu.* path, or empty to auto-detect via `pio device list`.
+#
+# Writes .run/monitor-<basename-of-port>.state with TMUX_PANE / PORT / PIO_ENV /
+# STARTED keys. Multiple boards get separate breadcrumbs (one per port).
+
+set -e
+
+PIO_ENV="$1"
+PORT="$2"
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+RUN_DIR="$REPO_ROOT/.run"
+
+# Coordination only available inside tmux. Outside tmux, this is a no-op:
+# monitor runs normally, flash has no way to discover or pause it.
+[ -n "$TMUX" ] || exit 0
+
+# Resolve PORT via auto-detection if not specified. Matches the common macOS
+# serial-bridge chip names; extend the regex as new chips appear.
+if [ -z "$PORT" ]; then
+    PORT=$("$REPO_ROOT/bin/pio" device list --serial 2>/dev/null \
+            | awk '/^\/dev\/(cu|tty)\.(usbserial|usbmodem|wchusbserial|SLAB)/{print; exit}')
+fi
+
+# If we still don't have a port, monitor will fail downstream and pio will
+# print its own error. We just skip the breadcrumb.
+[ -n "$PORT" ] || exit 0
+
+mkdir -p "$RUN_DIR"
+state="$RUN_DIR/monitor-$(basename "$PORT").state"
+
+cat > "$state" <<EOF
+TMUX_PANE_ID=$(tmux display-message -p '#{pane_id}')
+TMUX_PANE=$(tmux display-message -p '#S:#W.#P')
+PORT=$PORT
+PIO_ENV=$PIO_ENV
+STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+EOF
+
+echo "(monitor breadcrumb: $state)" >&2

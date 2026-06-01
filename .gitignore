@@ -5,9 +5,11 @@
 .vscode/ipch
 include/config.h
 
-# LSP / clangd compilation database — per-developer, regenerable.
-# Run `make compiledb` (or `pio run -t compiledb`) to refresh locally.
+# LSP / clangd compilation database + index — per-developer, regenerable.
+# compile_commands.json: run `make compiledb` to refresh.
+# .cache/clangd/: clangd's persistent symbol index.
 compile_commands.json
+.cache/
 
 # macOS Finder metadata — never track
 .DS_Store
@@ -35,3 +37,7 @@ data/config.yml.bak
 # Per-developer PlatformIO overrides (merged in via [platformio] extra_configs).
 # platformio_local.ini.example holds a documented template.
 platformio_local.ini
+
+# Runtime coordination state for the make monitor / make flash port handoff.
+# Breadcrumb files written by bin/_monitor-record and bin/_flash-coord.
+.run/

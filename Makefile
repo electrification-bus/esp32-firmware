@@ -51,20 +51,28 @@ help: ## Show this help and exit
 build: ## Compile firmware
 	$(PIO) run -e $(PIO_ENV)
 
-flash: ## Upload firmware to device over USB
-	$(PIO) run -e $(PIO_ENV) -t upload $(UPLOAD_PORT_FLAG)
+flash: ## Upload firmware to device over USB (auto-pauses/restarts tmux monitor)
+	@./bin/_flash-coord pause "$(PORT)"
+	@trap './bin/_flash-coord restart "$(PORT)"' EXIT INT TERM; \
+	 $(PIO) run -e $(PIO_ENV) -t upload $(UPLOAD_PORT_FLAG)
 
 fs: config-stage ## Build LittleFS image from data/ (no upload)
 	$(PIO) run -e $(PIO_ENV) -t buildfs
 
-uploadfs: config-stage ## Upload LittleFS image to device over USB
-	$(PIO) run -e $(PIO_ENV) -t uploadfs $(UPLOAD_PORT_FLAG)
+uploadfs: config-stage ## Upload LittleFS image over USB (auto-pauses/restarts tmux monitor)
+	@./bin/_flash-coord pause "$(PORT)"
+	@trap './bin/_flash-coord restart "$(PORT)"' EXIT INT TERM; \
+	 $(PIO) run -e $(PIO_ENV) -t uploadfs $(UPLOAD_PORT_FLAG)
 
-flash-all: config-stage ## Upload firmware + filesystem in one invocation
-	$(PIO) run -e $(PIO_ENV) -t upload -t uploadfs $(UPLOAD_PORT_FLAG)
+flash-all: config-stage ## Upload firmware + filesystem (auto-pauses/restarts tmux monitor)
+	@./bin/_flash-coord pause "$(PORT)"
+	@trap './bin/_flash-coord restart "$(PORT)"' EXIT INT TERM; \
+	 $(PIO) run -e $(PIO_ENV) -t upload -t uploadfs $(UPLOAD_PORT_FLAG)
 
-monitor: ## Open serial monitor (Ctrl-T h for menu, Ctrl-T q to quit)
-	$(PIO) device monitor -e $(PIO_ENV) $(MONITOR_PORT_FLAG)
+monitor: ## Open serial monitor (records breadcrumb if in tmux, for flash coordination)
+	@./bin/_monitor-record "$(PIO_ENV)" "$(PORT)"
+	@trap './bin/_monitor-release "$(PORT)"' EXIT INT TERM; \
+	 $(PIO) device monitor -e $(PIO_ENV) $(MONITOR_PORT_FLAG)
 
 clean: ## Clean build artifacts for the current env
 	$(PIO) run -e $(PIO_ENV) -t clean
