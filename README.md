@@ -81,6 +81,7 @@ VSCode users: use the PlatformIO IDE's project-tasks pane; same targets, differe
   - [GettingStarted_VSCode.md](doc/GettingStarted_VSCode.md)
   - [GettingStarted_CLI.md](doc/GettingStarted_CLI.md)
 - **Configuration overlays**: [Configuration.md](doc/Configuration.md)
+- **LLM access to a running device via MCP**: [Homie5_MCP_Server.md](doc/Homie5_MCP_Server.md)
 - **PlatformIO command cheatsheet**: [PlatformIO_commands.md](doc/PlatformIO_commands.md)
 - **Design proposals**
   - [proposal-runtime-config-via-nvs.md](doc/proposal-runtime-config-via-nvs.md)
@@ -109,7 +110,15 @@ Defined in [`platformio.ini`](platformio.ini). Run `make envs` to list, or `make
 | `esp32-s3-devkitc-1` | Espressif ESP32-S3-DevKitC | Native USB CDC |
 | `esp8266-homie`, `wesp32-poe`, `spiffs` | Other / legacy / utility envs | See `platformio.ini` |
 
-## Personal LLM Configuration
+## Using LLMs
+
+This project is friendly to LLM-assisted development, in two distinct ways: a running device can be made directly accessible to an LLM over MQTT, and developers can use any LLM coding assistant against the source — provided personal LLM configs stay out of the shared repo.
+
+### Talking to a running device (MCP)
+
+Once your ESP32 is running this firmware and publishing as a Homie 5 device, you can give Claude Code (or any MCP-compatible client) read/write access to the device's topic tree via the [`Tieske/homie5-mcp-server`](https://github.com/Tieske/homie5-mcp-server) MCP server. The LLM can list discovered devices, inspect node/property trees, read current property values, and write to settable properties — useful for testing, exploratory poking, and having an LLM reason about the device's *actual* live state instead of you describing it in prose. See [doc/Homie5_MCP_Server.md](doc/Homie5_MCP_Server.md) for setup instructions specific to this project (including the `HOMIE_DOMAIN=ebus` setting, which is easy to miss).
+
+### Personal LLM configuration — keep it out of the repo
 
 If you use an LLM coding assistant (Claude Code, Cursor, Aider, etc.), please **do not commit your personal LLM config files** (`CLAUDE.md`, `AGENTS.md`, `.claude/`, `.cursor/`, etc.) into this repo. Personal LLM configs trample on each other the same way personal `config.yml` files do — different contributors have different setups, different memory, different tool permissions, and nobody benefits from seeing yours in their working tree.
 
