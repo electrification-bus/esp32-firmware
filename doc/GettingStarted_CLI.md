@@ -93,7 +93,7 @@ For the long-term plan to move credentials out of LittleFS entirely and into NVS
 
 `pio` output is plain GCC-formatted compiler diagnostics (`file:line: warning: …`), which Emacs `compile-mode` parses out of the box. Workflow:
 
-- **Build with error navigation**: `M-x compile` → `make build` → `next-error` (`C-x ` `` ` ``) jumps to each warning/error in the source.
+- **Build with error navigation**: `M-x compile RET` (the project's [`.dir-locals.el`](../.dir-locals.el) pre-fills `make build`) → `next-error` (`C-x ` `` ` ``) jumps to each warning/error in the source.
 - **Quick rebuild**: `M-x recompile` re-runs the last compile command without re-prompting.
 - **Filesystem builds**: `M-x compile` → `make fs` (or `make uploadfs` if you want it to upload too). The config overlay is staged automatically.
 - **Serial monitor**: do *not* use `M-x serial-term` for this — it pre-dates miniterm's bidirectional handling and doesn't deal cleanly with the CH340 chip's reset toggling. Open a separate terminal (or tmux pane) and run `make monitor` there. If you want the output to also appear in Emacs, run `make monitor 2>&1 | tee /tmp/serial.log` in the terminal, then `M-x auto-revert-tail-mode` on `/tmp/serial.log` from Emacs.

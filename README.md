@@ -46,6 +46,8 @@ doc/                          Documentation
   ...                         + several legacy proposal and subsystem notes
 .vscode/                      Tracked: extensions.json, settings.json, tasks.json
                               (debug configs, C/C++ properties, IPCH cache: gitignored)
+.dir-locals.el                Emacs project-local settings — compile-command,
+                              indent style (counterpart to .vscode/)
 .llm/                         Historical LLM context preserved from initial handoff
                               (see "Personal LLM Configuration" below)
 bin/pio                       Repo-local shim to PlatformIO Core (~/.platformio/penv/bin/pio)
