@@ -48,8 +48,6 @@ doc/                          Documentation
                               (debug configs, C/C++ properties, IPCH cache: gitignored)
 .dir-locals.el                Emacs project-local settings — compile-command,
                               indent style (counterpart to .vscode/)
-.llm/                         Historical LLM context preserved from initial handoff
-                              (see "Personal LLM Configuration" below)
 bin/pio                       Repo-local shim to PlatformIO Core (~/.platformio/penv/bin/pio)
 Makefile                      CLI build / flash / monitor wrappers
 platformio.ini                Shared build config (tracked)
@@ -128,8 +126,6 @@ Two patterns we recommend:
 - **Local exclude** — Add the paths to `.git/info/exclude` (the per-clone gitignore that's never tracked or shared). Simpler, but doesn't survive a fresh clone.
 
 The project `.gitignore` already lists common personal-LLM paths as a defensive measure, so accidental commits are caught even without either pattern above. If you have a use case for project-wide LLM context that *should* be tracked (e.g. a shared coding-standards `CLAUDE.md`), discuss with the maintainers first.
-
-The `.llm/` directory in this repo (currently `.llm/CLAUDE.md` and `.llm/claude/`) holds preserved historical LLM context from the initial handoff to Doug. That is tracked intentionally as project history; new contributors should leave it alone unless changing the historical record explicitly.
 
 ## License
 
