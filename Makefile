@@ -38,7 +38,7 @@ CONFIG_EXAMPLE := data/config.yml.example
 .DEFAULT_GOAL := help
 
 .PHONY: help build flash fs uploadfs flash-all monitor clean devices envs check \
-        config-status config-init config-stage compiledb monitors
+        config-status config-init config-stage compiledb monitors generate
 
 help: ## Show this help and exit
 	@printf 'esp32-sdk make targets (default PIO_ENV=$(PIO_ENV)):\n\n'
@@ -48,7 +48,10 @@ help: ## Show this help and exit
 	@printf '  PORT=<dev>        Override serial port (default: pio auto-detect)\n'
 	@printf '  CONFIG_DIR=<dir>  Config overlay dir (default: $(CONFIG_DIR))\n'
 
-build: ## Compile firmware
+generate: ## Generate src/homie.cpp + data/homie.yml + data/config.yml from device.yml
+	python3 scripts/generate.py device.yml
+
+build: generate ## Compile firmware (auto-generates from device.yml first)
 	$(PIO) run -e $(PIO_ENV)
 
 flash: ## Upload firmware to device over USB (auto-pauses/restarts tmux monitor)

@@ -49,3 +49,7 @@ nodes:
         value: 0.0
 extensions: []
 implementation: homie-esp32-sdk
+generator:
+  class: EnergyMeter
+  header: spi/atm90e32_energy_meter.h
+  constructor: '("{id}", {config.cs1_pin}, {config.cs2_pin})'

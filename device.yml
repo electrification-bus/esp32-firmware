@@ -1,0 +1,43 @@
+# Homie device definition — single source of truth.
+# Run `python3 scripts/generate.py` to regenerate src/homie.cpp,
+# data/homie.yml, and data/config.yml, then `make build` to compile.
+#
+# Available components (lib/<bus>/<name>.yml):
+#   i2c/bme280                  — BME280 temp/pressure/humidity (I2C)
+#   modbus/sht20                — SHT20 temp/humidity (Modbus RTU)
+#   modbus/eletechsup32         — 32-ch voltage/current detector (Modbus RTU)
+#   gpio/ssr                    — Solid-state relay (GPIO)
+#   ble/serial_bms              — JBD Smart BMS (BLE)
+#   spi/atm90e32_energy_meter   — 6-CT energy meter (SPI); requires cs1_pin, cs2_pin
+
+device:
+  name: Energy Bus Monitor
+  id: ebus-001
+  type: energy
+  board: esp32-poe-iso          # must match a [env:…] in platformio.ini
+
+wifi:
+  ssid: ""
+  password: ""
+
+mqtt:
+  host: 192.168.128.175
+  port: 1883
+  username: dcj
+  password: REDACTED_MQTT_PASSWORD
+
+nodes:
+  - component: i2c/bme280
+    id: environment_bme280
+
+  - component: modbus/sht20
+    id: environment_sht20
+
+  - component: gpio/ssr
+    id: relay1
+
+  - component: spi/atm90e32_energy_meter
+    id: energy_meter
+    config:
+      cs1_pin: 15
+      cs2_pin: 16

@@ -23,3 +23,7 @@ nodes:
         value: 0.0
 extensions: []
 implementation: homie-esp32-sdk
+generator:
+  class: Modbus_SHT20
+  header: modbus/sht20.h
+  constructor: '("{id}", get_serial1())'
