@@ -7,13 +7,6 @@ nodes:
     name: Solid State Relay
     type: gpio
     properties:
-      - id: pin
-        name: GPIO Pin
-        datatype: integer
-        value: 9
-        settable: false
-        retained: false
-        description: "GPIO pin number connected to the SSR control input"
       - id: state
         name: State
         datatype: boolean
