@@ -9,16 +9,53 @@
 #include <homie/Device.h>
 #include <homie/Property.h>
 
+#include <i2c/bme280.h>
 #include <modbus/sht20.h>
+#include <gpio/ssr.h>
+#include <spi/atm90e32_energy_meter.h>
 
+BME280 environment_bme280("environment_bme280");
 Modbus_SHT20 environment_sht20("environment_sht20", get_serial1());
+SSR relay1("relay1");
+EnergyMeter energy_meter("energy_meter", 15, 16);
 
 // Static Homie Property objects — one per node property
+static Property _prop_environment_bme280_temperature;
+static Property _prop_environment_bme280_air_pressure;
+static Property _prop_environment_bme280_relative_humidity;
 static Property _prop_environment_sht20_temperature;
 static Property _prop_environment_sht20_relative_humidity;
+static Property _prop_relay1_pin;
+static Property _prop_relay1_state;
+static Property _prop_meter_volts_volts;
+static Property _prop_meter_current_amps;
+static Property _prop_meter_watts_watts;
+static Property _prop_meter_kwh_kwh;
 
 void register_homie_properties(Device* device) {
     Node* _node;
+    _node = device->addNode(environment_bme280.getNodeId(), "BME280 Temp/Pressure/Humidity Sensor", "sensor");
+    if (_node) {
+        _prop_environment_bme280_temperature.setNode(_node);
+        _prop_environment_bme280_temperature.setId("temperature");
+        _prop_environment_bme280_temperature.setName("Temperature");
+        _prop_environment_bme280_temperature.setDatatype("float");
+        _prop_environment_bme280_temperature.setUnit("°C");
+        _node->addProperty(&_prop_environment_bme280_temperature);
+        _prop_environment_bme280_air_pressure.setNode(_node);
+        _prop_environment_bme280_air_pressure.setId("air_pressure");
+        _prop_environment_bme280_air_pressure.setName("Air Pressure");
+        _prop_environment_bme280_air_pressure.setDatatype("float");
+        _prop_environment_bme280_air_pressure.setUnit("mb");
+        _node->addProperty(&_prop_environment_bme280_air_pressure);
+        _prop_environment_bme280_relative_humidity.setNode(_node);
+        _prop_environment_bme280_relative_humidity.setId("relative_humidity");
+        _prop_environment_bme280_relative_humidity.setName("Humidity");
+        _prop_environment_bme280_relative_humidity.setDatatype("float");
+        _prop_environment_bme280_relative_humidity.setUnit("percent");
+        _node->addProperty(&_prop_environment_bme280_relative_humidity);
+    }
+
     _node = device->addNode(environment_sht20.getNodeId(), "SHT20 Modbus Temp/Humidity Sensor", "sensor");
     if (_node) {
         _prop_environment_sht20_temperature.setNode(_node);
@@ -35,12 +72,74 @@ void register_homie_properties(Device* device) {
         _prop_environment_sht20_relative_humidity.setSettable(true);
         _node->addProperty(&_prop_environment_sht20_relative_humidity);
     }
+
+    _node = device->addNode(relay1.getNodeId(), "Solid State Relay", "gpio");
+    if (_node) {
+        _prop_relay1_pin.setNode(_node);
+        _prop_relay1_pin.setId("pin");
+        _prop_relay1_pin.setName("GPIO Pin");
+        _prop_relay1_pin.setDatatype("integer");
+        _prop_relay1_pin.setRetained(false);
+        _node->addProperty(&_prop_relay1_pin);
+        _prop_relay1_state.setNode(_node);
+        _prop_relay1_state.setId("state");
+        _prop_relay1_state.setName("State");
+        _prop_relay1_state.setDatatype("boolean");
+        _prop_relay1_state.setSettable(true);
+        _node->addProperty(&_prop_relay1_state);
+    }
+
+    _node = device->addNode("meter_volts", "Voltage Sensor", "energy");
+    if (_node) {
+        _prop_meter_volts_volts.setNode(_node);
+        _prop_meter_volts_volts.setId("volts");
+        _prop_meter_volts_volts.setName("Voltage");
+        _prop_meter_volts_volts.setDatatype("float");
+        _prop_meter_volts_volts.setUnit("V");
+        _node->addProperty(&_prop_meter_volts_volts);
+    }
+
+    _node = device->addNode("meter_current", "Current Sensor", "energy");
+    if (_node) {
+        _prop_meter_current_amps.setNode(_node);
+        _prop_meter_current_amps.setId("amps");
+        _prop_meter_current_amps.setName("Current");
+        _prop_meter_current_amps.setDatatype("float");
+        _prop_meter_current_amps.setUnit("A");
+        _node->addProperty(&_prop_meter_current_amps);
+    }
+
+    _node = device->addNode("meter_watts", "Power Sensor", "energy");
+    if (_node) {
+        _prop_meter_watts_watts.setNode(_node);
+        _prop_meter_watts_watts.setId("watts");
+        _prop_meter_watts_watts.setName("Power");
+        _prop_meter_watts_watts.setDatatype("float");
+        _prop_meter_watts_watts.setUnit("W");
+        _node->addProperty(&_prop_meter_watts_watts);
+    }
+
+    _node = device->addNode("meter_kwh", "Energy Consumption", "energy");
+    if (_node) {
+        _prop_meter_kwh_kwh.setNode(_node);
+        _prop_meter_kwh_kwh.setId("kwh");
+        _prop_meter_kwh_kwh.setName("Energy");
+        _prop_meter_kwh_kwh.setDatatype("float");
+        _prop_meter_kwh_kwh.setUnit("kWh");
+        _node->addProperty(&_prop_meter_kwh_kwh);
+    }
 }
 
 void setup_homie() {
+    environment_bme280.setup();
     environment_sht20.setup();
+    relay1.setup();
+    energy_meter.setup();
 }
 
 void loop_homie() {
+    environment_bme280.loop();
     environment_sht20.loop();
+    relay1.loop();
+    energy_meter.loop();
 }

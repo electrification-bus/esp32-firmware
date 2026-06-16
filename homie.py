@@ -269,6 +269,9 @@ def cmd_build(args) -> None:
 # ── push ───────────────────────────────────────────────────────────────────────
 
 def cmd_push(args) -> None:
+    print("--- generate ---")
+    cmd_generate(args)
+
     cfg   = load_device_yml(Path(args.device_yml))
     board = get_board(cfg)
     port  = getattr(args, "port", None)
@@ -277,7 +280,13 @@ def cmd_push(args) -> None:
     upload_fs = args.fs or args.fs_only
 
     if upload_fw:
-        print(f"--- uploading firmware (env: {board}) ---")
+        print(f"\n--- building firmware (env: {board}) ---")
+        rc = pio_run(board, [], port)
+        if rc != 0:
+            print(f"\nBuild FAILED (exit {rc})", file=sys.stderr)
+            sys.exit(rc)
+
+        print(f"\n--- uploading firmware (env: {board}) ---")
         rc = pio_run(board, ["upload"], port)
         if rc != 0:
             print(f"\nFirmware upload FAILED (exit {rc})", file=sys.stderr)
