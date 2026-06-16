@@ -243,3 +243,12 @@ void Property::serialize(JsonDocument& json) {
         json[HOMIE_UNIT] = _unit;
     }
 }
+
+void Property::serializeInto(JsonObject& obj) {
+    obj[HOMIE_NAME] = _name;
+    obj[HOMIE_DATATYPE] = _datatype;
+    if (_settable) obj[HOMIE_SETTABLE] = _settable;
+    if (!_retained) obj[HOMIE_RETAINED] = _retained;
+    if (strlen(_format) != 0) obj[HOMIE_FORMAT] = _format;
+    if (strlen(_unit) != 0) obj[HOMIE_UNIT] = _unit;
+}

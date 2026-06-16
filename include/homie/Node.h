@@ -27,6 +27,7 @@ public:
     const char* topic();
     void publish();
     JsonDocument serialize();
+    void serializeInto(JsonObject& obj);
     int numProperties() { return _num_properties;};
     void settable_callback(Property* property);
 private:

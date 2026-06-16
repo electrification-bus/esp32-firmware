@@ -395,10 +395,11 @@ boolean mqtt_connect() {
   Serial.printf("MQTT will topic:'%s' msg:'%s'\n", lwt_topic, HOMIE_STATE_LOST);
 
   // Configure MQTT client BEFORE connecting
-  // begin() sets up the network client and host
+  // begin() sets up the network client and host — also resets the message callback,
+  // so re-register it here on every connect (including reconnects).
   mqtt_client.begin(mqtt_host, mqtt_port, *transportClient);
+  mqtt_client.onMessageAdvanced(subscriber_callback);
 
-  
   // Connect with or without credentials
   bool connected = false;
   if (strlen(mqtt_username) == 0) {
@@ -595,7 +596,6 @@ void setup_mqtt() {
     return;
   }
 
-  mqtt_client.onMessageAdvanced(subscriber_callback);
   if (!mqtt_connect()) {
     delay(250);
     if (!mqtt_connect()) {

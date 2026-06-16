@@ -25,7 +25,7 @@ Make NVS (the ESP32's non-volatile-storage key-value partition) the primary cred
 3. Hardcoded compile-time defaults  ← last-resort safety net
 ```
 
-On a freshly-flashed device, NVS is empty, so config.yml supplies defaults. After the user provisions via captive portal, NVS overrides — and `make uploadfs` no longer wipes their provisioning. (Currently it does, because the filesystem partition gets replaced.)
+On a freshly-flashed device, NVS is empty, so config.yml supplies defaults. After the user provisions via captive portal, NVS overrides — and `python homie.py push --fs-only` no longer wipes their provisioning. (Currently it does, because the filesystem partition gets replaced.)
 
 ### Captive portal lifecycle
 
@@ -59,8 +59,8 @@ On a freshly-flashed device, NVS is empty, so config.yml supplies defaults. Afte
 Composable. After Proposal 3 lands, Proposal 2's overlay still serves a real purpose: it's where developers put their *defaults* for fresh-flashed units. The flow becomes:
 
 ```
-clone repo → make config-init → edit ~/.config/eBus/config.yml with your dev defaults
-→ make flash-all → device boots, NVS empty, falls back to YAML defaults → MQTT connects
+clone repo → python homie.py config init → edit ~/.config/eBus/config.yml with your dev defaults
+→ python homie.py push --fs → device boots, NVS empty, falls back to YAML defaults → MQTT connects
                                                                       → device runs
 later, in the field:
 end user opens captive portal → enters their own broker creds → NVS overrides YAML → device reboots

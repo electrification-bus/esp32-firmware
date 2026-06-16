@@ -13,9 +13,9 @@ Pick the path that matches how you work:
 | Editor surface | Onboarding doc |
 |---|---|
 | **VSCode + PlatformIO extension** | [doc/GettingStarted_VSCode.md](doc/GettingStarted_VSCode.md) |
-| **Terminal + Makefile + Emacs/vim** | [doc/GettingStarted_CLI.md](doc/GettingStarted_CLI.md) |
+| **Terminal (Python CLI)** | [doc/GettingStarted_CLI.md](doc/GettingStarted_CLI.md) |
 
-Both produce the same firmware. The CLI path uses a small `Makefile` and a `./bin/pio` shim; the VSCode path drives the same `pio` CLI through the PlatformIO IDE extension.
+Both produce the same firmware. The CLI path uses `homie.py` and a `./bin/pio` shim; the VSCode path drives the same `pio` CLI through the PlatformIO IDE extension.
 
 After initial setup, read [doc/Configuration.md](doc/Configuration.md) once to understand how the two per-developer overlay files (`~/.config/eBus/config.yml` and `platformio_local.ini`) keep your MQTT credentials and PIO tweaks out of the shared repo.
 
@@ -36,12 +36,14 @@ data/                         LittleFS image source
   config.yml                  Per-developer staged config (gitignored, derived from overlay)
 partitions/                   ESP32 flash partition tables — one CSV per flash size
 examples/                     Standalone example sketches
-scripts/                      PlatformIO build hooks (e.g. add_project_include.py)
+scripts/                      Build helpers (generate.py, add_project_include.py)
+homie.py                      CLI entry point — generate, build, push, monitor, config
 test/                         Device-side Python test harness (device_test.py, Test_Guide.md)
 doc/                          Documentation
   GettingStarted_VSCode.md    VSCode + PlatformIO IDE onboarding
-  GettingStarted_CLI.md       Terminal / Makefile / Emacs onboarding
+  GettingStarted_CLI.md       Terminal / Python CLI onboarding
   Configuration.md            Per-developer overlay model (config.yml + platformio_local.ini)
+  GenerateHomieDevice.md      How to configure and build a device from library components
   proposal-runtime-config-via-nvs.md   Design note: future NVS-backed runtime credentials
   ...                         + several legacy proposal and subsystem notes
 .vscode/                      Tracked: extensions.json, settings.json, tasks.json
@@ -49,26 +51,24 @@ doc/                          Documentation
 .dir-locals.el                Emacs project-local settings — compile-command,
                               indent style (counterpart to .vscode/)
 bin/pio                       Repo-local shim to PlatformIO Core (~/.platformio/penv/bin/pio)
-Makefile                      CLI build / flash / monitor wrappers
 platformio.ini                Shared build config (tracked)
 platformio_local.ini.example  Per-developer overrides template (tracked)
 platformio_local.ini          Your local overrides (gitignored, optional)
 LICENSE                       MIT
 ```
 
-## Common Commands (CLI path)
+## Common Commands
 
-```sh
-make help                                  # list all make targets
-make config-init                           # bootstrap ~/.config/eBus/config.yml from example
-make build                                 # compile firmware (default env: esp32-poe-iso)
-make flash                                 # upload firmware over USB
-make fs                                    # build LittleFS image (config overlay staged automatically)
-make uploadfs                              # upload LittleFS image over USB
-make flash-all                             # firmware + filesystem in one shot
-make monitor                               # serial console (real terminal only)
-make devices                               # list attached serial devices
-make build PIO_ENV=esp32-s3-devkitc-1      # override default env per-invocation
+```cmd
+python homie.py config init                    bootstrap ~/.config/eBus/config.yml from example
+python homie.py generate                       regenerate src/homie.cpp + data/*.yml from device.yml
+python homie.py build                          compile firmware
+python homie.py push                           upload firmware over USB
+python homie.py push --fs                      upload firmware + filesystem
+python homie.py push --fs-only                 upload filesystem only
+python homie.py monitor                        open serial console (real terminal only)
+python homie.py devices                        list attached serial devices
+python homie.py push --port COM3               override serial port
 ```
 
 VSCode users: use the PlatformIO IDE's project-tasks pane; same targets, different surface.
@@ -78,6 +78,7 @@ VSCode users: use the PlatformIO IDE's project-tasks pane; same targets, differe
 - **Onboarding**
   - [GettingStarted_VSCode.md](doc/GettingStarted_VSCode.md)
   - [GettingStarted_CLI.md](doc/GettingStarted_CLI.md)
+- **Building from device.yml**: [GenerateHomieDevice.md](doc/GenerateHomieDevice.md)
 - **Configuration overlays**: [Configuration.md](doc/Configuration.md)
 - **LLM access to a running device via MCP**: [Homie5_MCP_Server.md](doc/Homie5_MCP_Server.md)
 - **PlatformIO command cheatsheet**: [PlatformIO_commands.md](doc/PlatformIO_commands.md)
@@ -98,7 +99,7 @@ VSCode users: use the PlatformIO IDE's project-tasks pane; same targets, differe
 
 ## Hardware Targets
 
-Defined in [`platformio.ini`](platformio.ini). Run `make envs` to list, or `make devices` to see what's currently attached via USB.
+Defined in [`platformio.ini`](platformio.ini). Run `python homie.py envs` to list, or `python homie.py devices` to see what's currently attached via USB.
 
 | Env | Board | Notes |
 |---|---|---|

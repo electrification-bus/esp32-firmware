@@ -4,20 +4,20 @@ This project uses **two overlay files** so that each developer (or each deployed
 
 | What it controls | Tracked template | Real file (gitignored) | Used by |
 |---|---|---|---|
-| Firmware runtime config (MQTT, WiFi, Homie, device id) | `data/config.yml.example` | `~/.config/eBus/config.yml` | `make fs` (staged into `data/config.yml` → baked into LittleFS image) |
+| Firmware runtime config (MQTT, WiFi, Homie, device id) | `data/config.yml.example` | `~/.config/eBus/config.yml` | `python homie.py push --fs` (staged into `data/config.yml` → baked into LittleFS image) |
 | PlatformIO build / upload settings | `platformio_local.ini.example` | `platformio_local.ini` (repo root) | `pio` reads automatically via `extra_configs` in `platformio.ini` |
 
 ## 1. Firmware config — `~/.config/eBus/config.yml`
 
-This is what the firmware reads at boot to learn its MQTT broker, WiFi credentials, device id, Homie role, OTA passphrase, etc. The file gets baked into the **LittleFS partition** by `pio run -t buildfs`, so changing it requires a re-upload of the filesystem partition (`make uploadfs` or `make flash-all`).
+This is what the firmware reads at boot to learn its MQTT broker, WiFi credentials, device id, Homie role, OTA passphrase, etc. The file gets baked into the **LittleFS partition** by `pio run -t buildfs`, so changing it requires a re-upload of the filesystem partition (`python homie.py push --fs-only` or `python homie.py push --fs`).
 
 ### Flow
 
 ```
 ~/.config/eBus/config.yml          ←  your source of truth (gitignored, never leaves your machine)
         │
-        │  copied by `make config-stage`
-        │  (auto-triggered by `make fs` / `make uploadfs` / `make flash-all`)
+        │  copied by `python homie.py config stage`
+        │  (also generated from device.yml by `python homie.py generate`)
         ▼
 data/config.yml                     ←  staging file PIO reads when building the LittleFS image
                                         (gitignored — derived; never edit directly)
@@ -28,13 +28,13 @@ data/config.yml.example             ←  the schema + safe-defaults template
 
 ### Bootstrap
 
-```sh
-make config-init                          # creates ~/.config/eBus/config.yml from the example
-$EDITOR ~/.config/eBus/config.yml         # edit your broker / credentials / device id
-make config-status                        # confirm overlay present and target in sync
+```cmd
+python homie.py config init               creates ~/.config/eBus/config.yml from the example
+edit %USERPROFILE%\.config\eBus\config.yml
+python homie.py config status             confirm overlay present and target in sync
 ```
 
-`make config-init` is idempotent — running it a second time will refuse to clobber. `make config-status` reports three possible states: overlay missing (run `config-init`), overlay present and target in sync (ready to build), overlay present but target drifted (you edited `data/config.yml` directly — run `config-stage` to re-sync).
+`config init` is idempotent — running it a second time will refuse to clobber. `config status` reports three possible states: overlay missing (run `config init`), overlay present and target in sync (ready to build), overlay present but target drifted (you edited `data/config.yml` directly — run `config stage` to re-sync).
 
 > **From VSCode**: these are also wrapped as VSCode tasks. Cmd-Shift-P → "Tasks: Run Task" → pick **Config: Bootstrap personal overlay** / **Config: Show overlay status** / **Config: Stage overlay → data/config.yml**. See [`GettingStarted_VSCode.md`](GettingStarted_VSCode.md) for the full task list.
 
@@ -51,17 +51,6 @@ make config-status                        # confirm overlay present and target i
 ### Cleartext credentials caveat
 
 Right now the firmware dumps the full parsed config to the serial console at boot, including `mqtt_password` and `device_passphrase` in cleartext. Anyone with USB serial access (or remote serial via a TCP-to-serial bridge) can read them. Treat them as low-secrecy until that log line is redacted — there's a tactical one-line fix queued up plus a larger design note in [proposal-runtime-config-via-nvs.md](proposal-runtime-config-via-nvs.md) covering NVS-backed runtime provisioning.
-
-### Override the overlay location
-
-`CONFIG_DIR` env-var changes where the overlay lives:
-
-```sh
-make fs CONFIG_DIR=/some/other/path
-make config-status CONFIG_DIR=/some/other/path
-```
-
-Useful for testing against multiple configs, or for per-device profiles when you have several physical units.
 
 ## 2. PlatformIO build/upload — `platformio_local.ini`
 
@@ -113,8 +102,8 @@ See [`platformio_local.ini.example`](../platformio_local.ini.example) for fully-
 
 Different lifecycles. `data/config.yml` controls what gets baked into the device's filesystem image and changes per-deployment (per device, per environment, per customer). `platformio_local.ini` controls how *your specific machine* builds and uploads to *your specific connected board* and changes per-developer. A new dev joining the project would typically:
 
-1. Run `make config-init` once → edit `~/.config/eBus/config.yml` with their MQTT broker
+1. Run `python homie.py config init` once → edit `~/.config/eBus/config.yml` with their MQTT broker
 2. Possibly `cp platformio_local.ini.example platformio_local.ini` once → tweak `upload_speed` if they're on a CH340 chip
-3. Then `make build` / `make flash` / `make flash-all` indefinitely without touching either file
+3. Then `python homie.py build` / `python homie.py push` / `python homie.py push --fs` indefinitely without touching either file
 
 Both overlays compose cleanly with a future move to a different repo structure (e.g. extracting the C++ core into its own library, with per-packaging repos for PlatformIO / ESPHome / etc.) — they're conventions, not infrastructure.

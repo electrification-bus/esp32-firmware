@@ -152,9 +152,12 @@ def generate(device_yml_path: str) -> None:
         "implementation": "homie-esp32-sdk",
     }
     out_homie = DATA_DIR / "homie.yml"
-    with open(out_homie, "w", encoding="utf-8") as f:
-        yaml.dump(homie_doc, f, allow_unicode=True, sort_keys=False)
+    homie_text = yaml.dump(homie_doc, allow_unicode=True, sort_keys=False)
+    out_homie.write_text(homie_text, encoding="utf-8")
     print(f"  generated: {out_homie.relative_to(PROJECT_ROOT)}")
+    print()
+    for line in homie_text.splitlines():
+        print(f"    {line}")
 
     # ── data/config.yml ────────────────────────────────────────────────────────
     wifi     = cfg.get("wifi", {})
@@ -173,9 +176,12 @@ def generate(device_yml_path: str) -> None:
         }]
     }
     out_config = DATA_DIR / "config.yml"
-    with open(out_config, "w", encoding="utf-8") as f:
-        yaml.dump(config_doc, f, allow_unicode=True, sort_keys=False)
+    config_text = yaml.dump(config_doc, allow_unicode=True, sort_keys=False)
+    out_config.write_text(config_text, encoding="utf-8")
     print(f"  generated: {out_config.relative_to(PROJECT_ROOT)}")
+    print()
+    for line in config_text.splitlines():
+        print(f"    {line}")
 
     board = device.get("board", "<board>")
     print(f"\n{len(nodes_cfg)} node(s), board: {board}")

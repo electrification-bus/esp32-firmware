@@ -189,11 +189,11 @@ void loop() {
 #include <util/dict.h>
 #include <homie.h>
 
-// Callback to re-publish state after MQTT reconnection
+// Callback to re-publish state and re-subscribe settable properties after MQTT reconnection
 void on_mqtt_reconnect() {
+    theDevice.mqttConnected();  // re-subscribe settable property /set topics
     theDevice.publishState();
     Serial.println("DEVICE: Re-published $state after reconnect");
-
 }
 
 void setup() {
@@ -287,6 +287,8 @@ void setup() {
                    getDeviceID(),
                    (*dev_conf)[HOMIE_TYPE].as<const char*>(),
                    &mqtt_client);
+    register_homie_properties(&theDevice);
+    theDevice.mqttConnected();  // subscribe settable property /set topics
     theDevice.publishState(); // default state is init
     //loop_mqtt();  // Flush MQTT messages
     theDevice.publish();

@@ -5,12 +5,12 @@
 # from your personal overlay at ~/.config/eBus/config.yml.
 #
 # To bootstrap a personal overlay from this example:
-#   make config-init   # copies this file to ~/.config/eBus/config.yml
-#   $EDITOR ~/.config/eBus/config.yml
-#   make config-status # confirm overlay is present
+#   python homie.py config init    # copies this file to ~/.config/eBus/config.yml
+#   edit ~/.config/eBus/config.yml
+#   python homie.py config status  # confirm overlay is present
 #
-# Then `make fs` / `make uploadfs` / `make flash-all` will copy the overlay
-# into data/config.yml before invoking PlatformIO's buildfs target.
+# Then `python homie.py push --fs` will stage the overlay into data/config.yml
+# and upload the filesystem to the device.
 #
 # Defaults below point at the public Shiftr.io test broker — safe for first-
 # boot smoke testing only. Replace mqtt_host / username / password with your

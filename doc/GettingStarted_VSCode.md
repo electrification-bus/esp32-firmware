@@ -1,6 +1,6 @@
 # Getting Started — VSCode / PlatformIO IDE workflow
 
-This is the VSCode-centric onboarding. If you'd rather work from a terminal (Makefile, `pio` CLI, Emacs/vim), see [`GettingStarted_CLI.md`](GettingStarted_CLI.md) instead — same project, different editor surface.
+This is the VSCode-centric onboarding. If you'd rather work from a terminal (`python homie.py`, `pio` CLI, Emacs/vim), see [`GettingStarted_CLI.md`](GettingStarted_CLI.md) instead — same project, different editor surface.
 
 > **Configuration overlays**: both onboarding paths use per-developer overlay files for MQTT credentials, PlatformIO build tweaks, etc. After the setup steps below, read [`Configuration.md`](Configuration.md) once to understand where your personal `config.yml` and `platformio_local.ini` live and how they're merged with the repo's tracked defaults.
 
@@ -63,16 +63,14 @@ Beyond the standard PlatformIO IDE "Project Tasks" sidebar (Build / Upload / Upl
 
 Trigger via **Cmd-Shift-P → "Tasks: Run Task"** (Ctrl-Shift-P on Windows/Linux):
 
-| Task | Wraps | When to use |
+| Task | Equivalent CLI | When to use |
 |---|---|---|
-| **Config: Bootstrap personal overlay** | `make config-init` | Once after a fresh clone — creates `~/.config/eBus/config.yml` from the example template |
-| **Config: Show overlay status** | `make config-status` | Sanity-check that your overlay is present and `data/config.yml` is in sync |
-| **Config: Stage overlay → data/config.yml** | `make config-stage` | Re-sync `data/config.yml` after editing the overlay (PlatformIO's fs build also auto-stages it) |
-| **LSP: Regenerate compile_commands.json** | `make compiledb` | After fresh clone, after `lib_deps` changes, or when IntelliSense gets confused |
+| **Config: Bootstrap personal overlay** | `python homie.py config init` | Once after a fresh clone — creates `~/.config/eBus/config.yml` from the example template |
+| **Config: Show overlay status** | `python homie.py config status` | Sanity-check that your overlay is present and `data/config.yml` is in sync |
+| **Config: Stage overlay → data/config.yml** | `python homie.py config stage` | Re-sync `data/config.yml` after editing the overlay |
+| **LSP: Regenerate compile_commands.json** | `pio run -e <env> -t compiledb` | After fresh clone, after `lib_deps` changes, or when IntelliSense gets confused |
 
 See [`Configuration.md`](Configuration.md) for the full per-developer overlay model that these tasks support.
-
-> **Windows note**: these tasks shell out to `make`. Git for Windows' Git Bash bundles it; alternatively `choco install make` or `winget install GnuWin32.Make`. macOS / Linux have it out of the box.
 
 ### Troubleshooting
 

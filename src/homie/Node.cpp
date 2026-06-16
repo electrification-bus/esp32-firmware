@@ -10,27 +10,27 @@ Node::Node() : _mqtt_client(nullptr), _device(nullptr) {
 Node::~Node() {
 }
 
+void Node::serializeInto(JsonObject& obj) {
+    obj[HOMIE_NAME] = _name;
+    obj[HOMIE_TYPE] = _type;
+    JsonObject props = obj[HOMIE_PROPERTIES].to<JsonObject>();
+    for (int i = 0; i < _num_properties; i++) {
+        JsonObject prop_obj = props[_properties[i]->id()].to<JsonObject>();
+        _properties[i]->serializeInto(prop_obj);
+    }
+}
+
 JsonDocument Node::serialize() {
     JsonDocument json;
-    json[HOMIE_NAME] = _name;
-    json[HOMIE_TYPE] = _type;
-
-    //properties
-    JsonDocument props;
-    JsonDocument obj;
-    for(int i=0;i<_num_properties;i++) {
-        obj.clear();
-        _properties[i]->serialize(obj);
-        props[_properties[i]->id()] = obj.as<JsonObject>();
-    }
-    json[HOMIE_PROPERTIES] = props.as<JsonObject>();
+    JsonObject obj = json.to<JsonObject>();
+    serializeInto(obj);
     return json;
 }
 
 void Node::addProperty(Property* property) {
     Serial.printf("Node '%s': Adding property: '%s'\n", _id, property->id());
-    //instantiate NodeProperty and add to array
-    property->setNode(this); // Set the parent node for the property
+    property->setNode(this);
+    if (_mqtt_client) property->setMQTTClient(_mqtt_client);
     _properties[_num_properties++] = property;
 }
 

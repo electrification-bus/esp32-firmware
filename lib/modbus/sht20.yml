@@ -18,7 +18,7 @@ nodes:
         name: Humidity
         datatype: float
         unit: percent
-        settable: false
+        settable: true
         retained: true
         value: 0.0
 extensions: []

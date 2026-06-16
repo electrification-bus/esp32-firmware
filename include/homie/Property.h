@@ -59,6 +59,7 @@ public:
     void publish();
     Node* getParentNode() const { return _parent_node; }
     void serialize(JsonDocument& json);
+    void serializeInto(JsonObject& obj);
     bool is_dirty() const { return _dirty_settable; }
     void clear_dirty() { _dirty_settable = false; }
 private:

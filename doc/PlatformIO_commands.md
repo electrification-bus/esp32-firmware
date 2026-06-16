@@ -1,8 +1,8 @@
 # PlatformIO commands
 
-Raw `pio` CLI cheatsheet, converted from the original `.txt` notes.
+Raw `pio` CLI cheatsheet — for when you need to invoke `pio` directly.
 
-For ordinary day-to-day work, prefer the `Makefile` wrappers (`make build`, `make flash`, `make fs`, `make uploadfs`, `make monitor`, etc.) — they're shorter and they auto-stage the per-developer config overlay. See [`GettingStarted_CLI.md`](GettingStarted_CLI.md). This file documents the underlying `pio` invocations for when you need to invoke them directly.
+For ordinary day-to-day work, use `python homie.py` (see [`GettingStarted_CLI.md`](GettingStarted_CLI.md)) — it's shorter and auto-stages the per-developer config overlay. This file documents the underlying `pio` invocations.
 
 ## Selecting an environment
 
@@ -13,7 +13,7 @@ For ordinary day-to-day work, prefer the `Makefile` wrappers (`make build`, `mak
 - `esp32-poe-iso-16mb` — Olimex POE-ISO with 16 MB flash variant
 - `esp32-s3-devkitc-1` — Espressif ESP32-S3-DevKitC
 
-Run `make envs` (or `pio project config --json-output`) for the complete list defined in `platformio.ini`.
+Run `python homie.py envs` (or `pio project config --json-output`) for the complete list defined in `platformio.ini`.
 
 ## Commands
 
@@ -23,7 +23,7 @@ Run `make envs` (or `pio project config --json-output`) for the complete list de
 pio run -e <target>
 ```
 
-Equivalent: `make build`
+Equivalent: `python homie.py build`
 
 ### Build and upload firmware (USB)
 
@@ -31,7 +31,7 @@ Equivalent: `make build`
 pio run -e <target> -t upload
 ```
 
-Equivalent: `make flash`
+Equivalent: `python homie.py push`
 
 ### Build LittleFS image from `data/`
 
@@ -39,7 +39,7 @@ Equivalent: `make flash`
 pio run -e <target> -t buildfs
 ```
 
-Equivalent: `make fs` (the Makefile target also stages your per-developer overlay into `data/config.yml` first; the raw `pio` call assumes you've already done that)
+Equivalent: `python homie.py push --fs-only` (which also uploads; for build-only, run `pio` directly as above)
 
 ### Upload LittleFS image to device (USB)
 
@@ -47,7 +47,7 @@ Equivalent: `make fs` (the Makefile target also stages your per-developer overla
 pio run -e <target> -t uploadfs
 ```
 
-Equivalent: `make uploadfs`
+Equivalent: `python homie.py push --fs-only`
 
 ### Memory footprint
 
@@ -64,7 +64,7 @@ pio run -e <target> -t checkprogsize
 pio device monitor -e <target>
 ```
 
-Equivalent: `make monitor` — must be invoked from a real terminal (not a non-TTY context like a CI runner or piped capture).
+Equivalent: `python homie.py monitor` — must be invoked from a real terminal (not a non-TTY context like a CI runner or piped capture).
 
 ### List attached serial devices
 
@@ -72,7 +72,7 @@ Equivalent: `make monitor` — must be invoked from a real terminal (not a non-T
 pio device list
 ```
 
-Equivalent: `make devices`
+Equivalent: `python homie.py devices`
 
 ### Regenerate the LSP compilation database
 
@@ -80,7 +80,7 @@ Equivalent: `make devices`
 pio run -e <target> -t compiledb
 ```
 
-Equivalent: `make compiledb` — produces `compile_commands.json` (gitignored) for clangd, ccls, and IntelliSense.
+Produces `compile_commands.json` (gitignored) for clangd, ccls, and IntelliSense.
 
 ### Clean build artifacts for one env
 
@@ -88,7 +88,7 @@ Equivalent: `make compiledb` — produces `compile_commands.json` (gitignored) f
 pio run -e <target> -t clean
 ```
 
-Equivalent: `make clean`
+Equivalent: `python homie.py clean`
 
 ## Examples — `esp32-poe-iso`
 
@@ -98,6 +98,6 @@ pio run -e esp32-poe-iso -t buildfs
 pio run -e esp32-poe-iso -t uploadfs
 pio run -e esp32-poe-iso -t size
 pio run -e esp32-poe-iso -t checkprogsize
-pio run -e esp32-poe-iso -t upload -t uploadfs   # firmware + filesystem in one shot (= make flash-all)
+pio run -e esp32-poe-iso -t upload -t uploadfs   # firmware + filesystem in one shot
 pio device monitor -e esp32-poe-iso
 ```
