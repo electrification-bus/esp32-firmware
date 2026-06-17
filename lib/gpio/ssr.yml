@@ -20,3 +20,9 @@ generator:
   class: SSR
   header: gpio/ssr.h
   constructor: '("{id}")'
+
+esphome:
+  platform: gpio
+  config:
+    pin: "{config.pin}"
+    inverted: true

@@ -1,8 +1,33 @@
 homie: 5.0.1
-name: Energy Bus Monitor
+name: EBUS
 type: energy
 state: init
 nodes:
+- id: environment_bme280
+  name: BME280 Temp/Pressure/Humidity Sensor
+  type: sensor
+  properties:
+  - id: temperature
+    name: Temperature
+    datatype: float
+    unit: °C
+    settable: false
+    retained: true
+    value: 0.0
+  - id: air_pressure
+    name: Air Pressure
+    datatype: float
+    unit: mb
+    settable: false
+    retained: true
+    value: 0.0
+  - id: relative_humidity
+    name: Humidity
+    datatype: float
+    unit: percent
+    settable: false
+    retained: true
+    value: 0.0
 - id: environment_sht20
   name: SHT20 Modbus Temp/Humidity Sensor
   type: sensor
@@ -19,6 +44,61 @@ nodes:
     datatype: float
     unit: percent
     settable: true
+    retained: true
+    value: 0.0
+- id: relay1
+  name: Solid State Relay
+  type: gpio
+  properties:
+  - id: state
+    name: State
+    datatype: boolean
+    settable: true
+    retained: true
+    value: false
+    description: The state of the relay (on/off)
+- id: meter_volts
+  name: Voltage Sensor
+  type: energy
+  properties:
+  - id: volts
+    name: Voltage
+    datatype: float
+    unit: V
+    settable: false
+    retained: true
+    value: 0.0
+- id: meter_current
+  name: Current Sensor
+  type: energy
+  properties:
+  - id: amps
+    name: Current
+    datatype: float
+    unit: A
+    settable: false
+    retained: true
+    value: 0.0
+- id: meter_watts
+  name: Power Sensor
+  type: energy
+  properties:
+  - id: watts
+    name: Power
+    datatype: float
+    unit: W
+    settable: false
+    retained: true
+    value: 0.0
+- id: meter_kwh
+  name: Energy Consumption
+  type: energy
+  properties:
+  - id: kwh
+    name: Energy
+    datatype: float
+    unit: kWh
+    settable: false
     retained: true
     value: 0.0
 extensions: []

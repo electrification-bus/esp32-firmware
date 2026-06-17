@@ -1,35 +1,52 @@
-# Building a Homie Device from Library Components
+# Building a Device from Library Components
 
-The SDK ships a code generator that turns a single `device.yml` file into a PlatformIO
-firmware project.  The workflow is the same as ESPHome: write one YAML file, run a
-command, flash the resulting binary.
+`device.yml` is the single source of truth for the device.  From it, `homie.py`
+generates firmware for two independent build targets:
 
 ```
-device.yml   →   python homie.py generate   →   src/homie.cpp
-                                                  data/homie.yml
-                                                  data/config.yml
-                                                      ↓
-                                             python homie.py build
-                                                      ↓
-                                                 firmware.bin
+                          ┌─ python homie.py generate ─→ src/homie.cpp
+                          │                               data/homie.yml
+device.yml ───────────────┤                               data/config.yml
+                          │                                    ↓
+                          │                           python homie.py build
+                          │                                    ↓
+                          │                              firmware.bin  (Homie/PlatformIO)
+                          │
+                          └─ python homie.py esphome ─→ ebus-001.esphome.yaml
+                                                              ↓
+                                                    esphome compile …
+                                                              ↓
+                                                         firmware.bin  (ESPHome)
 ```
 
 ---
 
 ## Quickstart
 
+**Homie / PlatformIO:**
 ```cmd
-python homie.py generate        regenerates src/homie.cpp + data/*.yml
-python homie.py build           generate + compile firmware
-python homie.py push            flash firmware to device
-python homie.py push --fs       flash firmware + filesystem
+python homie.py generate          regenerate src/homie.cpp + data/*.yml
+python homie.py build             generate + compile firmware
+python homie.py push              flash firmware + filesystem (always both)
+python homie.py push --fs-only    flash filesystem only (re-flash config without rebuilding)
 python homie.py push --port COM3  explicit serial port
 ```
 
-`python homie.py build` always runs generate first, so `generate` alone is only
-needed when you want to inspect the generated files without compiling.
+`build` always runs `generate` first, so `generate` alone is only needed when you
+want to inspect the generated files without compiling.
 
-All commands accept an optional path to `device.yml` as the last argument
+**ESPHome:**
+```cmd
+python homie.py esphome           generate ebus-001.esphome.yaml + print required secrets
+python homie.py esphome --mqtt    generate with MQTT instead of native ESPHome API
+esphome compile ebus-001.esphome.yaml
+esphome run     ebus-001.esphome.yaml        compile + flash (first time, USB)
+esphome upload  ebus-001.esphome.yaml        flash only (OTA or USB after first flash)
+```
+
+Fill in `secrets.yaml` (project root, gitignored) before compiling ESPHome firmware.
+
+All `homie.py` commands accept an optional path to `device.yml` as the last argument
 (default: `device.yml` in the project root).
 
 ---
@@ -37,13 +54,14 @@ All commands accept an optional path to `device.yml` as the last argument
 ## CLI reference
 
 ```
-python homie.py generate [device.yml]        generate src/homie.cpp + data/*.yml
-python homie.py build    [device.yml]        generate then compile firmware
-python homie.py push     [--port PORT] [--fs | --fs-only] [device.yml]
+python homie.py generate [device.yml]          generate src/homie.cpp + data/*.yml
+python homie.py build    [device.yml]          generate then compile firmware
+python homie.py push     [--port PORT] [--fs-only] [device.yml]
 python homie.py monitor  [--port PORT] [device.yml]
-python homie.py clean    [device.yml]        clean PlatformIO build artifacts
-python homie.py devices                      list attached serial devices
-python homie.py envs     [device.yml]        list available board environments
+python homie.py clean    [device.yml]          clean PlatformIO build artifacts
+python homie.py devices                        list attached serial devices
+python homie.py envs     [device.yml]          list available board environments
+python homie.py esphome  [--mqtt] [device.yml] generate ESPHome YAML
 python homie.py config   status | init | stage
 ```
 
@@ -53,17 +71,27 @@ python homie.py config   status | init | stage
 
 ```yaml
 device:
-  name: Energy Bus Monitor      # human-readable name (published as Homie $name)
+  name: Energy Bus Monitor      # human-readable name; MAC suffix appended at runtime
   id: ebus-001                  # device identifier prefix (used in MQTT topic)
   type: energy                  # device type string (published as Homie $type)
   board: esp32-poe-iso          # must match an [env:…] in platformio.ini
 
+pins:                           # board pin assignments — used by ESPHome generator
+  i2c_sda: 13                   # and available to component esphome: config blocks
+  i2c_scl: 16
+  rs485_tx: 4
+  rs485_rx: 36
+  rs485_baud: 9600
+  spi_clk: 18
+  spi_mosi: 23
+  spi_miso: 19
+
 wifi:
-  ssid: ""                      # leave blank to use Ethernet only
-  password: ""
+  ssid: ""                      # Homie path: written to data/config.yml
+  password: ""                  # ESPHome path: use secrets.yaml instead
 
 mqtt:
-  host: 192.168.1.100
+  host: 192.168.1.100           # Homie path only; ESPHome uses secrets.yaml
   port: 1883
   username: myuser
   password: mypass
@@ -77,6 +105,8 @@ nodes:
 
   - component: gpio/ssr
     id: relay1
+    config:
+      pin: 26                           # GPIO pin for ESPHome gpio switch
 
   - component: spi/atm90e32_energy_meter
     id: energy_meter
@@ -89,10 +119,21 @@ nodes:
 
 | Field   | Required | Description |
 |---------|----------|-------------|
-| `name`  | yes | Human-readable device name |
+| `name`  | yes | Human-readable device name; last 3 MAC bytes appended at runtime (e.g. `Energy Bus Monitor_A1B2C3`) |
 | `id`    | yes | Device id prefix for MQTT topic construction |
 | `type`  | yes | Homie device type string |
 | `board` | yes | PlatformIO environment name from `platformio.ini` |
+
+### pins fields
+
+Used by `homie.py esphome` to emit bus declarations (I2C, SPI, UART/Modbus).  The
+Homie/PlatformIO build reads pins from `pins.h` instead and ignores this block.
+
+| Field        | Description |
+|--------------|-------------|
+| `i2c_sda/scl` | I2C bus pins |
+| `rs485_tx/rx/baud` | UART pins and baud rate for Modbus RTU |
+| `spi_clk/mosi/miso` | SPI bus pins |
 
 ### nodes fields
 
@@ -100,7 +141,7 @@ nodes:
 |-------------|----------|-------------|
 | `component` | yes | Path to the component: `<bus>/<name>` (matches `lib/<bus>/<name>.yml`) |
 | `id`        | no  | Instance name used as C++ variable and Homie node id; defaults to the component's own node id |
-| `config`    | no  | Key-value pairs substituted into the component's constructor template |
+| `config`    | no  | Key-value pairs substituted into the component's constructor template and ESPHome config blocks |
 
 ---
 
@@ -211,8 +252,9 @@ is available).
 
 ### 2. Write the component YAML
 
-The YAML has two sections: the standard Homie node description followed by a
-`generator:` block that tells the code generator how to instantiate the class.
+The YAML has three sections: the standard Homie node description, a `generator:`
+block for the Homie/PlatformIO build, and an `esphome:` block for the ESPHome build.
+Both build targets read from the same file.
 
 ```yaml
 homie: 5.0.1
@@ -233,11 +275,42 @@ nodes:
         value: 0.0
 extensions: []
 implementation: homie-esp32-sdk
+
 generator:
   class: MyDevice                   # C++ class name
   header: i2c/mydevice.h            # include path (relative to include/ or lib/)
   constructor: '("{id}")'           # constructor args template
+
+esphome:
+  platform: bme280_i2c              # ESPHome sensor/switch platform name
+  bus: i2c                          # declares i2c: hub in generated YAML (i2c/spi/modbus)
+  config:                           # static config passed to the ESPHome platform block
+    address: 0x76                   # {config.X} and {pins.X} substitutions supported
+    update_interval: 10s
+  properties:                       # maps component property ids → ESPHome sub-sensor keys
+    temperature:
+      key: temperature              # ESPHome key name within the platform block
+      device_class: temperature
+      state_class: measurement
 ```
+
+**`esphome.bus`** values and what they emit:
+
+| `bus:` | Declaration added to ESPHome YAML |
+|--------|----------------------------------|
+| `i2c` | `i2c:` hub using `pins.i2c_sda/scl` |
+| `spi` | `spi:` hub using `pins.spi_clk/mosi/miso` |
+| `modbus` | `uart:` + `modbus:` + `modbus_controller:` using `pins.rs485_*` |
+| *(omit)* | No bus declaration (e.g. `gpio` switch) |
+
+**`esphome.properties`** mapping by platform type:
+
+| Platform | Property value fields |
+|----------|-----------------------|
+| `bme280_i2c` | `key` (ESPHome sub-sensor name), `device_class`, `state_class` |
+| `modbus_controller` | `register_type`, `address`, `value_type`, `filters`, `device_class`, `state_class` |
+| `atm90e32` | `path` (list of nested keys, e.g. `[phase_a, voltage]`) |
+| `gpio` | *(no properties — switch state is implicit)* |
 
 #### constructor template syntax
 
@@ -277,6 +350,8 @@ nodes:
 
 Run `python homie.py generate` (or `python homie.py build`) and the new component
 will appear in `src/homie.cpp`, `data/homie.yml`, and `data/config.yml` automatically.
+Run `python homie.py esphome` and it will appear in the generated ESPHome YAML
+(provided the component yml has an `esphome:` block).
 
 ---
 

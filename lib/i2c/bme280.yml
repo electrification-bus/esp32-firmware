@@ -34,3 +34,23 @@ generator:
   class: BME280
   header: i2c/bme280.h
   constructor: '("{id}")'
+
+esphome:
+  platform: bme280_i2c
+  bus: i2c
+  config:
+    address: 0x76
+    update_interval: 10s
+  properties:
+    temperature:
+      key: temperature
+      device_class: temperature
+      state_class: measurement
+    air_pressure:
+      key: pressure
+      device_class: atmospheric_pressure
+      state_class: measurement
+    relative_humidity:
+      key: humidity
+      device_class: humidity
+      state_class: measurement

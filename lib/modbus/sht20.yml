@@ -27,3 +27,28 @@ generator:
   class: Modbus_SHT20
   header: modbus/sht20.h
   constructor: '("{id}", get_serial1())'
+
+esphome:
+  platform: modbus_controller
+  bus: modbus
+  config:
+    address: 0x01
+  properties:
+    temperature:
+      register_type: read
+      address: 1
+      value_type: U_WORD
+      filters:
+        - multiply: 0.1
+      unit_of_measurement: "°C"
+      device_class: temperature
+      state_class: measurement
+    relative_humidity:
+      register_type: read
+      address: 2
+      value_type: U_WORD
+      filters:
+        - multiply: 0.1
+      unit_of_measurement: "%"
+      device_class: humidity
+      state_class: measurement

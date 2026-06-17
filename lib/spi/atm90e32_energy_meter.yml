@@ -53,3 +53,21 @@ generator:
   class: EnergyMeter
   header: spi/atm90e32_energy_meter.h
   constructor: '("{id}", {config.cs1_pin}, {config.cs2_pin})'
+
+esphome:
+  platform: atm90e32
+  bus: spi
+  config:
+    cs_pin: "{config.cs1_pin}"
+    line_frequency: 60Hz
+    current_phases: 3
+    update_interval: 10s
+  properties:
+    volts:
+      path: [phase_a, voltage]
+    amps:
+      path: [phase_a, current]
+    watts:
+      path: [phase_a, power]
+    kwh:
+      path: [phase_a, forward_active_energy]
