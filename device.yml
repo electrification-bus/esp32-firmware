@@ -11,7 +11,7 @@
 #   spi/atm90e32_energy_meter   — 6-CT energy meter (SPI); requires cs1_pin, cs2_pin
 
 device:
-  name: EBUS_Environmental
+  name: EBUS
   id: ebus-001
   type: energy
   board: esp32-poe-iso          # must match a [env:…] in platformio.ini
