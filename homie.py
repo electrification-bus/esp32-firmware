@@ -173,20 +173,16 @@ def cmd_generate(args) -> None:
                 prop_reg_body.append(f'    _node = device->addNode({id_expr}, "{node_name}", "{node_type}");')
                 prop_reg_body.append(f'    if (_node) {{')
                 for prop in properties:
-                    prop_id  = prop["id"]
-                    prop_var = f"_prop_{effective_node_id}_{prop_id}"
+                    prop_id   = prop["id"]
+                    prop_var  = f"_prop_{effective_node_id}_{prop_id}"
+                    unit      = prop.get("unit", "")
+                    settable  = prop.get("settable", False)
+                    retained  = prop.get("retained", True)
                     prop_static_decls.append(f"static Property {prop_var};")
-                    prop_reg_body.append(f'        {prop_var}.setNode(_node);')
-                    prop_reg_body.append(f'        {prop_var}.setId("{prop_id}");')
-                    prop_reg_body.append(f'        {prop_var}.setName("{prop["name"]}");')
-                    prop_reg_body.append(f'        {prop_var}.setDatatype("{prop["datatype"]}");')
-                    if prop.get("unit"):
-                        prop_reg_body.append(f'        {prop_var}.setUnit("{prop["unit"]}");')
-                    if prop.get("settable", False):
-                        prop_reg_body.append(f'        {prop_var}.setSettable(true);')
-                    if not prop.get("retained", True):
-                        prop_reg_body.append(f'        {prop_var}.setRetained(false);')
-                    prop_reg_body.append(f'        _node->addProperty(&{prop_var});')
+                    args_str  = f'"{prop_id}", "{prop["name"]}", "{prop["datatype"]}", "{unit}"'
+                    if settable or not retained:
+                        args_str += f', {str(settable).lower()}, {str(retained).lower()}'
+                    prop_reg_body.append(f'        _node->addProperty(&{prop_var}, {args_str});')
                 prop_reg_body.append('    }')
 
     # src/homie.cpp

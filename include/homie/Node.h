@@ -11,6 +11,7 @@ public:
     ~Node();
 
     void addProperty(Property* property);
+    void addProperty(Property* property, const char* id, const char* name, const char* datatype, const char* unit = "", bool settable = false, bool retained = true);
     Property* getProperty(const char* id);
     void setId(const char* id);
     const char* id();

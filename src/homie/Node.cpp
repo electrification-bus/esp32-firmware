@@ -34,6 +34,16 @@ void Node::addProperty(Property* property) {
     _properties[_num_properties++] = property;
 }
 
+void Node::addProperty(Property* property, const char* id, const char* name, const char* datatype, const char* unit, bool settable, bool retained) {
+    property->setId(id);
+    property->setName(name);
+    property->setDatatype(datatype);
+    if (unit && unit[0] != '\0') property->setUnit(unit);
+    if (settable) property->setSettable(true);
+    if (!retained) property->setRetained(false);
+    addProperty(property);
+}
+
 void Node::publish() {
     for(int i=0;i<_num_properties;i++) {
         _properties[i]->publish();
