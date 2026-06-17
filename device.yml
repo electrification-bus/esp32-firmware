@@ -16,6 +16,16 @@ device:
   type: energy
   board: esp32-poe-iso          # must match a [env:…] in platformio.ini
 
+pins:
+  i2c_sda: 13
+  i2c_scl: 16
+  rs485_tx: 4
+  rs485_rx: 36
+  rs485_baud: 9600
+  spi_clk: 18
+  spi_mosi: 23
+  spi_miso: 19
+
 wifi:
   ssid: ""
   password: ""
@@ -35,6 +45,8 @@ nodes:
 
   - component: gpio/ssr
     id: relay1
+    config:
+      pin: 26
 
   - component: spi/atm90e32_energy_meter
     id: energy_meter

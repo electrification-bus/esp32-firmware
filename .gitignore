@@ -33,6 +33,8 @@ GEMINI.md
 data/config.yml
 data/config.yml~
 data/config.yml.bak
+secrets.yaml
+*.esphome.yaml
 
 # Per-developer PlatformIO overrides (merged in via [platformio] extra_configs).
 # platformio_local.ini.example holds a documented template.

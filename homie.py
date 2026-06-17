@@ -12,6 +12,8 @@ homie.py — Homie firmware CLI
   python homie.py clean                     Clean build artifacts
   python homie.py devices                   List attached serial devices
   python homie.py envs                      List available PlatformIO board environments
+  python homie.py esphome                   Generate ESPHome YAML from device.yml
+  python homie.py esphome --mqtt            Use MQTT instead of native ESPHome API
   python homie.py config status             Show config overlay state
   python homie.py config init               Bootstrap ~/.config/eBus/config.yml from example
   python homie.py config stage              Copy overlay to data/config.yml
@@ -383,6 +385,220 @@ def cmd_config(args) -> None:
 def _files_identical(a: Path, b: Path) -> bool:
     return a.read_bytes() == b.read_bytes()
 
+# ── esphome ────────────────────────────────────────────────────────────────────
+
+# PyYAML representer for ESPHome's !secret tag
+class _EspSecret:
+    def __init__(self, key): self.key = key
+
+def _secret_repr(dumper, data):
+    return dumper.represent_scalar('!secret', data.key, style='')
+
+yaml.add_representer(_EspSecret, _secret_repr)
+
+_BOARD_MAP = {
+    "esp32-poe-iso":        "esp32-poe-iso",
+    "esp32-poe-iso-wrover": "esp32-poe-iso",
+    "esp32-s3-devkitc-1":  "esp32-s3-devkitc-1",
+    "esp32dev":             "esp32dev",
+}
+
+def _sub(value, node_cfg, pins):
+    """Substitute {config.X} and {pins.X} in a string; coerce to int if possible."""
+    if not isinstance(value, str):
+        return value
+    for k, v in node_cfg.items():
+        value = value.replace(f"{{config.{k}}}", str(v))
+    for k, v in pins.items():
+        value = value.replace(f"{{pins.{k}}}", str(v))
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return value
+
+def _resolve(cfg_tmpl, node_cfg, pins):
+    return {k: _sub(v, node_cfg, pins) for k, v in cfg_tmpl.items()}
+
+def _prop_name(comp_nodes, prop_id):
+    for node in comp_nodes:
+        for p in node.get("properties", []):
+            if p["id"] == prop_id:
+                return p.get("name", prop_id)
+    return prop_id
+
+def _nested_set(d, path, value):
+    for key in path[:-1]:
+        d = d.setdefault(key, {})
+    d[path[-1]] = value
+
+def cmd_esphome(args) -> None:
+    device_yml = Path(args.device_yml)
+    cfg        = load_device_yml(device_yml)
+    device     = cfg.get("device", {})
+    nodes_cfg  = cfg.get("nodes",  [])
+    pins       = cfg.get("pins",   {})
+    use_mqtt   = getattr(args, "mqtt", False)
+
+    doc = {}
+    doc["esphome"] = {"name": device.get("id", "my-device")}
+    doc["esp32"]   = {"board": _BOARD_MAP.get(device.get("board", ""), "esp32dev")}
+    doc["logger"]  = {}
+    doc["wifi"]    = {
+        "ssid":     _EspSecret("wifi_ssid"),
+        "password": _EspSecret("wifi_password"),
+    }
+    if use_mqtt:
+        doc["mqtt"] = {
+            "broker":   _EspSecret("mqtt_broker"),
+            "username": _EspSecret("mqtt_username"),
+            "password": _EspSecret("mqtt_password"),
+        }
+    else:
+        doc["api"] = {"password": _EspSecret("api_password")}
+        doc["ota"] = {"password": _EspSecret("ota_password")}
+
+    buses_needed       = set()
+    sensors            = []
+    switches           = []
+    modbus_controllers = []
+
+    for entry in nodes_cfg:
+        component = entry["component"]
+        node_id   = entry.get("id", "")
+        node_cfg  = entry.get("config", {})
+
+        try:
+            comp_path = find_component_yml(component)
+        except FileNotFoundError as e:
+            print(f"WARNING: {e} — skipping {node_id}")
+            continue
+        with open(comp_path, encoding="utf-8") as f:
+            comp = yaml.safe_load(f)
+
+        esp = comp.get("esphome")
+        if not esp:
+            print(f"WARNING: no esphome section in {comp_path.name} — skipping {node_id}")
+            continue
+
+        bus        = esp.get("bus")
+        platform   = esp["platform"]
+        cfg_vals   = _resolve(esp.get("config", {}), node_cfg, pins)
+        props      = esp.get("properties", {})
+        comp_nodes = comp.get("nodes", [])
+
+        if bus:
+            buses_needed.add(bus)
+
+        if platform == "bme280_i2c":
+            block = {"platform": "bme280_i2c"}
+            block.update(cfg_vals)
+            if "i2c" in buses_needed:
+                block["i2c_id"] = "bus_i2c"
+            for prop_id, pm in props.items():
+                key  = pm.get("key", prop_id)
+                name = _prop_name(comp_nodes, prop_id)
+                sub  = {"name": f"{node_id} {name}"}
+                for k in ("device_class", "state_class", "unit_of_measurement"):
+                    if k in pm:
+                        sub[k] = pm[k]
+                block[key] = sub
+            sensors.append(block)
+
+        elif platform == "modbus_controller":
+            ctrl_id = f"{node_id}_ctrl"
+            modbus_controllers.append({
+                "id":        ctrl_id,
+                "address":   cfg_vals.get("address", 1),
+                "modbus_id": "modbus_hub",
+            })
+            for prop_id, pm in props.items():
+                name   = _prop_name(comp_nodes, prop_id)
+                sensor = {
+                    "platform":             "modbus_controller",
+                    "modbus_controller_id": ctrl_id,
+                    "name":                 f"{node_id} {name}",
+                    "id":                   f"{node_id}_{prop_id}",
+                }
+                for k, v in pm.items():
+                    if k not in ("device_class", "state_class"):
+                        sensor[k] = v
+                for k in ("device_class", "state_class"):
+                    if k in pm:
+                        sensor[k] = pm[k]
+                sensors.append(sensor)
+
+        elif platform == "atm90e32":
+            block = {"platform": "atm90e32"}
+            block.update(cfg_vals)
+            for prop_id, pm in props.items():
+                path = pm.get("path", [prop_id])
+                name = _prop_name(comp_nodes, prop_id)
+                _nested_set(block, path, {
+                    "name": f"{node_id} {name}",
+                    "id":   f"{node_id}_{prop_id}",
+                })
+            sensors.append(block)
+
+        elif platform == "gpio":
+            switches.append({
+                "platform": "gpio",
+                "name":     node_id.replace("_", " ").title(),
+                "id":       f"{node_id}_state",
+                "pin":      cfg_vals.get("pin", 0),
+                "inverted": cfg_vals.get("inverted", False),
+            })
+
+        else:
+            print(f"WARNING: unknown esphome platform '{platform}' for {node_id} — skipping")
+
+    # ── bus declarations ──────────────────────────────────────────────────────
+    if "i2c" in buses_needed:
+        doc["i2c"] = {
+            "id":  "bus_i2c",
+            "sda": pins.get("i2c_sda", 13),
+            "scl": pins.get("i2c_scl", 16),
+        }
+
+    if "spi" in buses_needed:
+        doc["spi"] = {
+            "clk_pin":  pins.get("spi_clk",  18),
+            "mosi_pin": pins.get("spi_mosi", 23),
+            "miso_pin": pins.get("spi_miso", 19),
+        }
+
+    if "modbus" in buses_needed:
+        doc["uart"] = {
+            "id":        "modbus_uart",
+            "tx_pin":    pins.get("rs485_tx",   4),
+            "rx_pin":    pins.get("rs485_rx",   36),
+            "baud_rate": pins.get("rs485_baud", 9600),
+        }
+        doc["modbus"] = {"id": "modbus_hub", "uart_id": "modbus_uart"}
+        if modbus_controllers:
+            doc["modbus_controller"] = modbus_controllers
+
+    if sensors:  doc["sensor"] = sensors
+    if switches: doc["switch"] = switches
+
+    # ── write output ──────────────────────────────────────────────────────────
+    out = ROOT / f"{device.get('id', 'device')}.esphome.yaml"
+    out.write_text(
+        yaml.dump(doc, allow_unicode=True, sort_keys=False, default_flow_style=False),
+        encoding="utf-8",
+    )
+    print(f"  generated: {out.relative_to(ROOT)}")
+    print()
+    print("Required secrets.yaml entries:")
+    secrets = ["wifi_ssid", "wifi_password"]
+    if use_mqtt:
+        secrets += ["mqtt_broker", "mqtt_username", "mqtt_password"]
+    else:
+        secrets += ["api_password", "ota_password"]
+    for s in secrets:
+        print(f"  {s}: \"...\"")
+    print()
+    print(f"Build with: esphome compile {out.name}")
+
 # ── main ───────────────────────────────────────────────────────────────────────
 
 def main():
@@ -401,6 +617,8 @@ def main():
             "  python homie.py clean",
             "  python homie.py devices",
             "  python homie.py envs",
+            "  python homie.py esphome",
+            "  python homie.py esphome --mqtt",
             "  python homie.py config status",
             "  python homie.py config init",
             "  python homie.py config stage",
@@ -438,6 +656,11 @@ def main():
     p = sub.add_parser("envs", help="List available PlatformIO board environments")
     p.add_argument("device_yml", **dev_yml_arg)
 
+    p = sub.add_parser("esphome", help="Generate ESPHome YAML from device.yml")
+    p.add_argument("device_yml", **dev_yml_arg)
+    p.add_argument("--mqtt", action="store_true",
+                   help="use MQTT instead of native ESPHome API")
+
     p = sub.add_parser("config", help="Manage device config overlay")
     p.add_argument("config_cmd", choices=["status", "init", "stage"],
                    metavar="status|init|stage")
@@ -452,6 +675,7 @@ def main():
         "clean":    cmd_clean,
         "devices":  cmd_devices,
         "envs":     cmd_envs,
+        "esphome":  cmd_esphome,
         "config":   cmd_config,
     }
     dispatch[args.command](args)
