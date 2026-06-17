@@ -4,8 +4,7 @@ homie.py — Homie firmware CLI
 
   python homie.py generate                  Generate src/homie.cpp + data/*.yml from device.yml
   python homie.py build                     Generate then compile firmware
-  python homie.py push                      Flash firmware to device
-  python homie.py push --fs                 Flash firmware + filesystem
+  python homie.py push                      Flash firmware + filesystem to device
   python homie.py push --fs-only            Flash filesystem only
   python homie.py push --port COM3          Specify serial port
   python homie.py monitor                   Open serial monitor
@@ -273,7 +272,7 @@ def cmd_push(args) -> None:
     port  = getattr(args, "port", None)
 
     upload_fw = not args.fs_only
-    upload_fs = args.fs or args.fs_only
+    upload_fs = not args.fs_only  # always push FS alongside firmware
 
     if upload_fw:
         print(f"\n--- build + upload firmware (env: {board}) ---")
@@ -397,7 +396,6 @@ def main():
             "  python homie.py build",
             "  python homie.py push",
             "  python homie.py push --port COM3",
-            "  python homie.py push --fs",
             "  python homie.py push --fs-only",
             "  python homie.py monitor --port COM3",
             "  python homie.py clean",
@@ -426,7 +424,6 @@ def main():
     p.add_argument("device_yml", **dev_yml_arg)
     p.add_argument("--port", **port_arg)
     g = p.add_mutually_exclusive_group()
-    g.add_argument("--fs",      action="store_true", help="flash firmware + filesystem")
     g.add_argument("--fs-only", action="store_true", help="flash filesystem only")
 
     p = sub.add_parser("monitor", help="Open serial monitor")
