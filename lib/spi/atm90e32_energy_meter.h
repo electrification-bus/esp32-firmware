@@ -231,6 +231,8 @@ private:
     // Timing
     int _read_interval = 5000;  // Default 5 second read interval
     unsigned long _last_read = 0;
+
+    bool _connected = false;
 };
 
 

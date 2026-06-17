@@ -158,9 +158,9 @@ bool EnergyMeter::setup() {
                              _voltageGain[b * 2 + 1], _currentGainA, _currentGainB, _currentGainC);
     }
 
-    // Verify communication with first board
-    if (!isConnected()) {
-        Serial.println("EnergyMeter: ERROR - Cannot communicate with energy meter IC!");
+    _connected = isConnected();
+    if (!_connected) {
+        Serial.println("EnergyMeter: not found — polling suspended, will retry every 30s");
         return false;
     }
 
@@ -177,10 +177,15 @@ bool EnergyMeter::pollIntervalTrigger() {
 }
 
 void EnergyMeter::loop() {
-    if (!pollIntervalTrigger()) {
-        return;
+    if (!_connected) {
+        if (millis() - _last_read < 30000) return;
+        _last_read = millis();
+        _connected = isConnected();
+        if (!_connected) return;
+        Serial.println("EnergyMeter: reconnected");
     }
 
+    if (!pollIntervalTrigger()) return;
     readSensors();
     publishReadings();
 }
