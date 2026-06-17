@@ -280,10 +280,10 @@ void setup() {
     // Initialize the Homie Device from the config
     JsonDocument* dev_conf = get_homie_config();
     Serial.printf("Device name '%s', type '%s'\n",
-                 (*dev_conf)[HOMIE_NAME].as<const char*>(),
+                 device_name,
                  (*dev_conf)[HOMIE_TYPE].as<const char*>());
 
-    theDevice.init((*dev_conf)[HOMIE_NAME].as<const char*>(),
+    theDevice.init(device_name,
                    getDeviceID(),
                    (*dev_conf)[HOMIE_TYPE].as<const char*>(),
                    &mqtt_client);

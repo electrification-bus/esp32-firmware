@@ -32,6 +32,8 @@ bool BME280::setup() {
     _bme_temp = getTemperatureSensor();
     _bme_pressure = getPressureSensor();
     _bme_humidity = getHumiditySensor();
+  } else {
+    Serial.println("BME280: not found — polling suspended");
   }
   return ok;
 }
@@ -45,6 +47,7 @@ bool BME280::pollIntervalTrigger() {
 }
 
 void BME280::loop() {
+  if (!_bme_temp) return;  // begin() failed — hardware not present
   if (pollIntervalTrigger()) {
 
     sensors_event_t temp_event, pressure_event, humidity_event;

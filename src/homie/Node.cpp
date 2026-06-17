@@ -35,6 +35,7 @@ void Node::addProperty(Property* property) {
 }
 
 void Node::addProperty(Property* property, const char* id, const char* name, const char* datatype, const char* unit, bool settable, bool retained) {
+    property->setNode(this);  // must precede setId() — setId() dereferences _parent_node->topic()
     property->setId(id);
     property->setName(name);
     property->setDatatype(datatype);
@@ -74,8 +75,8 @@ const char* Node::id() {
     return _id;
 }
 
-void Node::setDevice(Device* _device) {
-   _device = _device;
+void Node::setDevice(Device* device) {
+   _device = device;
 }
 
 Device* Node::device() {

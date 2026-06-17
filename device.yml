@@ -11,7 +11,7 @@
 #   spi/atm90e32_energy_meter   — 6-CT energy meter (SPI); requires cs1_pin, cs2_pin
 
 device:
-  name: Energy Bus Monitor
+  name: EBUS_Environmental
   id: ebus-001
   type: energy
   board: esp32-poe-iso          # must match a [env:…] in platformio.ini
@@ -21,10 +21,10 @@ wifi:
   password: ""
 
 mqtt:
-  host: 192.168.128.175
+  host: 
   port: 1883
-  username: dcj
-  password: REDACTED_MQTT_PASSWORD
+  username: 
+  password: 
 
 nodes:
   - component: i2c/bme280

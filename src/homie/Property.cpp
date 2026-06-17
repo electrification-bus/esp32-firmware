@@ -61,7 +61,7 @@ Node* Property::node() {
 
 void Property::setId(const char* id) {
     strcpy(_id, id);
-    //SET-ID SIDE-EFFECT - construct the topic
+    // Requires setNode() first — dereferences _parent_node to build topic
     sprintf(_topic, "%s/%s", _parent_node->topic(), _id);
 }
 
