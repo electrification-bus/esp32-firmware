@@ -280,16 +280,10 @@ def cmd_push(args) -> None:
     upload_fs = args.fs or args.fs_only
 
     if upload_fw:
-        print(f"\n--- building firmware (env: {board}) ---")
-        rc = pio_run(board, [], port)
-        if rc != 0:
-            print(f"\nBuild FAILED (exit {rc})", file=sys.stderr)
-            sys.exit(rc)
-
-        print(f"\n--- uploading firmware (env: {board}) ---")
+        print(f"\n--- build + upload firmware (env: {board}) ---")
         rc = pio_run(board, ["upload"], port)
         if rc != 0:
-            print(f"\nFirmware upload FAILED (exit {rc})", file=sys.stderr)
+            print(f"\nBuild/upload FAILED (exit {rc})", file=sys.stderr)
             sys.exit(rc)
         bin_path = ROOT / ".pio" / "build" / board / "firmware.bin"
         if bin_path.exists():

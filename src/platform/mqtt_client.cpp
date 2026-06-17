@@ -380,12 +380,11 @@ boolean mqtt_connect() {
   }
 
   // setOptions(keepAlive, cleanSession, timeout)
-  // keepAlive: 5 seconds - very short to ensure frequent pings (per arduino-mqtt issue #177)
   // cleanSession: false - maintain session across reconnects
   // timeout: 1000ms - short timeout for operations (2000ms for TLS)
   int operationTimeout = mqtt_using_secure ? 2000 : 1000;
-  mqtt_client.setOptions(5, false, operationTimeout);
-  Serial.printf("MQTT: configured keepalive=%ds, timeout=%dms\n", 5, operationTimeout);
+  mqtt_client.setOptions(60, false, operationTimeout);
+  Serial.printf("MQTT: configured keepalive=%ds, timeout=%dms\n", 60, operationTimeout);
 
   // Set Last Will and Testament (LWT) - published by broker if connection lost
   // Use static buffer lwt_topic to prevent pointer corruption (arduino-mqtt issue #89)
