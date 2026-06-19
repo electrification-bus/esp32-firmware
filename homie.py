@@ -13,9 +13,9 @@ homie.py — Homie firmware CLI
   python homie.py clean                     Clean build artifacts
   python homie.py devices                   List attached serial devices
   python homie.py envs                      List available PlatformIO board environments
-  python homie.py config status             Show config overlay state
-  python homie.py config init               Bootstrap ~/.config/eBus/config.yml from example
-  python homie.py config stage              Copy overlay to data/config.yml
+  # python homie.py config status           Show config overlay state
+  # python homie.py config init             Bootstrap ~/.config/eBus/config.yml from example
+  # python homie.py config stage            Merge overlay into data/config.yml
 """
 
 import sys
@@ -443,9 +443,9 @@ def main():
             "  python homie.py clean",
             "  python homie.py devices",
             "  python homie.py envs",
-            "  python homie.py config status",
-            "  python homie.py config init",
-            "  python homie.py config stage",
+            # "  python homie.py config status",
+            # "  python homie.py config init",
+            # "  python homie.py config stage",
         ]),
     )
 
@@ -484,9 +484,9 @@ def main():
     p = sub.add_parser("envs", help="List available PlatformIO board environments")
     p.add_argument("device_yml", **dev_yml_arg)
 
-    p = sub.add_parser("config", help="Manage device config overlay")
-    p.add_argument("config_cmd", choices=["status", "init", "stage"],
-                   metavar="status|init|stage")
+    # p = sub.add_parser("config", help="Manage device config overlay")
+    # p.add_argument("config_cmd", choices=["status", "init", "stage"],
+    #                metavar="status|init|stage")
 
     args = parser.parse_args()
 
@@ -499,7 +499,7 @@ def main():
         "clean":    cmd_clean,
         "devices":  cmd_devices,
         "envs":     cmd_envs,
-        "config":   cmd_config,
+        # "config":   cmd_config,
     }
     dispatch[args.command](args)
 
