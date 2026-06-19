@@ -47,8 +47,16 @@ bool BME280::pollIntervalTrigger() {
 }
 
 void BME280::loop() {
-  if (!_bme_temp) return;  // begin() failed — hardware not present
   if (pollIntervalTrigger()) {
+  if (!_bme_temp) {
+    temperature.set(0.0f);
+    relative_humidity.set(0.0f);
+    air_pressure.set(0.0f);
+    temperature.publish();
+    relative_humidity.publish();
+    air_pressure.publish();
+    return;
+  }
 
     sensors_event_t temp_event, pressure_event, humidity_event;
     _bme_temp->getEvent(&temp_event);

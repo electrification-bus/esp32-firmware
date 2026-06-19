@@ -19,6 +19,7 @@ bool SSR::setup() {
     } else {
         set_on_state();
     }
+    _state_property.set_value_and_publish(_state);
     return true;
 }
 

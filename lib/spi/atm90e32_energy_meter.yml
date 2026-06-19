@@ -3,47 +3,56 @@ name: EBUS
 type: ebus
 state: init
 nodes:
-  - id: meter_volts
-    name: Voltage Sensor
+  - id: energy_meter
+    name: 6-CT Energy Meter
     type: energy
     properties:
-      - id: volts
+      - id: voltage
         name: Voltage
         datatype: float
         unit: V
         settable: false
         retained: true
         value: 0.0
-  - id: meter_current
-    name: Current Sensor
-    type: energy
-    properties:
-      - id: amps
-        name: Current
+      - id: frequency
+        name: Frequency
+        datatype: float
+        unit: Hz
+        settable: false
+        retained: true
+        value: 0.0
+      - id: temperature
+        name: Board Temperature
+        datatype: float
+        unit: °C
+        settable: false
+        retained: true
+        value: 0.0
+      - id: current_ct1
+        name: Current CT1
         datatype: float
         unit: A
         settable: false
         retained: true
         value: 0.0
-  - id: meter_watts
-    name: Power Sensor
-    type: energy
-    properties:
-      - id: watts
-        name: Power
+      - id: power_ct1
+        name: Real Power CT1
         datatype: float
         unit: W
         settable: false
         retained: true
         value: 0.0
-  - id: meter_kwh
-    name: Energy Consumption
-    type: energy
-    properties:
-      - id: kwh
-        name: Energy
+      - id: va_ct1
+        name: Apparent Power CT1
         datatype: float
-        unit: kWh
+        unit: VA
+        settable: false
+        retained: true
+        value: 0.0
+      - id: pf_ct1
+        name: Power Factor CT1
+        datatype: float
+        unit: ""
         settable: false
         retained: true
         value: 0.0

@@ -42,17 +42,8 @@ mqtt:
   password: ''
 
 nodes:
-  - component: i2c/bme280
-    id: environment_bme280
-
   - component: modbus/sht20
     id: environment_sht20
 
   - component: gpio/ssr
     id: relay1
-
-  - component: spi/atm90e32_energy_meter
-    id: energy_meter
-    config:
-      cs1_pin: 15
-      cs2_pin: 16

@@ -177,17 +177,18 @@ bool EnergyMeter::pollIntervalTrigger() {
 }
 
 void EnergyMeter::loop() {
+    if (!pollIntervalTrigger()) return;
+
     if (!_connected) {
-        if (millis() - _last_read < 30000) return;
-        _last_read = millis();
         _connected = isConnected();
-        if (!_connected) return;
-        Serial.println("EnergyMeter: reconnected");
+        if (_connected)
+            Serial.println("EnergyMeter: reconnected");
     }
 
-    if (!pollIntervalTrigger()) return;
-    readSensors();
-    publishReadings();
+    if (_connected)
+        readSensors();
+
+    publishReadings();  // always publish — zeros when not connected
 }
 
 void EnergyMeter::readSensors() {
