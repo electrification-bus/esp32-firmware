@@ -258,6 +258,7 @@ def cmd_generate(args) -> None:
     with open(out_config, "w", encoding="utf-8") as f:
         yaml.dump(config_doc, f, allow_unicode=True, sort_keys=False)
     print(f"  generated: {out_config.relative_to(ROOT)}")
+    _apply_overlay(out_config)
 
     board = device.get("board", "<board>")
     print(f"\n{len(nodes_cfg)} node(s), board: {board}")
@@ -368,12 +369,9 @@ def cmd_config(args) -> None:
             print("overlay state: MISSING — run: python homie.py config init")
         print(f"target path:   {CONFIG_TARGET}")
         if CONFIG_TARGET.exists():
-            if CONFIG_OVERLAY.exists() and _files_identical(CONFIG_TARGET, CONFIG_OVERLAY):
-                print("target state:  in sync with overlay")
-            else:
-                print("target state:  present but drifted — run: python homie.py config stage")
+            print(f"target state:  present (overlay applied automatically by generate)")
         else:
-            print("target state:  MISSING — run: python homie.py config stage")
+            print("target state:  MISSING — run: python homie.py generate")
         print(f"example path:  {CONFIG_EXAMPLE}")
 
     elif sub == "init":
@@ -392,17 +390,39 @@ def cmd_config(args) -> None:
             print(f"ERROR: overlay not found at {CONFIG_OVERLAY}", file=sys.stderr)
             print("Run: python homie.py config init", file=sys.stderr)
             sys.exit(1)
-        shutil.copy(CONFIG_OVERLAY, CONFIG_TARGET)
-        print(f"staged: {CONFIG_OVERLAY}")
-        print(f"    to: {CONFIG_TARGET}")
+        if not CONFIG_TARGET.exists():
+            print(f"ERROR: {CONFIG_TARGET} not found — run generate first", file=sys.stderr)
+            sys.exit(1)
+        _apply_overlay(CONFIG_TARGET)
+        print(f"merged overlay into: {CONFIG_TARGET}")
 
     else:
         print(f"Unknown config subcommand: {sub!r}", file=sys.stderr)
         print("Use: status | init | stage", file=sys.stderr)
         sys.exit(1)
 
-def _files_identical(a: Path, b: Path) -> bool:
-    return a.read_bytes() == b.read_bytes()
+
+def _apply_overlay(config_path: Path) -> None:
+    """Merge ~/.config/eBus/config.yml fields into the generated config.yml."""
+    if not CONFIG_OVERLAY.exists():
+        return
+    raw = yaml.safe_load(CONFIG_OVERLAY.read_text(encoding="utf-8")) or {}
+    # Support both flat {key: val} and {config: [{key: val}]} overlay formats
+    if "config" in raw and isinstance(raw["config"], list):
+        overrides = raw["config"][0] or {}
+    else:
+        overrides = raw
+    if not overrides:
+        return
+    doc = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    base = doc.get("config", [{}])[0] or {}
+    for k, v in overrides.items():
+        if v is not None and v != "":
+            base[k] = v
+    doc["config"] = [base]
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.dump(doc, f, allow_unicode=True, sort_keys=False)
+    print(f"  overlay:   {CONFIG_OVERLAY} ({len(overrides)} field(s))")
 
 # ── main ───────────────────────────────────────────────────────────────────────
 
