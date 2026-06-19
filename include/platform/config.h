@@ -60,10 +60,6 @@ enum MqttMode {
 
 extern MqttMode mqtt_mode;
 
-// Compiled-in MQTT mode string from device.yml — set by homie.py generate.
-// config.cpp initializes mqtt_mode from this before reading config.yml.
-extern const char* const homie_mqtt_mode;
-
 // TLS/SSL support for MQTT (port 8883)
 #define MQTT_SECURE_PORT 8883
 

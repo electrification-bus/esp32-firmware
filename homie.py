@@ -204,9 +204,6 @@ def cmd_generate(args) -> None:
     lines += ["", "void setup_homie() {"] + (setups or ["    // no nodes configured"]) + ["}"]
     lines += ["", "void loop_homie() {"] + (loops or ["    // no nodes configured"]) + ["}", ""]
 
-    mqtt_mode_str = (cfg.get("mqtt") or {}).get("mode") or "configured-only"
-    lines += [f'const char* const homie_mqtt_mode = "{mqtt_mode_str}";', ""]
-
     out_cpp = SRC_DIR / "homie.cpp"
     out_cpp.write_text("\n".join(lines), encoding="utf-8")
     print(f"  generated: {out_cpp.relative_to(ROOT)}")
