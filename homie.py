@@ -598,6 +598,22 @@ def cmd_esphome(args) -> None:
         print(f"  {s}: \"...\"")
     print()
     print(f"Build with: esphome compile {out.name}")
+    print()
+
+    device_id = device.get("id", "device")
+    if use_mqtt:
+        secrets = {}
+        secrets_path = ROOT / "secrets.yaml"
+        if secrets_path.exists():
+            secrets = yaml.safe_load(secrets_path.read_text(encoding="utf-8")) or {}
+        broker = secrets.get("mqtt_broker", "")
+        user   = secrets.get("mqtt_username", "")
+        prefix = f"mqtt://{user}@" if user else "mqtt://"
+        url    = f"{prefix}{broker}:1883" if broker else "(set mqtt_broker in secrets.yaml)"
+        print(f"MQTT broker: {url}")
+    else:
+        print(f"Home Assistant: Settings > Devices & Services > ESPHome")
+        print(f"  device API:   {device_id}.local:6053")
 
 # ── main ───────────────────────────────────────────────────────────────────────
 
