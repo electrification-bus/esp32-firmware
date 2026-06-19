@@ -7,8 +7,9 @@
 #define PREFS_KEY_WIFI_PASS "wifi_pass"
 #define PREFS_KEY_MQTT_HOST "mqtt_host"
 #define PREFS_KEY_MQTT_PORT "mqtt_port"
-#define PREFS_KEY_MQTT_USER "mqtt_user"
-#define PREFS_KEY_MQTT_PASS "mqtt_pass"
+#define PREFS_KEY_MQTT_USER   "mqtt_user"
+#define PREFS_KEY_MQTT_PASS   "mqtt_pass"
+#define PREFS_KEY_PASSPHRASE  "passphrase"
 
 static Preferences prefs;
 
@@ -30,52 +31,82 @@ void portal_prefs_save_mqtt(const char* host, uint16_t port, const char* user, c
     Serial.printf("PREFS: Saved MQTT broker='%s' port=%u\n", host, port);
 }
 
+void portal_prefs_save_passphrase(const char* passphrase) {
+    prefs.begin(PREFS_NAMESPACE, false);
+    prefs.putString(PREFS_KEY_PASSPHRASE, passphrase);
+    prefs.end();
+    Serial.println("PREFS: Saved device passphrase");
+}
+
 void portal_prefs_load_fallbacks() {
     prefs.begin(PREFS_NAMESPACE, true);  // read-only
 
-    // Portal-saved values override config.yml — the user explicitly configured
-    // these at runtime, so they should take priority on subsequent boots.
-    // Config.yml serves as the initial default; portal settings are the override.
-
     char buf[128];
+    bool any = false;
 
     size_t len = prefs.getString(PREFS_KEY_WIFI_SSID, buf, sizeof(buf));
     if (len > 0) {
         strncpy(wifi_ssid, buf, sizeof(wifi_ssid) - 1);
         wifi_ssid[sizeof(wifi_ssid) - 1] = '\0';
-        Serial.printf("PREFS: Loaded WiFi SSID='%s'\n", wifi_ssid);
+        Serial.printf("PREFS: NVRAM wifi_ssid='%s'\n", wifi_ssid);
+        any = true;
     }
 
     len = prefs.getString(PREFS_KEY_WIFI_PASS, buf, sizeof(buf));
     if (len > 0) {
         strncpy(wifi_password, buf, sizeof(wifi_password) - 1);
         wifi_password[sizeof(wifi_password) - 1] = '\0';
+        Serial.println("PREFS: NVRAM wifi_password=<set>");
+        any = true;
     }
+
+    bool mqtt_any = false;
 
     len = prefs.getString(PREFS_KEY_MQTT_HOST, buf, sizeof(buf));
     if (len > 0) {
         strncpy(mqtt_host, buf, sizeof(mqtt_host) - 1);
         mqtt_host[sizeof(mqtt_host) - 1] = '\0';
-        Serial.printf("PREFS: Loaded MQTT broker='%s'\n", mqtt_host);
+        Serial.printf("PREFS: NVRAM mqtt_host='%s'\n", mqtt_host);
+        any = mqtt_any = true;
     }
 
     uint16_t saved_port = prefs.getUShort(PREFS_KEY_MQTT_PORT, 0);
     if (saved_port > 0) {
         mqtt_port = saved_port;
-        Serial.printf("PREFS: Loaded MQTT port=%u\n", mqtt_port);
+        Serial.printf("PREFS: NVRAM mqtt_port=%u\n", mqtt_port);
+        any = mqtt_any = true;
     }
 
     len = prefs.getString(PREFS_KEY_MQTT_USER, buf, sizeof(buf));
     if (len > 0) {
         strncpy(mqtt_username, buf, sizeof(mqtt_username) - 1);
         mqtt_username[sizeof(mqtt_username) - 1] = '\0';
+        Serial.printf("PREFS: NVRAM mqtt_username='%s'\n", mqtt_username);
+        any = mqtt_any = true;
     }
 
     len = prefs.getString(PREFS_KEY_MQTT_PASS, buf, sizeof(buf));
     if (len > 0) {
         strncpy(mqtt_password, buf, sizeof(mqtt_password) - 1);
         mqtt_password[sizeof(mqtt_password) - 1] = '\0';
+        Serial.println("PREFS: NVRAM mqtt_password=<set>");
+        any = mqtt_any = true;
     }
+
+    if (mqtt_any)
+        Serial.println("PREFS: NVRAM PREF OVERRIDES CONFIG: clear via POST /api/reset-prefs");
+
+    len = prefs.getString(PREFS_KEY_PASSPHRASE, buf, sizeof(buf));
+    if (len > 0) {
+        strncpy(device_passphrase, buf, sizeof(device_passphrase) - 1);
+        device_passphrase[sizeof(device_passphrase) - 1] = '\0';
+        Serial.println("PREFS: NVRAM device_passphrase=<set>");
+        Serial.println("PREFS: NVRAM PREF OVERRIDES CONFIG: clear via POST /api/reset-prefs");
+        any = true;
+    }
+
+    if (!any)
+        Serial.println("PREFS: NVRAM empty — using config.yml values only");
 
     prefs.end();
 }
@@ -84,7 +115,7 @@ void portal_prefs_clear() {
     prefs.begin(PREFS_NAMESPACE, false);
     prefs.clear();
     prefs.end();
-    Serial.println("PREFS: Cleared all portal settings (WiFi + MQTT)");
+    Serial.println("PREFS: NVRAM reset via captive portal — all settings cleared, reboot to use config.yml");
 }
 
 // --- Auth rate limiting (RAM only, resets on reboot) ---

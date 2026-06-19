@@ -15,16 +15,31 @@ device:
   id: ebus-001
   type: energy
   board: esp32-poe-iso          # must match a [env:…] in platformio.ini
+  device_type: ebus
+  firmware_name: ESP32POEISO Firmware
+  firmware_version: 1.0.0
+  firmware_url: http://example.com/firmware.bin
+  # mDNS device info
+  manufacturer: NESL
+  model: ESP32-POE-ISO
+  serial_number:   # leave empty to use device_id
+  homie_role: device  # "device" or "controller"
+  device_passphrase: changeme  # required for OTA and admin REST endpoints
 
 wifi:
   ssid: ""
   password: ""
 
 mqtt:
-  host: 
+  # mqtt_mode controls how the MQTT broker is resolved:
+  #   configured-only         - use only the mqtt_host/port from this config file
+  #   discovery-with-fallback - try mDNS discovery first, fall back to config if none found
+  #   discovery-only          - use only mDNS discovery, ignore configured mqtt_host/port
+  mode: discovery-with-fallback
+  host: ''
   port: 1883
-  username: 
-  password: 
+  username: ''
+  password: ''
 
 nodes:
   - component: i2c/bme280

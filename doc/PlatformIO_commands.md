@@ -25,13 +25,21 @@ pio run -e <target>
 
 Equivalent: `python homie.py build`
 
-### Build and upload firmware (USB)
+### Build and upload firmware + filesystem (USB)
 
 ```sh
-pio run -e <target> -t upload
+pio run -e <target> -t upload -t buildfs -t uploadfs
 ```
 
-Equivalent: `python homie.py push`
+Equivalent: `python homie.py run` (also runs generate first)
+
+### Upload pre-built firmware + filesystem (no build)
+
+```sh
+pio run -e <target> -t upload -t buildfs -t uploadfs
+```
+
+Equivalent: `python homie.py push` (skips generate/build, uses existing `.pio/build/` artifacts)
 
 ### Build LittleFS image from `data/`
 
@@ -39,7 +47,7 @@ Equivalent: `python homie.py push`
 pio run -e <target> -t buildfs
 ```
 
-Equivalent: `python homie.py push --fs-only` (which also uploads; for build-only, run `pio` directly as above)
+For build-only without upload, run `pio` directly as above.
 
 ### Upload LittleFS image to device (USB)
 

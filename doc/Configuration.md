@@ -4,12 +4,12 @@ This project uses **two overlay files** so that each developer (or each deployed
 
 | What it controls | Tracked template | Real file (gitignored) | Used by |
 |---|---|---|---|
-| Firmware runtime config (MQTT, WiFi, Homie, device id) | `data/config.yml.example` | `~/.config/eBus/config.yml` | `python homie.py push --fs` (staged into `data/config.yml` → baked into LittleFS image) |
+| Firmware runtime config (MQTT, WiFi, Homie, device id) | `data/config.yml.example` | `~/.config/eBus/config.yml` | `python homie.py run` (staged into `data/config.yml` → baked into LittleFS image alongside firmware) |
 | PlatformIO build / upload settings | `platformio_local.ini.example` | `platformio_local.ini` (repo root) | `pio` reads automatically via `extra_configs` in `platformio.ini` |
 
 ## 1. Firmware config — `~/.config/eBus/config.yml`
 
-This is what the firmware reads at boot to learn its MQTT broker, WiFi credentials, device id, Homie role, OTA passphrase, etc. The file gets baked into the **LittleFS partition** by `pio run -t buildfs`, so changing it requires a re-upload of the filesystem partition (`python homie.py push --fs-only` or `python homie.py push --fs`).
+This is what the firmware reads at boot to learn its MQTT broker, WiFi credentials, device id, Homie role, OTA passphrase, etc. The file gets baked into the **LittleFS partition** by `pio run -t buildfs`, so changing it requires a re-upload of the filesystem partition (`python homie.py push --fs-only` to upload only the filesystem, or `python homie.py run` to rebuild and upload everything).
 
 ### Flow
 
@@ -104,6 +104,6 @@ Different lifecycles. `data/config.yml` controls what gets baked into the device
 
 1. Run `python homie.py config init` once → edit `~/.config/eBus/config.yml` with their MQTT broker
 2. Possibly `cp platformio_local.ini.example platformio_local.ini` once → tweak `upload_speed` if they're on a CH340 chip
-3. Then `python homie.py build` / `python homie.py push` / `python homie.py push --fs` indefinitely without touching either file
+3. Then `python homie.py run` (full cycle) or `python homie.py push` (upload only) indefinitely without touching either file
 
 Both overlays compose cleanly with a future move to a different repo structure (e.g. extracting the C++ core into its own library, with per-packaging repos for PlatformIO / ESPHome / etc.) — they're conventions, not infrastructure.

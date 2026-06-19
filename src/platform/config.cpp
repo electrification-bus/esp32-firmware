@@ -42,7 +42,8 @@ char device_passphrase[64] = {0};
 static bool _ota_enabled = false;
 static unsigned long _ota_enabled_at = 0;
 
-// MQTT broker resolution mode (default: discovery-only)
+// MQTT broker resolution mode — initialized from homie_mqtt_mode (compiled in
+// from device.yml by homie.py generate) then optionally overridden by config.yml.
 MqttMode mqtt_mode = MQTT_MODE_DISCOVERY_ONLY;
 
 const char* UNIQUE_ID = "";
@@ -138,6 +139,16 @@ bool loadConfiguration() {
 }
 
 bool loadPlatformConfiguration() {
+  // Apply compiled-in mqtt_mode from device.yml before reading config.yml.
+  // config.yml may override this value if it contains an mqtt_mode key.
+  if (strcmp(homie_mqtt_mode, "configured-only") == 0)
+    mqtt_mode = MQTT_MODE_CONFIGURED_ONLY;
+  else if (strcmp(homie_mqtt_mode, "discovery-with-fallback") == 0)
+    mqtt_mode = MQTT_MODE_DISCOVERY_WITH_FALLBACK;
+  else
+    mqtt_mode = MQTT_MODE_DISCOVERY_ONLY;
+  Serial.printf("CONFIG: compiled mqtt_mode=%s\n", homie_mqtt_mode);
+
   File file;
 
   //see if we have a config from the build (SPIFFS)

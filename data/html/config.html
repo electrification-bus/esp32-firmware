@@ -114,9 +114,37 @@
   <div class="status" id="fw-status"></div>
 
   <h2>System</h2>
-  <button type="button" id="btn-reset-prefs">Reset to YML Config Only</button>
+  <button type="button" id="btn-change-pass">Change Passphrase</button>
+  <div id="pass-confirm" class="wifi-pass-panel">
+    <p style="margin-bottom:10px;font-size:0.9em;color:#aaa">Saves new passphrase to NVRAM. Takes effect immediately.</p>
+    <div class="field" style="margin-bottom:10px">
+      <label>Current passphrase</label>
+      <div class="pass-wrap">
+        <input type="password" id="pass-current" placeholder="current device_passphrase">
+        <span class="pass-toggle" id="pass-current-toggle">&#x1f441;</span>
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:10px">
+      <label>New passphrase</label>
+      <div class="pass-wrap">
+        <input type="password" id="pass-new" placeholder="new passphrase">
+        <span class="pass-toggle" id="pass-new-toggle">&#x1f441;</span>
+      </div>
+    </div>
+    <button type="button" id="pass-save" style="width:48%;margin-right:4%;background:#1565c0;color:#fff">Save</button>
+    <button type="button" id="pass-cancel" style="width:48%">Cancel</button>
+  </div>
+  <div class="status" id="pass-status"></div>
+  <button type="button" id="btn-reset-prefs" style="margin-top:8px">Reset to YML Config Only</button>
   <div id="reset-confirm" class="wifi-pass-panel">
-    <p style="margin-bottom:10px;font-size:0.9em;color:#f44336">Clear all portal-saved settings (WiFi + MQTT)?<br>Next boot will use only YML config.</p>
+    <p style="margin-bottom:10px;font-size:0.9em;color:#f44336">Clear all portal-saved settings (WiFi + MQTT + passphrase)?<br>Next boot will use only YML config.</p>
+    <div class="field" style="margin-bottom:10px">
+      <label>Device passphrase</label>
+      <div class="pass-wrap">
+        <input type="password" id="reset-passphrase" placeholder="device_passphrase from config.yml">
+        <span class="pass-toggle" id="reset-pass-toggle">&#x1f441;</span>
+      </div>
+    </div>
     <button type="button" id="reset-yes" style="width:48%;margin-right:4%;background:#c62828;color:#fff">Yes, Clear</button>
     <button type="button" id="reset-cancel" style="width:48%">Cancel</button>
   </div>
@@ -402,7 +430,12 @@
 
       // Reset to YML Config - reveal confirmation panel
       var resetPanel = document.getElementById('reset-confirm');
+      var resetPassInput = document.getElementById('reset-passphrase');
+      document.getElementById('reset-pass-toggle').addEventListener('click', function() {
+        resetPassInput.type = resetPassInput.type === 'password' ? 'text' : 'password';
+      });
       document.getElementById('btn-reset-prefs').addEventListener('click', function() {
+        resetPassInput.value = '';
         resetPanel.className = 'wifi-pass-panel visible';
         resetPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
       });
@@ -410,20 +443,63 @@
         resetPanel.className = 'wifi-pass-panel';
       });
       document.getElementById('reset-yes').addEventListener('click', function() {
-        resetPanel.className = 'wifi-pass-panel';
         var status = document.getElementById('reset-status');
+        var pass = resetPassInput.value;
+        if (!pass) { status.className = 'status err'; status.textContent = 'Enter the device passphrase.'; return; }
+        resetPanel.className = 'wifi-pass-panel';
         status.className = 'status';
         status.textContent = 'Clearing...';
-        fetch('/api/reset-prefs', { method: 'POST' })
-          .then(function(r) { return r.json(); })
-          .then(function(d) {
-            status.className = 'status ok';
-            status.textContent = d.message || 'Preferences cleared.';
+        fetch('/api/reset-prefs', {
+          method: 'POST',
+          headers: { 'Authorization': 'Basic ' + btoa('admin:' + pass) }
+        })
+          .then(function(r) {
+            if (r.status === 401) { status.className = 'status err'; status.textContent = 'Wrong passphrase.'; }
+            else if (r.status === 429) { status.className = 'status err'; status.textContent = 'Too many failed attempts. Try again later.'; }
+            else return r.json().then(function(d) { status.className = 'status ok'; status.textContent = d.message || 'Preferences cleared.'; });
           })
-          .catch(function(err) {
-            status.className = 'status err';
-            status.textContent = 'Error: ' + err.message;
-          });
+          .catch(function(err) { status.className = 'status err'; status.textContent = 'Error: ' + err.message; });
+      });
+
+      // Change Passphrase - reveal confirmation panel
+      var passPanel = document.getElementById('pass-confirm');
+      var passCurrentInput = document.getElementById('pass-current');
+      var passNewInput = document.getElementById('pass-new');
+      document.getElementById('pass-current-toggle').addEventListener('click', function() {
+        passCurrentInput.type = passCurrentInput.type === 'password' ? 'text' : 'password';
+      });
+      document.getElementById('pass-new-toggle').addEventListener('click', function() {
+        passNewInput.type = passNewInput.type === 'password' ? 'text' : 'password';
+      });
+      document.getElementById('btn-change-pass').addEventListener('click', function() {
+        passCurrentInput.value = '';
+        passNewInput.value = '';
+        passPanel.className = 'wifi-pass-panel visible';
+        passPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
+      });
+      document.getElementById('pass-cancel').addEventListener('click', function() {
+        passPanel.className = 'wifi-pass-panel';
+      });
+      document.getElementById('pass-save').addEventListener('click', function() {
+        var status = document.getElementById('pass-status');
+        var current = passCurrentInput.value;
+        var next = passNewInput.value;
+        if (!current) { status.className = 'status err'; status.textContent = 'Enter current passphrase.'; return; }
+        if (!next)    { status.className = 'status err'; status.textContent = 'Enter new passphrase.'; return; }
+        passPanel.className = 'wifi-pass-panel';
+        status.className = 'status';
+        status.textContent = 'Saving...';
+        fetch('/api/passphrase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa('admin:' + current) },
+          body: JSON.stringify({ passphrase: next })
+        })
+          .then(function(r) {
+            if (r.status === 401) { status.className = 'status err'; status.textContent = 'Wrong passphrase.'; }
+            else if (r.status === 429) { status.className = 'status err'; status.textContent = 'Too many failed attempts. Try again later.'; }
+            else { status.className = 'status ok'; status.textContent = 'Passphrase updated.'; }
+          })
+          .catch(function(err) { status.className = 'status err'; status.textContent = 'Error: ' + err.message; });
       });
 
       // Reboot - reveal confirmation panel

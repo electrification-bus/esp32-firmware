@@ -18,18 +18,28 @@ device.yml   →   python homie.py generate   →   src/homie.cpp
 
 ## Quickstart
 
+**Homie / PlatformIO:**
 ```cmd
-python homie.py generate        regenerates src/homie.cpp + data/*.yml
-python homie.py build           generate + compile firmware
-python homie.py push            flash firmware to device
-python homie.py push --fs       flash firmware + filesystem
-python homie.py push --port COM3  explicit serial port
+python homie.py generate          regenerate src/homie.cpp + data/*.yml
+python homie.py build             generate + compile firmware
+python homie.py run               generate, build, and flash firmware + filesystem over USB
+python homie.py run --port COM3   explicit serial port
+python homie.py push              flash pre-built firmware + filesystem (no build)
+python homie.py push --fs-only    flash filesystem only (re-flash config without rebuilding)
 ```
 
-`python homie.py build` always runs generate first, so `generate` alone is only
-needed when you want to inspect the generated files without compiling.
+`build` always runs `generate` first, so `generate` alone is only needed when you
+want to inspect the generated files without compiling.
 
-All commands accept an optional path to `device.yml` as the last argument
+**ESPHome:**
+```cmd
+python homie.py esphome           generate ebus-001.esphome.yaml
+python homie.py esphome --mqtt    generate with MQTT instead of native ESPHome API
+esphome run ebus-001.esphome.yaml compile + flash (first time, USB)
+esphome upload ebus-001.esphome.yaml flash only (after first flash)
+```
+
+All `homie.py` commands accept an optional path to `device.yml` as the last argument
 (default: `device.yml` in the project root).
 
 ---
@@ -37,13 +47,15 @@ All commands accept an optional path to `device.yml` as the last argument
 ## CLI reference
 
 ```
-python homie.py generate [device.yml]        generate src/homie.cpp + data/*.yml
-python homie.py build    [device.yml]        generate then compile firmware
-python homie.py push     [--port PORT] [--fs | --fs-only] [device.yml]
+python homie.py generate [device.yml]          generate src/homie.cpp + data/*.yml
+python homie.py build    [device.yml]          generate then compile firmware
+python homie.py run      [--port PORT] [device.yml]  generate, build, and flash
+python homie.py push     [--port PORT] [--fs-only] [device.yml]  flash only (no build)
 python homie.py monitor  [--port PORT] [device.yml]
-python homie.py clean    [device.yml]        clean PlatformIO build artifacts
-python homie.py devices                      list attached serial devices
-python homie.py envs     [device.yml]        list available board environments
+python homie.py clean    [device.yml]          clean PlatformIO build artifacts
+python homie.py devices                        list attached serial devices
+python homie.py envs     [device.yml]          list available board environments
+python homie.py esphome  [--mqtt] [device.yml] generate ESPHome YAML
 python homie.py config   status | init | stage
 ```
 

@@ -59,19 +59,30 @@ LICENSE                       MIT
 
 ## Common Commands
 
+**Homie / PlatformIO firmware:**
 ```cmd
 python homie.py config init                    bootstrap ~/.config/eBus/config.yml from example
 python homie.py generate                       regenerate src/homie.cpp + data/*.yml from device.yml
 python homie.py build                          compile firmware
-python homie.py push                           upload firmware over USB
-python homie.py push --fs                      upload firmware + filesystem
-python homie.py push --fs-only                 upload filesystem only
+python homie.py run                            generate, build, and flash firmware + filesystem over USB
+python homie.py run --port COM3               override serial port
+python homie.py push                           flash pre-built firmware + filesystem (no build)
+python homie.py push --fs-only                 flash filesystem only (re-flash config without rebuilding)
 python homie.py monitor                        open serial console (real terminal only)
 python homie.py devices                        list attached serial devices
-python homie.py push --port COM3               override serial port
 ```
 
-VSCode users: use the PlatformIO IDE's project-tasks pane; same targets, different surface.
+**ESPHome firmware (same device.yml, different build target):**
+```cmd
+python homie.py esphome                        generate ebus-001.esphome.yaml from device.yml
+python homie.py esphome --mqtt                 generate with MQTT instead of native ESPHome API
+esphome compile ebus-001.esphome.yaml          compile ESPHome firmware
+esphome run ebus-001.esphome.yaml              compile + flash (first time, via USB)
+esphome upload ebus-001.esphome.yaml           flash only (re-flash after compile)
+esphome logs ebus-001.esphome.yaml             monitor serial output
+```
+
+VSCode users: use the PlatformIO IDE's project-tasks pane for Homie targets; same targets, different surface.
 
 ## Documentation Index
 

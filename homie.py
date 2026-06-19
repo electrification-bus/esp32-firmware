@@ -4,9 +4,10 @@ homie.py — Homie firmware CLI
 
   python homie.py generate                  Generate src/homie.cpp + data/*.yml from device.yml
   python homie.py build                     Generate then compile firmware
-  python homie.py push                      Flash firmware + filesystem to device
-  python homie.py push --fs-only            Flash filesystem only
-  python homie.py push --port COM3          Specify serial port
+  python homie.py run                       Generate, build, and flash firmware + filesystem
+  python homie.py run --port COM3           Specify serial port
+  python homie.py push                      Flash pre-built firmware + filesystem (no build)
+  python homie.py push --fs-only            Flash filesystem only (no build)
   python homie.py monitor                   Open serial monitor
   python homie.py monitor --port COM3
   python homie.py clean                     Clean build artifacts
@@ -203,9 +204,20 @@ def cmd_generate(args) -> None:
     lines += ["", "void setup_homie() {"] + (setups or ["    // no nodes configured"]) + ["}"]
     lines += ["", "void loop_homie() {"] + (loops or ["    // no nodes configured"]) + ["}", ""]
 
+    mqtt_mode_str = (cfg.get("mqtt") or {}).get("mode") or "configured-only"
+    lines += [f'const char* const homie_mqtt_mode = "{mqtt_mode_str}";', ""]
+
     out_cpp = SRC_DIR / "homie.cpp"
     out_cpp.write_text("\n".join(lines), encoding="utf-8")
     print(f"  generated: {out_cpp.relative_to(ROOT)}")
+
+    # Force recompile on next build — SCons uses MD5 so identical content won't
+    # trigger a rebuild without removing the stale object file.
+    board = get_board(cfg)
+    obj = ROOT / ".pio" / "build" / board / "src" / "homie.cpp.o"
+    if obj.exists():
+        obj.unlink()
+        print(f"  invalidated: {obj.relative_to(ROOT)}")
 
     # data/homie.yml
     homie_doc = {
@@ -223,18 +235,27 @@ def cmd_generate(args) -> None:
     print(f"  generated: {out_homie.relative_to(ROOT)}")
 
     # data/config.yml
-    wifi     = cfg.get("wifi", {})
-    mqtt_cfg = cfg.get("mqtt", {})
+    wifi     = cfg.get("wifi")  or {}
+    mqtt_cfg = cfg.get("mqtt")  or {}
     config_doc = {"config": [{
-        "wifi_ssid":     wifi.get("ssid",     ""),
-        "wifi_password": wifi.get("password", ""),
-        "mqtt_host":     mqtt_cfg.get("host",     ""),
-        "mqtt_port":     mqtt_cfg.get("port",     1883),
-        "mqtt_username": mqtt_cfg.get("username", ""),
-        "mqtt_password": mqtt_cfg.get("password", ""),
-        "device_id":     device.get("id",   ""),
-        "device_name":   device.get("name", ""),
-        "device_type":   device.get("type", ""),
+        "wifi_ssid":        wifi.get("ssid")     or "",
+        "wifi_password":    wifi.get("password") or "",
+        "mqtt_mode":        mqtt_cfg.get("mode") or "configured-only",
+        "mqtt_host":        mqtt_cfg.get("host") or "",
+        "mqtt_port":        mqtt_cfg.get("port") or 1883,
+        "mqtt_username":    mqtt_cfg.get("username") or "",
+        "mqtt_password":    mqtt_cfg.get("password") or "",
+        "device_id":        device.get("id")           or "",
+        "device_name":      device.get("name")         or "",
+        "device_type":      device.get("device_type")  or device.get("type") or "",
+        "firmware_name":    device.get("firmware_name")    or "",
+        "firmware_version": device.get("firmware_version") or "",
+        "firmware_url":     device.get("firmware_url")     or "",
+        "manufacturer":     device.get("manufacturer")     or "",
+        "model":            device.get("model")            or "",
+        "serial_number":    device.get("serial_number")    or "",
+        "homie_role":       device.get("homie_role")       or "device",
+        "device_passphrase":device.get("device_passphrase") or "changeme",
     }]}
     out_config = DATA_DIR / "config.yml"
     with open(out_config, "w", encoding="utf-8") as f:
@@ -261,37 +282,40 @@ def cmd_build(args) -> None:
     if bin_path.exists():
         print(f"\nfirmware: {bin_path}  ({bin_path.stat().st_size / 1024:.1f} KB)")
 
-# ── push ───────────────────────────────────────────────────────────────────────
+# ── run / push ─────────────────────────────────────────────────────────────────
 
-def cmd_push(args) -> None:
-    print("--- generate ---")
-    cmd_generate(args)
-
-    cfg   = load_device_yml(Path(args.device_yml))
+def _upload(cfg, args, build: bool) -> None:
     board = get_board(cfg)
     port  = getattr(args, "port", None)
 
-    upload_fw = not args.fs_only
-    upload_fs = not args.fs_only  # always push FS alongside firmware
-
-    if upload_fw:
-        print(f"\n--- build + upload firmware (env: {board}) ---")
+    if not args.fs_only:
+        label = "build + upload firmware" if build else "upload firmware"
+        print(f"\n--- {label} (env: {board}) ---")
         rc = pio_run(board, ["upload"], port)
         if rc != 0:
-            print(f"\nBuild/upload FAILED (exit {rc})", file=sys.stderr)
+            print(f"\nFirmware upload FAILED (exit {rc})", file=sys.stderr)
             sys.exit(rc)
         bin_path = ROOT / ".pio" / "build" / board / "firmware.bin"
         if bin_path.exists():
             print(f"flashed: {bin_path}  ({bin_path.stat().st_size / 1024:.1f} KB)")
 
-    if upload_fs:
-        print(f"\n--- uploading filesystem (env: {board}) ---")
-        rc = pio_run(board, ["buildfs", "uploadfs"], port)
-        if rc != 0:
-            print(f"\nFilesystem upload FAILED (exit {rc})", file=sys.stderr)
-            sys.exit(rc)
+    print(f"\n--- uploading filesystem (env: {board}) ---")
+    rc = pio_run(board, ["buildfs", "uploadfs"], port)
+    if rc != 0:
+        print(f"\nFilesystem upload FAILED (exit {rc})", file=sys.stderr)
+        sys.exit(rc)
 
     print("\ndone.")
+
+def cmd_run(args) -> None:
+    print("--- generate ---")
+    cmd_generate(args)
+    cfg = load_device_yml(Path(args.device_yml))
+    _upload(cfg, args, build=True)
+
+def cmd_push(args) -> None:
+    cfg = load_device_yml(Path(args.device_yml))
+    _upload(cfg, args, build=False)
 
 # ── monitor ────────────────────────────────────────────────────────────────────
 
@@ -394,8 +418,9 @@ def main():
             "examples:",
             "  python homie.py generate",
             "  python homie.py build",
+            "  python homie.py run",
+            "  python homie.py run --port COM3",
             "  python homie.py push",
-            "  python homie.py push --port COM3",
             "  python homie.py push --fs-only",
             "  python homie.py monitor --port COM3",
             "  python homie.py clean",
@@ -420,11 +445,15 @@ def main():
     p = sub.add_parser("build", help="Generate then compile firmware via PlatformIO")
     p.add_argument("device_yml", **dev_yml_arg)
 
-    p = sub.add_parser("push", help="Flash firmware (and optionally filesystem) to device")
+    p = sub.add_parser("run", help="Generate, build, and flash firmware + filesystem to device")
     p.add_argument("device_yml", **dev_yml_arg)
     p.add_argument("--port", **port_arg)
-    g = p.add_mutually_exclusive_group()
-    g.add_argument("--fs-only", action="store_true", help="flash filesystem only")
+    p.add_argument("--fs-only", action="store_true", help="flash filesystem only (skip firmware)")
+
+    p = sub.add_parser("push", help="Flash pre-built firmware + filesystem (no generate/build)")
+    p.add_argument("device_yml", **dev_yml_arg)
+    p.add_argument("--port", **port_arg)
+    p.add_argument("--fs-only", action="store_true", help="flash filesystem only (skip firmware)")
 
     p = sub.add_parser("monitor", help="Open serial monitor")
     p.add_argument("device_yml", **dev_yml_arg)
@@ -447,6 +476,7 @@ def main():
     dispatch = {
         "generate": cmd_generate,
         "build":    cmd_build,
+        "run":      cmd_run,
         "push":     cmd_push,
         "monitor":  cmd_monitor,
         "clean":    cmd_clean,

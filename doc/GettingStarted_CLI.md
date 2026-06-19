@@ -41,9 +41,9 @@ python homie.py devices
 
 ```cmd
 python homie.py build            compile firmware (runs generate first)
-python homie.py push             upload firmware over USB
-python homie.py push --fs        upload firmware + filesystem
-python homie.py push --fs-only   upload filesystem only
+python homie.py run              generate, build, and flash firmware + filesystem over USB
+python homie.py push             flash pre-built firmware + filesystem (no build)
+python homie.py push --fs-only   flash filesystem only (re-flash config without rebuilding)
 python homie.py monitor          open serial monitor — must be in a REAL terminal (see below)
 python homie.py clean            clean build artifacts
 ```
@@ -51,7 +51,7 @@ python homie.py clean            clean build artifacts
 Override the serial port when auto-detection picks the wrong one:
 
 ```cmd
-python homie.py push --port COM3
+python homie.py run --port COM3
 python homie.py monitor --port COM3
 ```
 
@@ -77,16 +77,16 @@ cat /dev/cu.usbserial-21130 | tee /tmp/serial.log
 
 ## Monitor ↔ flash port handoff (when monitor runs in tmux)
 
-`python homie.py monitor` and `python homie.py push` both need exclusive access to the serial port. When monitor is running, push can't open the port and vice versa.
+`python homie.py monitor` and `python homie.py run` / `python homie.py push` both need exclusive access to the serial port. When monitor is running, run/push can't open the port and vice versa.
 
-If you run monitor **inside a tmux pane**, the `bin/_monitor-record` / `bin/_flash-coord` shell scripts (invoked by the underlying `pio` call) drop a breadcrumb at `.run/monitor-<port>.state` recording which tmux pane holds which port. Subsequent push invocations automatically:
+If you run monitor **inside a tmux pane**, the `bin/_monitor-record` / `bin/_flash-coord` shell scripts (invoked by the underlying `pio` call) drop a breadcrumb at `.run/monitor-<port>.state` recording which tmux pane holds which port. Subsequent run/push invocations automatically:
 
 1. read the breadcrumb,
 2. send `Ctrl-C` to the monitor's tmux pane to release the port,
 3. run the upload,
 4. send a fresh monitor invocation back into the same pane to resume.
 
-If you run monitor **outside tmux**, no breadcrumb is recorded — push will fail with "port busy" until you Ctrl-C the monitor yourself.
+If you run monitor **outside tmux**, no breadcrumb is recorded — run/push will fail with "port busy" until you Ctrl-C the monitor yourself.
 
 ### Setting up the tmux session
 
@@ -110,7 +110,7 @@ python homie.py monitor --port /dev/cu.usbmodem14201
 Push from any other shell, passing the same port:
 
 ```sh
-python homie.py push --port /dev/cu.usbserial-21130
+python homie.py run --port /dev/cu.usbserial-21130
 ```
 
 ## Config overlays — see Configuration.md
@@ -131,7 +131,7 @@ Two overlay files keep per-developer settings out of the shared repo: `~/.config
 |---|---|---|
 | `ModuleNotFoundError: No module named 'yaml'` | PyYAML not installed | `pip install pyyaml` |
 | PlatformIO not found | `~/.platformio/penv/...pio` doesn't exist | Install via VSCode PlatformIO extension or `pipx install platformio` |
-| `push` finds no port / hangs at "Connecting…" | No board attached, wrong port, or board not in bootloader state | `python homie.py devices` to list ports; some boards need BOOT held during reset for first flash |
+| `run` / `push` finds no port / hangs at "Connecting…" | No board attached, wrong port, or board not in bootloader state | `python homie.py devices` to list ports; some boards need BOOT held during reset for first flash |
 | `monitor` → `termios.error` | Running through a non-PTY context | Run in a real terminal window |
 | `config status` shows overlay missing | First-run state | `python homie.py config init`, then edit the overlay |
 | `data/config.yml` showed up modified after pulling | Someone else's overlay snuck into a commit (shouldn't happen — it's gitignored) | `git checkout data/config.yml`, then `python homie.py config stage` to re-stage from overlay |

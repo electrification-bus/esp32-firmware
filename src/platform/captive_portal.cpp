@@ -552,6 +552,30 @@ static void handleOtaToggle(AsyncWebServerRequest *request) {
     request->send(200, "application/json", resp);
 }
 
+// Handle POST /api/passphrase - save device passphrase from JSON body
+static void handlePassphraseSave(AsyncWebServerRequest *request) {
+    if (!requireAuth(request)) return;
+    Serial.printf("PORTAL: handlePassphraseSave called, body=%d bytes\n", post_body_len);
+
+    JsonDocument doc;
+    if (deserializeJson(doc, post_body_buf, post_body_len)) {
+        request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid JSON\"}");
+        return;
+    }
+
+    if (doc["passphrase"].is<const char*>()) {
+        strncpy(device_passphrase, doc["passphrase"].as<const char*>(), sizeof(device_passphrase) - 1);
+        device_passphrase[sizeof(device_passphrase) - 1] = '\0';
+    } else {
+        request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing passphrase field\"}");
+        return;
+    }
+
+    portal_prefs_save_passphrase(device_passphrase);
+    Serial.println("PORTAL: Device passphrase updated");
+    request->send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Passphrase saved. Takes effect immediately.\"}");
+}
+
 // Handle POST /api/reset-prefs - clear all portal Preferences
 static void handleResetPrefs(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
@@ -629,6 +653,7 @@ void captive_portal_start() {
     server.on("/api/mqtt", HTTP_POST, handleMqttSave, NULL, accumulateBody);
     server.on("/api/firmware", HTTP_POST, handleFirmwareSave, NULL, accumulateBody);
     server.on("/api/filesystem", HTTP_POST, handleFilesystemSave, NULL, accumulateBody);
+    server.on("/api/passphrase", HTTP_POST, handlePassphraseSave, NULL, accumulateBody);
     server.on("/api/reset-prefs", HTTP_POST, handleResetPrefs);
     server.on("/api/reboot", HTTP_POST, handleReboot);
     server.on("/api/broker-cert", HTTP_GET, handleBrokerCert);
