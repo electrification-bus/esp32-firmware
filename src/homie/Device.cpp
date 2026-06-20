@@ -320,6 +320,16 @@ static char _description_json[MAX_DATA_LEN];
 
 void Device::publish() {
 
+  // Homie 5: a device's $description may only CHANGE while $state is init,
+  // disconnected, or lost. Warn (rather than silently swallow) if it's published
+  // while ready/sleeping — the caller should cycle the device through init first
+  // (see addChildLive() and the ordered add/remove protocols).
+  if (_state == DEVICE_STATE_READY || _state == DEVICE_STATE_SLEEPING) {
+    Serial.printf("Device '%s': WARNING $description published while $state=%s — Homie 5 "
+                  "requires init/disconnected/lost; cycle through init first\n",
+                  _id, device_state_to_cstr(_state));
+  }
+
   //$description
   Serial.println("DEVICE publish: $description");
   char top[128] = {0};
