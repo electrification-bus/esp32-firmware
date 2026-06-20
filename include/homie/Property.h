@@ -55,6 +55,7 @@ public:
     void set_callback() const;
     void publish_target_value(const char* payload);
     bool publish_value();
+    void clearValue();   // rrj.4: mark unavailable — retract retained topic, no sentinel
     void mqtt_settable_callback(const char* topic, const char* payload);
     void device_new_value_callback(const char* sensor_value);
     void subscribe();

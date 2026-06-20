@@ -161,6 +161,29 @@ void MyDevice::loop() {
 
 Then instantiate it and register its properties in `src/homie.cpp` exactly as shown above. (If you also want it usable from the generator later, add a `lib/<bus>/<name>.yml` with a `generator:` block — see [GenerateHomieDevice.md](GenerateHomieDevice.md#adding-a-new-library-component).)
 
+#### Publishing discipline: omit unavailable values, never publish sentinels
+
+When a reading isn't available — a sensor read fails, hardware isn't connected yet, a value is genuinely unknown — **omit the property rather than publishing a sentinel** like `0`, `-1`, `-999`, or `NaN`. A consumer can't distinguish a real `0` from a "no data" `0`, so sentinels silently corrupt downstream logic. Two cases:
+
+- **Never seen a value yet** — just don't call `.publish()`. A `NodeProperty` won't publish anything until its first `.set(...)`, so a read failure on the very first poll simply leaves the topic absent (no phantom retained value).
+- **Had a value, now unavailable** — call `.clearValue()` on the `NodeProperty`. It retracts the retained topic (publishes a zero-length, retained message, which MQTT treats as "delete") so consumers see the property disappear rather than go stale, and it won't republish the old value until a fresh `.set(...)`.
+
+```cpp
+void MyDevice::loop() {
+    if (millis() - _since_last_read < _read_interval) return;
+    _since_last_read = millis();
+    float v;
+    if (read_my_sensor(&v)) {
+        temperature.set(v);
+        temperature.publish();
+    } else {
+        temperature.clearValue();   // omit, don't publish a fake reading
+    }
+}
+```
+
+(This is distinct from an *empty-string string value*, which is a real value published as a single `0x00` byte — see the Homie "empty string values" rule. `clearValue()` retracts the topic entirely.)
+
 ### Hardware notes for the bundled drivers
 
 These apply whichever path you use (generator or hand-coded) — they're properties of the drivers, not the workflow:

@@ -115,6 +115,15 @@ class NodeProperty {
             _has_value = true;
         }
 
+        // rrj.4: mark this property UNAVAILABLE. Retract its retained topic (zero-length,
+        // retained => MQTT delete) instead of publishing a sentinel value (0, -999, NaN)
+        // when a reading fails or a previously-known value becomes unavailable. Resets
+        // _has_value so a later publish() won't re-emit the stale value until a fresh set().
+        void clearValue() {
+            _has_value = false;
+            mqtt_queue_publish(topic(), "", 0, true);
+        }
+
         void publish() {
             // Publish the value via the thread-safe queue (any task/core). Homie 5
             // requires property values to be RETAINED so reconnecting controllers

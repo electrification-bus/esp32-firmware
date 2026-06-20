@@ -193,6 +193,14 @@ bool Property::publish_value() {
     return _mqtt_client->publish(topic(), _value, retained(), homie_qos(retained()));
 }
 
+// Mark this property UNAVAILABLE (rrj.4): retract its retained topic (zero-length,
+// retained => MQTT delete) rather than publishing a sentinel value. Resets _has_value
+// so publish() won't re-emit the stale value until a fresh setValue().
+void Property::clearValue() {
+    _has_value = false;
+    if (_mqtt_client) _mqtt_client->publish(topic(), "", true, homie_qos(true));
+}
+
 // Publish the intended target value to the property's $target topic (C5). Per spec,
 // the EXACT value received on /set is published byte-for-byte (no coercion), retained,
 // so a controller can close its control loop. Only called when supportsTarget().
