@@ -3,6 +3,7 @@
 //#include <MQTTClient.h>
 #include <MQTT.h>
 #include <homie/homie.h>   // HOMIE_TYPE_MAXLEN
+#include <homie/homie_enums.h>   // PropertyDatatype / Unit (D1)
 class Property; // Forward declaration
 class Device;
 
@@ -16,6 +17,12 @@ public:
 
     void addProperty(Property* property);
     void addProperty(Property* property, const char* id, const char* name, const char* datatype, const char* unit = "", bool settable = false, bool retained = true, const char* format = "");
+    // Type-safe overload (D1): datatype as a PropertyDatatype enum (compiler-checked).
+    // Unit stays a string so custom units work — pass to_homie(Unit::DegreeCelsius) for
+    // the known ones, or any literal. Delegates to the string overload.
+    void addProperty(Property* property, const char* id, const char* name, PropertyDatatype datatype, const char* unit = "", bool settable = false, bool retained = true, const char* format = "") {
+        addProperty(property, id, name, to_homie(datatype), unit, settable, retained, format);
+    }
     Property* getProperty(const char* id);
     void setId(const char* id);
     const char* id();

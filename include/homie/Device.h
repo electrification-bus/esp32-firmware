@@ -16,6 +16,8 @@ typedef enum {
 const char* device_state_to_cstr(DeviceState state);
 // Safe for exact matches only; not case-insensitive
 DeviceState device_state_from_cstr(const char* str);
+// to_homie() spelling for API uniformity with the PropertyDatatype/Unit enums (D1).
+inline const char* to_homie(DeviceState state) { return device_state_to_cstr(state); }
 
 class Device {
  public:
