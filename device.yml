@@ -46,6 +46,12 @@ mqtt:
   # always QoS 0 per spec. Valid: 0, 1, 2.
   qos: 2
 
+# mDNS is OFF by default (opt-in). It's non-essential — Homie device discovery is over
+# MQTT; mDNS only advertises <device>.local for the web UI/OTA, and the bundled ESP-IDF
+# responder can crash on certain packets. Set enabled: true only if you want .local.
+mdns:
+  enabled: false
+
 nodes:
   - component: modbus/sht20
     id: environment_sht20

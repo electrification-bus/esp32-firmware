@@ -60,6 +60,12 @@ enum MqttMode {
 
 extern MqttMode mqtt_mode;
 
+// mDNS responder/discovery. OFF by default (ESP32-9mx): mDNS is non-essential — Homie
+// device discovery is over MQTT, and the responder only advertises <device>.local for
+// the web UI/OTA. The bundled ESP-IDF mDNS library can crash on certain incoming
+// packets, so it's opt-in via the `mdns_enabled` config key.
+extern bool mdns_enabled;
+
 // TLS/SSL support for MQTT (port 8883)
 #define MQTT_SECURE_PORT 8883
 

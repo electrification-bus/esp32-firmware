@@ -190,6 +190,13 @@ bool mdns_has_broker() {
 }
 
 bool setup_mdns() {
+  // mDNS is opt-in (ESP32-9mx): off by default, since it's non-essential (Homie
+  // discovery is over MQTT) and the bundled ESP-IDF responder can crash on certain
+  // packets. Set `mdns_enabled: true` in config to advertise <device>.local.
+  if (!mdns_enabled) {
+    Serial.println("mDNS: disabled (mdns_enabled=false) — not starting responder/discovery");
+    return false;
+  }
   // Use device name as hostname (sanitized for mDNS)
   char base_hostname[48] = {0};
   if (strlen(device_name) > 0) {
@@ -528,6 +535,7 @@ void setup_ethernet() {
 static unsigned long mdns_last_poll = 0;
 
 void loop_mdns() {
+  if (!mdns_enabled) return;                                   // opt-in (ESP32-9mx)
   // No mDNS polling in configured-only mode
   if (mqtt_mode == MQTT_MODE_CONFIGURED_ONLY) return;
 

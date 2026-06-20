@@ -283,6 +283,7 @@ def cmd_generate(args) -> None:
         "mqtt_host":        mqtt_cfg.get("host") or "",
         "mqtt_port":        mqtt_cfg.get("port") or 1883,
         "mqtt_qos":         mqtt_cfg.get("qos") if mqtt_cfg.get("qos") is not None else 2,
+        "mdns_enabled":     bool((cfg.get("mdns") or {}).get("enabled", False)),  # opt-in (ESP32-9mx)
         "mqtt_username":    mqtt_cfg.get("username") or "",
         "mqtt_password":    mqtt_cfg.get("password") or "",
         "device_id":        device.get("id")           or "",
