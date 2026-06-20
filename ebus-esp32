@@ -130,61 +130,57 @@ def cmd_generate(args) -> None:
     device     = cfg.get("device", {})
     nodes_cfg  = cfg.get("nodes", [])
 
-    includes        = []
-    decls           = []
-    prop_static_decls = []  # static Property <var>;
-    prop_reg_body   = []    # body of register_homie_properties()
-    setups          = []
-    loops           = []
-    homie_nodes     = []
+    includes          = []
+    decls             = []   # entity object declarations
+    child_dev_decls   = []   # static Device dev_<child>;
+    prop_static_decls = []   # static Property <var>;
+    prop_reg_body     = []   # body of register_homie_properties()
+    setups            = []
+    loops             = []
+    homie_nodes       = []   # ROOT device's nodes only (data/homie.yml)
 
-    for entry in nodes_cfg:
+    def _cvar(s):
+        return "".join(c if (c.isalnum() or c == "_") else "_" for c in str(s))
+
+    def emit_node(entry, dev_access, setdev_addr, is_root):
+        # dev_access: C++ device access prefix — "device->" (root) or "dev_x." (child)
+        # setdev_addr: entity's device address ("&dev_x") for a child; None for root
         component = entry["component"]
         node_id   = entry.get("id")
         node_cfg  = entry.get("config", {})
-
         comp_path = find_component_yml(component)
         with open(comp_path, encoding="utf-8") as f:
             comp = yaml.safe_load(f)
-
         gen = comp.get("generator")
         if not gen:
             print(f"WARNING: no generator block in {comp_path} — skipping")
-            continue
-
-        cls       = gen["class"]
-        header    = gen["header"]
-        ctor_tmpl = gen["constructor"]
-
+            return
+        cls, header, ctor_tmpl = gen["class"], gen["header"], gen["constructor"]
+        comp_nodes = comp.get("nodes", [])
         if not node_id:
-            comp_nodes = comp.get("nodes", [])
             node_id = comp_nodes[0]["id"] if comp_nodes else component.split("/")[-1]
-
         includes.append(f"#include <{header}>")
         decls.append(f"{cls} {node_id}{fmt_ctor(ctor_tmpl, node_id, node_cfg)};")
         setups.append(f"    {node_id}.setup();")
         loops.append(f"    {node_id}.loop();")
-
-        comp_nodes = comp.get("nodes", [])
+        if setdev_addr:
+            prop_reg_body.append(f"    {node_id}.setDevice({setdev_addr});")  # entity -> child device (A2)
         single = len(comp_nodes) == 1
         for n in comp_nodes:
             nc = dict(n)
             effective_node_id = node_id if single else n["id"]
             if single:
                 nc["id"] = node_id
-            homie_nodes.append(nc)
-
-            # Generate static Property declarations and registration code
+            if is_root:                # children are built in C++, not data/homie.yml
+                homie_nodes.append(nc)
             properties = n.get("properties", [])
-            node_name = n.get("name", effective_node_id)
-            node_type = n.get("type", "generic")
+            node_name  = n.get("name", effective_node_id)
+            node_type  = n.get("type", "generic")
             if properties:
-                if prop_reg_body:
-                    prop_reg_body.append("")
-                # Use NodeEntity's getNodeId() so the id is not duplicated as a string literal
+                prop_reg_body.append("")
                 id_expr = f'{node_id}.getNodeId()' if single else f'"{effective_node_id}"'
-                prop_reg_body.append(f'    _node = device->addNode({id_expr}, "{node_name}", "{node_type}");')
-                prop_reg_body.append(f'    if (_node) {{')
+                prop_reg_body.append(f'    _node = {dev_access}addNode({id_expr}, "{node_name}", "{node_type}");')
+                prop_reg_body.append('    if (_node) {')
                 for prop in properties:
                     prop_id   = prop["id"]
                     prop_var  = f"_prop_{effective_node_id}_{prop_id}"
@@ -198,15 +194,39 @@ def cmd_generate(args) -> None:
                     prop_reg_body.append(f'        _node->addProperty(&{prop_var}, {args_str});')
                 prop_reg_body.append('    }')
 
+    def emit_device(dev_cfg, dev_access, dev_addr, runtime_id_expr, is_root):
+        # Emit this device's nodes, then recurse into nested child devices.
+        for entry in dev_cfg.get("nodes", []):
+            emit_node(entry, dev_access, None if is_root else dev_addr, is_root)
+        for child in dev_cfg.get("children", []):
+            cid    = child["id"]                 # suffix; runtime id = <parent>-<cid>
+            cvar   = "dev_" + _cvar(cid)
+            cidbuf = "childId_" + _cvar(cid)
+            cname  = child.get("name", cid)
+            ctype  = child.get("type", "generic")
+            child_dev_decls.append(f"static Device {cvar};")
+            prop_reg_body.append("")
+            prop_reg_body.append(f"    // nested child device: {cid}")
+            prop_reg_body.append(f"    char {cidbuf}[96];")
+            prop_reg_body.append(f'    snprintf({cidbuf}, sizeof({cidbuf}), "%s-{cid}", {runtime_id_expr});')
+            prop_reg_body.append(f'    {cvar}.init("{cname}", {cidbuf}, "{ctype}", {dev_access}mqttClient());')
+            prop_reg_body.append(f"    {dev_access}addChild(&{cvar});")
+            emit_device(child, f"{cvar}.", f"&{cvar}", cidbuf, is_root=False)
+            prop_reg_body.append(f"    {cvar}.setState(DeviceState::DEVICE_STATE_READY);")
+
+    emit_device(cfg, "device->", "device", "device->getId()", is_root=True)
+
     # src/homie.cpp
     lines = [_HOMIE_CPP_HEADER]
     lines.append("#include <homie/Device.h>")
     lines.append("#include <homie/Property.h>")
     lines.append("")
     if includes:
-        lines += includes + [""]
+        lines += list(dict.fromkeys(includes)) + [""]   # dedupe (same component in root + child)
     if decls:
         lines += decls + [""]
+    if child_dev_decls:
+        lines += ["// Nested child Device objects (Homie 5 parent/child)"] + child_dev_decls + [""]
     if prop_static_decls:
         lines += ["// Static Homie Property objects — one per node property"] + prop_static_decls + [""]
     lines += ["void register_homie_properties(Device* device) {"]

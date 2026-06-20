@@ -113,6 +113,49 @@ Multiple instances of the same component are allowed; give each a unique `id`.
 
 ---
 
+## Nested child devices (Homie 5)
+
+eBus models a product as a tree of nested Homie 5 devices — a parent (root) device with child devices, each a separate `ebus/5/<id>/…` device with its own `$state` and `$description`, sharing the root's MQTT connection. Declare children under a `children:` key; each child has the same shape as the root (`id`, `name`, `type`, its own `nodes:`, and optionally its own nested `children:`).
+
+```yaml
+device:
+  name: My Battery System
+  id: ebus-001
+  type: energy.ebus.device.bess
+  board: esp32-poe-iso
+
+nodes:                          # the root device's own nodes
+  - component: spi/atm90e32_energy_meter
+    id: site_meter
+
+children:
+  - id: battery1                # child device-id suffix → runtime id <root-id>-battery1
+    name: Battery Pack 1
+    type: energy.ebus.device.battery
+    nodes:
+      - component: i2c/bme280
+        id: battery1_env
+    children:                   # children may nest arbitrarily deep
+      - id: mid
+        name: Microgrid Interconnect
+        type: energy.ebus.device.mid
+        nodes: []
+```
+
+### child fields
+
+| Field      | Required | Description |
+|------------|----------|-------------|
+| `id`       | yes | Child id **suffix**; the runtime device-id is `<parent-runtime-id>-<id>` (the parent id is MAC-derived at boot) |
+| `name`     | no  | Human-readable child name (Homie `$name`) |
+| `type`     | no  | Child device `$type` (e.g. `energy.ebus.device.battery`) |
+| `nodes`    | no  | The child's own component nodes (same format as the root `nodes:`) |
+| `children` | no  | Further nested child devices (recursive) |
+
+The generator emits a `Device` object per child, wires the parent/child topology (`addChild`), binds each child node's entity to its device so its property values publish under the child's topic, and `main.cpp` publishes the whole tree at boot. The published result: the root `$description` lists `children`, and each child `$description` carries `root`/`parent` — a conformant Homie 5 nested tree.
+
+---
+
 ## What the generator produces
 
 ### src/homie.cpp

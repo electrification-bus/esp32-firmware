@@ -34,6 +34,7 @@ class Device {
     void addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json, bool subscribe = true);
     //void setMQTTClient(MQTTClient* client);
     void setMQTTClient(MQTTClient* client);
+    MQTTClient* mqttClient() { return _mqtt_client; }  // children share the root's client
     void mqttConnected();
     size_t toJson(char* buffer, size_t bufferSize);
     void setId(const char* id);
