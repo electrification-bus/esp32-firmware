@@ -2,6 +2,7 @@
 #include "homie/Property.h"
 #include <homie/Node.h>
 #include <homie/Device.h>
+#include <homie/homie_datatype.h>
 #include <platform/mqtt_client.h>
 #include <util/jsonUtils.h>
 
@@ -23,6 +24,9 @@ void Property::from_dict(JsonObject* props_obj) {
     }
     if (jsonExists((*props_obj)[HOMIE_DATATYPE]) && (*props_obj)[HOMIE_DATATYPE].is<const char*>()) {
         setDatatype((*props_obj)[HOMIE_DATATYPE].as<const char*>());
+    }
+    if (jsonExists((*props_obj)[HOMIE_FORMAT]) && (*props_obj)[HOMIE_FORMAT].is<const char*>()) {
+        setFormat((*props_obj)[HOMIE_FORMAT].as<const char*>());  // required for enum/color (C1)
     }
     if (jsonExists((*props_obj)[HOMIE_UNIT]) && (*props_obj)[HOMIE_UNIT].is<const char*>()) {
         setUnit((*props_obj)[HOMIE_UNIT].as<const char*>());
@@ -188,6 +192,20 @@ void Property::mqtt_settable_callback(const char* topic, const char* payload) {
         float f = atof(payload);
         setValue(f);
         isValid = true;
+    } else if (strcmp(datatype(), HOMIE_DATATYPE_ENUM) == 0) {
+        // Payload must be one of the comma-separated values in the property's format.
+        if (homie_validate_enum(payload, _format)) { setValue(payload); isValid = true; }
+    } else if (strcmp(datatype(), HOMIE_DATATYPE_COLOR) == 0) {
+        // "<type>,<floats>" with type in the format list and per-type ranges.
+        if (homie_validate_color(payload, _format)) { setValue(payload); isValid = true; }
+    } else if (strcmp(datatype(), HOMIE_DATATYPE_DATETIME) == 0) {
+        if (homie_validate_datetime(payload)) { setValue(payload); isValid = true; }
+    } else if (strcmp(datatype(), HOMIE_DATATYPE_DURATION) == 0) {
+        if (homie_validate_duration(payload)) { setValue(payload); isValid = true; }
+    }
+    if (!isValid && strlen(datatype()) > 0) {
+        Serial.printf("Node: '%s', Property: '%s' - invalid %s payload '%s' (format '%s')\n",
+                      _parent_node->id(), _id, datatype(), payload, _format);
     }
     if (isValid) {
         Serial.printf("Node: '%s',  Property: '%s': datetype: '%s', new value: '%s'\n",_parent_node->id(), _id, datatype(), payload);

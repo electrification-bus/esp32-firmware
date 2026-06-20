@@ -27,8 +27,10 @@ public:
     float getFloatValue() { return _floatValue; };
     int getIntValue() { return (float)_intValue; };
     bool getBoolValue() { return _boolValue; };
-    bool getEnumValue() { return _boolValue; }; //NOT IMPLEMENTED
-    bool getColorValue() { return _boolValue; }; //NOT IMPLEMENTED
+    // Enum value is the selected string (one of the format options); color value is the
+    // raw "type,c1,c2[,c3]" payload — use homie_parse_color() for the components (C1).
+    const char* getEnumValue() { return _value; };
+    const char* getColorValue() { return _value; };
 
     const char* coerced_value() const;
 
@@ -69,7 +71,7 @@ private:
     char _value[256] = {0};
     char _datatype[16] = {0};
     char _topic[64] = {0};
-    char _format[16] = {0};
+    char _format[64] = {0};   // enum/color formats (comma lists) need room (C1)
     bool _settable;
     void* _callback;
     bool _retained = true;
