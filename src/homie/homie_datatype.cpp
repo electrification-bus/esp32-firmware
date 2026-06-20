@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <math.h>
 
 // --- helpers ------------------------------------------------------------------
 
@@ -162,6 +163,55 @@ bool homie_validate_datetime(const char* payload) {
 }
 
 // --- duration -----------------------------------------------------------------
+
+// --- numeric format -----------------------------------------------------------
+
+// Parse a possibly-empty numeric field [begin,end) into *out; empty => not present.
+static bool parse_opt_number(const char* begin, const char* end, bool* present, double* out) {
+    if (begin >= end) { *present = false; return true; }   // empty field = open-ended
+    float f;
+    if (!parse_float_token(begin, end, &f)) return false;
+    *present = true;
+    *out = (double)f;
+    return true;
+}
+
+bool homie_parse_number_format(const char* format, HomieNumberFormat* out) {
+    HomieNumberFormat nf = {false, false, false, 0, 0, 0};
+    if (!format || format[0] == '\0') { if (out) *out = nf; return true; }
+    // Split on ':' into up to 3 fields: min, max, step.
+    const char* min_b = format;
+    const char* min_e = strchr(min_b, ':');
+    if (!min_e) return false;                              // a format with no ':' is malformed
+    const char* max_b = min_e + 1;
+    const char* max_e = strchr(max_b, ':');
+    const char* step_b = max_e ? max_e + 1 : nullptr;
+    if (!max_e) max_e = max_b + strlen(max_b);
+    if (!parse_opt_number(min_b, min_e, &nf.has_min, &nf.min)) return false;
+    if (!parse_opt_number(max_b, max_e, &nf.has_max, &nf.max)) return false;
+    if (step_b) {
+        const char* step_e = step_b + strlen(step_b);
+        if (!parse_opt_number(step_b, step_e, &nf.has_step, &nf.step)) return false;
+        if (nf.has_step && nf.step <= 0) return false;     // step must be > 0
+    }
+    if (out) *out = nf;
+    return true;
+}
+
+bool homie_validate_number(double value, const char* format, double* coerced) {
+    HomieNumberFormat nf;
+    if (!homie_parse_number_format(format, &nf)) { if (coerced) *coerced = value; return false; }
+    double result = value;
+    if (nf.has_step) {
+        // base = min, else max, else the value itself (spec §"numeric formats and step").
+        double base = nf.has_min ? nf.min : (nf.has_max ? nf.max : value);
+        result = floor((value - base) / nf.step + 0.5) * nf.step + base;   // round "up" on .5
+    }
+    if (coerced) *coerced = result;
+    if (nf.has_min && result < nf.min) return false;       // range check AFTER rounding
+    if (nf.has_max && result > nf.max) return false;
+    return true;
+}
 
 bool homie_validate_duration(const char* payload) {
     if (!payload || payload[0] != 'P') return false;

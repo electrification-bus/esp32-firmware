@@ -40,7 +40,7 @@ void Node::addProperty(Property* property) {
     _properties[_num_properties++] = property;
 }
 
-void Node::addProperty(Property* property, const char* id, const char* name, const char* datatype, const char* unit, bool settable, bool retained) {
+void Node::addProperty(Property* property, const char* id, const char* name, const char* datatype, const char* unit, bool settable, bool retained, const char* format) {
     property->setNode(this);  // must precede setId() — setId() dereferences _parent_node->topic()
     // Property-id is a topic level: coerce to Homie-legal (a-z 0-9 -) on the publisher
     // side, matching NodeProperty::setup() so the value lookup stays consistent (rrj.2).
@@ -52,6 +52,7 @@ void Node::addProperty(Property* property, const char* id, const char* name, con
     property->setName(name);
     property->setDatatype(datatype);
     if (unit && unit[0] != '\0') property->setUnit(unit);
+    if (format && format[0] != '\0') property->setFormat(format);  // enum/color/numeric (C2)
     if (settable) property->setSettable(true);
     if (!retained) property->setRetained(false);
     addProperty(property);

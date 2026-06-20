@@ -35,3 +35,24 @@ struct HomieColor {
     float c[3];        // rgb: r,g,b | hsv: h,s,v | xyz: x,y,(z derived)
 };
 bool homie_parse_color(const char* payload, const char* format, HomieColor* out);
+
+// --- numeric format: float/integer "[min]:[max][:step]" (C2) ---
+
+// Parsed numeric format. Missing min/max are open-ended (has_* = false). A step of 0
+// means "no step". An empty/absent/":" format yields all-false (unconstrained).
+struct HomieNumberFormat {
+    bool   has_min, has_max, has_step;
+    double min, max, step;
+};
+
+// Parse "[min]:[max][:step]" into `out`. Returns false only on a malformed format
+// (e.g. step <= 0, or non-numeric fields); a fully-open ":" parses true with no
+// constraints. A null/empty format also parses true (unconstrained).
+bool homie_parse_number_format(const char* format, HomieNumberFormat* out);
+
+// Validate `value` against `format` per the spec: round to the nearest step (if any)
+// using floor((v-base)/step + 0.5)*step + base with base = min, else max, else value;
+// then require min <= result <= max (inclusive). Writes the coerced (step-rounded)
+// value to *coerced when non-null. Returns true iff the result is in range. With no
+// format constraints, returns true and coerced = value.
+bool homie_validate_number(double value, const char* format, double* coerced);

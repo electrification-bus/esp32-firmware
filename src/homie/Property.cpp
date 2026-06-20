@@ -81,6 +81,14 @@ const char* Property::unit() {
     return _unit;
 }
 
+void Property::setFormat(const char* fmt) {
+    snprintf(_format, sizeof(_format), "%s", fmt);
+}
+
+const char* Property::format() {
+    return _format;
+}
+
 void Property::setName(const char* name) {
     snprintf(_name, sizeof(_name), "%s", name);
 }
@@ -199,12 +207,16 @@ void Property::mqtt_settable_callback(const char* topic, const char* payload) {
         setValue(payload);
         isValid = true;
     } else if (strcmp(datatype(), HOMIE_DATATYPE_INTEGER) == 0) {
-        setValue(atoi(payload));
-        isValid = true;
+        // Enforce the format's [min]:[max][:step] (C2). No format => accept as-is.
+        double coerced;
+        if (homie_validate_number((double)atoi(payload), _format, &coerced)) {
+            setValue((int)coerced); isValid = true;
+        }
     } else if (strcmp(datatype(), HOMIE_DATATYPE_FLOAT) == 0) {
-        float f = atof(payload);
-        setValue(f);
-        isValid = true;
+        double coerced;
+        if (homie_validate_number(atof(payload), _format, &coerced)) {
+            setValue((float)coerced); isValid = true;
+        }
     } else if (strcmp(datatype(), HOMIE_DATATYPE_ENUM) == 0) {
         // Payload must be one of the comma-separated values in the property's format.
         if (homie_validate_enum(payload, _format)) { setValue(payload); isValid = true; }

@@ -187,10 +187,15 @@ def cmd_generate(args) -> None:
                     unit      = prop.get("unit", "")
                     settable  = prop.get("settable", False)
                     retained  = prop.get("retained", True)
+                    prop_format = prop.get("format", "")
                     prop_static_decls.append(f"static Property {prop_var};")
                     args_str  = f'"{prop_id}", "{prop["name"]}", "{prop["datatype"]}", "{unit}"'
-                    if settable or not retained:
+                    # Trailing args are positional: emit settable/retained if either is
+                    # non-default OR a format follows (format is the 8th arg). (C2)
+                    if settable or not retained or prop_format:
                         args_str += f', {str(settable).lower()}, {str(retained).lower()}'
+                        if prop_format:
+                            args_str += f', "{prop_format}"'
                     prop_reg_body.append(f'        _node->addProperty(&{prop_var}, {args_str});')
                 prop_reg_body.append('    }')
 
