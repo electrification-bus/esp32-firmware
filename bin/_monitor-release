@@ -1,6 +1,6 @@
 #!/bin/sh
 # Internal helper: remove the breadcrumb dropped by _monitor-record. Called
-# from the `make monitor` recipe's EXIT/INT/TERM trap so the breadcrumb
+# from the monitor command's EXIT/INT/TERM trap so the breadcrumb
 # clears whether monitor exits normally or via Ctrl-C.
 #
 # Usage: _monitor-release [<PORT>]

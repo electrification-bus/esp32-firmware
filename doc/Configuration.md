@@ -53,7 +53,7 @@ Only non-empty overlay fields override; anything you leave blank falls back to t
 
 ### Cleartext credentials caveat
 
-Right now the firmware dumps the full parsed config to the serial console at boot, including `mqtt_password` and `device_passphrase` in cleartext. Anyone with USB serial access (or remote serial via a TCP-to-serial bridge) can read them. Treat them as low-secrecy until that log line is redacted — there's a tactical one-line fix queued up plus a larger design note in [proposal-runtime-config-via-nvs.md](proposal-runtime-config-via-nvs.md) covering NVS-backed runtime provisioning.
+Right now the firmware dumps the full parsed config to the serial console at boot, including `mqtt_password` and `device_passphrase` in cleartext. Anyone with USB serial access (or remote serial via a TCP-to-serial bridge) can read them. Treat them as low-secrecy until that log line is redacted — there's a tactical one-line fix queued up plus a larger design note in [proposals/RuntimeConfigViaNVS.md](proposals/RuntimeConfigViaNVS.md) covering NVS-backed runtime provisioning.
 
 ## 2. PlatformIO build/upload — `platformio_local.ini`
 

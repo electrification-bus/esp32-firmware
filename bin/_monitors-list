@@ -1,6 +1,6 @@
 #!/bin/sh
 # Internal helper: print a human-readable summary of live monitor breadcrumbs.
-# Called by `make monitors`. Stale breadcrumbs (those whose tmux pane no
+# Called by `./ebus-esp32 monitors`. Stale breadcrumbs (those whose tmux pane no
 # longer exists) are removed inline as a side effect.
 #
 # Usage: _monitors-list

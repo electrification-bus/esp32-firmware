@@ -1,13 +1,13 @@
 #!/bin/sh
-# Internal helper: coordinate the serial-port handoff between `make monitor`
-# (running in a tmux pane) and `make flash` / `uploadfs` / `flash-all`.
+# Internal helper: coordinate the serial-port handoff between `./ebus-esp32 monitor`
+# (running in a tmux pane) and `./ebus-esp32 run` / `push`.
 #
 # Usage: _flash-coord {pause|restart} [<PORT>]
 #
 #   pause   — find the monitor breadcrumb for PORT (or the unique live one),
 #             snapshot it to .run/flash-pending-<port>.state, then send Ctrl-C
 #             to the monitor's tmux pane and sleep 0.5s for the port release.
-#   restart — read the pending file, send `make monitor ...` keys to the
+#   restart — read the pending file, send the `./ebus-esp32 monitor` command keys to the
 #             original tmux pane, remove the pending file.
 #
 # Multi-board behaviour:
@@ -141,8 +141,8 @@ case "$ACTION" in
             cmd="$MONITOR_CMD"
         else
             # Fallback for breadcrumbs written before MONITOR_CMD existed.
-            cmd="make monitor PIO_ENV=$PIO_ENV"
-            [ -n "$PORT" ] && cmd="$cmd PORT=$PORT"
+            cmd="./ebus-esp32 monitor"
+            [ -n "$PORT" ] && cmd="$cmd --port $PORT"
         fi
         tmux send-keys -t "$TMUX_PANE_ID" "$cmd" Enter
         rm -f "$pending"

@@ -32,6 +32,7 @@ SRC_DIR      = ROOT / "src"
 DATA_DIR     = ROOT / "data"
 CONFIG_DIR     = Path.home() / ".config" / "eBus"
 CONFIG_OVERLAY = CONFIG_DIR / "config.yml"   # per-developer overlay, merged in by generate
+CONFIG_EXAMPLE = DATA_DIR / "config.yml.example"   # seed for `config-init`
 
 # ── pio helper ─────────────────────────────────────────────────────────────────
 
@@ -59,8 +60,8 @@ def pio_run(board: str, targets: list, port: str = None) -> int:
     return subprocess.run(cmd, cwd=ROOT).returncode
 
 # ── tmux serial-port handoff ────────────────────────────────────────────────────
-# Coordinate the serial port with a monitor running in a tmux pane (same mechanism
-# the Makefile uses, via the bin/_* helpers). `monitor` drops a breadcrumb; `run`/
+# Coordinate the serial port with a monitor running in a tmux pane (via the bin/_*
+# helpers). `monitor` drops a breadcrumb; `run`/
 # `push` pause the monitor (Ctrl-C to release the port), upload, then resume it.
 # Everything is a graceful no-op outside tmux and on Windows, so it never gets in
 # the way of a plain CLI flash or a VSCode/PlatformIO IDE workflow.
@@ -343,7 +344,7 @@ def _upload(cfg, args, build: bool) -> None:
 
     # Pause a tmux serial monitor holding the port (no-op if none / outside tmux).
     # A non-zero rc means ambiguous monitors (multiple live, no port given) — abort
-    # so the user can disambiguate with --port, exactly like the Makefile flow.
+    # so the user can disambiguate with --port.
     if _coord("_flash-coord", "pause", port or "") != 0:
         sys.exit(1)
     try:
@@ -401,7 +402,7 @@ def cmd_monitor(args) -> None:
     board = get_board(cfg)
     pio   = find_pio()
     port  = args.port or ""
-    # Drop a tmux breadcrumb so a later `run`/`push` (or `make flash`) can pause
+    # Drop a tmux breadcrumb so a later `run`/`push` can pause
     # and resume this monitor; tagged "ebus" so resume relaunches this CLI. No-op
     # outside tmux. Cleared on exit whether the monitor quits normally or via Ctrl-C.
     _coord("_monitor-record", board, port, "ebus")
@@ -449,15 +450,34 @@ def cmd_envs(args) -> None:
         if section[0].startswith("env:"):
             print(section[0][4:])
 
+# ── compiledb / check ──────────────────────────────────────────────────────────
+
+def cmd_compiledb(args) -> None:
+    cfg = load_device_yml(Path(args.device_yml))
+    board = get_board(cfg)
+    print(f"--- compiledb (env: {board}) — regenerating compile_commands.json for clangd/LSP ---")
+    sys.exit(pio_run(board, ["compiledb"]))
+
+def cmd_check(args) -> None:
+    cfg = load_device_yml(Path(args.device_yml))
+    board = get_board(cfg)
+    pio = find_pio()
+    sys.exit(subprocess.run([pio, "check", "-e", board], cwd=ROOT).returncode)
+
+# ── monitors (serial-port-sharing breadcrumbs) ──────────────────────────────────
+
+def cmd_monitors(args) -> None:
+    # List active serial-monitor sessions — part of the tmux flash-coordination
+    # (the port-sharing handoff). No-op summary outside tmux.
+    _coord("_monitors-list")
+
 # ── config overlay ───────────────────────────────────────────────────────────
 #
 # The per-developer overlay at ~/.config/eBus/config.yml is applied automatically
-# by `generate` (see the _apply_overlay call in cmd_generate). There is no separate
-# `config` subcommand: the overlay must be *merged* into data/config.yml — non-empty
-# overlay fields win, everything else keeps the device.yml-derived default — and
-# doing that on every generate is simpler than a manual stage step. To create the
-# overlay the first time, copy data/config.yml.example to ~/.config/eBus/config.yml
-# and edit it (see doc/GettingStarted_CLI.md).
+# by `generate` (see the _apply_overlay call in cmd_generate) — the overlay is *merged*
+# into data/config.yml (non-empty overlay fields win, everything else keeps the
+# device.yml-derived default) on every generate, so there's no manual stage step. The
+# `config-init` / `config-status` subcommands below bootstrap and inspect that overlay.
 
 def _apply_overlay(config_path: Path) -> None:
     """Merge ~/.config/eBus/config.yml fields into the generated config.yml."""
@@ -480,6 +500,26 @@ def _apply_overlay(config_path: Path) -> None:
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.dump(doc, f, allow_unicode=True, sort_keys=False)
     print(f"  overlay:   {CONFIG_OVERLAY} ({len(overrides)} field(s))")
+
+def cmd_config_init(args) -> None:
+    if CONFIG_OVERLAY.exists():
+        print(f"overlay already exists: {CONFIG_OVERLAY}")
+        print("edit it directly; this command will not clobber")
+        return
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copy(CONFIG_EXAMPLE, CONFIG_OVERLAY)
+    print(f"created {CONFIG_OVERLAY}")
+    print("edit it with your MQTT broker, credentials, device id, etc.")
+    print("it is merged into data/config.yml automatically on the next build")
+
+def cmd_config_status(args) -> None:
+    print(f"overlay path:    {CONFIG_OVERLAY}")
+    if CONFIG_OVERLAY.exists():
+        print(f"overlay state:   present ({CONFIG_OVERLAY.stat().st_size} bytes) — merged into data/config.yml on every build")
+    else:
+        print("overlay state:   MISSING (optional — device.yml still builds; run `./ebus-esp32 config-init` to add one)")
+    print(f"example path:    {CONFIG_EXAMPLE}")
+    print("data/config.yml: generated from device.yml + overlay by the pre-build hook (gitignored)")
 
 # ── main ───────────────────────────────────────────────────────────────────────
 
@@ -540,6 +580,16 @@ def main():
     p = sub.add_parser("envs", help="List available PlatformIO board environments")
     p.add_argument("device_yml", **dev_yml_arg)
 
+    p = sub.add_parser("compiledb", help="Regenerate compile_commands.json for clangd / LSP")
+    p.add_argument("device_yml", **dev_yml_arg)
+
+    p = sub.add_parser("check", help="Run pio static analysis (cppcheck)")
+    p.add_argument("device_yml", **dev_yml_arg)
+
+    sub.add_parser("monitors", help="List active serial-monitor sessions (port-sharing breadcrumbs)")
+    sub.add_parser("config-init", help="Bootstrap the per-developer config overlay from data/config.yml.example")
+    sub.add_parser("config-status", help="Show config-overlay state")
+
     args = parser.parse_args()
 
     dispatch = {
@@ -551,6 +601,11 @@ def main():
         "clean":    cmd_clean,
         "devices":  cmd_devices,
         "envs":     cmd_envs,
+        "compiledb":     cmd_compiledb,
+        "check":         cmd_check,
+        "monitors":      cmd_monitors,
+        "config-init":   cmd_config_init,
+        "config-status": cmd_config_status,
     }
     dispatch[args.command](args)
 

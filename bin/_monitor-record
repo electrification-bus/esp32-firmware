@@ -1,6 +1,6 @@
 #!/bin/sh
-# Internal helper: drop a breadcrumb so `make flash` can coordinate with a
-# running `make monitor`. Silent no-op outside tmux.
+# Internal helper: drop a breadcrumb so `./ebus-esp32 run`/`push` can coordinate with a
+# running `./ebus-esp32 monitor`. Silent no-op outside tmux.
 #
 # Usage: _monitor-record <PIO_ENV> [<PORT>] [<FRONTEND>]
 #
@@ -40,19 +40,11 @@ fi
 mkdir -p "$RUN_DIR"
 state="$RUN_DIR/monitor-$(basename "$PORT").state"
 
-# Build the command _flash-coord restart will replay into the pane to resume
-# the monitor. Each front-end has its own invocation syntax (make uses VAR=val,
-# ebus-esp32 uses --port); the port is baked in so resume targets the same board.
-case "$FRONTEND" in
-    ebus)
-        MONITOR_CMD="./ebus-esp32 monitor"
-        [ -n "$PORT" ] && MONITOR_CMD="$MONITOR_CMD --port $PORT"
-        ;;
-    *)
-        MONITOR_CMD="make monitor PIO_ENV=$PIO_ENV"
-        [ -n "$PORT" ] && MONITOR_CMD="$MONITOR_CMD PORT=$PORT"
-        ;;
-esac
+# Build the command _flash-coord restart will replay into the pane to resume the
+# monitor. The port is baked in so resume targets the same board. (FRONTEND is kept
+# for breadcrumb compatibility but ./ebus-esp32 is the only front-end now.)
+MONITOR_CMD="./ebus-esp32 monitor"
+[ -n "$PORT" ] && MONITOR_CMD="$MONITOR_CMD --port $PORT"
 
 cat > "$state" <<EOF
 TMUX_PANE_ID=$(tmux display-message -p '#{pane_id}')

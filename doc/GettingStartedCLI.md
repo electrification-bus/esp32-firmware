@@ -1,6 +1,6 @@
 # Getting Started — CLI / terminal workflow
 
-This is the command-line counterpart to [`GettingStarted_VSCode.md`](GettingStarted_VSCode.md). If you're using VSCode + the PlatformIO extension, follow that doc instead — this one assumes you want to build, flash, and monitor from a terminal.
+This is the command-line counterpart to [`GettingStartedVSCode.md`](GettingStartedVSCode.md). If you're using VSCode + the PlatformIO extension, follow that doc instead — this one assumes you want to build, flash, and monitor from a terminal.
 
 ## What's in this workflow
 
@@ -82,16 +82,16 @@ cat /dev/cu.usbserial-21130 | tee /tmp/serial.log
 
 ## Monitor ↔ flash port handoff (when monitor runs in tmux)
 
-A serial monitor and a flash both need exclusive access to the same USB-serial port — while one holds it, the other can't open it. Both front-ends coordinate this automatically when the monitor runs **inside a tmux pane**: `./ebus-esp32 monitor` and `./ebus-esp32 run` / `push`, and equally `make monitor` and `make flash` / `uploadfs` / `flash-all`. The two interoperate — you can monitor with one and flash with the other.
+A serial monitor and a flash both need exclusive access to the same USB-serial port — while one holds it, the other can't open it. `./ebus-esp32` coordinates this automatically when the monitor runs **inside a tmux pane**: `./ebus-esp32 monitor` records which pane holds the port, and a later `./ebus-esp32 run` / `push` pauses it, flashes, and resumes it.
 
 When you start a monitor in a tmux pane, `bin/_monitor-record` drops a breadcrumb at `.run/monitor-<port>.state` recording which tmux pane holds which port (and which front-end started it). A subsequent flash then, via `bin/_flash-coord`, automatically:
 
 1. reads the breadcrumb,
 2. sends `Ctrl-C` to the monitor's tmux pane to release the port,
 3. runs the upload,
-4. relaunches the *same* monitor command (`./ebus-esp32 monitor` or `make monitor`) back into that pane to resume.
+4. relaunches the *same* `./ebus-esp32 monitor` back into that pane to resume.
 
-If you run the monitor **outside tmux** (or on Windows), no breadcrumb is recorded and there's nothing to coordinate — the flash will fail with "port busy" until you Ctrl-C the monitor yourself. `make monitors` lists the active monitor breadcrumbs.
+If you run the monitor **outside tmux** (or on Windows), no breadcrumb is recorded and there's nothing to coordinate — the flash will fail with "port busy" until you Ctrl-C the monitor yourself. `./ebus-esp32 monitors` lists the active monitor breadcrumbs.
 
 ### Setting up the tmux session
 
@@ -148,5 +148,5 @@ Two overlay files keep per-developer settings out of the shared repo: `~/.config
 - [`ebus-esp32`](../ebus-esp32) — CLI entry point; `./ebus-esp32 --help` lists all commands
 - [`GenerateHomieDevice.md`](GenerateHomieDevice.md) — the `device.yml` format and the library-component catalog
 - [`bin/pio`](../bin/pio) — PlatformIO Core shim
-- [`PlatformIO_commands.md`](PlatformIO_commands.md) — raw `pio` command cheatsheet for when you need to invoke `pio` directly
-- [`proposal-runtime-config-via-nvs.md`](proposal-runtime-config-via-nvs.md) — design note for the future NVS-backed runtime credential model
+- [`PlatformIOCommands.md`](PlatformIOCommands.md) — raw `pio` command cheatsheet for when you need to invoke `pio` directly
+- [`proposals/RuntimeConfigViaNVS.md`](proposals/RuntimeConfigViaNVS.md) — design note for the future NVS-backed runtime credential model

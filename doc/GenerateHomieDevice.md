@@ -229,7 +229,7 @@ boot to publish the device's Homie `$nodes` advertisement.
 
 ### data/config.yml
 
-Runtime configuration (wifi, mqtt, device identity) written from the `device:`, `wifi:`, and `mqtt:` sections of `device.yml`, then uploaded to the filesystem. If a per-developer overlay exists at `~/.config/eBus/config.yml`, its non-empty fields are merged in on top during `generate` — that is how your real broker and credentials stay out of the tracked `device.yml`. See [Configuration.md](Configuration.md) and [GettingStarted_CLI.md](GettingStarted_CLI.md) for the overlay model.
+Runtime configuration (wifi, mqtt, device identity) written from the `device:`, `wifi:`, and `mqtt:` sections of `device.yml`, then uploaded to the filesystem. If a per-developer overlay exists at `~/.config/eBus/config.yml`, its non-empty fields are merged in on top during `generate` — that is how your real broker and credentials stay out of the tracked `device.yml`. See [Configuration.md](Configuration.md) and [GettingStartedCLI.md](GettingStartedCLI.md) for the overlay model.
 
 ---
 

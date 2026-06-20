@@ -12,8 +12,8 @@ Pick the path that matches how you work:
 
 | Editor surface | Onboarding doc |
 |---|---|
-| **VSCode + PlatformIO extension** | [doc/GettingStarted_VSCode.md](doc/GettingStarted_VSCode.md) |
-| **Terminal (Python CLI)** | [doc/GettingStarted_CLI.md](doc/GettingStarted_CLI.md) |
+| **VSCode + PlatformIO extension** | [doc/GettingStartedVSCode.md](doc/GettingStartedVSCode.md) |
+| **Terminal (Python CLI)** | [doc/GettingStartedCLI.md](doc/GettingStartedCLI.md) |
 
 Both produce the same firmware. The CLI path uses the `./ebus-esp32` tool and a `./bin/pio` shim; the VSCode path drives the same `pio` CLI through the PlatformIO IDE extension. Either way, [doc/GenerateHomieDevice.md](doc/GenerateHomieDevice.md) explains how `device.yml` defines the device.
 
@@ -41,11 +41,11 @@ ebus-esp32                    CLI entry point — generate, build, run, push, mo
 device.yml                    Declarative device definition — the source of truth (tracked)
 test/                         Device-side Python test harness (device_test.py, Test_Guide.md)
 doc/                          Documentation
-  GettingStarted_VSCode.md    VSCode + PlatformIO IDE onboarding
-  GettingStarted_CLI.md       Terminal / CLI onboarding
+  GettingStartedVSCode.md    VSCode + PlatformIO IDE onboarding
+  GettingStartedCLI.md       Terminal / CLI onboarding
   Configuration.md            Per-developer overlay model (config.yml + platformio_local.ini)
   GenerateHomieDevice.md      How to configure and build a device from library components
-  proposal-runtime-config-via-nvs.md   Design note: future NVS-backed runtime credentials
+  proposals/RuntimeConfigViaNVS.md   Design note: future NVS-backed runtime credentials
   ...                         + several legacy proposal and subsystem notes
 .vscode/                      Tracked: extensions.json, settings.json, tasks.json
                               (debug configs, C/C++ properties, IPCH cache: gitignored)
@@ -73,33 +73,33 @@ Edit `device.yml` (the declarative device definition), then drive everything thr
 ./ebus-esp32 devices                        list attached serial devices
 ```
 
-The generated `src/homie.cpp`, `data/homie.yml`, and `data/config.yml` are gitignored and rebuilt from `device.yml` before every `pio run` (a PlatformIO pre-build hook) — `device.yml` and the `lib/<bus>/*.yml` component definitions are the only tracked source. First-time setup of your personal config overlay is a one-line copy — see [GettingStarted_CLI.md](doc/GettingStarted_CLI.md). On Windows use `ebus-esp32.bat` (or `python ebus-esp32`).
+The generated `src/homie.cpp`, `data/homie.yml`, and `data/config.yml` are gitignored and rebuilt from `device.yml` before every `pio run` (a PlatformIO pre-build hook) — `device.yml` and the `lib/<bus>/*.yml` component definitions are the only tracked source. First-time setup of your personal config overlay is a one-line copy — see [GettingStartedCLI.md](doc/GettingStartedCLI.md). On Windows use `ebus-esp32.bat` (or `python ebus-esp32`).
 
 VSCode users: use the PlatformIO IDE's project-tasks pane for build/upload/monitor; the `./ebus-esp32` generate step runs automatically as a pre-build hook, so the IDE's Build/Upload buttons pick up `device.yml` changes too.
 
 ## Documentation Index
 
 - **Onboarding**
-  - [GettingStarted_VSCode.md](doc/GettingStarted_VSCode.md)
-  - [GettingStarted_CLI.md](doc/GettingStarted_CLI.md)
+  - [GettingStartedVSCode.md](doc/GettingStartedVSCode.md)
+  - [GettingStartedCLI.md](doc/GettingStartedCLI.md)
 - **Building from device.yml**: [GenerateHomieDevice.md](doc/GenerateHomieDevice.md)
 - **Building without the generator** (hand-coded device/controller): [HandCodedDevice.md](doc/HandCodedDevice.md)
 - **Configuration overlays**: [Configuration.md](doc/Configuration.md)
-- **LLM access to a running device via MCP**: [Homie5_MCP_Server.md](doc/Homie5_MCP_Server.md)
-- **PlatformIO command cheatsheet**: [PlatformIO_commands.md](doc/PlatformIO_commands.md)
+- **LLM access to a running device via MCP**: [Homie5MCPServer.md](doc/Homie5MCPServer.md)
+- **PlatformIO command cheatsheet**: [PlatformIOCommands.md](doc/PlatformIOCommands.md)
 - **Design proposals**
-  - [proposal-runtime-config-via-nvs.md](doc/proposal-runtime-config-via-nvs.md)
-  - [OTA_Proposal.md](doc/OTA_Proposal.md)
-  - [API_proposal.md](doc/API_proposal.md)
+  - [proposals/RuntimeConfigViaNVS.md](doc/proposals/RuntimeConfigViaNVS.md)
+  - [proposals/OTAActivation.md](doc/proposals/OTAActivation.md)
+  - [proposals/DeviceProvisioningAPI.md](doc/proposals/DeviceProvisioningAPI.md)
 - **Subsystem notes**
-  - [ESP32_HOMIE_OTA.md](doc/ESP32_HOMIE_OTA.md)
-  - [mDNS.md](doc/mDNS.md)
+  - [ESP32HomieOTA.md](doc/ESP32HomieOTA.md)
+  - [MDNS.md](doc/MDNS.md)
   - [Authentication.md](doc/Authentication.md)
-  - [CONTROLLER_FEATURES.md](doc/CONTROLLER_FEATURES.md)
-  - [CONTROLLER_README.md](doc/CONTROLLER_README.md)
-  - [test_deployment.md](doc/test_deployment.md)
-  - [ota_server.md](doc/ota_server.md)
-  - [ESP32_Notes.md](doc/ESP32_Notes.md)
+  - [Controller.md](doc/Controller.md)
+  - [Controller.md](doc/Controller.md)
+  - [TestDeployment.md](doc/TestDeployment.md)
+  - [OTAServer.md](doc/OTAServer.md)
+  - [ESP32Notes.md](doc/ESP32Notes.md)
 
 ## Hardware Targets
 
@@ -119,7 +119,7 @@ This project is friendly to LLM-assisted development, in two distinct ways: a ru
 
 ### Talking to a running device (MCP)
 
-Once your ESP32 is running this firmware and publishing as a Homie 5 device, you can give Claude Code (or any MCP-compatible client) read/write access to the device's topic tree via the [`Tieske/homie5-mcp-server`](https://github.com/Tieske/homie5-mcp-server) MCP server. The LLM can list discovered devices, inspect node/property trees, read current property values, and write to settable properties — useful for testing, exploratory poking, and having an LLM reason about the device's *actual* live state instead of you describing it in prose. See [doc/Homie5_MCP_Server.md](doc/Homie5_MCP_Server.md) for setup instructions specific to this project (including the `HOMIE_DOMAIN=ebus` setting, which is easy to miss).
+Once your ESP32 is running this firmware and publishing as a Homie 5 device, you can give Claude Code (or any MCP-compatible client) read/write access to the device's topic tree via the [`Tieske/homie5-mcp-server`](https://github.com/Tieske/homie5-mcp-server) MCP server. The LLM can list discovered devices, inspect node/property trees, read current property values, and write to settable properties — useful for testing, exploratory poking, and having an LLM reason about the device's *actual* live state instead of you describing it in prose. See [doc/Homie5MCPServer.md](doc/Homie5MCPServer.md) for setup instructions specific to this project (including the `HOMIE_DOMAIN=ebus` setting, which is easy to miss).
 
 ### Personal LLM configuration — keep it out of the repo
 

@@ -2,7 +2,7 @@
 # Repo-local wrapper for PlatformIO Core.
 #
 # Forwards to ~/.platformio/penv/bin/pio (installed by the VSCode PlatformIO
-# extension or by `pipx install platformio`). Lets this repo's Makefile and
+# extension or by `pipx install platformio`). Lets this repo's ./ebus-esp32 CLI and
 # CLI workflow stay self-contained — no global $PATH edits required.
 
 set -e

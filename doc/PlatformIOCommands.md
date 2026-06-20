@@ -2,7 +2,7 @@
 
 Raw `pio` CLI cheatsheet — for when you need to invoke `pio` directly.
 
-For ordinary day-to-day work, use `./ebus-esp32` (see [`GettingStarted_CLI.md`](GettingStarted_CLI.md)) — it's shorter and auto-regenerates `data/config.yml` from `device.yml`, merging the per-developer config overlay. This file documents the underlying `pio` invocations.
+For ordinary day-to-day work, use `./ebus-esp32` (see [`GettingStartedCLI.md`](GettingStartedCLI.md)) — it's shorter and auto-regenerates `data/config.yml` from `device.yml`, merging the per-developer config overlay. This file documents the underlying `pio` invocations.
 
 ## Selecting an environment
 
