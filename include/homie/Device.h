@@ -109,7 +109,7 @@ class Device {
 
     char _id[64] = {0};
     char _name[32] = {0};
-    char _type[32] = {0};
+    char _type[HOMIE_TYPE_MAXLEN] = {0};   // eBus device types up to 41 chars (rrj.5)
     char _version[16] = {0};
     char _topic[96] = {0};
     Node* _nodes[MAX_NODES] = {0};

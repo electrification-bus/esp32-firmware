@@ -26,7 +26,7 @@ extern char device_id_prefix[32];
 
 // Device info for mDNS advertisement
 extern char device_name[32];
-extern char device_type[32];
+extern char device_type[HOMIE_TYPE_MAXLEN];   // eBus device types up to 41 chars (rrj.5)
 extern char device_manufacturer[32];
 extern char device_model[32];
 extern char device_serial[32];

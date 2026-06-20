@@ -14,6 +14,21 @@
 #define HOMIE_TOPIC_PREFIX      HOMIE_TOPIC_DOMAIN "/" HOMIE_VERSION_NUM
 #define HOMIE_TOPIC_SET         "set"
 
+// Buffer size (incl. null) for a Homie device/node `type` string. Homie itself
+// leaves `type` free-form, but the eBus vocabulary uses long namespaced values.
+// The enumerated registries live in the specification repo:
+//   energy.ebus.device.*      → specification/registries/device-types.md
+//   energy.ebus.capability.*  → specification/registries/capability-types.md
+//   (https://github.com/electrification-bus/specification/tree/main/registries)
+// As of this writing the longest device type is
+// `energy.ebus.device.distribution-enclosure` (41) and the longest capability/node
+// type is `energy.ebus.capability.shed-forecast` (36); 64 holds those with headroom
+// for vocabulary growth. Named constants/enums for the registered values are tracked
+// separately (rrj.1) — type stays free-form on the wire. (rrj.5: the old Node[16]/
+// Device[32] buffers truncated these; F2's snprintf made truncation safe but the
+// values were still wrong.)
+#define HOMIE_TYPE_MAXLEN       64
+
 inline const char* top_level_topic() { return HOMIE_TOPIC_DOMAIN; }
 
 #define HOMIE_DATATYPE_BOOLEAN  "boolean"

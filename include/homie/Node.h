@@ -2,6 +2,7 @@
 #include <ArduinoJson.h>
 //#include <MQTTClient.h>
 #include <MQTT.h>
+#include <homie/homie.h>   // HOMIE_TYPE_MAXLEN
 class Property; // Forward declaration
 class Device;
 
@@ -38,7 +39,7 @@ public:
 private:
     char _id[64] = {0};
     char _name[64] = {0};
-    char _type[16] = {0};
+    char _type[HOMIE_TYPE_MAXLEN] = {0};   // eBus capability types up to 36 chars (rrj.5)
     char _topic[64] = {0};
     MQTTClient* _mqtt_client; // MQTT client for this node
     Property* _properties[MAX_PROPERTIES]; //array of properties, could be a vector or list in a full implementation
