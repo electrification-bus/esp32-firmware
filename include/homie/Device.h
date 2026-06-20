@@ -19,6 +19,9 @@ DeviceState device_state_from_cstr(const char* str);
 
 class Device {
  public:
+    // Max nodes per device (fixed static array; see addNode bounds check).
+    static constexpr int MAX_NODES = 32;
+
     Device();
     ~Device() {};
 
@@ -53,7 +56,7 @@ class Device {
     char _type[32] = {0};
     char _version[16] = {0};
     char _topic[96] = {0};
-    Node* _nodes[32] = {0};
+    Node* _nodes[MAX_NODES] = {0};
     DeviceState _state = DEVICE_STATE_INIT;
     JsonDocument _serialized;
     MQTTClient* _mqtt_client;

@@ -61,6 +61,10 @@ void Device::init(const char* name, const char* id, const char* type, MQTTClient
 }
 
 Node* Device::addNode(const char* id, const char* name, const char* type) {
+    if (_num_nodes >= MAX_NODES) {
+        Serial.printf("Device: ERROR node limit (%d) reached — '%s' NOT added\n", MAX_NODES, id);
+        return nullptr;
+    }
     Node* n = new Node();
     n->setDevice(this);
     n->setId(id);
@@ -74,6 +78,10 @@ Node* Device::addNode(const char* id, const char* name, const char* type) {
 }
 
 Node* Device::addNode(JsonVariant node, const char* topic) {
+    if (_num_nodes >= MAX_NODES) {
+        Serial.printf("Device: ERROR node limit (%d) reached — node NOT added\n", MAX_NODES);
+        return nullptr;
+    }
     Node* n =  new Node();
     n->setDevice(this);
     if (jsonExists(node[HOMIE_ID])) n->setId(node[HOMIE_ID].as<const char*>());
@@ -113,11 +121,11 @@ void Device::setId(const char* id) {
 }
 
 void Device::setName(const char* name) {
-    strcpy(_name,name);
+    snprintf(_name, sizeof(_name), "%s", name);
 }
 
 void Device::setType(const char* type) {
-    strcpy(_type, type);
+    snprintf(_type, sizeof(_type), "%s", type);
 }
 
 const char* Device::type() {
@@ -159,12 +167,19 @@ size_t Device::serialize(char* buffer, size_t bufferSize) {
     JsonObject node_obj = nodes_obj[_nodes[i]->id()].to<JsonObject>();
     _nodes[i]->serializeInto(node_obj);
   }
+  // Surface silent truncation: serializeJson() caps output at bufferSize-1.
+  // Per-device buffer sizing for large/nested trees is tracked in Epic A.
+  size_t needed = measureJson(json);
+  if (needed + 1 > bufferSize) {
+    Serial.printf("Device: ERROR $description needs %u bytes but buffer is %u — TRUNCATED (raise MAX_DATA_LEN)\n",
+                  (unsigned)needed, (unsigned)bufferSize);
+  }
   return serializeJson(json, buffer, bufferSize);
 }
 
 void Device::publishState() {
   char state_topic[128] = {0};
-  sprintf(state_topic, "%s%s", topic(), HOMIE_$STATE);
+  snprintf(state_topic, sizeof(state_topic), "%s%s", topic(), HOMIE_$STATE);
   const char* state_str = device_state_to_cstr(_state);
 
   Serial.printf("DEVICE publish: %s -> '%s'\n", state_topic, state_str);
@@ -183,7 +198,7 @@ void Device::publish() {
   //$description
   Serial.println("DEVICE publish: $description");
   char top[128] = {0};
-  sprintf(top, "%s%s", topic(), HOMIE_$DESCRIPTION);
+  snprintf(top, sizeof(top), "%s%s", topic(), HOMIE_$DESCRIPTION);
   size_t len = toJson(_description_json, sizeof(_description_json));
   Serial.printf("DEVICE: $description JSON size: %d bytes\n", len);
   // MQTTClient publish: (topic, payload, retained, qos)

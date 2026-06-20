@@ -11,7 +11,7 @@ class NodeProperty {
         void setup(const char* node_id, const char* property_id) {
             set_homie_property_id(property_id);
             char _top[128] = {0};
-            sprintf(_top, "%s%s/%s", theDevice.topic(), node_id, property_id);
+            snprintf(_top, sizeof(_top), "%s%s/%s", theDevice.topic(), node_id, property_id);
             Serial.printf("NodeProperty: setup() topic: %s\n", _top);
             set_topic(_top);
             // Load initial value from theDevice (already populated from homie.yml)
@@ -28,13 +28,13 @@ class NodeProperty {
         void setup(const char* node_id, const char* property_id, entity_settable_callback_t cb, NodeEntity* ne) {
             setup(node_id, property_id);
             char _top[128] = {0};
-            sprintf(_top, "%s%s/%s/%s", theDevice.topic(), node_id, property_id, HOMIE_TOPIC_SET);
+            snprintf(_top, sizeof(_top), "%s%s/%s/%s", theDevice.topic(), node_id, property_id, HOMIE_TOPIC_SET);
             entity_subscribe_for_callbacks(_top, cb, ne);
         }
         const char* homie_property_id()    const    {return _homie_property_id;}
         void set_homie_property_id(const char* id) {
-            strcpy(_homie_property_id, id);
-        }        
+            snprintf(_homie_property_id, sizeof(_homie_property_id), "%s", id);
+        }
         const char* value() const    {return _value;}
         const char* type()  const    {return _type;}
         const char* format()const    {return _format;}
@@ -77,8 +77,8 @@ class NodeProperty {
             snprintf(_value, sizeof(_value), "%.4f", value); //4 decimal precision
         }
         void set(const char* value) {
-            strcpy(_stringValue, value);
-            strcpy(_value, value);
+            snprintf(_stringValue, sizeof(_stringValue), "%s", value);
+            snprintf(_value, sizeof(_value), "%s", value);
         }
         void set(bool value) {
             _boolValue = value;
@@ -98,7 +98,7 @@ class NodeProperty {
             mqtt_queue_publish(topic(), _value, false);
         }        
         const char* topic() const { return _topic; }
-        void set_topic(const char* topic) { strcpy(_topic, topic); }
+        void set_topic(const char* topic) { snprintf(_topic, sizeof(_topic), "%s", topic); }
 
     private:
         char _homie_node_id[32] = {0};

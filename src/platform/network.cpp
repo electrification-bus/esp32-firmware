@@ -76,7 +76,7 @@ const char* get_eth_mac() {
   if (eth_mac_str[0] == '\0') {
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_ETH);
-    sprintf(eth_mac_str, "%02X:%02X:%02X:%02X:%02X:%02X",
+    snprintf(eth_mac_str, sizeof(eth_mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   }
   return eth_mac_str;
@@ -86,7 +86,7 @@ const char* get_wlan_mac() {
   if (wlan_mac_str[0] == '\0') {
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
-    sprintf(wlan_mac_str, "%02X:%02X:%02X:%02X:%02X:%02X",
+    snprintf(wlan_mac_str, sizeof(wlan_mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   }
   return wlan_mac_str;

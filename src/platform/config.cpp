@@ -78,7 +78,7 @@ void generatefullDeviceID() {// includes OUI vendorid of the ethernet MAC inside
   uint32_t low = ESP.getEfuseMac() & 0xFFFFFFFF;
   uint32_t high = (ESP.getEfuseMac() >> 32) & 0xFFFFFFFF;
   //uint64_t fullMAC = word(low, high);
-  sprintf(device_id, "%s%X%X", device_id_prefix, high, low);
+  snprintf(device_id, sizeof(device_id), "%s%X%X", device_id_prefix, high, low);
   Serial.printf("Device ID: %s\n", device_id);
 }
 

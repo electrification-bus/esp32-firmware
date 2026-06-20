@@ -389,7 +389,7 @@ boolean mqtt_connect() {
   // Set Last Will and Testament (LWT) - published by broker if connection lost
   // Use static buffer lwt_topic to prevent pointer corruption (arduino-mqtt issue #89)
   // Use QoS 0 - QoS 1 causes connection issues with this library
-  sprintf(lwt_topic, "%s/%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID(), HOMIE_$STATE);
+  snprintf(lwt_topic, sizeof(lwt_topic), "%s/%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID(), HOMIE_$STATE);
   mqtt_client.setWill(lwt_topic, HOMIE_STATE_LOST, true, 0);  // retained=true, qos=0
   Serial.printf("MQTT will topic:'%s' msg:'%s'\n", lwt_topic, HOMIE_STATE_LOST);
 
@@ -437,7 +437,7 @@ void mqtt_publish_json(const char* subtopic, const JsonDocument * payload) {
     char topicBuf[256];
     char jsonString[1024];
     serializeJson(*payload, jsonString);
-    sprintf(topicBuf, "%s/%s", topic_device, subtopic);
+    snprintf(topicBuf, sizeof(topicBuf), "%s/%s", topic_device, subtopic);
     if (!mqtt_client.publish(topicBuf, jsonString, true, 0)) {  // retained=true, qos=0
         Serial.println("MQTT publish: failed");
     }

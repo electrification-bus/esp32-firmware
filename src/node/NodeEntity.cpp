@@ -30,8 +30,8 @@ bool NodeEntity::setup(const char* homie_node_id) {
 }
 
 //returns local alloc - caller must not retain
-const char* NodeEntity::getPropertyTopic(const char* property_id, char* buf) {
-  sprintf(buf, "%s%s/%s", theDevice.topic(), _homie_node_id, property_id);
+const char* NodeEntity::getPropertyTopic(const char* property_id, char* buf, size_t bufSize) {
+  snprintf(buf, bufSize, "%s%s/%s", theDevice.topic(), _homie_node_id, property_id);
   return buf;
 }
 

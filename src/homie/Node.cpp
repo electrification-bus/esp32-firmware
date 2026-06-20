@@ -28,6 +28,11 @@ JsonDocument Node::serialize() {
 }
 
 void Node::addProperty(Property* property) {
+    if (_num_properties >= MAX_PROPERTIES) {
+        Serial.printf("Node '%s': ERROR property limit (%d) reached — '%s' NOT added\n",
+                      _id, MAX_PROPERTIES, property->id());
+        return;
+    }
     Serial.printf("Node '%s': Adding property: '%s'\n", _id, property->id());
     property->setNode(this);
     if (_mqtt_client) property->setMQTTClient(_mqtt_client);
@@ -52,15 +57,15 @@ void Node::publish() {
 }
 
 void Node::setName(const char* name) {
-    strcpy(_name, name);
+    snprintf(_name, sizeof(_name), "%s", name);
 }
 
 const char* Node::name() {
     return _name;
-}  
+}
 
 void Node::setType(const char* type) {
-    strcpy(_type, type);
+    snprintf(_type, sizeof(_type), "%s", type);
 }
 
 const char* Node::type() {
@@ -68,7 +73,7 @@ const char* Node::type() {
 }
 
 void Node::setId(const char* id) {
-    strcpy(_id, id);
+    snprintf(_id, sizeof(_id), "%s", id);
 }
 
 const char* Node::id() {
@@ -84,7 +89,7 @@ Device* Node::device() {
 }
 
 void Node::setTopic(const char* top) {
-    sprintf(_topic, "%s%s", top, _id);
+    snprintf(_topic, sizeof(_topic), "%s%s", top, _id);
 }
 
 const char* Node::topic() {

@@ -60,9 +60,9 @@ Node* Property::node() {
 }
 
 void Property::setId(const char* id) {
-    strcpy(_id, id);
+    snprintf(_id, sizeof(_id), "%s", id);
     // Requires setNode() first — dereferences _parent_node to build topic
-    sprintf(_topic, "%s/%s", _parent_node->topic(), _id);
+    snprintf(_topic, sizeof(_topic), "%s/%s", _parent_node->topic(), _id);
 }
 
 const char* Property::id() const {
@@ -70,7 +70,7 @@ const char* Property::id() const {
 }
 
 void Property::setUnit(const char* unit) {
-    strcpy(_unit, unit);
+    snprintf(_unit, sizeof(_unit), "%s", unit);
 }
 
 const char* Property::unit() {
@@ -78,7 +78,7 @@ const char* Property::unit() {
 }
 
 void Property::setName(const char* name) {
-    strcpy(_name, name);
+    snprintf(_name, sizeof(_name), "%s", name);
 }
 
 const char* Property::name() const {
@@ -87,15 +87,15 @@ const char* Property::name() const {
 
 void Property::setValue(int value) {
     _intValue = value;
-    sprintf(_value, "%d", value);
+    snprintf(_value, sizeof(_value), "%d", value);
 }
 void Property::setValue(float value) {
     _floatValue = value;
     snprintf(_value, sizeof(_value), "%f", value);
 }
 void Property::setValue(const char* value) {
-    strcpy(_stringValue, value);
-    strcpy(_value, value);
+    snprintf(_stringValue, sizeof(_stringValue), "%s", value);
+    snprintf(_value, sizeof(_value), "%s", value);
 }
 void Property::setValue(bool value) {
     _boolValue = value;
@@ -103,7 +103,7 @@ void Property::setValue(bool value) {
 }
 void Property::setValue(unsigned int value) {
     _unsignedValue = value;
-    sprintf(_value, "%u", value);
+    snprintf(_value, sizeof(_value), "%u", value);
 }
 
 const char* Property::coerced_value() const {
@@ -202,7 +202,7 @@ void Property::subscribe() {
         return;
     }
     char set[128] = {0};
-    sprintf(set, "%s/%s", _topic, HOMIE_TOPIC_SET);
+    snprintf(set, sizeof(set), "%s/%s", _topic, HOMIE_TOPIC_SET);
     Serial.printf("property '%s' settable - subscribe: '%s'\n",_id, set);
     //TODO pull this out; retry in loop
     if (!_mqtt_client->subscribe(set)) {
