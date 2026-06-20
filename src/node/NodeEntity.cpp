@@ -2,6 +2,7 @@
 #include <platform/config.h>
 #include <util/jsonUtils.h>
 #include <node/NodeEntity.h>
+#include <homie/homie_id.h>
 
 NodeEntity::NodeEntity(const char* homie_node_id) {
     setHomieNodeId(homie_node_id);
@@ -16,7 +17,23 @@ bool NodeEntity::pollIntervalTrigger() {
 }
 
 void NodeEntity::setHomieNodeId(const char* id) {
-    strncpy(_homie_node_id, id, sizeof(_homie_node_id) - 1);
+    // Coerce to a Homie-legal id (rrj.2). This is the single chokepoint: getNodeId()
+    // feeds both Device::addNode() and the per-property NodeProperty::setup() calls,
+    // so the published node topic and every property topic under it stay consistent.
+    char sanitized[sizeof(_homie_node_id)] = {0};
+    sanitize_homie_id(id, sanitized, sizeof(sanitized));
+    if (sanitized[0] == '\0') {
+        // All-illegal id would leave the node unaddressable; keep the raw value
+        // (still null-bounded) and warn rather than silently drop the node.
+        Serial.printf("NodeEntity: WARNING node id '%s' sanitizes to empty — keeping raw (NOT Homie-legal)\n", id);
+        strncpy(_homie_node_id, id, sizeof(_homie_node_id) - 1);
+        _homie_node_id[sizeof(_homie_node_id) - 1] = '\0';
+        return;
+    }
+    if (strcmp(sanitized, id) != 0) {
+        Serial.printf("NodeEntity: node id '%s' -> '%s' (Homie-legal: a-z 0-9 -)\n", id, sanitized);
+    }
+    strncpy(_homie_node_id, sanitized, sizeof(_homie_node_id) - 1);
     _homie_node_id[sizeof(_homie_node_id) - 1] = '\0'; // Ensure null termination
 }
 bool NodeEntity::setup() {

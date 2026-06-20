@@ -79,6 +79,11 @@ void mqtt_invalidate_ca_cert();
 // Returns true if mqtt_host is configured (non-empty)
 bool has_mqtt_broker();
 
+// Read the ESP32's factory eFuse MAC (the chip's unique, singular hardware id) into
+// out[6], in standard MAC byte order. Prefer this over a per-interface MAC: boards
+// like the Olimex POE-ISO expose separate WiFi and Ethernet MACs, but there is only
+// one chip id. Globally unique (48-bit) and stable across reboots/reflashes.
+void chip_unique_id(uint8_t out[6]);
 void generateDeviceID();
 const char* getDeviceID();
 bool loadConfiguration();

@@ -5,6 +5,7 @@
 #include <util/jsonUtils.h>
 #include <platform/portal_prefs.h>
 #include <platform/network.h>
+#include <homie/homie_id.h>
 
 Device theDevice;
 Device* g_active_setup_device = nullptr;  // see config.h; set by NodeEntity::setup()
@@ -83,14 +84,30 @@ void generatefullDeviceID() {// includes OUI vendorid of the ethernet MAC inside
   Serial.printf("Device ID: %s\n", device_id);
 }
 
+void chip_unique_id(uint8_t out[6]) {
+  // ESP.getEfuseMac() packs the 6-byte factory MAC into the low bytes of a uint64
+  // (little-endian), so byte i of the standard MAC order is (mac >> 8*i) & 0xFF.
+  uint64_t mac = ESP.getEfuseMac();
+  for (int i = 0; i < 6; i++) out[i] = (uint8_t)(mac >> (8 * i));
+}
+
 void generateDeviceID() {
-  uint8_t mac[6];
-  esp_read_mac(mac, ESP_MAC_WIFI_STA);
-  char mac_suffix[8];
-  snprintf(mac_suffix, sizeof(mac_suffix), "_%02X%02X%02X", mac[3], mac[4], mac[5]);
-  strncat(device_name, mac_suffix, sizeof(device_name) - strlen(device_name) - 1);
-  snprintf(device_id, sizeof(device_id), "%s", device_name);
-  Serial.printf("Device ID: %s\n", device_id);
+  // Use the ESP32's factory eFuse MAC as the unique hardware id. It is singular per
+  // chip — unlike the per-interface MACs (this Olimex POE board has BOTH a WiFi and an
+  // Ethernet MAC, so an interface MAC is ambiguous). The eFuse MAC is the chip's
+  // identity and the base all interface MACs are derived from (rrj.2).
+  uint8_t chip_id[6];
+  chip_unique_id(chip_id);
+  // device_id is an MQTT topic level and MUST be Homie-legal (a-z 0-9 -): compose
+  // name + full 48-bit chip suffix via the id toolkit, rather than hardcoding —
+  // e.g. name "EBUS" -> "ebus-b0b21c90f570".
+  make_homie_device_id(device_name, chip_id, 6, device_id, sizeof(device_id));
+  // Keep a human-facing, board-unique device_name too (display / mDNS hostname, which
+  // has its own sanitizer); upper-case and underscore are fine there.
+  char suffix[8];
+  snprintf(suffix, sizeof(suffix), "_%02X%02X%02X", chip_id[3], chip_id[4], chip_id[5]);
+  strncat(device_name, suffix, sizeof(device_name) - strlen(device_name) - 1);
+  Serial.printf("Device ID: %s (name '%s')\n", device_id, device_name);
 }
 
 const char* getDeviceID() {
