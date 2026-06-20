@@ -82,11 +82,12 @@ VSCode users: use the PlatformIO IDE's project-tasks pane for build/upload/monit
 - **Onboarding**
   - [GettingStartedVSCode.md](doc/GettingStartedVSCode.md)
   - [GettingStartedCLI.md](doc/GettingStartedCLI.md)
-- **Building from device.yml**: [GenerateHomieDevice.md](doc/GenerateHomieDevice.md)
-- **Writing a driver** (authoring a `NodeEntity` subclass — the reusable hardware unit, shared by both the generator and hand-coded paths): [WritingADriver.md](doc/WritingADriver.md)
+- **Specifying a device**
+  - **Declaratively** (`device.yml` + the generator; the default path): [GenerateHomieDevice.md](doc/GenerateHomieDevice.md)
+  - **In code** (hand-coded device/controller, no generator; type-safe descriptor tables + `on_set` handlers): [HandCodedDevice.md](doc/HandCodedDevice.md)
+- **Writing a driver** (authoring a `NodeEntity` subclass — the reusable hardware unit, shared by both paths above): [WritingADriver.md](doc/WritingADriver.md)
 - **Nested / proxied devices** (bridge role, the `{proxier}-{proxied}` model): [NestedBridgeExample.md](doc/NestedBridgeExample.md)
-- **Building without the generator** (hand-coded device/controller; type-safe descriptor tables + `on_set` handlers): [HandCodedDevice.md](doc/HandCodedDevice.md)
-- **Configuration overlays** (incl. `${chip_id}` device-id templating, `mqtt_qos`, `mdns_enabled`): [Configuration.md](doc/Configuration.md)
+- **Configuration overlays** (incl. `${chip_id}` device-id templating, `mqtt_qos`, `mdns_discovery` / `mdns_advertise`): [Configuration.md](doc/Configuration.md)
 - **LLM access to a running device via MCP**: [Homie5MCPServer.md](doc/Homie5MCPServer.md)
 - **PlatformIO command cheatsheet**: [PlatformIOCommands.md](doc/PlatformIOCommands.md)
 - **Design proposals**
