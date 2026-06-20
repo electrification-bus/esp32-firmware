@@ -57,7 +57,13 @@ class Device {
    // Devices form a tree via intrusive parent/first-child/next-sibling links
    // (no fixed child cap, no heap array). A root device has no parent; children
    // share the root's MQTT connection. See A-epic for the full nested model.
-   void    addChild(Device* child);        // link child under this device
+   void    addChild(Device* child);        // link child under this device (no MQTT)
+   // Runtime add/remove following the Homie 5 ordered protocol (state/description
+   // sequencing). Use these to add or remove a child after the tree is already live;
+   // the boot path publishes the whole tree at once via publishTree().
+   void    addChildLive(Device* child);    // child init->$description->ready, then parent init->+child->ready
+   void    removeChildLive(Device* child); // parent init->-child->ready, then clear the child's retained topics
+   void    clearRetained();                // publish empty (zero-length, retained) to $state, $description, and property topics
    Device* parent()      { return _parent; }
    Device* root();                         // walk up; returns this if no parent
    Device* firstChild()  { return _first_child; }
@@ -68,6 +74,8 @@ class Device {
    const char* rootId();                   // root device-id, or nullptr if root
 
  private:
+    void unlinkChild(Device* child);        // detach a child from the sibling list
+
     char _id[64] = {0};
     char _name[32] = {0};
     char _type[32] = {0};

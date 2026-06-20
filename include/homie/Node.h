@@ -30,6 +30,7 @@ public:
     void setTopic(const char*);
     const char* topic();
     void publish();
+    void clearRetained();   // publish empty (zero-length, retained) to each property topic
     JsonDocument serialize();
     void serializeInto(JsonObject& obj);
     int numProperties() { return _num_properties;};

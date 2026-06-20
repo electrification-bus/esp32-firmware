@@ -158,6 +158,65 @@ void Device::publishStateTree() {
   }
 }
 
+// Runtime add following the Homie 5 ordered protocol (convention §"Adding children"):
+// publish the child fully (init -> $description -> ready), THEN cycle the parent
+// (init -> updated $description listing the child -> ready). Cycling through init is
+// what lets the parent's $description change (it may only change in init/disc/lost).
+void Device::addChildLive(Device* child) {
+  if (!child) return;
+  addChild(child);                       // link first: the child can now resolve root/parent
+  // 1. publish the child
+  child->setState(DEVICE_STATE_INIT);
+  child->publishState();                 // emit init explicitly (setState no-ops if already init)
+  child->publish();                      // $description (with root/parent) + nodes
+  child->setState(DEVICE_STATE_READY);
+  // 2. update the parent
+  setState(DEVICE_STATE_INIT);
+  publish();                             // parent $description now lists the child
+  setState(DEVICE_STATE_READY);
+}
+
+// Runtime remove (convention §"Removing children"): cycle the parent (init ->
+// $description without the child -> ready), THEN clear the child's retained topics
+// starting with $state (an empty $state means the device ceases to exist).
+void Device::removeChildLive(Device* child) {
+  if (!child) return;
+  // 1. update the parent
+  setState(DEVICE_STATE_INIT);
+  unlinkChild(child);                    // so serialize() omits the child
+  publish();
+  setState(DEVICE_STATE_READY);
+  // 2. clear the child's retained topics
+  child->clearRetained();
+  child->_parent = nullptr;
+}
+
+void Device::unlinkChild(Device* child) {
+  if (_first_child == child) {
+    _first_child = child->_next_sibling;
+  } else {
+    for (Device* s = _first_child; s; s = s->_next_sibling) {
+      if (s->_next_sibling == child) { s->_next_sibling = child->_next_sibling; break; }
+    }
+  }
+  child->_next_sibling = nullptr;
+  if (_num_children > 0) _num_children--;
+}
+
+// Publish a zero-length retained payload to this device's $state, $description, and
+// each property topic — removing the retained messages. $state first, per the spec.
+void Device::clearRetained() {
+  if (!_mqtt_client) return;
+  char top[160] = {0};
+  snprintf(top, sizeof(top), "%s%s", topic(), HOMIE_$STATE);
+  _mqtt_client->publish(top, "", true, 0);
+  snprintf(top, sizeof(top), "%s%s", topic(), HOMIE_$DESCRIPTION);
+  _mqtt_client->publish(top, "", true, 0);
+  for (int i = 0; i < _num_nodes; i++) {
+    _nodes[i]->clearRetained();
+  }
+}
+
 void Device::setState(DeviceState state) {
   DeviceState previous_state = _state;
   _state = state;
