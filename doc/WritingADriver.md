@@ -128,6 +128,18 @@ These apply whichever path you use (generator or hand-coded) — they're propert
 - **`ble/serial_bms` (JBD BMS over BLE)** — sets `NODE_REQUIRES_BLUETOOTH` in its constructor, which suppresses WiFi-STA init on classic ESP32 boards to avoid BLE/WiFi radio contention. On WROVER boards BLE and WiFi coexist (PSRAM heap routing), so the suppression isn't needed. The BMS BLE address is cached in NVS after the first scan; force a re-scan with `rescan = true`.
 - **`spi/atm90e32_energy_meter` (ATM90E32 over SPI)** — chip-select and calibration pins are in [`include/pins.h`](../include/pins.h); voltage/current-gain calibration values are set in the `EnergyMeter` constructor.
 
+## Borrowing protocol knowledge from ESPHome (reference, don't copy)
+
+When you need to support a chip this SDK doesn't ship yet, [ESPHome](https://esphome.io/)'s `components/<name>/` tree is the best free reference there is for *how to talk to the part* — register maps, init sequences, scaling factors, and the undocumented quirks that take days to rediscover. Cherry-pick the ones you want: read their driver, learn the protocol, and reimplement the logic fresh as a `NodeEntity` in this repo's house style (static allocation, no STL, no `String`).
+
+**Reference it; do not copy it.** ESPHome's C++ is GPLv3 ([esphome/LICENSE](https://github.com/esphome/esphome/blob/dev/LICENSE) — only its Python/config is MIT), and this firmware is MIT. Pasting their `.cpp` in would make this project a GPLv3 derivative — a real copyleft conflict, not a formality. The *protocol facts* (a sensor's register addresses and command sequence) aren't copyrightable; the *expression* (their actual code) is. So treat their driver as a datasheet-with-worked-examples, write your own implementation against the contract above, and leave a one-line provenance comment for the next reader:
+
+```cpp
+// Register init sequence per ESPHome components/<name> (reference only; reimplemented).
+```
+
+This keeps the license clean and keeps the driver in the firmware's idiom — which is the whole point of reimplementing rather than vendoring a foreign runtime.
+
 ## Using your driver
 
 Once the driver compiles, wire it into a device by either path:
