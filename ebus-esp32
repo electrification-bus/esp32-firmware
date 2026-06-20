@@ -317,6 +317,21 @@ def _upload(cfg, args, build: bool) -> None:
     if _coord("_flash-coord", "pause", port or "") != 0:
         sys.exit(1)
     try:
+        # Optional full chip erase first. Use when the board boots stale firmware
+        # after a flash (the OTA partition scheme has two app slots; a confused
+        # otadata can boot the wrong one). Erase resets otadata to a clean slate.
+        if getattr(args, "erase", False):
+            print(f"\n--- erasing flash (env: {board}) ---")
+            rc = pio_run(board, ["erase"], port)
+            if rc != 0:
+                print(f"\nErase FAILED (exit {rc})", file=sys.stderr)
+                sys.exit(rc)
+
+        # NOTE: firmware and filesystem are uploaded in SEPARATE `pio run`
+        # invocations, never combined as `pio run -t upload -t buildfs -t uploadfs`.
+        # On this board's dual-OTA partition layout, the combined form can leave
+        # otadata pointing at the previous app slot, so the device boots stale
+        # firmware even though the flash "verifies". Keep these two calls separate.
         if not args.fs_only:
             label = "build + upload firmware" if build else "upload firmware"
             print(f"\n--- {label} (env: {board}) ---")
@@ -371,9 +386,16 @@ def cmd_monitor(args) -> None:
 # ── clean ──────────────────────────────────────────────────────────────────────
 
 def cmd_clean(args) -> None:
-    cfg   = load_device_yml(Path(args.device_yml))
-    board = get_board(cfg)
-    pio_run(board, ["clean"])
+    # `pio run -t clean` is unreliable here (can leave stale objects behind), so
+    # remove the env build dir outright for a guaranteed-clean rebuild.
+    cfg     = load_device_yml(Path(args.device_yml))
+    board   = get_board(cfg)
+    builddir = ROOT / ".pio" / "build" / board
+    if builddir.exists():
+        shutil.rmtree(builddir)
+        print(f"removed {builddir.relative_to(ROOT)}")
+    else:
+        print(f"nothing to clean ({builddir.relative_to(ROOT)} absent)")
 
 # ── devices ────────────────────────────────────────────────────────────────────
 
@@ -468,11 +490,13 @@ def main():
     p.add_argument("device_yml", **dev_yml_arg)
     p.add_argument("--port", **port_arg)
     p.add_argument("--fs-only", action="store_true", help="flash filesystem only (skip firmware)")
+    p.add_argument("--erase", action="store_true", help="full chip erase first (recover from a stale-boot OTA slot)")
 
     p = sub.add_parser("push", help="Flash pre-built firmware + filesystem (no generate/build)")
     p.add_argument("device_yml", **dev_yml_arg)
     p.add_argument("--port", **port_arg)
     p.add_argument("--fs-only", action="store_true", help="flash filesystem only (skip firmware)")
+    p.add_argument("--erase", action="store_true", help="full chip erase first (recover from a stale-boot OTA slot)")
 
     p = sub.add_parser("monitor", help="Open serial monitor")
     p.add_argument("device_yml", **dev_yml_arg)

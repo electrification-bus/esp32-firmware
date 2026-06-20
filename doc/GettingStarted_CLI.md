@@ -140,6 +140,8 @@ Two overlay files keep per-developer settings out of the shared repo: `~/.config
 | `monitor` → `termios.error` | Running through a non-PTY context | Run in a real terminal window |
 | MQTT/wifi settings from your overlay aren't taking effect | Overlay missing, or a field left empty (empty fields don't override) | Confirm `~/.config/eBus/config.yml` exists (bootstrap step) and the field is non-empty, then re-run `./ebus-esp32 generate` |
 | `src/homie.cpp` or `data/homie.yml` shows up as an untracked/modified file | These are generated outputs — gitignored, regenerated every build | Normal; never commit them. If one is *tracked* in your clone, `git rm --cached <file>` |
+| Device boots **stale firmware** after a flash that "verified" | The board's partition table is dual-OTA (two app slots); a confused `otadata` can boot the *previous* slot. Most often caused by a *combined* `pio run -t upload -t buildfs -t uploadfs` | Use `./ebus-esp32 run`/`push` (they flash firmware and filesystem in **separate** invocations, which avoids this). To recover a wedged board: `./ebus-esp32 run --erase` (full chip erase first). Never combine `-t upload` with `-t buildfs/uploadfs` in one `pio run`. |
+| Suspect a stale build object | `pio run -t clean` is unreliable here | `./ebus-esp32 clean` (removes the env build dir outright), then rebuild |
 
 ## Reference
 
