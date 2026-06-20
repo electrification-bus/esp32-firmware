@@ -25,6 +25,7 @@ class NodeProperty {
                 if (p) {
                     strncpy(_value, p->value(), sizeof(_value) - 1);
                     _value[sizeof(_value) - 1] = '\0';
+                    _retained = p->retained();  // honor the property's retained flag (Homie 5 default: true)
                 }
             }
         }
@@ -99,8 +100,10 @@ class NodeProperty {
         }
 
         void publish() {
-            // Use thread-safe queue for publishing from any task/core
-            mqtt_queue_publish(topic(), _value, false);
+            // Publish the value via the thread-safe queue (any task/core). Homie 5
+            // requires property values to be RETAINED so reconnecting controllers
+            // get the last value; _retained mirrors the property's declared flag.
+            mqtt_queue_publish(topic(), _value, _retained);
         }        
         const char* topic() const { return _topic; }
         void set_topic(const char* topic) { snprintf(_topic, sizeof(_topic), "%s", topic); }
@@ -113,6 +116,7 @@ class NodeProperty {
         char _topic[128] = {0};
         char _unit[8] = {0};
         int _round_to = 0;
+        bool _retained = true;   // Homie 5 default; set from the property in setup()
         bool _supports_target = false;
         Node* _parent_node = nullptr;
         //std::mutex _lock;
