@@ -272,7 +272,7 @@ To build a controller, add the flag to your env (or a `platformio_local.ini` ove
 build_flags = ${env.build_flags} -DENABLE_CONTROLLER
 ```
 
-In this mode you do **not** implement `register_homie_properties()` / `setup_homie()` / `loop_homie()` — the controller branch of `main.cpp` drives everything via the controller API. Fuller controller documentation lives in [`CONTROLLER_README.md`](CONTROLLER_README.md) and [`CONTROLLER_FEATURES.md`](CONTROLLER_FEATURES.md).
+In this mode you do **not** implement `register_homie_properties()` / `setup_homie()` / `loop_homie()` — the controller branch of `main.cpp` drives everything via the controller API. Fuller controller documentation lives in [`Controller.md`](Controller.md).
 
 ---
 

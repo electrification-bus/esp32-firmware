@@ -48,7 +48,9 @@ Only non-empty overlay fields override; anything you leave blank falls back to t
 | `wifi_ssid` / `wifi_password` | Leave both empty if using Ethernet (Olimex POE-ISO does Ethernet by default) |
 | `mqtt_mode` | `configured-only` / `discovery-with-fallback` / `discovery-only` — see the inline comment in the file |
 | `mqtt_host` / `mqtt_port` / `mqtt_username` / `mqtt_password` | Your broker |
-| `device_id` | Defaults to a name; the firmware derives the actual MQTT device id from the MAC suffix (e.g. `EBUS_90F570`) — `device_id` is the human-friendly identifier |
+| `mqtt_qos` | QoS for **retained** Homie publications (`$state`, `$description`, property values). Homie 5 recommends `2` (the default). Non-retained messages and `/set` are always QoS 0 per spec. Valid: `0`, `1`, `2` |
+| `mdns_enabled` | `true`/`false` — advertise `<device>.local` via mDNS. **Default `false`** (opt-in): mDNS is non-essential (Homie discovery is over MQTT) and the bundled ESP-IDF responder can crash on some packets. Enable only if you want hostname/web-UI discovery |
+| `device_id` | A **template** resolved on-device to a Homie-legal id (`${chip_id}` full eFuse MAC, `${chip_id_short}` last 3 bytes, `${name}`). Default `${chip_id}`. Device-ids are **opaque** — consumers identify a device by `$type` + `info/serial-number`, never by parsing the id. A fixed literal (no `${chip_id}`) collides across units. See [GenerateHomieDevice.md](GenerateHomieDevice.md#the-id-template) |
 | `device_passphrase` | Required for OTA and admin REST endpoints. Change from `changeme` for any non-trivial use |
 
 ### Cleartext credentials caveat

@@ -5,12 +5,12 @@ This is the VSCode-centric onboarding. If you'd rather work from a terminal (`./
 > **Configuration overlays**: both onboarding paths use per-developer overlay files for MQTT credentials, PlatformIO build tweaks, etc. After the setup steps below, read [`Configuration.md`](Configuration.md) once to understand where your personal `config.yml` and `platformio_local.ini` live and how they're merged with the repo's tracked defaults.
 
 ## Overview
-This is what this is
+This walks you from a fresh machine to building and flashing the firmware using **VSCode + the PlatformIO IDE extension**. PlatformIO drives the actual build/upload/monitor; the project's `./ebus-esp32 generate` step runs automatically as a PlatformIO pre-build hook, so editing `device.yml` and pressing **Build** is enough — the IDE picks up your changes. (Everything here also works from the terminal — see [`GettingStartedCLI.md`](GettingStartedCLI.md).)
 
 ## Dev Environment Installation Guide
 ### Prerequisites
 - A computer with internet connection
-- ESP32 dev board variant <TBD>
+- An ESP32 board — the default target is the **Olimex ESP32-POE-ISO**; the full list of supported boards/envs is in the README's *Hardware Targets* table
 - USB cable for connecting the development board to your computer
 
 ### Step 1: Install Visual Studio Code
@@ -34,7 +34,7 @@ This is what this is
 1. Open a terminal/command prompt
 2. Navigate to the directory where you want to store the project
 3. Clone the repository using git:
-4. `git clone https://github.com/<TBD>
+4. `git clone https://github.com/electrification-bus/esp32-sdk.git`
 
 ### Step 4: Open the Project in VSCode
 1. In VSCode, click on the PlatformIO icon in the left sidebar
@@ -42,12 +42,10 @@ This is what this is
 3. Navigate to the cloned repository folder and select it
 4. Wait for VSCode to load the project and initialize PlatformIO
 
-### Step 5: Configure the Project
-1. Wait for PlatformIO to download all required dependencies (libraries)
-  **IMPORTANT:** Set the environment to <TBD>
-  - Open the platformio.ini file in the project root
-  - Make sure the environment section contains [<TBD>] or similar
-  - If not, add or modify the environment section to match the <TBD>
+### Step 5: Select the board environment
+1. Wait for PlatformIO to download all required dependencies (libraries) — the first load can take several minutes.
+2. Pick the PlatformIO **project environment** matching your board, via the env switcher in the VSCode status bar (or the "Project Tasks" tree, which is grouped by env). The default is **`esp32-poe-iso`** (Olimex ESP32-POE-ISO); the other `[env:*]` sections in [`platformio.ini`](../platformio.ini) cover the S3 DevKitC, the WROVER/16 MB Olimex variants, etc. — see the README's *Hardware Targets* table.
+3. You normally don't edit `platformio.ini` to switch boards — just select the env. For per-developer build/upload tweaks, use `platformio_local.ini` (see [`Configuration.md`](Configuration.md)).
 
 ### Step 6: Build and Flash the Firmware
 1. Connect your ESP32 to your computer via USB
