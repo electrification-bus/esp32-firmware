@@ -18,11 +18,16 @@
 typedef struct {
     Device* device;                  // Actual Device object
     char domain[16];                 // Domain name (e.g., "homie" or "ebus")
-    DeviceState state;               // Current device state
+    DeviceState state;               // Current (own) reported device state
     unsigned long last_seen_ms;      // Last time we heard from this device
     bool has_description;            // Whether we've received $description
     bool is_active;                  // Whether this slot is in use
     bool properties_subscribed;      // Whether we've subscribed to properties
+    // Homie 5 nested topology (parsed from $description). Empty parent_id => root.
+    // Stored as ids (not live pointers) because devices are discovered asynchronously
+    // — a child's description may arrive before or after its parent's.
+    char parent_id[32];              // parent device-id, empty if root
+    char root_id[32];                // root device-id, empty if root (root is self)
 } ControllerDevice;
 
 // Controller statistics
@@ -81,3 +86,28 @@ void controller_mqtt_callback(char* topic, uint8_t* payload, unsigned int length
 
 // Clear all discovered devices (for testing/reset)
 void controller_reset();
+
+// --- Nested-device tree awareness (Homie 5 parent/child) ---
+
+// True if the device is discovered and has no parent (is a root). A device known
+// only from $state (no $description yet) reports as root until its description
+// arrives — its topology is simply unknown.
+bool controller_is_root(const char* device_id);
+
+// Parent / root device-id from the discovered $description. parent_id() returns
+// nullptr for a root or unknown device; root_id() returns the device's own id for a
+// root, the named root for a child, or nullptr if the device isn't discovered.
+const char* controller_get_parent_id(const char* device_id);
+const char* controller_get_root_id(const char* device_id);
+
+// Effective state per the Homie 5 precedence rule: a root reports its own state; a
+// child inherits its root's state whenever the root is NOT ready (init/disconnected/
+// sleeping/lost propagate down the tree), otherwise the child's own state stands.
+// Returns DEVICE_STATE_UNKNOWN if the device isn't discovered; falls back to the
+// child's own state if its root isn't discovered yet. See A5 (device-side cascade).
+DeviceState controller_effective_state(const char* device_id);
+
+// Fill out[] with the direct children / all descendants of device_id (devices whose
+// parent_id / ancestry resolves to it). Returns the count (capped at max_out).
+int controller_list_children(const char* device_id, ControllerDevice** out, int max_out);
+int controller_list_descendants(const char* device_id, ControllerDevice** out, int max_out);

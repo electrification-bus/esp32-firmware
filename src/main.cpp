@@ -159,10 +159,23 @@ void loop() {
                 Device* dev = devices[i];
                 ControllerDevice* info = controller_get_device_info(dev->getId());
                 if (info) {
-                    Serial.printf("  %s: %s (state: %s)\n",
-                                 dev->getId(),
-                                 dev->type(),
-                                 device_state_to_cstr(info->state));
+                    // Show own state plus effective state (Homie 5 nested topology):
+                    // a child inherits a non-ready root's state. Flag the override and
+                    // the device's place in the tree.
+                    DeviceState eff = controller_effective_state(dev->getId());
+                    bool is_root = controller_is_root(dev->getId());
+                    const char* parent = controller_get_parent_id(dev->getId());
+                    if (eff != info->state) {
+                        Serial.printf("  %s: %s (state: %s, effective: %s <- root not ready) [child of %s]\n",
+                                     dev->getId(), dev->type(),
+                                     device_state_to_cstr(info->state), device_state_to_cstr(eff),
+                                     parent ? parent : "?");
+                    } else {
+                        Serial.printf("  %s: %s (state: %s) [%s]\n",
+                                     dev->getId(), dev->type(),
+                                     device_state_to_cstr(info->state),
+                                     is_root ? "root" : "child");
+                    }
                 }
             }
         }

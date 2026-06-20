@@ -275,6 +275,79 @@ void controller_reset() {
     Serial.println("CONTROLLER: Reset - all discovered data cleared");
 }
 
+// --- Nested-device tree awareness (Homie 5 parent/child) ---
+
+bool controller_is_root(const char* device_id) {
+    int idx = find_device_index(device_id);
+    return idx >= 0 && _devices[idx].is_active && _devices[idx].parent_id[0] == '\0';
+}
+
+const char* controller_get_parent_id(const char* device_id) {
+    int idx = find_device_index(device_id);
+    if (idx < 0 || !_devices[idx].is_active || _devices[idx].parent_id[0] == '\0') return nullptr;
+    return _devices[idx].parent_id;
+}
+
+const char* controller_get_root_id(const char* device_id) {
+    int idx = find_device_index(device_id);
+    if (idx < 0 || !_devices[idx].is_active) return nullptr;
+    // A child's $description carries its root id directly; a root is its own root.
+    if (_devices[idx].parent_id[0] == '\0') return _devices[idx].device->getId();
+    return _devices[idx].root_id[0] ? _devices[idx].root_id : _devices[idx].parent_id;
+}
+
+// Precedence table (mirrors the python-sdk HOMIE_EFFECTIVE_STATE_TABLE): a non-ready
+// root state propagates to children; a ready root imposes no override. Returns
+// DEVICE_STATE_UNKNOWN as the "no override — use the child's own state" sentinel.
+static DeviceState effective_override_for_root(DeviceState root_state) {
+    if (root_state == DEVICE_STATE_READY || root_state == DEVICE_STATE_UNKNOWN) {
+        return DEVICE_STATE_UNKNOWN;  // no override
+    }
+    return root_state;  // init / disconnected / sleeping / lost cascade down
+}
+
+DeviceState controller_effective_state(const char* device_id) {
+    int idx = find_device_index(device_id);
+    if (idx < 0 || !_devices[idx].is_active) return DEVICE_STATE_UNKNOWN;
+    ControllerDevice* d = &_devices[idx];
+    // Root: its own reported state stands.
+    if (d->parent_id[0] == '\0') return d->state;
+    // Child: find the root; if not yet discovered, best-effort to the child's own state.
+    const char* rid = controller_get_root_id(device_id);
+    int ridx = rid ? find_device_index(rid) : -1;
+    if (ridx < 0 || !_devices[ridx].is_active) return d->state;
+    DeviceState override = effective_override_for_root(_devices[ridx].state);
+    return (override == DEVICE_STATE_UNKNOWN) ? d->state : override;
+}
+
+int controller_list_children(const char* device_id, ControllerDevice** out, int max_out) {
+    int count = 0;
+    for (int i = 0; i < MAX_DISCOVERED_DEVICES && count < max_out; i++) {
+        if (_devices[i].is_active && _devices[i].parent_id[0] &&
+            strcmp(_devices[i].parent_id, device_id) == 0) {
+            out[count++] = &_devices[i];
+        }
+    }
+    return count;
+}
+
+int controller_list_descendants(const char* device_id, ControllerDevice** out, int max_out) {
+    // Breadth-first over parent_id links; out[] doubles as the visit queue. The tree
+    // is acyclic (one parent per node), so no node is enqueued twice.
+    int count = controller_list_children(device_id, out, max_out);
+    int head = 0;
+    while (head < count) {
+        const char* cur_id = out[head++]->device->getId();
+        for (int i = 0; i < MAX_DISCOVERED_DEVICES && count < max_out; i++) {
+            if (_devices[i].is_active && _devices[i].parent_id[0] &&
+                strcmp(_devices[i].parent_id, cur_id) == 0) {
+                out[count++] = &_devices[i];
+            }
+        }
+    }
+    return count;
+}
+
 // ============================================================================
 // Internal helper functions
 // ============================================================================
@@ -399,6 +472,8 @@ static int find_or_create_device(const char* device_id) {
             _devices[i].is_active = true;
             _devices[i].has_description = false;
             _devices[i].properties_subscribed = false;
+            _devices[i].parent_id[0] = '\0';   // topology unknown until $description
+            _devices[i].root_id[0] = '\0';
             _device_count++;
             return i;
         }
@@ -419,6 +494,19 @@ static void create_device_from_description(ControllerDevice* ctrl_dev, JsonDocum
     }
     if (doc["type"].is<const char*>()) {
         dev->setType(doc["type"].as<const char*>());
+    }
+
+    // Homie 5 nested topology: remember parent/root ids so the controller can resolve
+    // the tree and compute effective state. Absent keys => this is a root device.
+    ctrl_dev->parent_id[0] = '\0';
+    ctrl_dev->root_id[0] = '\0';
+    if (doc[HOMIE_PARENT].is<const char*>()) {
+        strncpy(ctrl_dev->parent_id, doc[HOMIE_PARENT].as<const char*>(), sizeof(ctrl_dev->parent_id) - 1);
+        ctrl_dev->parent_id[sizeof(ctrl_dev->parent_id) - 1] = '\0';
+    }
+    if (doc[HOMIE_ROOT].is<const char*>()) {
+        strncpy(ctrl_dev->root_id, doc[HOMIE_ROOT].as<const char*>(), sizeof(ctrl_dev->root_id) - 1);
+        ctrl_dev->root_id[sizeof(ctrl_dev->root_id) - 1] = '\0';
     }
 
     // Parse nodes and properties from description
