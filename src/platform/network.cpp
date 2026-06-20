@@ -124,10 +124,55 @@ static uint16_t mdns_broker_port = 0;
 #define MDNS_DISCOVERY_ATTEMPTS 3
 #define MDNS_DISCOVERY_DELAY_MS 3000
 
-// Query mDNS for _mqtt._tcp services and store result in mdns_broker_host/port
-// Does not modify mqtt_host/mqtt_port globals
+// Browse one DNS-SD service type; on the first result with a resolvable IP, store the
+// broker in mdns_broker_host/port and return true. default_port is used when the SRV
+// record carries no port. Does not modify mqtt_host/mqtt_port globals.
+static bool mdns_query_one_service(const char* service, uint16_t default_port) {
+  int num_found = MDNS.queryService(service, MDNS_QUERY_TCP);
+  if (num_found <= 0) {
+    Serial.printf("mDNS: No _%s._tcp services found\n", service);
+    return false;
+  }
+
+  Serial.printf("mDNS: Found %d _%s._tcp broker(s)\n", num_found, service);
+
+  for (int i = 0; i < num_found; i++) {
+    const char* hostname = MDNS.hostname(i).c_str();
+    uint16_t svc_port = MDNS.port(i);
+    Serial.printf("mDNS:   [%d] host=%s port=%u\n", i, hostname, svc_port);
+
+    // Log TXT records for debugging
+    int txt_count = MDNS.numTxt(i);
+    for (int j = 0; j < txt_count; j++) {
+      Serial.printf("mDNS:     TXT %s=%s\n",
+                     MDNS.txtKey(i, j).c_str(), MDNS.txt(i, j).c_str());
+    }
+
+    // Use the broker's IP address directly
+    IPAddress broker_ip = MDNS.IP(i);
+    if (broker_ip == IPAddress(0, 0, 0, 0)) {
+      Serial.printf("mDNS:   [%d] No IP resolved, skipping\n", i);
+      continue;
+    }
+
+    snprintf(mdns_broker_host, sizeof(mdns_broker_host), "%d.%d.%d.%d",
+             broker_ip[0], broker_ip[1], broker_ip[2], broker_ip[3]);
+    mdns_broker_port = svc_port > 0 ? svc_port : default_port;
+
+    Serial.printf("mDNS: Discovered %s broker: %s:%u (host=%s)\n",
+                   mdns_broker_port == MQTT_SECURE_PORT ? "MQTTS" : "MQTT",
+                   mdns_broker_host, mdns_broker_port, hostname);
+    return true;
+  }
+  return false;
+}
+
+// Discover an MQTT broker via mDNS, storing the result in mdns_broker_host/port.
+// Prefers _secure-mqtt._tcp (TLS, 8883) — the eBus-primary form that TLS-only brokers
+// (e.g. SPAN) advertise — and falls back to _mqtt._tcp (plain, 1883), which the eBus
+// spec only expects when TLS isn't feasible.
 static bool mdns_query_mqtt_broker() {
-  Serial.println("mDNS: Searching for MQTT brokers (_mqtt._tcp)...");
+  Serial.println("mDNS: Searching for MQTT brokers (_secure-mqtt._tcp, then _mqtt._tcp)...");
 
   for (int attempt = 0; attempt < MDNS_DISCOVERY_ATTEMPTS; attempt++) {
     if (attempt > 0) {
@@ -135,42 +180,8 @@ static bool mdns_query_mqtt_broker() {
       delay(MDNS_DISCOVERY_DELAY_MS);
     }
 
-    int num_found = MDNS.queryService(MDNS_QUERY_MQTT, MDNS_QUERY_TCP);
-    if (num_found <= 0) {
-      Serial.printf("mDNS: No _mqtt._tcp services found (attempt %d)\n", attempt + 1);
-      continue;
-    }
-
-    Serial.printf("mDNS: Found %d MQTT broker(s)\n", num_found);
-
-    for (int i = 0; i < num_found; i++) {
-      const char* hostname = MDNS.hostname(i).c_str();
-      uint16_t svc_port = MDNS.port(i);
-      Serial.printf("mDNS:   [%d] host=%s port=%u\n", i, hostname, svc_port);
-
-      // Log TXT records for debugging
-      int txt_count = MDNS.numTxt(i);
-      for (int j = 0; j < txt_count; j++) {
-        Serial.printf("mDNS:     TXT %s=%s\n",
-                       MDNS.txtKey(i, j).c_str(), MDNS.txt(i, j).c_str());
-      }
-
-      // Use the broker's IP address directly
-      IPAddress broker_ip = MDNS.IP(i);
-      if (broker_ip == IPAddress(0, 0, 0, 0)) {
-        Serial.printf("mDNS:   [%d] No IP resolved, skipping\n", i);
-        continue;
-      }
-
-      snprintf(mdns_broker_host, sizeof(mdns_broker_host), "%d.%d.%d.%d",
-               broker_ip[0], broker_ip[1], broker_ip[2], broker_ip[3]);
-      mdns_broker_port = svc_port > 0 ? svc_port : 1883;
-
-      Serial.printf("mDNS: Discovered %s broker: %s:%u (host=%s)\n",
-                     mdns_broker_port == MQTT_SECURE_PORT ? "MQTTS" : "MQTT",
-                     mdns_broker_host, mdns_broker_port, hostname);
-      return true;
-    }
+    if (mdns_query_one_service(MDNS_QUERY_SECURE_MQTT, MQTT_SECURE_PORT)) return true;
+    if (mdns_query_one_service(MDNS_QUERY_MQTT, 1883)) return true;
   }
 
   Serial.println("mDNS: No MQTT broker found via mDNS");
@@ -190,55 +201,67 @@ bool mdns_has_broker() {
 }
 
 bool setup_mdns() {
-  // mDNS is opt-in (ESP32-9mx): off by default, since it's non-essential (Homie
-  // discovery is over MQTT) and the bundled ESP-IDF responder can crash on certain
-  // packets. Set `mdns_enabled: true` in config to advertise <device>.local.
-  if (!mdns_enabled) {
-    Serial.println("mDNS: disabled (mdns_enabled=false) — not starting responder/discovery");
+  // mDNS split into two independent gates (ESP32-6du.6): mdns_discovery (querier —
+  // find the broker, crash-safe, high value) and mdns_advertise (responder — register
+  // service records, the ESP32-9mx crash surface). Both off by default.
+  if (!mdns_discovery && !mdns_advertise) {
+    Serial.println("mDNS: disabled (mdns_discovery=false, mdns_advertise=false)");
     return false;
   }
-  // Use device name as hostname (sanitized for mDNS)
+
+  // Use device name as hostname (sanitized for mDNS); fall back to device ID.
   char base_hostname[48] = {0};
   if (strlen(device_name) > 0) {
     sanitize_hostname(device_name, base_hostname, sizeof(base_hostname));
   } else {
-    // Fallback to device ID if no name set
     strncpy(base_hostname, getDeviceID(), sizeof(base_hostname) - 1);
   }
-
-  // Try base hostname first, then append incrementing number on conflict
   strncpy(mdns_hostname, base_hostname, sizeof(mdns_hostname) - 1);
-  for (int suffix = 2; suffix <= 99; suffix++) {
-    if (MDNS.begin(mdns_hostname)) {
-      // Check for conflict: query our own hostname and see if another device responds
-      IPAddress resolved = MDNS.queryHost(mdns_hostname, 2000);
-      if (resolved == IPAddress(0, 0, 0, 0)) {
-        break;  // No conflict, hostname is ours
-      }
-      // Check if the resolved IP is one of our own interfaces
-      IPAddress our_wifi = WiFi.localIP();
-#ifndef CONFIG_WIFI_AP
-      IPAddress our_eth = ETH.localIP();
-      if (resolved == our_eth || resolved == our_wifi) {
-#else
-      if (resolved == our_wifi) {
-#endif
-        break;  // It's us, no conflict
-      }
-      Serial.printf("mDNS: Hostname '%s.local' conflict (taken by %d.%d.%d.%d), trying next\n",
-                     mdns_hostname, resolved[0], resolved[1], resolved[2], resolved[3]);
-      MDNS.end();
-    }
-    snprintf(mdns_hostname, sizeof(mdns_hostname), "%s-%d", base_hostname, suffix);
-  }
-  Serial.printf("mDNS: Started for host: %s.local\n", mdns_hostname);
 
-  // Discover MQTT brokers on the local network (based on mqtt_mode)
-  if (mqtt_mode != MQTT_MODE_CONFIGURED_ONLY) {
+  // The Arduino MDNS API couples mdns_init() with a hostname claim, so MDNS.begin()
+  // is required even for the querier. When advertising, defend a UNIQUE hostname by
+  // probing for conflicts and appending a suffix. When only discovering, the hostname
+  // is cosmetic and no services are registered, so a single begin() is enough — that
+  // keeps the responder surface minimal (no service/TXT records, the main crash path).
+  if (mdns_advertise) {
+    for (int suffix = 2; suffix <= 99; suffix++) {
+      if (MDNS.begin(mdns_hostname)) {
+        // Check for conflict: query our own hostname and see if another device responds
+        IPAddress resolved = MDNS.queryHost(mdns_hostname, 2000);
+        if (resolved == IPAddress(0, 0, 0, 0)) {
+          break;  // No conflict, hostname is ours
+        }
+        // Check if the resolved IP is one of our own interfaces
+        IPAddress our_wifi = WiFi.localIP();
+#ifndef CONFIG_WIFI_AP
+        IPAddress our_eth = ETH.localIP();
+        if (resolved == our_eth || resolved == our_wifi) {
+#else
+        if (resolved == our_wifi) {
+#endif
+          break;  // It's us, no conflict
+        }
+        Serial.printf("mDNS: Hostname '%s.local' conflict (taken by %d.%d.%d.%d), trying next\n",
+                       mdns_hostname, resolved[0], resolved[1], resolved[2], resolved[3]);
+        MDNS.end();
+      }
+      snprintf(mdns_hostname, sizeof(mdns_hostname), "%s-%d", base_hostname, suffix);
+    }
+  } else {
+    MDNS.begin(mdns_hostname);  // querier-only: init + minimal hostname, no service records
+  }
+  Serial.printf("mDNS: Started for host: %s.local (discovery=%d advertise=%d)\n",
+                 mdns_hostname, (int)mdns_discovery, (int)mdns_advertise);
+
+  // Querier: discover MQTT brokers on the LAN (skip in configured-only mode).
+  if (mdns_discovery && mqtt_mode != MQTT_MODE_CONFIGURED_ONLY) {
     mdns_query_mqtt_broker();
   }
 
-  mdns_register_services();
+  // Responder: advertise our service records (the ESP32-9mx crash surface).
+  if (mdns_advertise) {
+    mdns_register_services();
+  }
 
   return true;
 }
@@ -535,7 +558,7 @@ void setup_ethernet() {
 static unsigned long mdns_last_poll = 0;
 
 void loop_mdns() {
-  if (!mdns_enabled) return;                                   // opt-in (ESP32-9mx)
+  if (!mdns_discovery) return;                                 // re-query is the querier's job (ESP32-6du.6)
   // No mDNS polling in configured-only mode
   if (mqtt_mode == MQTT_MODE_CONFIGURED_ONLY) return;
 

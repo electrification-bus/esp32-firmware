@@ -56,5 +56,6 @@
 #define MDNS_VAL_FALSE          "false"
 
 // mDNS discovery
-#define MDNS_QUERY_MQTT         "mqtt"
+#define MDNS_QUERY_SECURE_MQTT  "secure-mqtt"   // _secure-mqtt._tcp (TLS, 8883) — eBus primary
+#define MDNS_QUERY_MQTT         "mqtt"          // _mqtt._tcp (plain, 1883) — only when TLS infeasible
 #define MDNS_QUERY_TCP          "tcp"

@@ -49,7 +49,9 @@ Only non-empty overlay fields override; anything you leave blank falls back to t
 | `mqtt_mode` | `configured-only` / `discovery-with-fallback` / `discovery-only` — see the inline comment in the file |
 | `mqtt_host` / `mqtt_port` / `mqtt_username` / `mqtt_password` | Your broker |
 | `mqtt_qos` | QoS for **retained** Homie publications (`$state`, `$description`, property values). Homie 5 recommends `2` (the default). Non-retained messages and `/set` are always QoS 0 per spec. Valid: `0`, `1`, `2` |
-| `mdns_enabled` | `true`/`false` — advertise `<device>.local` via mDNS. **Default `false`** (opt-in): mDNS is non-essential (Homie discovery is over MQTT) and the bundled ESP-IDF responder can crash on some packets. Enable only if you want hostname/web-UI discovery |
+| `mdns_discovery` | `true`/`false` — **querier**: browse the LAN for the MQTT broker (`_mqtt._tcp` / `_secure-mqtt._tcp`). **Default `false`.** Crash-safe client side; required by the `discovery-*` `mqtt_mode`s. Enable to let the device find its broker via mDNS |
+| `mdns_advertise` | `true`/`false` — **responder**: advertise `<device>.local` + service records so other hosts can find this device (web UI / OTA). **Default `false`** (opt-in): non-essential (Homie discovery is over MQTT) and the bundled ESP-IDF responder can crash on some inbound packets. Enable only if you want hostname/web-UI discovery |
+| `mdns_enabled` | *(legacy)* `true`/`false` — sets **both** `mdns_discovery` and `mdns_advertise` at once. Prefer the two granular keys above |
 | `device_id` | A **template** resolved on-device to a Homie-legal id (`${chip_id}` full eFuse MAC, `${chip_id_short}` last 3 bytes, `${name}`). Default `${chip_id}`. Device-ids are **opaque** — consumers identify a device by `$type` + `info/serial-number`, never by parsing the id. A fixed literal (no `${chip_id}`) collides across units. See [GenerateHomieDevice.md](GenerateHomieDevice.md#the-id-template) |
 | `device_passphrase` | Required for OTA and admin REST endpoints. Change from `changeme` for any non-trivial use |
 

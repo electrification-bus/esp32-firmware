@@ -26,6 +26,15 @@ config:
     #   discovery-with-fallback - try mDNS discovery first, fall back to config if none found
     #   discovery-only          - use only mDNS discovery, ignore configured mqtt_host/port (default)
     mqtt_mode: configured-only
+    # mDNS gates (both default false), independent (ESP32-6du.6):
+    #   mdns_discovery - browse the LAN for the MQTT broker; needed by the discovery
+    #                    mqtt_modes above. Crash-safe client side.
+    #   mdns_advertise - advertise <device>.local + service records so other hosts can
+    #                    find this device (web UI / OTA). Responder path that can crash
+    #                    on some LAN packets, so it's opt-in.
+    # Legacy: `mdns_enabled: true` sets both at once.
+    mdns_discovery: false
+    mdns_advertise: false
     mqtt_host: public.cloud.shiftr.io
     mqtt_port: 1883
     mqtt_username: public

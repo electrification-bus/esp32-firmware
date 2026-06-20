@@ -60,11 +60,21 @@ enum MqttMode {
 
 extern MqttMode mqtt_mode;
 
-// mDNS responder/discovery. OFF by default (ESP32-9mx): mDNS is non-essential — Homie
-// device discovery is over MQTT, and the responder only advertises <device>.local for
-// the web UI/OTA. The bundled ESP-IDF mDNS library can crash on certain incoming
-// packets, so it's opt-in via the `mdns_enabled` config key.
-extern bool mdns_enabled;
+// mDNS is split into two independent gates (ESP32-6du.6), both OFF by default:
+//   mdns_discovery — querier: browse for the MQTT broker (_mqtt._tcp / _secure-mqtt._tcp)
+//                    and resolve .local names. The crash-safe client side; this is the
+//                    high-value path (find the broker) and is what discovery MqttModes need.
+//   mdns_advertise — responder: register the _device-info / _http / _homie / _ebus service
+//                    records (TXT-heavy) so other hosts can find this device. This is where
+//                    the bundled ESP-IDF responder can crash on certain inbound packets
+//                    (ESP32-9mx), so it's opt-in.
+// NOTE (Level-1 limitation): the Arduino MDNS API couples mdns_init() with a hostname
+// claim, so mdns_discovery still brings up a *minimal* hostname responder; only the
+// heavy service/TXT advertising is gated by mdns_advertise. A pure query-only path (no
+// responder at all) needs the ESP-IDF C API — tracked separately (ESP32-4xl.1).
+// Legacy: a `mdns_enabled: true` config key sets BOTH gates (old single-flag behavior).
+extern bool mdns_discovery;
+extern bool mdns_advertise;
 
 // TLS/SSL support for MQTT (port 8883)
 #define MQTT_SECURE_PORT 8883
