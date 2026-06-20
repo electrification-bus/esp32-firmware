@@ -1,5 +1,6 @@
 #pragma once
 #include <homie/Node.h>
+#include <homie/homie_id.h>
 #include <platform/mqtt_client.h>
 #include <platform/config.h>
 
@@ -13,15 +14,22 @@ class NodeProperty {
             // (set by NodeEntity::setup() via g_active_setup_device), so a nested
             // child device's property values publish under the child's topic.
             Device* dev = g_active_setup_device ? g_active_setup_device : &theDevice;
-            set_homie_property_id(property_id);
+            // Property-id is a topic level too — coerce to Homie-legal (a-z 0-9 -), e.g.
+            // 'relative_humidity' -> 'relative-humidity'. The SAME sanitized id is used
+            // for the topic AND the getProperty() lookup below, so they stay in sync
+            // with the Property's own sanitized id (set in Node::addProperty). (rrj.2)
+            sanitize_homie_id(property_id, _homie_property_id, sizeof(_homie_property_id));
+            if (_homie_property_id[0] == '\0') {
+                snprintf(_homie_property_id, sizeof(_homie_property_id), "%s", property_id);
+            }
             char _top[128] = {0};
-            snprintf(_top, sizeof(_top), "%s%s/%s", dev->topic(), node_id, property_id);
+            snprintf(_top, sizeof(_top), "%s%s/%s", dev->topic(), node_id, _homie_property_id);
             Serial.printf("NodeProperty: setup() topic: %s\n", _top);
             set_topic(_top);
             // Load initial value from the owning device (populated from homie.yml)
             Node* n = dev->getNode(node_id);
             if (n) {
-                Property* p = n->getProperty(property_id);
+                Property* p = n->getProperty(_homie_property_id);
                 if (p) {
                     strncpy(_value, p->value(), sizeof(_value) - 1);
                     _value[sizeof(_value) - 1] = '\0';
@@ -34,7 +42,9 @@ class NodeProperty {
             setup(node_id, property_id);
             Device* dev = g_active_setup_device ? g_active_setup_device : &theDevice;
             char _top[128] = {0};
-            snprintf(_top, sizeof(_top), "%s%s/%s/%s", dev->topic(), node_id, property_id, HOMIE_TOPIC_SET);
+            // Use the sanitized id stored by setup() above, not the raw property_id, so
+            // the /set subscription matches the published property topic.
+            snprintf(_top, sizeof(_top), "%s%s/%s/%s", dev->topic(), node_id, homie_property_id(), HOMIE_TOPIC_SET);
             entity_subscribe_for_callbacks(_top, cb, ne);
         }
         const char* homie_property_id()    const    {return _homie_property_id;}

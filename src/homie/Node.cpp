@@ -1,5 +1,6 @@
 #include <ArduinoYaml.h>
 #include <homie/homie.h>
+#include <homie/homie_id.h>
 #include <homie/Node.h>
 #include <homie/Property.h>
 #include <homie/Device.h>
@@ -41,7 +42,13 @@ void Node::addProperty(Property* property) {
 
 void Node::addProperty(Property* property, const char* id, const char* name, const char* datatype, const char* unit, bool settable, bool retained) {
     property->setNode(this);  // must precede setId() — setId() dereferences _parent_node->topic()
-    property->setId(id);
+    // Property-id is a topic level: coerce to Homie-legal (a-z 0-9 -) on the publisher
+    // side, matching NodeProperty::setup() so the value lookup stays consistent (rrj.2).
+    // (This is the explicit-id publisher path; the controller's from_dict path keeps
+    // exact wire ids.)
+    char prop_id[32] = {0};
+    sanitize_homie_id(id, prop_id, sizeof(prop_id));
+    property->setId(prop_id[0] ? prop_id : id);
     property->setName(name);
     property->setDatatype(datatype);
     if (unit && unit[0] != '\0') property->setUnit(unit);
