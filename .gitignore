@@ -6,7 +6,7 @@
 include/config.h
 
 # LSP / clangd compilation database + index — per-developer, regenerable.
-# compile_commands.json: run `make compiledb` to refresh.
+# compile_commands.json: run `pio run -t compiledb` to refresh.
 # .cache/clangd/: clangd's persistent symbol index.
 compile_commands.json
 .cache/
@@ -28,8 +28,15 @@ GEMINI.md
 .continuerules
 .beads/
 
-# Per-developer config (staged from ~/.config/eBus/config.yml by `make fs`).
-# data/config.yml.example holds the schema + safe defaults.
+# Generated from device.yml by `./ebus-esp32 generate` (and automatically by the
+# pre-build hook on every `pio run`). device.yml + lib/<bus>/*.yml are the tracked
+# source of truth; these outputs are regenerated, never committed.
+src/homie.cpp
+data/homie.yml
+
+# Per-developer config: merged from ~/.config/eBus/config.yml into the generated
+# data/config.yml by `./ebus-esp32 generate`. data/config.yml.example holds the
+# schema + safe defaults (tracked).
 data/config.yml
 data/config.yml~
 data/config.yml.bak
@@ -38,6 +45,7 @@ data/config.yml.bak
 # platformio_local.ini.example holds a documented template.
 platformio_local.ini
 
-# Runtime coordination state for the make monitor / make flash port handoff.
-# Breadcrumb files written by bin/_monitor-record and bin/_flash-coord.
+# Runtime coordination state for the tmux serial-port handoff between a monitor
+# and a flash (works via either ./ebus-esp32 or make). Breadcrumb files written
+# by bin/_monitor-record and bin/_flash-coord.
 .run/

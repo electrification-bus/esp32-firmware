@@ -2,18 +2,22 @@
 # Internal helper: drop a breadcrumb so `make flash` can coordinate with a
 # running `make monitor`. Silent no-op outside tmux.
 #
-# Usage: _monitor-record <PIO_ENV> [<PORT>]
+# Usage: _monitor-record <PIO_ENV> [<PORT>] [<FRONTEND>]
 #
-# - PIO_ENV: the env that was being monitored (recorded so restart uses the same).
-# - PORT:    explicit /dev/cu.* path, or empty to auto-detect via `pio device list`.
+# - PIO_ENV:  the env that was being monitored (recorded so restart uses the same).
+# - PORT:     explicit /dev/cu.* path, or empty to auto-detect via `pio device list`.
+# - FRONTEND: which tool launched the monitor — "make" (default) or "ebus".
+#             Determines the MONITOR_CMD that _flash-coord restart replays, so a
+#             `make`-started and an `ebus-esp32`-started monitor both resume correctly.
 #
 # Writes .run/monitor-<basename-of-port>.state with TMUX_PANE / PORT / PIO_ENV /
-# STARTED keys. Multiple boards get separate breadcrumbs (one per port).
+# MONITOR_CMD / STARTED keys. Multiple boards get separate breadcrumbs (one per port).
 
 set -e
 
 PIO_ENV="$1"
 PORT="$2"
+FRONTEND="${3:-make}"
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 RUN_DIR="$REPO_ROOT/.run"
@@ -36,11 +40,26 @@ fi
 mkdir -p "$RUN_DIR"
 state="$RUN_DIR/monitor-$(basename "$PORT").state"
 
+# Build the command _flash-coord restart will replay into the pane to resume
+# the monitor. Each front-end has its own invocation syntax (make uses VAR=val,
+# ebus-esp32 uses --port); the port is baked in so resume targets the same board.
+case "$FRONTEND" in
+    ebus)
+        MONITOR_CMD="./ebus-esp32 monitor"
+        [ -n "$PORT" ] && MONITOR_CMD="$MONITOR_CMD --port $PORT"
+        ;;
+    *)
+        MONITOR_CMD="make monitor PIO_ENV=$PIO_ENV"
+        [ -n "$PORT" ] && MONITOR_CMD="$MONITOR_CMD PORT=$PORT"
+        ;;
+esac
+
 cat > "$state" <<EOF
 TMUX_PANE_ID=$(tmux display-message -p '#{pane_id}')
 TMUX_PANE=$(tmux display-message -p '#S:#W.#P')
 PORT=$PORT
 PIO_ENV=$PIO_ENV
+MONITOR_CMD="$MONITOR_CMD"
 STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
 

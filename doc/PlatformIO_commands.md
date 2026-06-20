@@ -2,7 +2,7 @@
 
 Raw `pio` CLI cheatsheet — for when you need to invoke `pio` directly.
 
-For ordinary day-to-day work, use `python homie.py` (see [`GettingStarted_CLI.md`](GettingStarted_CLI.md)) — it's shorter and auto-stages the per-developer config overlay. This file documents the underlying `pio` invocations.
+For ordinary day-to-day work, use `./ebus-esp32` (see [`GettingStarted_CLI.md`](GettingStarted_CLI.md)) — it's shorter and auto-regenerates `data/config.yml` from `device.yml`, merging the per-developer config overlay. This file documents the underlying `pio` invocations.
 
 ## Selecting an environment
 
@@ -13,7 +13,7 @@ For ordinary day-to-day work, use `python homie.py` (see [`GettingStarted_CLI.md
 - `esp32-poe-iso-16mb` — Olimex POE-ISO with 16 MB flash variant
 - `esp32-s3-devkitc-1` — Espressif ESP32-S3-DevKitC
 
-Run `python homie.py envs` (or `pio project config --json-output`) for the complete list defined in `platformio.ini`.
+Run `./ebus-esp32 envs` (or `pio project config --json-output`) for the complete list defined in `platformio.ini`.
 
 ## Commands
 
@@ -23,7 +23,7 @@ Run `python homie.py envs` (or `pio project config --json-output`) for the compl
 pio run -e <target>
 ```
 
-Equivalent: `python homie.py build`
+Equivalent: `./ebus-esp32 build`
 
 ### Build and upload firmware + filesystem (USB)
 
@@ -31,7 +31,7 @@ Equivalent: `python homie.py build`
 pio run -e <target> -t upload -t buildfs -t uploadfs
 ```
 
-Equivalent: `python homie.py run` (also runs generate first)
+Equivalent: `./ebus-esp32 run` (also runs generate first)
 
 ### Upload pre-built firmware + filesystem (no build)
 
@@ -39,7 +39,7 @@ Equivalent: `python homie.py run` (also runs generate first)
 pio run -e <target> -t upload -t buildfs -t uploadfs
 ```
 
-Equivalent: `python homie.py push` (skips generate/build, uses existing `.pio/build/` artifacts)
+Equivalent: `./ebus-esp32 push` (skips generate/build, uses existing `.pio/build/` artifacts)
 
 ### Build LittleFS image from `data/`
 
@@ -55,7 +55,7 @@ For build-only without upload, run `pio` directly as above.
 pio run -e <target> -t uploadfs
 ```
 
-Equivalent: `python homie.py push --fs-only`
+Equivalent: `./ebus-esp32 push --fs-only`
 
 ### Memory footprint
 
@@ -72,7 +72,7 @@ pio run -e <target> -t checkprogsize
 pio device monitor -e <target>
 ```
 
-Equivalent: `python homie.py monitor` — must be invoked from a real terminal (not a non-TTY context like a CI runner or piped capture).
+Equivalent: `./ebus-esp32 monitor` — must be invoked from a real terminal (not a non-TTY context like a CI runner or piped capture).
 
 ### List attached serial devices
 
@@ -80,7 +80,7 @@ Equivalent: `python homie.py monitor` — must be invoked from a real terminal (
 pio device list
 ```
 
-Equivalent: `python homie.py devices`
+Equivalent: `./ebus-esp32 devices`
 
 ### Regenerate the LSP compilation database
 
@@ -96,7 +96,7 @@ Produces `compile_commands.json` (gitignored) for clangd, ccls, and IntelliSense
 pio run -e <target> -t clean
 ```
 
-Equivalent: `python homie.py clean`
+Equivalent: `./ebus-esp32 clean`
 
 ## Examples — `esp32-poe-iso`
 

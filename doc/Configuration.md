@@ -4,39 +4,42 @@ This project uses **two overlay files** so that each developer (or each deployed
 
 | What it controls | Tracked template | Real file (gitignored) | Used by |
 |---|---|---|---|
-| Firmware runtime config (MQTT, WiFi, Homie, device id) | `data/config.yml.example` | `~/.config/eBus/config.yml` | `python homie.py run` (staged into `data/config.yml` → baked into LittleFS image alongside firmware) |
+| Firmware runtime config (MQTT, WiFi, Homie, device id) | `data/config.yml.example` | `~/.config/eBus/config.yml` | `./ebus-esp32 generate` merges it into the generated `data/config.yml` (built from `device.yml`), then it's baked into the LittleFS image alongside firmware |
 | PlatformIO build / upload settings | `platformio_local.ini.example` | `platformio_local.ini` (repo root) | `pio` reads automatically via `extra_configs` in `platformio.ini` |
 
 ## 1. Firmware config — `~/.config/eBus/config.yml`
 
-This is what the firmware reads at boot to learn its MQTT broker, WiFi credentials, device id, Homie role, OTA passphrase, etc. The file gets baked into the **LittleFS partition** by `pio run -t buildfs`, so changing it requires a re-upload of the filesystem partition (`python homie.py push --fs-only` to upload only the filesystem, or `python homie.py run` to rebuild and upload everything).
+This is what the firmware reads at boot to learn its MQTT broker, WiFi credentials, device id, Homie role, OTA passphrase, etc. `data/config.yml` is a **generated, gitignored** file: `./ebus-esp32 generate` builds it from `device.yml` and then merges your personal overlay on top. It gets baked into the **LittleFS partition** by `pio run -t buildfs`, so changing it requires a re-upload of the filesystem partition (`./ebus-esp32 push --fs-only` to upload only the filesystem, or `./ebus-esp32 run` to rebuild and upload everything).
 
 ### Flow
 
 ```
-~/.config/eBus/config.yml          ←  your source of truth (gitignored, never leaves your machine)
-        │
-        │  copied by `python homie.py config stage`
-        │  (also generated from device.yml by `python homie.py generate`)
+device.yml                          ←  declarative device definition (tracked, source of truth)
+        │  ./ebus-esp32 generate writes the base data/config.yml from device:/wifi:/mqtt:
         ▼
-data/config.yml                     ←  staging file PIO reads when building the LittleFS image
-                                        (gitignored — derived; never edit directly)
+data/config.yml                     ←  generated file PIO reads when building the LittleFS image
+        ▲                              (gitignored — regenerated every build; never edit directly)
+        │  then merges your overlay's NON-EMPTY fields on top (your broker/credentials win)
+        │
+~/.config/eBus/config.yml          ←  your personal overlay (gitignored, never leaves your machine)
 
-data/config.yml.example             ←  the schema + safe-defaults template
-                                        (tracked; safe to commit; uses public Shiftr.io test broker)
+data/config.yml.example             ←  the schema + safe-defaults template; also the seed you copy
+                                        to create the overlay (tracked; uses public Shiftr.io test broker)
 ```
 
 ### Bootstrap
 
-```cmd
-python homie.py config init               creates ~/.config/eBus/config.yml from the example
-edit %USERPROFILE%\.config\eBus\config.yml
-python homie.py config status             confirm overlay present and target in sync
+Copy the example to your overlay path once, then edit it. The merge into `data/config.yml` happens automatically on every `generate` (and thus every build) — there is no separate stage/sync step.
+
+```sh
+mkdir -p ~/.config/eBus
+cp data/config.yml.example ~/.config/eBus/config.yml   # do this once; it would overwrite an existing overlay
+$EDITOR ~/.config/eBus/config.yml                      # set your broker, credentials, device id, passphrase
 ```
 
-`config init` is idempotent — running it a second time will refuse to clobber. `config status` reports three possible states: overlay missing (run `config init`), overlay present and target in sync (ready to build), overlay present but target drifted (you edited `data/config.yml` directly — run `config stage` to re-sync).
+On Windows: `mkdir %USERPROFILE%\.config\eBus`, then `copy data\config.yml.example %USERPROFILE%\.config\eBus\config.yml`.
 
-> **From VSCode**: these are also wrapped as VSCode tasks. Cmd-Shift-P → "Tasks: Run Task" → pick **Config: Bootstrap personal overlay** / **Config: Show overlay status** / **Config: Stage overlay → data/config.yml**. See [`GettingStarted_VSCode.md`](GettingStarted_VSCode.md) for the full task list.
+Only non-empty overlay fields override; anything you leave blank falls back to the value `generate` derived from `device.yml`.
 
 ### Variables you'll commonly set
 
@@ -102,8 +105,8 @@ See [`platformio_local.ini.example`](../platformio_local.ini.example) for fully-
 
 Different lifecycles. `data/config.yml` controls what gets baked into the device's filesystem image and changes per-deployment (per device, per environment, per customer). `platformio_local.ini` controls how *your specific machine* builds and uploads to *your specific connected board* and changes per-developer. A new dev joining the project would typically:
 
-1. Run `python homie.py config init` once → edit `~/.config/eBus/config.yml` with their MQTT broker
+1. Copy the overlay once (`cp data/config.yml.example ~/.config/eBus/config.yml`) → edit it with their MQTT broker
 2. Possibly `cp platformio_local.ini.example platformio_local.ini` once → tweak `upload_speed` if they're on a CH340 chip
-3. Then `python homie.py run` (full cycle) or `python homie.py push` (upload only) indefinitely without touching either file
+3. Then `./ebus-esp32 run` (full cycle) or `./ebus-esp32 push` (upload only) indefinitely without touching either file
 
 Both overlays compose cleanly with a future move to a different repo structure (e.g. extracting the C++ core into its own library, with per-packaging repos for PlatformIO / ESPHome / etc.) — they're conventions, not infrastructure.

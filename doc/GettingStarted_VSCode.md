@@ -1,6 +1,6 @@
 # Getting Started — VSCode / PlatformIO IDE workflow
 
-This is the VSCode-centric onboarding. If you'd rather work from a terminal (`python homie.py`, `pio` CLI, Emacs/vim), see [`GettingStarted_CLI.md`](GettingStarted_CLI.md) instead — same project, different editor surface.
+This is the VSCode-centric onboarding. If you'd rather work from a terminal (`./ebus-esp32`, `pio` CLI, Emacs/vim), see [`GettingStarted_CLI.md`](GettingStarted_CLI.md) instead — same project, different editor surface.
 
 > **Configuration overlays**: both onboarding paths use per-developer overlay files for MQTT credentials, PlatformIO build tweaks, etc. After the setup steps below, read [`Configuration.md`](Configuration.md) once to understand where your personal `config.yml` and `platformio_local.ini` live and how they're merged with the repo's tracked defaults.
 
@@ -59,18 +59,23 @@ This is what this is
 
 ## Custom tasks
 
-Beyond the standard PlatformIO IDE "Project Tasks" sidebar (Build / Upload / Upload Filesystem Image / Monitor / etc.), this project ships four extra tasks in [`.vscode/tasks.json`](../.vscode/tasks.json) that aren't covered by the PIO extension. They wrap the per-developer overlay + LSP helpers that only exist as Makefile targets.
+Beyond the standard PlatformIO IDE "Project Tasks" sidebar (Build / Upload / Upload Filesystem Image / Monitor / etc.), this project ships one extra task in [`.vscode/tasks.json`](../.vscode/tasks.json) that isn't covered by the PIO extension. It wraps the LSP helper for regenerating the compilation database.
 
-Trigger via **Cmd-Shift-P → "Tasks: Run Task"** (Ctrl-Shift-P on Windows/Linux):
+Before you build for the first time, bootstrap your per-developer config overlay once from a terminal (this is a manual step, not a VSCode task):
+
+```sh
+mkdir -p ~/.config/eBus && cp data/config.yml.example ~/.config/eBus/config.yml
+```
+
+Then edit `~/.config/eBus/config.yml` with your MQTT credentials and other personal settings. Its non-empty fields are merged into the generated `data/config.yml` automatically on every build (a PlatformIO pre-build hook runs `./ebus-esp32 generate` first), so there's no separate sync step.
+
+Trigger the custom task via **Cmd-Shift-P → "Tasks: Run Task"** (Ctrl-Shift-P on Windows/Linux):
 
 | Task | Equivalent CLI | When to use |
 |---|---|---|
-| **Config: Bootstrap personal overlay** | `python homie.py config init` | Once after a fresh clone — creates `~/.config/eBus/config.yml` from the example template |
-| **Config: Show overlay status** | `python homie.py config status` | Sanity-check that your overlay is present and `data/config.yml` is in sync |
-| **Config: Stage overlay → data/config.yml** | `python homie.py config stage` | Re-sync `data/config.yml` after editing the overlay |
-| **LSP: Regenerate compile_commands.json** | `pio run -e <env> -t compiledb` | After fresh clone, after `lib_deps` changes, or when IntelliSense gets confused |
+| **LSP: Regenerate compile_commands.json** | `./bin/pio run -t compiledb` | After fresh clone, after `lib_deps` changes, or when IntelliSense gets confused |
 
-See [`Configuration.md`](Configuration.md) for the full per-developer overlay model that these tasks support.
+See [`Configuration.md`](Configuration.md) for the full per-developer overlay model.
 
 ### Troubleshooting
 

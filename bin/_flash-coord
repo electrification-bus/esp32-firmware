@@ -117,11 +117,14 @@ case "$ACTION" in
 
         [ -f "$pending" ] || exit 0
 
-        # Load TMUX_PANE_ID / TMUX_PANE / PORT / PIO_ENV from the pending file.
+        # Load TMUX_PANE_ID / TMUX_PANE / PORT / PIO_ENV / MONITOR_CMD from the
+        # pending file. MONITOR_CMD is the exact resume command (set by whichever
+        # front-end recorded the breadcrumb); empty for pre-existing breadcrumbs.
         TMUX_PANE_ID=""
         TMUX_PANE=""
         PIO_ENV=""
         PORT=""
+        MONITOR_CMD=""
         . "$pending"
         # $PORT now holds the breadcrumb's PORT (sourced).
 
@@ -134,9 +137,12 @@ case "$ACTION" in
         fi
 
         echo "(restarting monitor in tmux pane $TMUX_PANE [$TMUX_PANE_ID])" >&2
-        cmd="make monitor PIO_ENV=$PIO_ENV"
-        if [ -n "$PORT" ]; then
-            cmd="$cmd PORT=$PORT"
+        if [ -n "$MONITOR_CMD" ]; then
+            cmd="$MONITOR_CMD"
+        else
+            # Fallback for breadcrumbs written before MONITOR_CMD existed.
+            cmd="make monitor PIO_ENV=$PIO_ENV"
+            [ -n "$PORT" ] && cmd="$cmd PORT=$PORT"
         fi
         tmux send-keys -t "$TMUX_PANE_ID" "$cmd" Enter
         rm -f "$pending"

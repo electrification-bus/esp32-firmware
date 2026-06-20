@@ -1,6 +1,7 @@
 # Homie device definition — single source of truth.
-# Run `python3 scripts/generate.py` to regenerate src/homie.cpp,
-# data/homie.yml, and data/config.yml, then `make build` to compile.
+# Edit this file, then run `./ebus-esp32 run` to generate, build, and flash.
+# src/homie.cpp + data/*.yml are regenerated from here automatically before every
+# build (they are gitignored); `./ebus-esp32 generate` regenerates them on their own.
 #
 # Available components (lib/<bus>/<name>.yml):
 #   i2c/bme280                  — BME280 temp/pressure/humidity (I2C)

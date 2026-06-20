@@ -15,7 +15,7 @@ Pick the path that matches how you work:
 | **VSCode + PlatformIO extension** | [doc/GettingStarted_VSCode.md](doc/GettingStarted_VSCode.md) |
 | **Terminal (Python CLI)** | [doc/GettingStarted_CLI.md](doc/GettingStarted_CLI.md) |
 
-Both produce the same firmware. The CLI path uses `homie.py` and a `./bin/pio` shim; the VSCode path drives the same `pio` CLI through the PlatformIO IDE extension.
+Both produce the same firmware. The CLI path uses the `./ebus-esp32` tool and a `./bin/pio` shim; the VSCode path drives the same `pio` CLI through the PlatformIO IDE extension. Either way, [doc/GenerateHomieDevice.md](doc/GenerateHomieDevice.md) explains how `device.yml` defines the device.
 
 After initial setup, read [doc/Configuration.md](doc/Configuration.md) once to understand how the two per-developer overlay files (`~/.config/eBus/config.yml` and `platformio_local.ini`) keep your MQTT credentials and PIO tweaks out of the shared repo.
 
@@ -36,12 +36,13 @@ data/                         LittleFS image source
   config.yml                  Per-developer staged config (gitignored, derived from overlay)
 partitions/                   ESP32 flash partition tables — one CSV per flash size
 examples/                     Standalone example sketches
-scripts/                      Build helpers (generate.py, add_project_include.py)
-homie.py                      CLI entry point — generate, build, push, monitor, config
+scripts/                      Build hooks (generate_homie.py pre-build generator, add_project_include.py)
+ebus-esp32                    CLI entry point — generate, build, run, push, monitor
+device.yml                    Declarative device definition — the source of truth (tracked)
 test/                         Device-side Python test harness (device_test.py, Test_Guide.md)
 doc/                          Documentation
   GettingStarted_VSCode.md    VSCode + PlatformIO IDE onboarding
-  GettingStarted_CLI.md       Terminal / Python CLI onboarding
+  GettingStarted_CLI.md       Terminal / CLI onboarding
   Configuration.md            Per-developer overlay model (config.yml + platformio_local.ini)
   GenerateHomieDevice.md      How to configure and build a device from library components
   proposal-runtime-config-via-nvs.md   Design note: future NVS-backed runtime credentials
@@ -59,30 +60,22 @@ LICENSE                       MIT
 
 ## Common Commands
 
-**Homie / PlatformIO firmware:**
+Edit `device.yml` (the declarative device definition), then drive everything through the `./ebus-esp32` CLI:
+
 ```cmd
-python homie.py config init                    bootstrap ~/.config/eBus/config.yml from example
-python homie.py generate                       regenerate src/homie.cpp + data/*.yml from device.yml
-python homie.py build                          compile firmware
-python homie.py run                            generate, build, and flash firmware + filesystem over USB
-python homie.py run --port COM3               override serial port
-python homie.py push                           flash pre-built firmware + filesystem (no build)
-python homie.py push --fs-only                 flash filesystem only (re-flash config without rebuilding)
-python homie.py monitor                        open serial console (real terminal only)
-python homie.py devices                        list attached serial devices
+./ebus-esp32 generate                       regenerate src/homie.cpp + data/*.yml from device.yml
+./ebus-esp32 build                          compile firmware (regenerates first, via the pre-build hook)
+./ebus-esp32 run                            build and flash firmware + filesystem over USB
+./ebus-esp32 run --port COM3                override serial port
+./ebus-esp32 push                           flash firmware + filesystem without forcing a rebuild
+./ebus-esp32 push --fs-only                 flash filesystem only (re-flash config without rebuilding)
+./ebus-esp32 monitor                        open serial console (real terminal only)
+./ebus-esp32 devices                        list attached serial devices
 ```
 
-**ESPHome firmware (same device.yml, different build target):**
-```cmd
-python homie.py esphome                        generate ebus-001.esphome.yaml from device.yml
-python homie.py esphome --mqtt                 generate with MQTT instead of native ESPHome API
-esphome compile ebus-001.esphome.yaml          compile ESPHome firmware
-esphome run ebus-001.esphome.yaml              compile + flash (first time, via USB)
-esphome upload ebus-001.esphome.yaml           flash only (re-flash after compile)
-esphome logs ebus-001.esphome.yaml             monitor serial output
-```
+The generated `src/homie.cpp`, `data/homie.yml`, and `data/config.yml` are gitignored and rebuilt from `device.yml` before every `pio run` (a PlatformIO pre-build hook) — `device.yml` and the `lib/<bus>/*.yml` component definitions are the only tracked source. First-time setup of your personal config overlay is a one-line copy — see [GettingStarted_CLI.md](doc/GettingStarted_CLI.md). On Windows use `ebus-esp32.bat` (or `python ebus-esp32`).
 
-VSCode users: use the PlatformIO IDE's project-tasks pane for Homie targets; same targets, different surface.
+VSCode users: use the PlatformIO IDE's project-tasks pane for build/upload/monitor; the `./ebus-esp32` generate step runs automatically as a pre-build hook, so the IDE's Build/Upload buttons pick up `device.yml` changes too.
 
 ## Documentation Index
 
@@ -110,7 +103,7 @@ VSCode users: use the PlatformIO IDE's project-tasks pane for Homie targets; sam
 
 ## Hardware Targets
 
-Defined in [`platformio.ini`](platformio.ini). Run `python homie.py envs` to list, or `python homie.py devices` to see what's currently attached via USB.
+Defined in [`platformio.ini`](platformio.ini). Run `./ebus-esp32 envs` to list, or `./ebus-esp32 devices` to see what's currently attached via USB.
 
 | Env | Board | Notes |
 |---|---|---|

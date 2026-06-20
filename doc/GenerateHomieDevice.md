@@ -1,63 +1,45 @@
 # Building a Homie Device from Library Components
 
-The SDK ships a code generator that turns a single `device.yml` file into a PlatformIO
-firmware project.  The workflow is the same as ESPHome: write one YAML file, run a
-command, flash the resulting binary.
+The SDK ships a code generator that turns a single `device.yml` file into a working PlatformIO firmware project. The workflow is the same as ESPHome: write one YAML file, run one command, flash the resulting binary.
 
 ```
-device.yml   →   python homie.py generate   →   src/homie.cpp
-                                                  data/homie.yml
-                                                  data/config.yml
-                                                      ↓
-                                             python homie.py build
-                                                      ↓
-                                                 firmware.bin
+device.yml   →   ./ebus-esp32 run   →   (regenerates src/homie.cpp + data/*.yml)
+                                              ↓
+                                         compile + flash firmware + filesystem
+                                              ↓
+                                         running device
 ```
+
+`src/homie.cpp`, `data/homie.yml`, and `data/config.yml` are *generated outputs* — they are gitignored and regenerated from `device.yml` automatically before every build (a PlatformIO pre-build hook, `scripts/generate_homie.py`, runs `generate` on every `pio run`). You never edit or commit them. `device.yml` and the component YAMLs under `lib/` are the only files you touch and the only ones tracked in git.
 
 ---
 
-## Quickstart
+## The 3-step happy path
 
-**Homie / PlatformIO:**
 ```cmd
-python homie.py generate          regenerate src/homie.cpp + data/*.yml
-python homie.py build             generate + compile firmware
-python homie.py run               generate, build, and flash firmware + filesystem over USB
-python homie.py run --port COM3   explicit serial port
-python homie.py push              flash pre-built firmware + filesystem (no build)
-python homie.py push --fs-only    flash filesystem only (re-flash config without rebuilding)
+1. edit device.yml            pick a board, list the nodes (sensors/actuators) you want
+2. ./ebus-esp32 run           generate + build + flash firmware AND filesystem over USB
+3. ./ebus-esp32 monitor       watch it boot and publish to MQTT
 ```
 
-`build` always runs `generate` first, so `generate` alone is only needed when you
-want to inspect the generated files without compiling.
-
-**ESPHome:**
-```cmd
-python homie.py esphome           generate ebus-001.esphome.yaml
-python homie.py esphome --mqtt    generate with MQTT instead of native ESPHome API
-esphome run ebus-001.esphome.yaml compile + flash (first time, USB)
-esphome upload ebus-001.esphome.yaml flash only (after first flash)
-```
-
-All `homie.py` commands accept an optional path to `device.yml` as the last argument
-(default: `device.yml` in the project root).
+That is the whole loop. The commands below are for finer control.
 
 ---
 
 ## CLI reference
 
 ```
-python homie.py generate [device.yml]          generate src/homie.cpp + data/*.yml
-python homie.py build    [device.yml]          generate then compile firmware
-python homie.py run      [--port PORT] [device.yml]  generate, build, and flash
-python homie.py push     [--port PORT] [--fs-only] [device.yml]  flash only (no build)
-python homie.py monitor  [--port PORT] [device.yml]
-python homie.py clean    [device.yml]          clean PlatformIO build artifacts
-python homie.py devices                        list attached serial devices
-python homie.py envs     [device.yml]          list available board environments
-python homie.py esphome  [--mqtt] [device.yml] generate ESPHome YAML
-python homie.py config   status | init | stage
+./ebus-esp32 generate [device.yml]                          regenerate src/homie.cpp + data/*.yml (inspect without building)
+./ebus-esp32 build    [device.yml]                          compile firmware (regenerates first, via the pre-build hook)
+./ebus-esp32 run      [--port PORT] [device.yml]            build and flash firmware + filesystem
+./ebus-esp32 push     [--port PORT] [--fs-only] [device.yml]  flash without forcing a rebuild
+./ebus-esp32 monitor  [--port PORT] [device.yml]            open the serial monitor
+./ebus-esp32 clean    [device.yml]                          clean PlatformIO build artifacts
+./ebus-esp32 devices                                        list attached serial devices
+./ebus-esp32 envs     [device.yml]                          list available board environments
 ```
+
+Every build path regenerates from `device.yml` first (the pre-build hook), so `generate` on its own is only needed when you want to read the generated files without compiling. All commands accept an optional path to `device.yml` as the last argument (default: `device.yml` in the project root). On Windows, use `ebus-esp32.bat run` (or `python ebus-esp32 run`).
 
 ---
 
@@ -143,7 +125,7 @@ fire before `setup()`.
 Example output for the quickstart config above:
 
 ```cpp
-// AUTO-GENERATED by homie.py generate — do not edit manually.
+// AUTO-GENERATED by `ebus-esp32 generate` — do not edit manually.
 #include <homie.h>
 
 #include <i2c/bme280.h>
@@ -179,8 +161,7 @@ boot to publish the device's Homie `$nodes` advertisement.
 
 ### data/config.yml
 
-Runtime configuration (wifi, mqtt, device identity) written from the `device:`,
-`wifi:`, and `mqtt:` sections of `device.yml`.  Also uploaded to the filesystem.
+Runtime configuration (wifi, mqtt, device identity) written from the `device:`, `wifi:`, and `mqtt:` sections of `device.yml`, then uploaded to the filesystem. If a per-developer overlay exists at `~/.config/eBus/config.yml`, its non-empty fields are merged in on top during `generate` — that is how your real broker and credentials stay out of the tracked `device.yml`. See [Configuration.md](Configuration.md) and [GettingStarted_CLI.md](GettingStarted_CLI.md) for the overlay model.
 
 ---
 
@@ -287,8 +268,7 @@ nodes:
       addr: 0x76
 ```
 
-Run `python homie.py generate` (or `python homie.py build`) and the new component
-will appear in `src/homie.cpp`, `data/homie.yml`, and `data/config.yml` automatically.
+Run `./ebus-esp32 generate` (or just build — the pre-build hook regenerates) and the new component will appear in `src/homie.cpp`, `data/homie.yml`, and `data/config.yml` automatically.
 
 ---
 
@@ -304,4 +284,4 @@ Available boards (defined in `platformio.ini`):
 | `esp32-s3-devkitc-1` | ESP32-S3 | — | — |
 | `wesp32-poe` | wESP32 | — | — |
 
-List all boards: `python homie.py envs`
+List all boards: `./ebus-esp32 envs`

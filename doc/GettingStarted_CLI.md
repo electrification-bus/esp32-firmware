@@ -5,8 +5,9 @@ This is the command-line counterpart to [`GettingStarted_VSCode.md`](GettingStar
 ## What's in this workflow
 
 - A small **`./bin/pio` shim** that points at PlatformIO Core installed under `~/.platformio/penv/`. No `$PATH` edits required — if the VSCode PlatformIO extension is installed, the shim already works.
-- **`homie.py`** — the project CLI. All build, flash, monitor, and config commands go through it.
-- A **per-developer config overlay** at `~/.config/eBus/config.yml` (gitignored, never committed). The repo carries `data/config.yml.example` as the schema + safe-defaults template; the staged build file `data/config.yml` is generated from the overlay just-in-time.
+- **`./ebus-esp32`** — the project CLI (a Python script with a shebang; run it directly on Unix/Mac, or `ebus-esp32.bat` / `python ebus-esp32` on Windows). All generate, build, flash, and monitor commands go through it.
+- **`device.yml`** — the declarative device definition and the source of truth. `./ebus-esp32 generate` (run automatically before every build by a PlatformIO pre-build hook) turns it into `src/homie.cpp`, `data/homie.yml`, and `data/config.yml`. Those three are **gitignored** — regenerated, never committed.
+- A **per-developer config overlay** at `~/.config/eBus/config.yml` (gitignored, never committed). The repo carries `data/config.yml.example` as the schema + safe-defaults template; its non-empty fields are merged into the generated `data/config.yml` during `generate`, so your real broker and credentials never land in `device.yml`.
 
 ## Prerequisites
 
@@ -16,50 +17,54 @@ This is the command-line counterpart to [`GettingStarted_VSCode.md`](GettingStar
 
 ## First-time bootstrap (after a fresh clone)
 
-```cmd
+```sh
 git clone <repo-url>
 cd esp32-sdk
 
-# Bootstrap your personal config overlay from the schema example.
-# Creates ~/.config/eBus/config.yml if missing; no-op if present.
-python homie.py config init
+# Bootstrap your personal config overlay from the schema example, once.
+# (Skip if ~/.config/eBus/config.yml already exists — this would overwrite it.)
+mkdir -p ~/.config/eBus
+cp data/config.yml.example ~/.config/eBus/config.yml
 
-# Edit it with your MQTT broker, credentials, device id, etc.
-# (The defaults point at the public Shiftr.io test broker for first-boot
-# smoke testing — replace with your real broker for any actual use.)
-edit %USERPROFILE%\.config\eBus\config.yml
+# Edit it with your MQTT broker, credentials, device id, etc. The example
+# defaults point at the public Shiftr.io test broker for first-boot smoke
+# testing — replace with your real broker for any actual use.
+$EDITOR ~/.config/eBus/config.yml
 
-# Sanity-check
-python homie.py config status
-python homie.py envs
-python homie.py devices
+# Sanity-check the toolchain and hardware
+./ebus-esp32 envs        # list board environments from platformio.ini
+./ebus-esp32 devices     # list attached USB-serial devices
 ```
 
-`config init` is idempotent — running it a second time will tell you the overlay already exists and refuse to clobber. `config status` shows the overlay path, whether it's present, and whether `data/config.yml` is in sync.
+On Windows: `mkdir %USERPROFILE%\.config\eBus`, then `copy data\config.yml.example %USERPROFILE%\.config\eBus\config.yml`, and run the CLI as `ebus-esp32.bat envs`.
+
+The overlay is **merged** into the generated `data/config.yml` every time you `generate` (and thus before every build) — there is no separate "stage" step. Non-empty overlay fields win; everything else falls back to the values derived from `device.yml`.
 
 ## The build / flash / monitor loop
 
-```cmd
-python homie.py build            compile firmware (runs generate first)
-python homie.py run              generate, build, and flash firmware + filesystem over USB
-python homie.py push             flash pre-built firmware + filesystem (no build)
-python homie.py push --fs-only   flash filesystem only (re-flash config without rebuilding)
-python homie.py monitor          open serial monitor — must be in a REAL terminal (see below)
-python homie.py clean            clean build artifacts
+```sh
+./ebus-esp32 build            compile firmware (regenerates from device.yml first, via the pre-build hook)
+./ebus-esp32 run              build and flash firmware + filesystem over USB
+./ebus-esp32 push             flash firmware + filesystem without forcing a rebuild
+./ebus-esp32 push --fs-only   flash filesystem only (re-flash config without rebuilding)
+./ebus-esp32 monitor          open serial monitor — must be in a REAL terminal (see below)
+./ebus-esp32 clean            clean build artifacts
 ```
+
+Edit `device.yml` to change which board, nodes, or settings the firmware uses — every build path regenerates from it automatically. See [GenerateHomieDevice.md](GenerateHomieDevice.md) for the `device.yml` format and the component catalog.
 
 Override the serial port when auto-detection picks the wrong one:
 
-```cmd
-python homie.py run --port COM3
-python homie.py monitor --port COM3
+```sh
+./ebus-esp32 run --port COM3
+./ebus-esp32 monitor --port COM3
 ```
 
-`python homie.py envs` lists every `[env:*]` defined in `platformio.ini`.
+`./ebus-esp32 envs` lists every `[env:*]` defined in `platformio.ini`.
 
 ## Serial monitor — needs a real terminal
 
-`python homie.py monitor` runs `pio device monitor`, which is interactive (it puts the controlling terminal into raw mode to capture single keystrokes). It **requires a real PTY**: a true terminal window like Terminal.app / iTerm / a tmux pane / Windows Terminal.
+`./ebus-esp32 monitor` runs `pio device monitor`, which is interactive (it puts the controlling terminal into raw mode to capture single keystrokes). It **requires a real PTY**: a true terminal window like Terminal.app / iTerm / a tmux pane / Windows Terminal.
 
 It will *not* work if launched from:
 - A non-interactive `bash -c '...'` invocation
@@ -77,53 +82,53 @@ cat /dev/cu.usbserial-21130 | tee /tmp/serial.log
 
 ## Monitor ↔ flash port handoff (when monitor runs in tmux)
 
-`python homie.py monitor` and `python homie.py run` / `python homie.py push` both need exclusive access to the serial port. When monitor is running, run/push can't open the port and vice versa.
+A serial monitor and a flash both need exclusive access to the same USB-serial port — while one holds it, the other can't open it. Both front-ends coordinate this automatically when the monitor runs **inside a tmux pane**: `./ebus-esp32 monitor` and `./ebus-esp32 run` / `push`, and equally `make monitor` and `make flash` / `uploadfs` / `flash-all`. The two interoperate — you can monitor with one and flash with the other.
 
-If you run monitor **inside a tmux pane**, the `bin/_monitor-record` / `bin/_flash-coord` shell scripts (invoked by the underlying `pio` call) drop a breadcrumb at `.run/monitor-<port>.state` recording which tmux pane holds which port. Subsequent run/push invocations automatically:
+When you start a monitor in a tmux pane, `bin/_monitor-record` drops a breadcrumb at `.run/monitor-<port>.state` recording which tmux pane holds which port (and which front-end started it). A subsequent flash then, via `bin/_flash-coord`, automatically:
 
-1. read the breadcrumb,
-2. send `Ctrl-C` to the monitor's tmux pane to release the port,
-3. run the upload,
-4. send a fresh monitor invocation back into the same pane to resume.
+1. reads the breadcrumb,
+2. sends `Ctrl-C` to the monitor's tmux pane to release the port,
+3. runs the upload,
+4. relaunches the *same* monitor command (`./ebus-esp32 monitor` or `make monitor`) back into that pane to resume.
 
-If you run monitor **outside tmux**, no breadcrumb is recorded — run/push will fail with "port busy" until you Ctrl-C the monitor yourself.
+If you run the monitor **outside tmux** (or on Windows), no breadcrumb is recorded and there's nothing to coordinate — the flash will fail with "port busy" until you Ctrl-C the monitor yourself. `make monitors` lists the active monitor breadcrumbs.
 
 ### Setting up the tmux session
 
 ```sh
 tmux new -s ebus
-python homie.py monitor          # auto-detects the single attached USB-serial port
+./ebus-esp32 monitor          # auto-detects the single attached USB-serial port
 ```
 
-Multiple boards — one tmux session per device:
+Multiple boards — one tmux session per device, pinning the port:
 
 ```sh
 # Terminal 1
 tmux new -s ebus-poe
-python homie.py monitor --port /dev/cu.usbserial-21130
+./ebus-esp32 monitor --port /dev/cu.usbserial-21130
 
 # Terminal 2
 tmux new -s ebus-s3
-python homie.py monitor --port /dev/cu.usbmodem14201
+./ebus-esp32 monitor --port /dev/cu.usbmodem14201
 ```
 
-Push from any other shell, passing the same port:
+Flash from any other shell, passing the same port — the monitor pane pauses and resumes on its own:
 
 ```sh
-python homie.py run --port /dev/cu.usbserial-21130
+./ebus-esp32 run --port /dev/cu.usbserial-21130
 ```
 
 ## Config overlays — see Configuration.md
 
-Two overlay files keep per-developer settings out of the shared repo: `~/.config/eBus/config.yml` for firmware runtime config and `platformio_local.ini` for PlatformIO build/upload tweaks. The full model lives in [`Configuration.md`](Configuration.md). Read that doc once after `python homie.py config init` to understand both overlays end-to-end.
+Two overlay files keep per-developer settings out of the shared repo: `~/.config/eBus/config.yml` for firmware runtime config and `platformio_local.ini` for PlatformIO build/upload tweaks. The full model lives in [`Configuration.md`](Configuration.md). Read that doc once, after copying the overlay example in the bootstrap step above, to understand both overlays end-to-end.
 
 ## Emacs integration
 
 `pio` output is plain GCC-formatted compiler diagnostics (`file:line: warning: …`), which Emacs `compile-mode` parses out of the box. Workflow:
 
-- **Build with error navigation**: `M-x compile RET python homie.py build RET` → `next-error` (`C-x `` ` ``) jumps to each warning/error in the source. The project's [`.dir-locals.el`](../.dir-locals.el) pre-fills the compile command.
+- **Build with error navigation**: `M-x compile RET ./ebus-esp32 build RET` → `next-error` (`C-x `` ` ``) jumps to each warning/error in the source. The project's [`.dir-locals.el`](../.dir-locals.el) pre-fills the compile command.
 - **Quick rebuild**: `M-x recompile` re-runs the last compile command without re-prompting.
-- **Serial monitor**: do *not* use `M-x serial-term` for this — open a separate terminal (or tmux pane) and run `python homie.py monitor` there.
+- **Serial monitor**: do *not* use `M-x serial-term` for this — open a separate terminal (or tmux pane) and run `./ebus-esp32 monitor` there.
 
 ## Troubleshooting
 
@@ -131,14 +136,15 @@ Two overlay files keep per-developer settings out of the shared repo: `~/.config
 |---|---|---|
 | `ModuleNotFoundError: No module named 'yaml'` | PyYAML not installed | `pip install pyyaml` |
 | PlatformIO not found | `~/.platformio/penv/...pio` doesn't exist | Install via VSCode PlatformIO extension or `pipx install platformio` |
-| `run` / `push` finds no port / hangs at "Connecting…" | No board attached, wrong port, or board not in bootloader state | `python homie.py devices` to list ports; some boards need BOOT held during reset for first flash |
+| `run` / `push` finds no port / hangs at "Connecting…" | No board attached, wrong port, or board not in bootloader state | `./ebus-esp32 devices` to list ports; some boards need BOOT held during reset for first flash |
 | `monitor` → `termios.error` | Running through a non-PTY context | Run in a real terminal window |
-| `config status` shows overlay missing | First-run state | `python homie.py config init`, then edit the overlay |
-| `data/config.yml` showed up modified after pulling | Someone else's overlay snuck into a commit (shouldn't happen — it's gitignored) | `git checkout data/config.yml`, then `python homie.py config stage` to re-stage from overlay |
+| MQTT/wifi settings from your overlay aren't taking effect | Overlay missing, or a field left empty (empty fields don't override) | Confirm `~/.config/eBus/config.yml` exists (bootstrap step) and the field is non-empty, then re-run `./ebus-esp32 generate` |
+| `src/homie.cpp` or `data/homie.yml` shows up as an untracked/modified file | These are generated outputs — gitignored, regenerated every build | Normal; never commit them. If one is *tracked* in your clone, `git rm --cached <file>` |
 
 ## Reference
 
-- [`homie.py`](../homie.py) — CLI entry point; `python homie.py --help` lists all commands
+- [`ebus-esp32`](../ebus-esp32) — CLI entry point; `./ebus-esp32 --help` lists all commands
+- [`GenerateHomieDevice.md`](GenerateHomieDevice.md) — the `device.yml` format and the library-component catalog
 - [`bin/pio`](../bin/pio) — PlatformIO Core shim
 - [`PlatformIO_commands.md`](PlatformIO_commands.md) — raw `pio` command cheatsheet for when you need to invoke `pio` directly
 - [`proposal-runtime-config-via-nvs.md`](proposal-runtime-config-via-nvs.md) — design note for the future NVS-backed runtime credential model
