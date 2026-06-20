@@ -23,8 +23,8 @@
 // As of this writing the longest device type is
 // `energy.ebus.device.distribution-enclosure` (41) and the longest capability/node
 // type is `energy.ebus.capability.shed-forecast` (36); 64 holds those with headroom
-// for vocabulary growth. Named constants/enums for the registered values are tracked
-// separately (rrj.1) — type stays free-form on the wire. (rrj.5: the old Node[16]/
+// for vocabulary growth. Optional convenience constants for the registered values live
+// in homie/ebus_vocabulary.h (rrj.1) — type stays free-form on the wire. (rrj.5: the old Node[16]/
 // Device[32] buffers truncated these; F2's snprintf made truncation safe but the
 // values were still wrong.)
 #define HOMIE_TYPE_MAXLEN       64
