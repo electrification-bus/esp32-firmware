@@ -117,6 +117,8 @@ Multiple instances of the same component are allowed; give each a unique `id`.
 
 eBus models a product as a tree of nested Homie 5 devices — a parent (root) device with child devices, each a separate `ebus/5/<id>/…` device with its own `$state` and `$description`, sharing the root's MQTT connection. Declare children under a `children:` key; each child has the same shape as the root (`id`, `name`, `type`, its own `nodes:`, and optionally its own nested `children:`).
 
+> **When should something be a child device vs. a node?** Use a **child device** for a bridged/proxied external device with its own identity and lifecycle (a BLE battery, a cloud-polled inverter) or a first-class entity (a panel circuit). Use a **node** for an on-board peripheral that shares this device's lifecycle (a sensor, a relay). For a complete, runnable bridge→child example with this rule worked through, see [NestedBridgeExample.md](NestedBridgeExample.md).
+
 ```yaml
 device:
   name: My Battery System

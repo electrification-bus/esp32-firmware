@@ -1,0 +1,77 @@
+# Nested devices: the bridge → child reference example
+
+This walks through the Homie 5 **parent/child device** model as the eBus **bridge/proxy** pattern, using a runnable example: an ESP32 that publishes a battery as a *child device*. It also pins down the modeling rule that matters most — **when is something a child device vs. a node?**
+
+## The bright line: child device vs. node
+
+> **Child device** — when the sub-thing has its *own* identity and lifecycle that a consumer should discover as a separate Homie device: a bridged/proxied external device (a BLE battery, a cloud-polled Powerwall, a Modbus appliance), or a first-class entity like a panel's branch circuit. It can go `lost` on its own while the root stays `ready`.
+>
+> **Node** — when the thing is a *function of this device*, sharing its lifecycle and MQTT connection: on-board sensors, relays, local I/O. A node groups related **properties** (individual values).
+
+Concretely:
+
+| Thing | Model | Why |
+|---|---|---|
+| BME280 on the I²C bus | **node** on the root | a peripheral — no independent identity, lives and dies with the ESP32 |
+| JBD BMS over BLE | **child device** | a separate physical device with its own identity; its BLE link can drop while the ESP32 stays up |
+
+A BME280's `temperature` / `humidity` / `pressure` are **three properties of one node**, not three nodes — a node (capability) is a *functional grouping* of properties, not a single reading. (And a BME280 is environmental, so its node `type` is generic `sensor`, not an `energy.ebus.capability.*` — the eBus vocabulary is for the energy domain.)
+
+## The example
+
+[`examples/bridge-bess.device.yml`](../examples/bridge-bess.device.yml) models:
+
+```
+root device   ESP32       type energy.ebus.device.bridge     (the firmware instance)
+  └─ child     Battery     type energy.ebus.device.bess       (a bridged sub-device)
+       └─ node battery     type energy.ebus.capability.soc
+            └─ properties   soc / voltage / current / power / temperature
+```
+
+The data source is [`lib/sim/battery_sim`](../lib/sim/) — a tiny `NodeEntity` that publishes plausible state-of-charge and electrical values with **no external hardware**, so the whole nesting structure is testable on any board. The battery is a *child device* (not a node on the root) precisely because it stands in for a bridged external device.
+
+Run it:
+
+```bash
+cp examples/bridge-bess.device.yml device.yml
+./ebus-esp32 run            # generate + build + flash
+```
+
+### What you get on the broker
+
+```
+ebus/5/<root>/$state                       = ready
+ebus/5/<root>/$description                  = { type: energy.ebus.device.bridge, children: ["<root>-bms"], nodes: {} }
+ebus/5/<root>-bms/$state                    = ready
+ebus/5/<root>-bms/$description              = { type: energy.ebus.device.bess, root: "<root>", parent: "<root>", nodes: { battery: { type: energy.ebus.capability.soc, ... } } }
+ebus/5/<root>-bms/battery/soc              = 59
+ebus/5/<root>-bms/battery/voltage          = 51.56
+...
+```
+
+Note the things the SDK does for you:
+
+- **`<root>-bms` id** — the child's runtime id is `{root-id}-{child-suffix}`, the eBus `{proxier}-{proxied}` naming convention, applied automatically by the generator.
+- **`root` / `parent`** — set on the child's `$description` so consumers can resolve the tree.
+- **independent `$state`** — the child has its own lifecycle. If the bridged source disconnects, the bridge can mark the child `lost` (or retract it) without affecting the root. A controller derives a child's *effective* state from its root's state (a non-ready root cascades `lost` down the tree).
+- **one MQTT connection** — the child shares the root's connection and the root's Last Will; only the root carries the LWT.
+
+## Bridging a real JBD BMS
+
+Swap the simulator for the real BLE driver — the child-device structure is identical, only the data source changes:
+
+```yaml
+children:
+  - id: bms
+    name: Battery
+    type: energy.ebus.device.bess
+    nodes:
+      - component: ble/serial_bms     # was sim/battery_sim
+        id: battery_bms
+```
+
+Then enable NimBLE in `platformio.ini` (uncomment the `h2zero/NimBLE-Arduino` dep; BLE needs internal DRAM, so keep `CONFIG_WIFI_AP` off on non-PSRAM boards). The `serial_bms` driver scans for and connects to a JBD BMS over BLE and publishes its real readings under the same `<root>-bms` child topics.
+
+## Why this shapes the device API
+
+The common case is a single device with nodes and properties — no nesting. The nesting machinery (own `$state`/`$description`, the add/remove protocol, the `lost` cascade) earns its keep only for bridged/proxied or genuinely-separate sub-devices. So the ergonomic device API keeps `Device → Node → Property` as the simple spine and treats **child devices as an explicit, opt-in construct** (`device.yml` `children:`, or `Device::addChild(...)` in hand-coded firmware) — never blurring "node" and "child device" into one fuzzy "add a thing".

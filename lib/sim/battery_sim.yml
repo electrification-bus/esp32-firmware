@@ -1,0 +1,56 @@
+homie: 5.0.1
+name: EBUS
+type: ebus
+state: init
+# Simulated BESS — the child-device data source for the nested bridge example (D5).
+# One capability node (state-of-charge) with the headline battery properties. A
+# production bess would typically split into separate `soc` / `meter` / `status`
+# capability nodes; kept to one node here to keep the reference example focused on the
+# parent/child nesting structure.
+nodes:
+  - id: battery
+    name: Battery
+    type: energy.ebus.capability.soc
+    properties:
+      - id: soc
+        name: State of Charge
+        datatype: integer
+        unit: "%"
+        format: "0:100"
+        settable: false
+        retained: true
+        value: 0
+      - id: voltage
+        name: Pack Voltage
+        datatype: float
+        unit: V
+        settable: false
+        retained: true
+        value: 0.0
+      - id: current
+        name: Pack Current
+        datatype: float
+        unit: A
+        settable: false
+        retained: true
+        value: 0.0
+      - id: power
+        name: Pack Power
+        datatype: float
+        unit: W
+        settable: false
+        retained: true
+        value: 0.0
+      - id: temperature
+        name: Pack Temperature
+        datatype: float
+        unit: "°C"
+        settable: false
+        retained: true
+        value: 0.0
+extensions: []
+implementation: homie-esp32-sdk
+generator:
+  class: BatterySim
+  header: sim/battery_sim.h
+  constructor: '("{id}")'

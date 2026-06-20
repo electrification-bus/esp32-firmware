@@ -1,0 +1,54 @@
+# Nested-device reference example (D5): an ESP32 acting as an eBus BRIDGE that
+# publishes a battery as a CHILD device (the Homie 5 parent/child + eBus proxy pattern).
+#
+#   root device   ESP32           type energy.ebus.device.bridge   (the firmware instance)
+#     └─ child     Battery         type energy.ebus.device.bess     (a bridged sub-device)
+#          └─ node battery         type energy.ebus.capability.soc
+#               └─ properties soc / voltage / current / power / temperature
+#
+# The child's runtime id is `<root-id>-bms` (the eBus {proxier}-{proxied} convention,
+# applied automatically by the generator). The child has its own $state/$description and
+# can go `lost` independently of the root — which is exactly why a bridged external
+# device is a CHILD DEVICE, whereas an on-board peripheral (a BME280 on the I2C bus)
+# would be a NODE on the root. See doc/NestedBridgeExample.md.
+#
+# To try it:  cp examples/bridge-bess.device.yml device.yml  &&  ./ebus-esp32 run
+# To bridge a REAL JBD BMS instead of the simulator, replace the child's component
+# `sim/battery_sim` with `ble/serial_bms` (and enable NimBLE in platformio.ini).
+
+device:
+  name: EBUS Bridge
+  id: ebus-bridge
+  type: energy.ebus.device.bridge
+  board: esp32-poe-iso          # must match a [env:…] in platformio.ini
+  device_type: bridge
+  firmware_name: ESP32POEISO Bridge
+  firmware_version: 1.0.0
+  firmware_url: http://example.com/firmware.bin
+  manufacturer: NESL
+  model: ESP32-POE-ISO
+  serial_number:
+  homie_role: device
+  device_passphrase: changeme
+
+wifi:
+  ssid: ""
+  password: ""
+
+mqtt:
+  mode: configured-only
+  host: ''
+  port: 1883
+  username: ''
+  password: ''
+  qos: 2
+
+# The root bridge has no measurement nodes of its own (a pure proxy host). It hosts a
+# single child device — the (simulated) battery.
+children:
+  - id: bms
+    name: Battery
+    type: energy.ebus.device.bess
+    nodes:
+      - component: sim/battery_sim
+        id: battery
