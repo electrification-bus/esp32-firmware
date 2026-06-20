@@ -346,6 +346,26 @@ void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb,
    num_subscribers++;
 }
 
+// D3: register a per-property fn-ptr handler (+context) for a /set topic. Updates an
+// existing entry's handler in place (reconnect-safe), else appends a new subscriber.
+void subscribe_settable_handler(const char* topic, settable_handler_t handler, void* ctx) {
+   for (int i = 0; i < num_subscribers; i++) {
+     if (strcmp(settable_properties[i].topic, topic) == 0) {
+       settable_properties[i].handler = handler;
+       settable_properties[i].handler_ctx = ctx;
+       return;
+     }
+   }
+   if (num_subscribers >= 128) {
+     Serial.printf("MQTT: settable subscriber table full — handler for '%s' NOT registered\n", topic);
+     return;
+   }
+   strcpy(settable_properties[num_subscribers].topic, topic);
+   settable_properties[num_subscribers].handler = handler;
+   settable_properties[num_subscribers].handler_ctx = ctx;
+   num_subscribers++;
+}
+
 
 void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_t cb, NodeEntity* entity) {
    for(int i=0;i<num_subscribers;i++) {
@@ -521,6 +541,11 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
     //Serial.printf("MQTT CALLBACK: checking subscriber %d: topic '%s'\n", i, settable_properties[i].topic);
     if (strcmp(settable_properties[i].topic, topic) == 0) {
       handled = true;
+      // D3: per-property fn-ptr handler (+context) — the STL-free callback path.
+      if (settable_properties[i].handler) {
+          Serial.printf("MQTT: Invoking settable handler for topic '%s'\n", topic);
+          settable_properties[i].handler(settable_properties[i].handler_ctx, payload_buf);
+      }
       if (settable_properties[i].property_callback && settable_properties[i].instance) {
         Serial.printf("MQTT: Invoking property callback for topic '%s'\n", topic);
           (settable_properties[i].instance->*settable_properties[i].property_callback)(topic, payload_buf);

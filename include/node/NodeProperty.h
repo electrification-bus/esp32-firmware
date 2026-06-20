@@ -47,6 +47,20 @@ class NodeProperty {
             snprintf(_top, sizeof(_top), "%s%s/%s/%s", dev->topic(), node_id, homie_property_id(), HOMIE_TOPIC_SET);
             entity_subscribe_for_callbacks(_top, cb, ne);
         }
+        // D3: register a per-property settable handler — a plain fn-ptr + opaque context
+        // (no std::function, no lambda). Subscribes this property's /set topic and fires
+        // handler(ctx, value) when a controller publishes. Call after setup() (needs the
+        // built _topic). The property should also be declared settable so it appears in
+        // $description; the author's static trampoline recovers `this` from ctx, e.g.:
+        //   static void on_state(void* ctx, const char* v) { ((MyDrv*)ctx)->set(v); }
+        //   _state.on_set(&MyDrv::on_state, this);
+        void on_set(settable_handler_t handler, void* ctx) {
+            char set_topic[160] = {0};
+            snprintf(set_topic, sizeof(set_topic), "%s/%s", _topic, HOMIE_TOPIC_SET);
+            if (mqtt_client.connected()) mqtt_client.subscribe(set_topic, 0);  // /set is QoS 0 (C4)
+            subscribe_settable_handler(set_topic, handler, ctx);
+        }
+
         const char* homie_property_id()    const    {return _homie_property_id;}
         void set_homie_property_id(const char* id) {
             snprintf(_homie_property_id, sizeof(_homie_property_id), "%s", id);

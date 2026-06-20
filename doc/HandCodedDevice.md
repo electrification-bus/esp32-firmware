@@ -145,7 +145,30 @@ A node entity is a `NodeEntity` subclass (or a `ModbusRTUEntity` subclass for Mo
 - Constructor takes the Homie node id and chains to `NodeEntity(homie_node_id)`.
 - Override `bool setup()` — chain `NodeEntity::setup()` first, then `.setup(node_id, property_id)` each `NodeProperty` member.
 - Override `void loop()` — read your hardware, `.set(value)` and `.publish()` each property (gate with `pollIntervalTrigger()` so you don't spam the bus).
-- For settable properties, override `set(bool/int/float/const char*)` and/or `entity_settable_callback(...)`.
+- For settable properties, override `set(bool/int/float/const char*)` and/or `entity_settable_callback(...)`. Or — for a per-property handler instead of one node-level callback that switches on property-id — use `NodeProperty::on_set()` (below).
+
+##### Per-property settable handlers (`on_set`)
+
+`NodeProperty::on_set(handler, ctx)` registers a **plain function pointer** (`void(*)(void* ctx, const char* value)`) plus an opaque context for *one* settable property — no `std::function`, no lambda, no heap. The author writes a `static` trampoline and passes `this` as the context to recover instance state:
+
+```cpp
+class MyRelay : public NodeEntity {
+    NodeProperty _state;
+    static void on_state_set(void* ctx, const char* value) {     // static, no capture
+        static_cast<MyRelay*>(ctx)->set_relay(strcmp(value, "true") == 0);
+    }
+public:
+    MyRelay(const char* id) : NodeEntity(id) {}
+    bool setup() override {
+        NodeEntity::setup();
+        _state.setup(getNodeId(), "state");
+        _state.on_set(&MyRelay::on_state_set, this);             // fn-ptr + context
+        return true;
+    }
+};
+```
+
+`on_set` subscribes the property's `/set` topic (QoS 0) and fires the handler with the decoded payload on each command — a cleaner alternative to one `entity_settable_callback` that `if/else`s over every property-id. Declare the property `settable` so it also advertises in `$description`.
 
 The BME280 driver in [`lib/i2c/bme280.h`](../lib/i2c/bme280.h) / [`bme280.cpp`](../lib/i2c/bme280.cpp) is a clean worked example. Skeleton:
 
