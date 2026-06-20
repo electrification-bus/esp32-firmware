@@ -188,6 +188,14 @@ def cmd_generate(args) -> None:
                     settable  = prop.get("settable", False)
                     retained  = prop.get("retained", True)
                     prop_format = prop.get("format", "")
+                    # rrj.3: numeric (physical-measurement) properties should carry a
+                    # Homie `unit`. An ABSENT unit key is flagged as likely-forgotten;
+                    # use `unit: ""` to declare a genuinely dimensionless value (count,
+                    # ratio, power factor) and silence the warning.
+                    if prop["datatype"] in ("float", "integer") and "unit" not in prop:
+                        print(f"  WARNING: numeric property '{effective_node_id}/{prop_id}' has no "
+                              f"'unit' — add one, or 'unit: \"\"' if intentionally dimensionless",
+                              file=sys.stderr)
                     prop_static_decls.append(f"static Property {prop_var};")
                     args_str  = f'"{prop_id}", "{prop["name"]}", "{prop["datatype"]}", "{unit}"'
                     # Trailing args are positional: emit settable/retained if either is

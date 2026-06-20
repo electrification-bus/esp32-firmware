@@ -46,6 +46,7 @@ nodes:
       - id: cycles
         name: Charge Cycles
         datatype: integer
+        unit: ""          # dimensionless count (rrj.3)
         settable: false
         retained: true
         value: 0
@@ -107,6 +108,7 @@ nodes:
       - id: peak_begin_min
         name: Peak Window Start (minutes-of-day)
         datatype: integer
+        unit: min          # value is minutes-of-day (rrj.3)
         value: 955
         settable: true
         retained: true
@@ -114,6 +116,7 @@ nodes:
       - id: peak_end_min
         name: Peak Window End (minutes-of-day)
         datatype: integer
+        unit: min          # value is minutes-of-day (rrj.3)
         value: 1265
         settable: true
         retained: true
