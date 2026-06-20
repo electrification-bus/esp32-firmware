@@ -194,6 +194,17 @@ size_t Device::serialize(char* buffer, size_t bufferSize) {
   JsonDocument json;
   json[HOMIE_NAME] = _name;
   json[HOMIE_TYPE] = _type;
+  // Homie 5 nested-device hierarchy. `children` is always present (empty for a
+  // leaf), matching the reference SDK; `root`/`parent` appear only on non-root
+  // devices. The tree is referenced by device-id, not embedded.
+  JsonArray children = json[HOMIE_CHILDREN].to<JsonArray>();
+  for (Device* c = _first_child; c; c = c->_next_sibling) {
+    children.add(c->getId());
+  }
+  if (_parent) {
+    json[HOMIE_ROOT]   = root()->getId();
+    json[HOMIE_PARENT] = _parent->getId();
+  }
   JsonObject nodes_obj = json[HOMIE_NODES].to<JsonObject>();
   for (int i = 0; i < _num_nodes; i++) {
     JsonObject node_obj = nodes_obj[_nodes[i]->id()].to<JsonObject>();
