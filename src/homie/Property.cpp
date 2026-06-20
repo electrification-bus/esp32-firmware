@@ -124,7 +124,10 @@ void Property::setValue(unsigned int value) {
 }
 
 const char* Property::coerced_value() const {
-    return _value; //TODO
+    // _value already holds the coerced form: numeric settables are step-rounded and
+    // range-checked before storage (C2), enum/color/datetime/duration store the
+    // validated payload. So the canonical stored value IS the coerced value.
+    return _value;
 }
 
 void Property::setDatatype(const char* dt)  {
@@ -160,30 +163,43 @@ bool Property::retained() {
 }
 
 bool Property::is_json_datatype() const {
-    return false;
+    return strcmp(_datatype, HOMIE_DATATYPE_JSON) == 0;
+}
+
+void Property::setSupportsTarget(bool t) {
+    _supports_target = t;
+}
+
+bool Property::supportsTarget() {
+    return _supports_target;
 }
 void Property::set_callback() const{
 }
 
 void Property::publish() {
-    if (!_has_value) return;  // C3: don't publish a phantom retained-empty value topic
-    // MQTTClient publish: (topic, payload, retained, qos)
+    publish_value();
+}
+
+// Publish the current (coerced) value to the property topic. Returns the MQTT publish
+// result; false (no publish) if no value has been set yet. (C5 — was a TODO stub.)
+bool Property::publish_value() {
+    if (!_has_value) return false;  // C3: don't publish a phantom retained-empty value topic
     if (_value[0] == '\0') {
         // Empty-string VALUE -> single 0x00 byte; a zero-length payload would retract
         // the retained topic (Homie §Empty string values). Length-aware overload.
         static const char nul = 0x00;
-        _mqtt_client->publish(topic(), &nul, 1, retained(), homie_qos(retained()));
-    } else {
-        _mqtt_client->publish(topic(), _value, retained(), homie_qos(retained()));
+        return _mqtt_client->publish(topic(), &nul, 1, retained(), homie_qos(retained()));
     }
+    return _mqtt_client->publish(topic(), _value, retained(), homie_qos(retained()));
 }
 
+// Publish the intended target value to the property's $target topic (C5). Per spec,
+// the EXACT value received on /set is published byte-for-byte (no coercion), retained,
+// so a controller can close its control loop. Only called when supportsTarget().
 void Property::publish_target_value(const char* payload) {
-    return publish(); //TODO ?
-}
-
-bool Property::publish_value() {
-    return true; //TODO
+    char target_topic[96] = {0};
+    snprintf(target_topic, sizeof(target_topic), "%s/%s", _topic, HOMIE_$TARGET);
+    _mqtt_client->publish(target_topic, payload, true, homie_qos(true));
 }
 
 void Property::device_new_value_callback(const char* sensor_value) {
@@ -234,6 +250,11 @@ void Property::mqtt_settable_callback(const char* topic, const char* payload) {
     }
     if (isValid) {
         Serial.printf("Node: '%s',  Property: '%s': datetype: '%s', new value: '%s'\n",_parent_node->id(), _id, datatype(), payload);
+        // C5: if this property supports $target, publish the EXACT received value to
+        // $target first (byte-for-byte, closing the controller's control loop), then
+        // publish the (coerced) property value. For instantaneous changes both happen
+        // now; a slow transition would keep $target fixed and update the value over time.
+        if (_supports_target) publish_target_value(payload);
         publish();
     }
 

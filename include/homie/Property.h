@@ -47,6 +47,8 @@ public:
     void start_mqtt_client();
     void setSettable(bool settable);
     bool settable();
+    void setSupportsTarget(bool t);   // device publishes $target on accepted /set (C5)
+    bool supportsTarget();
     void setRetained(bool r);
     bool retained();
     bool is_json_datatype() const;

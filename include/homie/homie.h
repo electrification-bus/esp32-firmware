@@ -62,6 +62,7 @@ inline const char* top_level_topic() { return HOMIE_TOPIC_DOMAIN; }
 #define HOMIE_IMPLEMENTATION    "implementation"
 #define HOMIE_$STATE       "$state"
 #define HOMIE_$DESCRIPTION "$description"
+#define HOMIE_$TARGET      "$target"
 
 #define HOMIE_STATE_DISCONNECTED  "disconnected"
 #define HOMIE_STATE_SLEEPING      "sleeping"

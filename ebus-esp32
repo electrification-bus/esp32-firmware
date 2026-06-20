@@ -197,6 +197,10 @@ def cmd_generate(args) -> None:
                         if prop_format:
                             args_str += f', "{prop_format}"'
                     prop_reg_body.append(f'        _node->addProperty(&{prop_var}, {args_str});')
+                    # $target support is a device behavior, not a $description field, so
+                    # set it on the Property directly rather than via addProperty args (C5).
+                    if prop.get("supports_target"):
+                        prop_reg_body.append(f'        {prop_var}.setSupportsTarget(true);')
                 prop_reg_body.append('    }')
 
     def emit_device(dev_cfg, dev_access, dev_addr, runtime_id_expr, is_root):
