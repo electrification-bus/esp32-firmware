@@ -236,6 +236,14 @@ void Device::endTransition() {
 // $description while live).
 void Device::notifyStructuralChange() {
   if (_transition_depth > 0) return;
+  // A9: peek the serialized description; if it's unchanged, skip the whole INIT->
+  // READY flap (not just the publish) so controllers aren't forced to resync over a
+  // no-op structural change.
+  uint32_t h = buildDescription(nullptr);
+  if (_has_description_hash && h == _last_description_hash) {
+    Serial.printf("Device '%s': structural change left $description unchanged — no flap\n", _id);
+    return;
+  }
   if (_state != DEVICE_STATE_READY) {
     publish();
     return;
@@ -269,6 +277,9 @@ void Device::clearRetained() {
   for (int i = 0; i < _num_nodes; i++) {
     _nodes[i]->clearRetained();
   }
+  // A9: the retained $description is now empty, so forget the cached hash — the next
+  // publish() must re-send even if the content matches what we had before clearing.
+  _has_description_hash = false;
 }
 
 void Device::setState(DeviceState state) {
@@ -372,6 +383,28 @@ void Device::publishState() {
 // Static buffer for $description JSON (avoid stack allocation)
 static char _description_json[MAX_DATA_LEN];
 
+// FNV-1a, 32-bit. Cheap, no library, fine for change-detection on an ESP32 (the
+// issue calls out avoiding SHA-256). Not cryptographic — collisions are harmless
+// here (worst case: a redundant republish, never a missed-but-needed one within
+// the same content, since identical content always hashes equal).
+static uint32_t fnv1a_32(const char* data, size_t len) {
+  uint32_t h = 2166136261u;
+  for (size_t i = 0; i < len; i++) {
+    h ^= (uint8_t)data[i];
+    h *= 16777619u;
+  }
+  return h;
+}
+
+// Serialize $description into the shared static buffer and return its hash. The C++
+// $description is deterministic (no always-fresh `version` timestamp like the python
+// SDK), so the whole serialized buffer is hashed directly — nothing to strip.
+uint32_t Device::buildDescription(size_t* out_len) {
+  size_t len = toJson(_description_json, sizeof(_description_json));
+  if (out_len) *out_len = len;
+  return fnv1a_32(_description_json, len);
+}
+
 void Device::publish() {
 
   // Homie 5: a device's $description may only CHANGE while $state is init,
@@ -385,14 +418,25 @@ void Device::publish() {
   }
 
   //$description
-  Serial.println("DEVICE publish: $description");
-  char top[128] = {0};
-  snprintf(top, sizeof(top), "%s%s", topic(), HOMIE_$DESCRIPTION);
-  size_t len = toJson(_description_json, sizeof(_description_json));
-  Serial.printf("DEVICE: $description JSON size: %d bytes\n", len);
-  // MQTTClient publish: (topic, payload, retained, qos)
-  if (!_mqtt_client->publish(top, _description_json, true, 0)) {
-      Serial.println("MQTT publish: $description failed");
+  size_t len = 0;
+  uint32_t h = buildDescription(&len);
+  // A9: suppress a byte-identical retained republish — avoids the redundant payload
+  // and (when wrapped in a state cycle) a gratuitous controller resync.
+  if (_has_description_hash && h == _last_description_hash) {
+    Serial.printf("DEVICE publish: $description unchanged (hash %08lx, %u bytes) — skipping republish\n",
+                  (unsigned long)h, (unsigned)len);
+  } else {
+    Serial.println("DEVICE publish: $description");
+    char top[128] = {0};
+    snprintf(top, sizeof(top), "%s%s", topic(), HOMIE_$DESCRIPTION);
+    Serial.printf("DEVICE: $description JSON size: %d bytes\n", len);
+    // MQTTClient publish: (topic, payload, retained, qos)
+    if (!_mqtt_client->publish(top, _description_json, true, 0)) {
+        Serial.println("MQTT publish: $description failed");
+    } else {
+        _last_description_hash = h;
+        _has_description_hash  = true;
+    }
   }
 
   //nodes

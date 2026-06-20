@@ -103,6 +103,9 @@ class Device {
 
  private:
     void unlinkChild(Device* child);        // detach a child from the sibling list
+    // Serialize $description into the shared static buffer; return its FNV-1a hash
+    // (and length via out_len). Used to detect unchanged descriptions (A9).
+    uint32_t buildDescription(size_t* out_len);
 
     char _id[64] = {0};
     char _name[32] = {0};
@@ -124,4 +127,12 @@ class Device {
     // >0 while inside one or more StateTransition scopes. Suppresses per-change
     // $description flaps so a batch of structural changes collapses to one cycle.
     int     _transition_depth = 0;
+
+    // A9: FNV-1a hash of the last $description we actually put on the wire. A
+    // republish whose content is byte-identical is suppressed (no redundant ~KB
+    // retained message, no gratuitous INIT->READY flap forcing controllers to
+    // resync). _has_description_hash distinguishes "never published" from a real
+    // hash that happens to be 0; cleared by clearRetained() so the next publish sends.
+    uint32_t _last_description_hash = 0;
+    bool     _has_description_hash  = false;
 };
