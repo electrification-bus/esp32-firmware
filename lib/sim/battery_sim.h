@@ -18,4 +18,7 @@ private:
     unsigned long _last_update = 0;
     int  _soc_pct = 72;
     int  _dir     = -1;   // -1 discharging, +1 charging; flips at the SoC rails
+    // G1 proxy state mgmt: a simulated source link. When "down", the proxier marks the
+    // proxied child LOST (Device::setSourceConnected) and stops publishing values.
+    bool _link_up = true;
 };

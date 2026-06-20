@@ -78,6 +78,13 @@ class Device {
    // the boot path publishes the whole tree at once via publishTree().
    void    addChildLive(Device* child);    // child init->$description->ready, then parent init->+child->ready
    void    removeChildLive(Device* child); // parent init->-child->ready, then clear the child's retained topics
+
+   // Proxy state management (G1 / proxy.md): for a proxied child device, reflect the
+   // proxier's communication-link health to the source onto the child's Homie state.
+   // up=true -> READY (source reachable); up=false -> LOST (source unreachable). Only
+   // the child's state changes — the proxier (root) stays up, so a controller sees the
+   // proxied device go lost without the bridge disappearing. No-op if already there.
+   void    setSourceConnected(bool up);
    void    clearRetained();                // publish empty (zero-length, retained) to $state, $description, and property topics
 
    // --- Batched state transitions (Homie 5: minimize INIT->READY flaps) ---

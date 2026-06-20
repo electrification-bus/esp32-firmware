@@ -50,5 +50,7 @@ children:
     name: Battery
     type: energy.ebus.device.bess
     nodes:
-      - component: sim/battery_sim
+      - component: sim/battery_sim     # the proxied device's data (soc capability)
         id: battery
+      - component: sim/proxy_info      # info capability: proxied=true + serial/vendor (G1)
+        id: info

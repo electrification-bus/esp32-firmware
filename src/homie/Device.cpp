@@ -268,6 +268,15 @@ void Device::notifyStructuralChange() {
   setState(DEVICE_STATE_READY);
 }
 
+// Proxy state management (G1): map source-link health to the proxied device's state.
+void Device::setSourceConnected(bool up) {
+  DeviceState want = up ? DEVICE_STATE_READY : DEVICE_STATE_LOST;
+  if (_state == want) return;
+  Serial.printf("Device '%s': proxy source %s -> $state %s\n",
+                _id, up ? "connected" : "disconnected", device_state_to_cstr(want));
+  setState(want);   // publishes $state; the description/values are untouched
+}
+
 void Device::unlinkChild(Device* child) {
   if (_first_child == child) {
     _first_child = child->_next_sibling;

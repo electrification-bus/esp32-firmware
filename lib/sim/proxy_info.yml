@@ -1,0 +1,37 @@
+homie: 5.0.1
+name: EBUS
+type: ebus
+state: init
+# The `info` capability for a PROXIED device (G1 / proxy.md). `proxied=true` is the
+# explicit disambiguation signal; serial-number/vendor-name identify the proxied device
+# so a consumer can correlate it with a future native publication.
+nodes:
+  - id: info
+    name: Device Info
+    type: energy.ebus.capability.info
+    properties:
+      - id: proxied
+        name: Proxied
+        datatype: boolean
+        unit: ""
+        settable: false
+        retained: true
+        value: false
+      - id: serial-number
+        name: Serial Number
+        datatype: string
+        settable: false
+        retained: true
+        value: ""
+      - id: vendor-name
+        name: Vendor Name
+        datatype: string
+        settable: false
+        retained: true
+        value: ""
+extensions: []
+implementation: homie-esp32-sdk
+generator:
+  class: ProxyInfo
+  header: sim/proxy_info.h
+  constructor: '("{id}")'

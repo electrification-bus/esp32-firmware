@@ -183,7 +183,9 @@ def cmd_generate(args) -> None:
                 prop_reg_body.append('    if (_node) {')
                 for prop in properties:
                     prop_id   = prop["id"]
-                    prop_var  = f"_prop_{effective_node_id}_{prop_id}"
+                    # Sanitize the C++ variable name (Homie ids allow hyphens, C++ names
+                    # don't) while the addProperty() arg below keeps the real id string.
+                    prop_var  = f"_prop_{_cvar(effective_node_id)}_{_cvar(prop_id)}"
                     unit      = prop.get("unit", "")
                     settable  = prop.get("settable", False)
                     retained  = prop.get("retained", True)
