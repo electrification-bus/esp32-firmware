@@ -93,6 +93,21 @@ Node* Device::addNode(JsonVariant node, const char* topic) {
     return n;
 }
 
+// Declarative node registration from a PropertyDesc table (D2). Heap-free: the caller
+// owns the Property storage; we just wire each descriptor into storage[i].
+Node* Device::addNode(const char* id, const char* name, const char* type,
+                      const PropertyDesc* descs, Property* storage, size_t count) {
+  Node* n = addNode(id, name, type);   // existing 3-arg create
+  if (!n) return nullptr;
+  for (size_t i = 0; i < count; i++) {
+    const PropertyDesc& d = descs[i];
+    n->addProperty(&storage[i], d.id, d.name, to_homie(d.datatype),
+                   d.unit, d.settable, d.retained, d.format);
+    if (d.supports_target) storage[i].setSupportsTarget(true);
+  }
+  return n;
+}
+
 Node* Device::getNode(const char* id) {
   for (int i = 0; i < _num_nodes; i++) {
       if (strcmp(_nodes[i]->id(), id) == 0) {

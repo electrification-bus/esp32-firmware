@@ -102,6 +102,31 @@ void loop_homie() {
 
 Everything is statically allocated — no heap, no null-pointer risk, constructors fire before `setup()`. That's the house style for this firmware; keep to it.
 
+#### Declarative alternative: a property descriptor table
+
+For a node with several properties, the per-`addProperty` calls get repetitive and the positional `datatype`/`unit`/`settable`/`retained`/`format` arguments are easy to transpose. The type-safe **descriptor table** (D1/D2) reads like the `device.yml` and the compiler checks the datatype + array sizes:
+
+```cpp
+#include <homie/Device.h>          // pulls in PropertyDesc + the enums
+
+static Property        battery_store[5];     // mutable storage (still heap-free)
+static const PropertyDesc battery[] = {
+    { .id="soc",         .name="State of Charge",  .datatype=PropertyDatatype::Integer,
+      .unit=to_homie(Unit::Percent), .format="0:100" },
+    { .id="voltage",     .name="Pack Voltage",     .datatype=PropertyDatatype::Float, .unit=to_homie(Unit::Volt) },
+    { .id="current",     .name="Pack Current",     .datatype=PropertyDatatype::Float, .unit=to_homie(Unit::Ampere) },
+    { .id="power",       .name="Pack Power",       .datatype=PropertyDatatype::Float, .unit=to_homie(Unit::Watt) },
+    { .id="temperature", .name="Pack Temperature", .datatype=PropertyDatatype::Float,
+      .unit=to_homie(Unit::DegreeCelsius), .settable=true, .supports_target=true },
+};
+
+// One call. The templated overload deduces the count and requires the descriptor table
+// and the storage array to be the SAME size — a mismatch is a compile error.
+device->addNode("battery", "Battery", EBUS_CAP_SOC, battery, battery_store);
+```
+
+Omitted fields use Homie's defaults (`settable=false`, `retained=true`, no unit/format). `datatype` is a compiler-checked `PropertyDatatype`; `unit` stays a string so custom units work (pass `to_homie(Unit::X)` for the known ones, or any literal). This needs C++17 (the project sets `-std=gnu++17`).
+
 ### Why two property objects per property?
 
 There are two layers, matched by node-id + property-id strings:

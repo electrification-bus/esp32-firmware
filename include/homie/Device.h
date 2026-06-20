@@ -3,6 +3,7 @@
 #include <platform/mqtt_client.h>
 #include <homie/Node.h>
 #include <homie/Property.h>
+#include <homie/homie_descriptor.h>   // PropertyDesc (D2)
 
 typedef enum {
     DEVICE_STATE_INIT,
@@ -33,6 +34,18 @@ class Device {
     DeviceState state() { return _state;};
     Node* addNode(const char* id, const char* name, const char* type);
     Node* addNode(JsonVariant node, const char* topic);
+
+    // Declarative node registration (D2): create the node and all its properties from a
+    // PropertyDesc table. `storage` is caller-provided static Property storage (heap-free).
+    Node* addNode(const char* id, const char* name, const char* type,
+                  const PropertyDesc* descs, Property* storage, size_t count);
+    // Templated convenience: deduces count and requires descs[] and storage[] to be the
+    // SAME size — a mismatch is a compile error.
+    template <size_t N>
+    Node* addNode(const char* id, const char* name, const char* type,
+                  const PropertyDesc (&descs)[N], Property (&storage)[N]) {
+        return addNode(id, name, type, descs, storage, N);
+    }
     void addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json, bool subscribe = true);
     //void setMQTTClient(MQTTClient* client);
     void setMQTTClient(MQTTClient* client);
