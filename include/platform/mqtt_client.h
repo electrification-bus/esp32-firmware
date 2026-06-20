@@ -53,6 +53,13 @@ void mqtt_restart();
 boolean mqtt_connected();
 
 
+// QoS for RETAINED Homie publications (property values + $state/$description).
+// Homie 5 recommends QoS 2 (SHOULD), so it defaults to 2 but is configurable via the
+// `mqtt_qos` config key. Non-retained publications and /set are fixed at QoS 0 per the
+// spec (a hard requirement), so homie_qos() returns 0 for them regardless. (C4)
+extern uint8_t mqtt_qos;
+inline int homie_qos(bool retained) { return retained ? (int)mqtt_qos : 0; }
+
 // Thread-safe MQTT publish queue (for publishing from other tasks/cores)
 void mqtt_queue_init();
 bool mqtt_queue_publish(const char* topic, const char* payload, bool retained = false);

@@ -41,6 +41,10 @@ mqtt:
   port: 1883
   username: ''
   password: ''
+  # qos: QoS for retained Homie publications ($state, $description, property values).
+  # Homie 5 recommends 2 (default if omitted). Non-retained messages and /set are
+  # always QoS 0 per spec. Valid: 0, 1, 2.
+  qos: 2
 
 nodes:
   - component: modbus/sht20

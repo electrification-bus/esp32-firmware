@@ -172,9 +172,9 @@ void Property::publish() {
         // Empty-string VALUE -> single 0x00 byte; a zero-length payload would retract
         // the retained topic (Homie §Empty string values). Length-aware overload.
         static const char nul = 0x00;
-        _mqtt_client->publish(topic(), &nul, 1, retained(), 0);
+        _mqtt_client->publish(topic(), &nul, 1, retained(), homie_qos(retained()));
     } else {
-        _mqtt_client->publish(topic(), _value, retained(), 0);
+        _mqtt_client->publish(topic(), _value, retained(), homie_qos(retained()));
     }
 }
 
@@ -248,11 +248,11 @@ void Property::subscribe() {
     snprintf(set, sizeof(set), "%s/%s", _topic, HOMIE_TOPIC_SET);
     Serial.printf("property '%s' settable - subscribe: '%s'\n",_id, set);
     //TODO pull this out; retry in loop
-    if (!_mqtt_client->subscribe(set)) {
+    if (!_mqtt_client->subscribe(set, 0)) {   // /set is non-retained -> QoS 0 (C4)
         delay(250);
-        if (!_mqtt_client->subscribe(set)) {
+        if (!_mqtt_client->subscribe(set, 0)) {   // /set is non-retained -> QoS 0 (C4)
             delay(500);
-            if (!_mqtt_client->subscribe(set)) {
+            if (!_mqtt_client->subscribe(set, 0)) {   // /set is non-retained -> QoS 0 (C4)
                 Serial.printf("MQTT: FAILED TO SUBSCRIBE TO PROPERTY SET TOPIC: %s\r\n", set);
                 return;
             }

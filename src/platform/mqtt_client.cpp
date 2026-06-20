@@ -101,7 +101,7 @@ bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool
     if (length > MQTT_PAYLOAD_MAX) length = MQTT_PAYLOAD_MAX;
     if (mqtt_publish_queue == nullptr) {
         Serial.println("MQTT: Queue not initialized, publishing directly");
-        return mqtt_client.publish(topic, payload, length, retained, 0);
+        return mqtt_client.publish(topic, payload, length, retained, homie_qos(retained));
     }
 
     MqttQueueItem item;
@@ -130,7 +130,8 @@ void mqtt_process_queue() {
         if (mqtt_client.connected()) {
             // Length-aware publish so an empty-string value (single 0x00 byte) is sent
             // intact rather than collapsing to a zero-length (retract) payload (C3).
-            mqtt_client.publish(item.topic, item.payload, item.length, item.retained, 0);
+            // Retained -> configured QoS (default 2), non-retained -> QoS 0 (C4).
+            mqtt_client.publish(item.topic, item.payload, item.length, item.retained, homie_qos(item.retained));
         }
         processed++;
     }
@@ -408,7 +409,7 @@ boolean mqtt_connect() {
   // Use static buffer lwt_topic to prevent pointer corruption (arduino-mqtt issue #89)
   // Use QoS 0 - QoS 1 causes connection issues with this library
   snprintf(lwt_topic, sizeof(lwt_topic), "%s/%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID(), HOMIE_$STATE);
-  mqtt_client.setWill(lwt_topic, HOMIE_STATE_LOST, true, 0);  // retained=true, qos=0
+  mqtt_client.setWill(lwt_topic, HOMIE_STATE_LOST, true, homie_qos(true));  // retained $state -> QoS 2 (C4)
   Serial.printf("MQTT will topic:'%s' msg:'%s'\n", lwt_topic, HOMIE_STATE_LOST);
 
   // Configure MQTT client BEFORE connecting
@@ -456,7 +457,7 @@ void mqtt_publish_json(const char* subtopic, const JsonDocument * payload) {
     char jsonString[1024];
     serializeJson(*payload, jsonString);
     snprintf(topicBuf, sizeof(topicBuf), "%s/%s", topic_device, subtopic);
-    if (!mqtt_client.publish(topicBuf, jsonString, true, 0)) {  // retained=true, qos=0
+    if (!mqtt_client.publish(topicBuf, jsonString, true, homie_qos(true))) {  // retained -> QoS 2 (C4)
         Serial.println("MQTT publish: failed");
     }
     Serial.printf("topic: %s, data: %s\n", topicBuf, jsonString);
@@ -483,7 +484,7 @@ void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data)
       mqtt_data[pos] = 0;
       data += pos;
 
-      if (!mqtt_client.publish(topicBuf, mqtt_data, true, 0)) {  // retained=true, qos=0
+      if (!mqtt_client.publish(topicBuf, mqtt_data, true, homie_qos(true))) {  // retained -> QoS 2 (C4)
        Serial.println("MQTT publish: failed");
       }
 #ifdef ENABLE_DEBUG_MQTT

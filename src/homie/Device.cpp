@@ -271,9 +271,9 @@ void Device::clearRetained() {
   if (!_mqtt_client) return;
   char top[160] = {0};
   snprintf(top, sizeof(top), "%s%s", topic(), HOMIE_$STATE);
-  _mqtt_client->publish(top, "", true, 0);
+  _mqtt_client->publish(top, "", true, homie_qos(true));
   snprintf(top, sizeof(top), "%s%s", topic(), HOMIE_$DESCRIPTION);
-  _mqtt_client->publish(top, "", true, 0);
+  _mqtt_client->publish(top, "", true, homie_qos(true));
   for (int i = 0; i < _num_nodes; i++) {
     _nodes[i]->clearRetained();
   }
@@ -374,8 +374,8 @@ void Device::publishState() {
 
   Serial.printf("DEVICE publish: %s -> '%s'\n", state_topic, state_str);
 
-  // MQTTClient publish: (topic, payload, retained, qos)
-  if (!_mqtt_client->publish(state_topic, state_str, true, 0)) {
+  // MQTTClient publish: (topic, payload, retained, qos). $state is retained -> QoS 2 (C4)
+  if (!_mqtt_client->publish(state_topic, state_str, true, homie_qos(true))) {
       Serial.println("MQTT publish: $state failed");
   }
 }
@@ -430,8 +430,8 @@ void Device::publish() {
     char top[128] = {0};
     snprintf(top, sizeof(top), "%s%s", topic(), HOMIE_$DESCRIPTION);
     Serial.printf("DEVICE: $description JSON size: %d bytes\n", len);
-    // MQTTClient publish: (topic, payload, retained, qos)
-    if (!_mqtt_client->publish(top, _description_json, true, 0)) {
+    // MQTTClient publish: (topic, payload, retained, qos). $description retained -> QoS 2 (C4)
+    if (!_mqtt_client->publish(top, _description_json, true, homie_qos(true))) {
         Serial.println("MQTT publish: $description failed");
     } else {
         _last_description_hash = h;

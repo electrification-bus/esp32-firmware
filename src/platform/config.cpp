@@ -19,6 +19,7 @@ char wifi_password[64] = {0};
 
 char mqtt_host[64] = {0};
 uint16_t mqtt_port;
+uint8_t mqtt_qos = 2;   // QoS for retained Homie publications; Homie 5 recommends 2 (C4)
 char mqtt_username[64] = {0};
 char mqtt_password[64] = {0};
 char device_id_prefix[32] = {0};
@@ -209,6 +210,12 @@ bool loadPlatformConfiguration() {
 
   if (config_json["mqtt_port"].is<uint16_t>()) {
     mqtt_port = config_json["mqtt_port"].as<uint16_t>();
+  }
+
+  if (config_json["mqtt_qos"].is<int>()) {
+    int q = config_json["mqtt_qos"].as<int>();
+    if (q >= 0 && q <= 2) mqtt_qos = (uint8_t)q;   // QoS for retained Homie publications (C4)
+    else Serial.printf("CONFIG: ignoring invalid mqtt_qos=%d (must be 0-2)\n", q);
   }
 
   if (config_json["mqtt_username"].is<JsonString>()) {

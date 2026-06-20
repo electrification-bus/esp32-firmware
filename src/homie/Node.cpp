@@ -68,7 +68,7 @@ void Node::clearRetained() {
     // Remove each property's retained value by publishing a zero-length payload.
     if (!_mqtt_client) return;
     for (int i = 0; i < _num_properties; i++) {
-        _mqtt_client->publish(_properties[i]->topic(), "", true, 0);
+        _mqtt_client->publish(_properties[i]->topic(), "", true, homie_qos(true));
     }
 }
 

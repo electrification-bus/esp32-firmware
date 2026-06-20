@@ -47,7 +47,7 @@ unsigned long lastStatsCheck = 0;
 void on_mqtt_reconnect() {
     char state_topic[128];
     snprintf(state_topic, sizeof(state_topic), "%s/%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID(), HOMIE_$STATE);
-    mqtt_client.publish(state_topic, HOMIE_STATE_READY, true, 0);
+    mqtt_client.publish(state_topic, HOMIE_STATE_READY, true, homie_qos(true));  // retained -> QoS 2 (C4)
     Serial.println("CONTROLLER: Re-published $state after reconnect");
 }
 
