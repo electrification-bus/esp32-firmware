@@ -16,8 +16,14 @@ from pathlib import Path
 project_dir = Path(env["PROJECT_DIR"])
 cli = project_dir / "ebus-esp32"
 
-print("generate_homie: regenerating Homie sources from device.yml")
-result = subprocess.run([sys.executable, str(cli), "generate"], cwd=str(project_dir))
-if result.returncode != 0:
-    print("generate_homie: generation FAILED — see errors above", file=sys.stderr)
-    env.Exit(result.returncode)
+# Hand-coded mode: if there's no device.yml, the project maintains src/homie.cpp
+# and data/*.yml by hand (see doc/HandCodedDevice.md), so the generator stands
+# aside instead of failing the build.
+if not (project_dir / "device.yml").exists():
+    print("generate_homie: no device.yml — hand-coded mode, skipping generation")
+else:
+    print("generate_homie: regenerating Homie sources from device.yml")
+    result = subprocess.run([sys.executable, str(cli), "generate"], cwd=str(project_dir))
+    if result.returncode != 0:
+        print("generate_homie: generation FAILED — see errors above", file=sys.stderr)
+        env.Exit(result.returncode)

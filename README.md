@@ -83,6 +83,7 @@ VSCode users: use the PlatformIO IDE's project-tasks pane for build/upload/monit
   - [GettingStarted_VSCode.md](doc/GettingStarted_VSCode.md)
   - [GettingStarted_CLI.md](doc/GettingStarted_CLI.md)
 - **Building from device.yml**: [GenerateHomieDevice.md](doc/GenerateHomieDevice.md)
+- **Building without the generator** (hand-coded device/controller): [HandCodedDevice.md](doc/HandCodedDevice.md)
 - **Configuration overlays**: [Configuration.md](doc/Configuration.md)
 - **LLM access to a running device via MCP**: [Homie5_MCP_Server.md](doc/Homie5_MCP_Server.md)
 - **PlatformIO command cheatsheet**: [PlatformIO_commands.md](doc/PlatformIO_commands.md)
@@ -92,7 +93,6 @@ VSCode users: use the PlatformIO IDE's project-tasks pane for build/upload/monit
   - [API_proposal.md](doc/API_proposal.md)
 - **Subsystem notes**
   - [ESP32_HOMIE_OTA.md](doc/ESP32_HOMIE_OTA.md)
-  - [HOWTO_Homie_Node.md](doc/HOWTO_Homie_Node.md)
   - [mDNS.md](doc/mDNS.md)
   - [Authentication.md](doc/Authentication.md)
   - [CONTROLLER_FEATURES.md](doc/CONTROLLER_FEATURES.md)
