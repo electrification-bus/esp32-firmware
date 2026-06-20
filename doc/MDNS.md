@@ -1,10 +1,62 @@
-# mDNS Service Advertisement
+# mDNS
 
-This document describes the mDNS/DNS-SD services advertised by the homie-esp32-sdk.
+This document covers how the firmware uses mDNS/DNS-SD: the use cases it serves, the two distinct mechanisms involved, and the services it advertises.
+
+> **Default: OFF.** mDNS is opt-in (`mdns_enabled: false` by default). The bundled ESP-IDF mDNS **responder** can crash on certain incoming packets (a null-deref in the precompiled `libmdns.a`, triggered by inbound mDNS traffic, not by our code). Homie device discovery runs over MQTT and does not need mDNS, so it ships disabled. See the *Crash status* note below.
+
+## Use cases & two mechanisms
+
+mDNS does two unrelated jobs here, and the distinction matters because the crash lives in only one of them:
+
+- **Querier (client)** — the ESP32 *browses* for services and *resolves* `.local` names. Outbound queries; the safe side.
+- **Responder (server)** — the ESP32 *claims* a `.local` hostname and *answers* queries about itself and the services it advertises. The inbound-packet path where the crash occurs.
+
+Three use cases, in priority order:
+
+| # | Use case | Mechanism | Priority |
+|---|---|---|---|
+| **UC2** | **Discover the eBus MQTT broker, then auth + connect.** Browse `_secure-mqtt._tcp` / `_mqtt._tcp`, get host/port, connect. Also lets the ESP32 reach the broker and REST API by `.local` name. | **querier** | **highest** |
+| **UC3** | **Claim & defend the device's own `<name>.local`** so other hosts can reach the ESP32 (web UI / REST / OTA) by name. | responder (hostname + `_http`) | medium |
+| **UC1** | **Advertise device metadata** (`_device-info`, `_ebus`/`_homie` TXT records). | responder (services + TXT) | least |
+
+Two consequences fall out of this:
+
+1. **UC2 is the high-value, crash-safe path; UC1 is the low-value, crash-prone one.** So the cheap, valuable capability (find the broker) does not require the risky responder at all.
+2. **Discovery is transient.** Once the ESP32 has found and connected to the broker, it does not need to keep listening — UC2's browse is a one-shot at boot (a few attempts, then stop). The querier only re-engages as a reconnect fallback (below).
+
+### Target: split the gate (planned)
+
+Today a single `mdns_enabled` flag gates *both* mechanisms, and `setup_mdns()` starts the responder before it runs the broker query — so UC2 is currently hostage to the crash-prone responder. The planned design splits this into two independent gates so discovery can run with the responder off:
+
+- `mdns_discovery` — the querier (UC2): browse for the broker, resolve `.local` names.
+- `mdns_advertise` — the responder (UC1/UC3): claim the hostname, register services.
+
+(Tracked in beads; the spike validating that a query-only `mdns_init()` — no `mdns_service_add()` — dodges the crash is part of this.)
+
+## UC2 detail: broker discovery and (re)connection
+
+The querier browses for the broker service and obtains its address. **Connection policy: connect by the discovered IP**, which keeps the querier idle after boot. The broker's `.local` hostname is **persisted as a fallback**: if a later reconnect-by-IP fails (e.g. the broker's DHCP lease moved it), the firmware re-resolves the cached `.local` name. Discovery stays transient; only the resolver remains available.
+
+Broker certs are expected to carry SANs for **both** the `.local` hostname and the IP address(es), so either connection form validates cleanly under TLS — connecting by IP is *not* a TLS-correctness compromise. (This is an eBus-ecosystem expectation, captured as guidance in the specification repo.)
+
+The `MqttMode` config selects how the broker is located: `DISCOVERY_ONLY`, `DISCOVERY_WITH_FALLBACK` (mDNS first, then configured `mqtt_host`), or `CONFIGURED_ONLY` (no mDNS).
+
+### Trust: mDNS gives you an address, not an identity
+
+mDNS is unauthenticated LAN multicast — a rogue host can advertise a fake `_mqtt._tcp`. Discovery only bootstraps *where* the broker is; *who* it is comes entirely from TLS certificate/CA validation (and, where configured, mTLS). Treat a discovered broker as untrusted until the TLS handshake validates it.
+
+## Crash status
+
+The responder crash is an upstream bug in the precompiled ESP-IDF mDNS component shipped with arduino-esp32 2.0.x (backtrace: `_mdns_remove_scheduled_answer` ← `mdns_parse_packet`). It is not fixable with an app-level change. Mitigation today is the default-OFF gate. The gate split (above) makes UC2 usable without touching the crashy path; arduino-esp32 3.x (where mDNS is rewritten upstream) is the longer-term fix. All tracked in beads.
+
+---
+
+The remainder of this document describes the **responder** side — the hostname claim and the services advertised (UC1/UC3).
 
 ## Hostname
 
 The device advertises as `{device-name}.local` where `{device-name}` is derived from `device_name` in `config.yml`, sanitized for mDNS compatibility:
+
 - Uppercase converted to lowercase
 - Spaces and underscores converted to hyphens
 - Non-alphanumeric characters removed
@@ -65,6 +117,7 @@ Device information service for management and discovery tools. Port: 80.
 ## Discovery Examples
 
 ### Using avahi-browse (Linux)
+
 ```bash
 # Discover all Homie devices
 avahi-browse -rt _homie._tcp
@@ -77,6 +130,7 @@ avahi-browse -rt _device-info._tcp
 ```
 
 ### Using dns-sd (macOS)
+
 ```bash
 # Discover all Homie devices
 dns-sd -B _homie._tcp
@@ -86,6 +140,7 @@ dns-sd -L "esp32-poe-iso-homie" _homie._tcp local
 ```
 
 ### Using Python (zeroconf)
+
 ```python
 from zeroconf import ServiceBrowser, Zeroconf
 
