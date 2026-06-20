@@ -64,6 +64,34 @@ class Device {
    void    addChildLive(Device* child);    // child init->$description->ready, then parent init->+child->ready
    void    removeChildLive(Device* child); // parent init->-child->ready, then clear the child's retained topics
    void    clearRetained();                // publish empty (zero-length, retained) to $state, $description, and property topics
+
+   // --- Batched state transitions (Homie 5: minimize INIT->READY flaps) ---
+   // A device's $description may only change while $state is init/disconnected/lost,
+   // so every structural change (add/remove child) normally costs a full
+   // INIT->$description->READY cycle — and each cycle forces every controller in the
+   // wild to resync. StateTransition collapses N structural changes into ONE cycle:
+   // wrap a batch of addChildLive/removeChildLive calls in a guard and the
+   // consolidated $description is published once when the (outermost) guard goes out
+   // of scope. Reentrant via a depth counter; the destructor restores READY even if
+   // the scope exits early. C++ analogue of the python-sdk state_transition() context.
+   //
+   //   { Device::StateTransition t(&parent);   // parent -> init
+   //     parent.addChildLive(&a);              // each child flaps once; parent's
+   //     parent.addChildLive(&b);              // per-add republish is suppressed
+   //   }                                       // -> one consolidated $description, ready
+   class StateTransition {
+    public:
+     explicit StateTransition(Device* d) : _device(d) { if (_device) _device->beginTransition(); }
+     ~StateTransition() { if (_device) _device->endTransition(); }
+     StateTransition(const StateTransition&) = delete;
+     StateTransition& operator=(const StateTransition&) = delete;
+    private:
+     Device* _device;
+   };
+   void beginTransition();          // enter a transition scope (outermost: -> init)
+   void endTransition();            // exit a scope (outermost: consolidated $description -> ready)
+   void notifyStructuralChange();   // republish $description after add/remove (suppressed mid-transition)
+   bool inTransition() const { return _transition_depth > 0; }
    Device* parent()      { return _parent; }
    Device* root();                         // walk up; returns this if no parent
    Device* firstChild()  { return _first_child; }
@@ -92,4 +120,8 @@ class Device {
     Device* _first_child  = nullptr;
     Device* _next_sibling = nullptr;
     int     _num_children = 0;
+
+    // >0 while inside one or more StateTransition scopes. Suppresses per-change
+    // $description flaps so a batch of structural changes collapses to one cycle.
+    int     _transition_depth = 0;
 };

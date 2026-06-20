@@ -162,33 +162,87 @@ void Device::publishStateTree() {
 // publish the child fully (init -> $description -> ready), THEN cycle the parent
 // (init -> updated $description listing the child -> ready). Cycling through init is
 // what lets the parent's $description change (it may only change in init/disc/lost).
+//
+// The parent cycle goes through notifyStructuralChange(), so wrapping several
+// addChildLive() calls in a `Device::StateTransition` on the parent collapses them
+// into ONE parent INIT->$description->READY flap (A8 batching).
 void Device::addChildLive(Device* child) {
   if (!child) return;
   addChild(child);                       // link first: the child can now resolve root/parent
-  // 1. publish the child
-  child->setState(DEVICE_STATE_INIT);
-  child->publishState();                 // emit init explicitly (setState no-ops if already init)
-  child->publish();                      // $description (with root/parent) + nodes
-  child->setState(DEVICE_STATE_READY);
-  // 2. update the parent
-  setState(DEVICE_STATE_INIT);
-  publish();                             // parent $description now lists the child
-  setState(DEVICE_STATE_READY);
+  // 1. publish the child fully — its own init -> $description (with root/parent) +
+  //    nodes -> ready. A child starts in INIT, so the guard's entry is a no-op and
+  //    its exit publishes the child's description and brings it to ready.
+  {
+    StateTransition t(child);
+  }
+  // 2. tell the parent its child set changed (suppressed if the parent is itself
+  //    mid-transition — then the enclosing scope republishes once for the batch).
+  notifyStructuralChange();
 }
 
 // Runtime remove (convention §"Removing children"): cycle the parent (init ->
 // $description without the child -> ready), THEN clear the child's retained topics
 // starting with $state (an empty $state means the device ceases to exist).
+//
+// The parent cycle goes through notifyStructuralChange(), so a batch of
+// removeChildLive() calls inside a `Device::StateTransition` collapses to one flap.
 void Device::removeChildLive(Device* child) {
   if (!child) return;
-  // 1. update the parent
-  setState(DEVICE_STATE_INIT);
-  unlinkChild(child);                    // so serialize() omits the child
-  publish();
-  setState(DEVICE_STATE_READY);
-  // 2. clear the child's retained topics
+  // 1. detach so our $description omits the child, then republish it (one flap, or
+  //    batched into an enclosing StateTransition).
+  unlinkChild(child);
+  notifyStructuralChange();
+  // 2. clear the child's retained topics ($state empty => device ceases to exist).
   child->clearRetained();
   child->_parent = nullptr;
+}
+
+// --- Batched state transitions (A8) ---
+
+// Enter a transition scope. Only the outermost entry announces INIT. setState()
+// publishes only on a state CHANGE, so for a brand-new device that already starts in
+// INIT we publish $state=init explicitly — a fresh child must announce init->...->ready
+// like any device. (The python-sdk starts _state as None so its first set_state(INIT)
+// publishes; C++ defaults to DEVICE_STATE_INIT, hence the explicit publishState here.)
+void Device::beginTransition() {
+  _transition_depth++;
+  if (_transition_depth == 1) {
+    if (_state != DEVICE_STATE_INIT) {
+      setState(DEVICE_STATE_INIT);
+    } else {
+      publishState();
+    }
+  }
+}
+
+// Exit a transition scope. Only the outermost exit publishes the consolidated
+// $description and returns to READY; inner exits just decrement. Leaving the scope
+// (depth -> 0) BEFORE publish() is deliberate: notifyStructuralChange() must not
+// suppress this final, intended republish.
+void Device::endTransition() {
+  if (_transition_depth == 1) {
+    _transition_depth = 0;
+    publish();
+    setState(DEVICE_STATE_READY);
+  } else if (_transition_depth > 0) {
+    _transition_depth--;
+  }
+}
+
+// Republish $description after a structural change (a child was added or removed).
+// Suppressed while mid-transition — the outermost endTransition() publishes once for
+// the whole batch. Before the device is ready (boot), just publish with no flap;
+// once ready, a full INIT->$description->READY cycle (the only legal way to change
+// $description while live).
+void Device::notifyStructuralChange() {
+  if (_transition_depth > 0) return;
+  if (_state != DEVICE_STATE_READY) {
+    publish();
+    return;
+  }
+  setState(DEVICE_STATE_INIT);
+  publish();
+  setState(DEVICE_STATE_READY);
 }
 
 void Device::unlinkChild(Device* child) {
