@@ -48,7 +48,7 @@ Every build path regenerates from `device.yml` first (the pre-build hook), so `g
 ```yaml
 device:
   name: Energy Bus Monitor      # human-readable name (published as Homie $name)
-  id: ebus-001                  # device identifier prefix (used in MQTT topic)
+  id: ${chip_id}                # device-id template, resolved on-device (see "The id template" below)
   type: energy                  # device type string (published as Homie $type)
   board: esp32-poe-iso          # must match an [env:…] in platformio.ini
 
@@ -141,7 +141,7 @@ eBus models a product as a tree of nested Homie 5 devices — a parent (root) de
 ```yaml
 device:
   name: My Battery System
-  id: ebus-001
+  id: ${chip_id}
   type: energy.ebus.device.bess
   board: esp32-poe-iso
 

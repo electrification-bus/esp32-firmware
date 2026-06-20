@@ -127,7 +127,7 @@ If you use an LLM coding assistant (Claude Code, Cursor, Aider, etc.), please **
 
 Two patterns we recommend:
 
-- **Shadow repo** — Keep your personal LLM configs in a separate git repo (e.g. `~/projects/eBus/shadow-repo/esp32-sdk/`) and symlink them into this working tree. Gives you version control over your own configs without polluting the project repo. See the [`shadow-repo-init`](https://github.com/anthropics/claude-code) pattern for one implementation.
+- **Shadow repo** — Keep your personal LLM configs in a separate git repo and symlink them into this working tree. Gives you version control over your own configs without polluting the project repo.
 - **Local exclude** — Add the paths to `.git/info/exclude` (the per-clone gitignore that's never tracked or shared). Simpler, but doesn't survive a fresh clone.
 
 The project `.gitignore` already lists common personal-LLM paths as a defensive measure, so accidental commits are caught even without either pattern above. If you have a use case for project-wide LLM context that *should* be tracked (e.g. a shared coding-standards `CLAUDE.md`), discuss with the maintainers first.
