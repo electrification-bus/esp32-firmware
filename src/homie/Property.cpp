@@ -92,22 +92,27 @@ const char* Property::name() const {
 void Property::setValue(int value) {
     _intValue = value;
     snprintf(_value, sizeof(_value), "%d", value);
+    _has_value = true;
 }
 void Property::setValue(float value) {
     _floatValue = value;
     snprintf(_value, sizeof(_value), "%f", value);
+    _has_value = true;
 }
 void Property::setValue(const char* value) {
     snprintf(_stringValue, sizeof(_stringValue), "%s", value);
     snprintf(_value, sizeof(_value), "%s", value);
+    _has_value = true;
 }
 void Property::setValue(bool value) {
     _boolValue = value;
     strcpy(_value, value ? "true" : "false");
+    _has_value = true;
 }
 void Property::setValue(unsigned int value) {
     _unsignedValue = value;
     snprintf(_value, sizeof(_value), "%u", value);
+    _has_value = true;
 }
 
 const char* Property::coerced_value() const {
@@ -153,8 +158,16 @@ void Property::set_callback() const{
 }
 
 void Property::publish() {
+    if (!_has_value) return;  // C3: don't publish a phantom retained-empty value topic
     // MQTTClient publish: (topic, payload, retained, qos)
-    _mqtt_client->publish(topic(), _value, retained(), 0);
+    if (_value[0] == '\0') {
+        // Empty-string VALUE -> single 0x00 byte; a zero-length payload would retract
+        // the retained topic (Homie §Empty string values). Length-aware overload.
+        static const char nul = 0x00;
+        _mqtt_client->publish(topic(), &nul, 1, retained(), 0);
+    } else {
+        _mqtt_client->publish(topic(), _value, retained(), 0);
+    }
 }
 
 void Property::publish_target_value(const char* payload) {

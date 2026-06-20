@@ -87,34 +87,48 @@ class NodeProperty {
         void set(int value) {
             _intValue = value;
             snprintf(_value, sizeof(_value), "%d", value);
-        }   
+            _has_value = true;
+        }
         void set(float value) {
             _floatValue = value;
             snprintf(_value, sizeof(_value), "%.4f", value); //4 decimal precision
+            _has_value = true;
         }
         void set(const char* value) {
             snprintf(_stringValue, sizeof(_stringValue), "%s", value);
             snprintf(_value, sizeof(_value), "%s", value);
+            _has_value = true;
         }
         void set(bool value) {
             _boolValue = value;
             strcpy(_value, value ? "true" : "false");
+            _has_value = true;
         }
         void set(unsigned int value) {
             _unsignedValue = value;
             snprintf(_value, sizeof(_value), "%u", value);
+            _has_value = true;
         }
         void set(double value) {
             _doubleValue = value;
             snprintf(_value, sizeof(_value), "%f", value);
+            _has_value = true;
         }
 
         void publish() {
             // Publish the value via the thread-safe queue (any task/core). Homie 5
             // requires property values to be RETAINED so reconnecting controllers
             // get the last value; _retained mirrors the property's declared flag.
-            mqtt_queue_publish(topic(), _value, _retained);
-        }        
+            if (!_has_value) return;  // C3: don't publish a phantom retained-empty topic
+            if (_value[0] == '\0') {
+                // Empty-string VALUE -> single 0x00 byte. A zero-length payload would be
+                // read as a "delete/retract" of the retained topic (Homie §Empty string).
+                static const char nul = 0x00;
+                mqtt_queue_publish(topic(), &nul, 1, _retained);
+            } else {
+                mqtt_queue_publish(topic(), _value, _retained);
+            }
+        }
         const char* topic() const { return _topic; }
         void set_topic(const char* topic) { snprintf(_topic, sizeof(_topic), "%s", topic); }
 
@@ -127,6 +141,7 @@ class NodeProperty {
         char _unit[8] = {0};
         int _round_to = 0;
         bool _retained = true;   // Homie 5 default; set from the property in setup()
+        bool _has_value = false; // C3: stays false until set() — guards phantom retained-empty topics
         bool _supports_target = false;
         Node* _parent_node = nullptr;
         //std::mutex _lock;

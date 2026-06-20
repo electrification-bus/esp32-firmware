@@ -66,6 +66,7 @@ public:
     void clear_dirty() { _dirty_settable = false; }
 private:
     bool _dirty_settable = false;
+    bool _has_value = false;   // C3: false until setValue() — guards phantom retained-empty topics
     char _id[32] = {0};
     char _name[32] = {0};
     char _value[256] = {0};

@@ -56,6 +56,9 @@ boolean mqtt_connected();
 // Thread-safe MQTT publish queue (for publishing from other tasks/cores)
 void mqtt_queue_init();
 bool mqtt_queue_publish(const char* topic, const char* payload, bool retained = false);
+// Length-aware variant — publishes exactly `length` bytes (carries a single 0x00 byte
+// for the Homie empty-string value; a zero-length payload would retract the topic). C3.
+bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool retained);
 
 //extern PubSubClient mqtt_client;
 extern MQTTClient mqtt_client;

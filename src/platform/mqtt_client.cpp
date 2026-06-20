@@ -69,6 +69,7 @@ int num_subscribers = 0;
 struct MqttQueueItem {
     char topic[MQTT_TOPIC_MAX];
     char payload[MQTT_PAYLOAD_MAX];
+    int  length;        // explicit byte count — carries 0x00 (empty-string value, C3)
     bool retained;
 };
 
@@ -86,18 +87,28 @@ void mqtt_queue_init() {
     }
 }
 
-// Queue a publish request (thread-safe, can be called from any task/core)
+// Queue a publish request (thread-safe, can be called from any task/core).
+// Null-terminated convenience overload: length is strlen(payload).
 bool mqtt_queue_publish(const char* topic, const char* payload, bool retained) {
+    return mqtt_queue_publish(topic, payload, (int)strlen(payload), retained);
+}
+
+// Length-aware variant: publishes exactly `length` bytes, so a single 0x00 byte
+// (the Homie empty-string value, C3) survives instead of being treated as a
+// null-terminated zero-length payload. memcpy (not strncpy) preserves embedded NULs.
+bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool retained) {
+    if (length < 0) length = 0;
+    if (length > MQTT_PAYLOAD_MAX) length = MQTT_PAYLOAD_MAX;
     if (mqtt_publish_queue == nullptr) {
         Serial.println("MQTT: Queue not initialized, publishing directly");
-        return mqtt_client.publish(topic, payload, retained, 0);
+        return mqtt_client.publish(topic, payload, length, retained, 0);
     }
 
     MqttQueueItem item;
     strncpy(item.topic, topic, MQTT_TOPIC_MAX - 1);
     item.topic[MQTT_TOPIC_MAX - 1] = '\0';
-    strncpy(item.payload, payload, MQTT_PAYLOAD_MAX - 1);
-    item.payload[MQTT_PAYLOAD_MAX - 1] = '\0';
+    memcpy(item.payload, payload, length);
+    item.length = length;
     item.retained = retained;
 
     // Non-blocking queue send (don't wait if queue is full)
@@ -117,7 +128,9 @@ void mqtt_process_queue() {
     int processed = 0;
     while (processed < 4 && xQueueReceive(mqtt_publish_queue, &item, 0) == pdTRUE) {
         if (mqtt_client.connected()) {
-            mqtt_client.publish(item.topic, item.payload, item.retained, 0);
+            // Length-aware publish so an empty-string value (single 0x00 byte) is sent
+            // intact rather than collapsing to a zero-length (retract) payload (C3).
+            mqtt_client.publish(item.topic, item.payload, item.length, item.retained, 0);
         }
         processed++;
     }
