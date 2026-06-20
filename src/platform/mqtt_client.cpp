@@ -386,7 +386,12 @@ boolean mqtt_connect() {
   mqtt_client.setOptions(60, false, operationTimeout);
   Serial.printf("MQTT: configured keepalive=%ds, timeout=%dms\n", 60, operationTimeout);
 
-  // Set Last Will and Testament (LWT) - published by broker if connection lost
+  // Set Last Will and Testament (LWT) - published by broker if connection lost.
+  // ROOT-ONLY by construction: the will is a property of this single MQTT connection,
+  // which the whole nested device tree shares, so it targets the ROOT device's $state.
+  // Per Homie 5, a "lost" root $state cascades to every child in the tree (consumers
+  // treat all children as lost); children neither need nor can have their own will.
+  // On reconnect, on_mqtt_reconnect() re-asserts $state for the whole tree.
   // Use static buffer lwt_topic to prevent pointer corruption (arduino-mqtt issue #89)
   // Use QoS 0 - QoS 1 causes connection issues with this library
   snprintf(lwt_topic, sizeof(lwt_topic), "%s/%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID(), HOMIE_$STATE);

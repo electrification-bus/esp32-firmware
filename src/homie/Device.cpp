@@ -147,6 +147,17 @@ void Device::publishTree() {
   }
 }
 
+// Republish $state for this device and every descendant. Used on MQTT reconnect:
+// the broker's Last Will set the ROOT's $state to "lost" (which, per Homie 5,
+// cascades the lost state to the whole tree), so on reconnect every device must
+// re-assert its own $state to clear the cascade.
+void Device::publishStateTree() {
+  publishState();
+  for (Device* c = _first_child; c; c = c->_next_sibling) {
+    c->publishStateTree();
+  }
+}
+
 void Device::setState(DeviceState state) {
   DeviceState previous_state = _state;
   _state = state;

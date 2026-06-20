@@ -154,6 +154,10 @@ children:
 
 The generator emits a `Device` object per child, wires the parent/child topology (`addChild`), binds each child node's entity to its device so its property values publish under the child's topic, and `main.cpp` publishes the whole tree at boot. The published result: the root `$description` lists `children`, and each child `$description` carries `root`/`parent` — a conformant Homie 5 nested tree.
 
+### Lifecycle: the `lost` cascade
+
+The whole tree shares one MQTT connection, so there is exactly one **Last Will**, set on the **root** device's `$state`. If the firmware dies ungracefully, the broker publishes `lost` to the root `$state`, and per Homie 5 every child in the tree is then `lost` too (consumers derive a child's effective state from both its own `$state` and its root's). Child devices neither need nor can have their own will. On MQTT reconnect the firmware re-asserts `$state` for the whole tree (`publishStateTree()`), clearing the cascade.
+
 ---
 
 ## What the generator produces

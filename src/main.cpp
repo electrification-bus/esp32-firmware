@@ -189,11 +189,13 @@ void loop() {
 #include <util/dict.h>
 #include <homie.h>
 
-// Callback to re-publish state and re-subscribe settable properties after MQTT reconnection
+// Callback to re-publish state and re-subscribe settable properties after MQTT reconnection.
+// The broker's Last Will marked the ROOT $state "lost" (which cascades lost to every
+// child per Homie 5), so re-assert $state for the whole device tree, not just the root.
 void on_mqtt_reconnect() {
     theDevice.mqttConnected();  // re-subscribe settable property /set topics
-    theDevice.publishState();
-    Serial.println("DEVICE: Re-published $state after reconnect");
+    theDevice.publishStateTree();
+    Serial.println("DEVICE: Re-published $state (whole tree) after reconnect");
 }
 
 void setup() {

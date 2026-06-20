@@ -45,7 +45,8 @@ class Device {
     char* getId();
     void publish();
     void publishState();
-    void publishTree();   // publish this device + all descendants ($state + $description + nodes)
+    void publishTree();        // publish this device + all descendants ($state + $description + nodes)
+    void publishStateTree();   // publish just $state for this device + all descendants (e.g. on reconnect)
     const char* topic();
     size_t serialize(char* buffer, size_t bufferSize);
     
