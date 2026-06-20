@@ -44,6 +44,7 @@ class Device {
     char* getId();
     void publish();
     void publishState();
+    void publishTree();   // publish this device + all descendants ($state + $description + nodes)
     const char* topic();
     size_t serialize(char* buffer, size_t bufferSize);
     
