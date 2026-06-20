@@ -84,9 +84,28 @@ nodes:
 | Field   | Required | Description |
 |---------|----------|-------------|
 | `name`  | yes | Human-readable device name |
-| `id`    | yes | Device id prefix for MQTT topic construction |
-| `type`  | yes | Homie device type string |
+| `id`    | no  | Device-id **template** (see below); defaults to `${chip_id}` |
+| `type`  | yes | Homie device `$type` string — how consumers identify the device |
 | `board` | yes | PlatformIO environment name from `platformio.ini` |
+
+#### The `id` template
+
+`id` is a **template** resolved on-device at boot (the chip id is only known there), then sanitized to a Homie-legal id. Device-ids are **opaque** — consumers identify a device by its `$type` and `info/serial-number`, never by parsing the id — so the id format is purely a publisher-side convenience.
+
+| Placeholder | Resolves to |
+|---|---|
+| `${chip_id}` | full 6-byte eFuse MAC, lowercase hex (12 chars, globally unique) |
+| `${chip_id_short}` | last 3 bytes (6 chars; shorter, but cross-vendor collisions possible) |
+| `${name}` | the sanitized device name |
+
+```yaml
+id: ${chip_id}            # -> b0b21c90f570        (the default if id is omitted)
+id: bess-${chip_id}       # -> bess-b0b21c90f570
+id: ${name}-${chip_id_short}
+id: panel-main            # fixed literal — logs a warning (two units collide on the broker)
+```
+
+`${...}` (env-var style) is used instead of `{...}` so **no YAML quoting is needed** (`$` isn't a YAML indicator). A fixed literal with no `${chip_id}`/`${chip_id_short}` logs a collision warning at boot.
 
 ### nodes fields
 

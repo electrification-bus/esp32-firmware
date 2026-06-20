@@ -56,6 +56,33 @@ void make_homie_device_id(const char* name, const uint8_t* mac, size_t n,
   }
 }
 
+// Append s into dst[w..cap), returns new write index (null-terminates not required here).
+static size_t append_bounded(char* dst, size_t w, size_t cap, const char* s) {
+  while (*s && w < cap - 1) dst[w++] = *s++;
+  return w;
+}
+
+void resolve_device_id(const char* templ, const uint8_t* mac6, const char* name,
+                       char* out, size_t out_size) {
+  if (!out || out_size == 0) return;
+  if (!templ || templ[0] == '\0') templ = "${chip_id}";   // default: bare chip id
+  char chip_full[16] = {0}, chip_short[8] = {0}, name_id[48] = {0};
+  format_mac_as_id(mac6, 6, chip_full, sizeof(chip_full));
+  format_mac_as_id(mac6 + 3, 3, chip_short, sizeof(chip_short));
+  sanitize_homie_id(name ? name : "", name_id, sizeof(name_id));
+  char raw[128] = {0};
+  size_t w = 0;
+  for (const char* p = templ; *p && w < sizeof(raw) - 1; ) {
+    // ${...} substitution. Check ${chip_id_short} before ${chip_id} (prefix).
+    if (strncmp(p, "${chip_id_short}", 16) == 0) { w = append_bounded(raw, w, sizeof(raw), chip_short); p += 16; }
+    else if (strncmp(p, "${chip_id}", 10) == 0)  { w = append_bounded(raw, w, sizeof(raw), chip_full);  p += 10; }
+    else if (strncmp(p, "${name}", 7) == 0)       { w = append_bounded(raw, w, sizeof(raw), name_id);    p += 7; }
+    else { raw[w++] = *p++; }
+  }
+  raw[w] = '\0';
+  sanitize_homie_id(raw, out, out_size);   // coerce the literal parts to Homie-legal too
+}
+
 void make_homie_child_id(const char* parent_id, const char* suffix,
                          char* out, size_t out_size) {
   if (!out || out_size == 0) return;

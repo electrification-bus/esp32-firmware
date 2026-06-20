@@ -13,7 +13,13 @@
 
 device:
   name: EBUS
-  id: ebus-001
+  # id is a TEMPLATE, resolved on-device at boot to a Homie-legal id. Device-ids are
+  # OPAQUE (consumers identify by $type + info/serial-number, never by parsing the id).
+  # Placeholders: ${chip_id} (full eFuse MAC hex, unique), ${chip_id_short} (last 3
+  # bytes), ${name}. No quoting needed. Empty/omitted -> "${chip_id}". A fixed literal
+  # (no placeholder) collides across units.
+  #   ${chip_id} -> b0b21c90f570   |   ebus-${chip_id} -> ebus-b0b21c90f570
+  id: ${chip_id}
   type: energy
   board: esp32-poe-iso          # must match a [env:…] in platformio.ini
   device_type: ebus

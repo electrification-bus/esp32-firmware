@@ -78,13 +78,9 @@ JsonDocument* get_homie_config() {
 JsonDocument* get_platform_config() {
     return &platform_config_json;
 }
-void generatefullDeviceID() {// includes OUI vendorid of the ethernet MAC inside the ESP32S2 -prefer to not use  full MACid
-  uint32_t low = ESP.getEfuseMac() & 0xFFFFFFFF;
-  uint32_t high = (ESP.getEfuseMac() >> 32) & 0xFFFFFFFF;
-  //uint64_t fullMAC = word(low, high);
-  snprintf(device_id, sizeof(device_id), "%s%X%X", device_id_prefix, high, low);
-  Serial.printf("Device ID: %s\n", device_id);
-}
+// Device-id template from device.yml `id:` (config.yml `device_id`), e.g. "{chip_id}"
+// or "bess-{chip_id}". Resolved at boot in generateDeviceID(). Empty -> "{chip_id}".
+static char device_id_template[96] = {0};
 
 void chip_unique_id(uint8_t out[6]) {
   // ESP.getEfuseMac() packs the 6-byte factory MAC into the low bytes of a uint64
@@ -94,22 +90,21 @@ void chip_unique_id(uint8_t out[6]) {
 }
 
 void generateDeviceID() {
-  // Use the ESP32's factory eFuse MAC as the unique hardware id. It is singular per
-  // chip — unlike the per-interface MACs (this Olimex POE board has BOTH a WiFi and an
-  // Ethernet MAC, so an interface MAC is ambiguous). The eFuse MAC is the chip's
-  // identity and the base all interface MACs are derived from (rrj.2).
+  // Resolve the device.yml `id:` template against the ESP32's factory eFuse MAC (the
+  // chip's singular hardware id — not a per-interface MAC; this Olimex POE board has
+  // both a WiFi and an Ethernet MAC). Placeholders: {chip_id} (full), {chip_id_short}
+  // (last 3 bytes), {name}. Empty template -> "{chip_id}". The result is Homie-legal.
   uint8_t chip_id[6];
   chip_unique_id(chip_id);
-  // device_id is an MQTT topic level and MUST be Homie-legal (a-z 0-9 -): compose
-  // name + full 48-bit chip suffix via the id toolkit, rather than hardcoding —
-  // e.g. name "EBUS" -> "ebus-b0b21c90f570".
-  make_homie_device_id(device_name, chip_id, 6, device_id, sizeof(device_id));
-  // Keep a human-facing, board-unique device_name too (display / mDNS hostname, which
-  // has its own sanitizer); upper-case and underscore are fine there.
-  char suffix[8];
-  snprintf(suffix, sizeof(suffix), "_%02X%02X%02X", chip_id[3], chip_id[4], chip_id[5]);
-  strncat(device_name, suffix, sizeof(device_name) - strlen(device_name) - 1);
-  Serial.printf("Device ID: %s (name '%s')\n", device_id, device_name);
+  resolve_device_id(device_id_template, chip_id, device_name, device_id, sizeof(device_id));
+  // A device-id is an OPAQUE topic-level identifier — consumers use $type + info for
+  // identity, never parse the id. If the template carries no per-unit uniqueness source,
+  // warn: two identical units would collide on the broker.
+  if (!strstr(device_id_template, "{chip_id")) {
+    Serial.printf("CONFIG: WARNING device id '%s' is fixed (no {chip_id}/{chip_id_short} "
+                  "in the template) — multiple units will collide on the broker\n", device_id);
+  }
+  Serial.printf("Device ID: %s\n", device_id);
 }
 
 const char* getDeviceID() {
@@ -236,6 +231,13 @@ bool loadPlatformConfiguration() {
   if (config_json["device_id_prefix"].is<JsonString>()) {
     strncpy(device_id_prefix, config_json["device_id_prefix"].as<JsonString>().c_str(), sizeof(device_id_prefix) - 1);
     device_id_prefix[sizeof(device_id_prefix) - 1] = '\0';
+  }
+
+  // device_id is a TEMPLATE (e.g. "{chip_id}", "bess-{chip_id}"); resolved at boot in
+  // generateDeviceID(). Empty -> "{chip_id}".
+  if (config_json["device_id"].is<JsonString>()) {
+    strncpy(device_id_template, config_json["device_id"].as<JsonString>().c_str(), sizeof(device_id_template) - 1);
+    device_id_template[sizeof(device_id_template) - 1] = '\0';
   }
 
   // device_name is loaded from homie.yml (name field), not config.yml

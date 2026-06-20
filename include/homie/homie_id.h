@@ -36,6 +36,18 @@ void format_mac_as_id(const uint8_t* mac, size_t n, char* out, size_t out_size);
 void make_homie_device_id(const char* name, const uint8_t* mac, size_t n,
                           char* out, size_t out_size);
 
+// Resolve a device-id TEMPLATE into a Homie-legal id (runtime — the chip id is only
+// known on-device). ${...} substitution, then sanitize the whole result:
+//   ${chip_id}        full 6-byte eFuse MAC, lowercase hex (12 chars; globally unique)
+//   ${chip_id_short}  last 3 bytes (6 chars; shorter, but OUI-dependent collisions)
+//   ${name}           sanitize_homie_id(name)
+// An empty/null template defaults to "${chip_id}". `mac6` is the 6 MAC bytes in standard
+// order. (${...} chosen over {...} so device.yml needs no quoting — '$' isn't a YAML
+// indicator.) Device-ids are OPAQUE to consumers (they use $type + info/serial-number
+// for identity), so the template is purely a publisher-side convenience.
+void resolve_device_id(const char* templ, const uint8_t* mac6, const char* name,
+                       char* out, size_t out_size);
+
 // Compose a child device-id by appending a sanitized suffix to an (already-legal)
 // parent/root id: `parent_id` + "-" + sanitize_homie_id(suffix). For nested devices
 // that share the parent's chip-id, e.g. ("ebus-b0b21c90f570", "phase a") ->
