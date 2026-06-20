@@ -22,9 +22,10 @@ config:
   - wifi_ssid:
     wifi_password:
     # mqtt_mode controls how the MQTT broker is resolved:
-    #   configured-only         - use only the mqtt_host/port from this config file
+    #   configured-only         - use only the mqtt_host/port from this config file (default)
     #   discovery-with-fallback - try mDNS discovery first, fall back to config if none found
-    #   discovery-only          - use only mDNS discovery, ignore configured mqtt_host/port (default)
+    #   discovery-only          - use only mDNS discovery, ignore configured mqtt_host/port
+    # A discovery mode auto-enables mdns_discovery below (you don't need to set both).
     mqtt_mode: configured-only
     # mDNS gates (both default false), independent (ESP32-6du.6):
     #   mdns_discovery - browse the LAN for the MQTT broker; needed by the discovery

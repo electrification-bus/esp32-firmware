@@ -47,8 +47,10 @@ char device_passphrase[64] = {0};
 static bool _ota_enabled = false;
 static unsigned long _ota_enabled_at = 0;
 
-// Default; overridden by mqtt_mode key in config.yml.
-MqttMode mqtt_mode = MQTT_MODE_DISCOVERY_ONLY;
+// Default; overridden by mqtt_mode key in config.yml. CONFIGURED_ONLY is the coherent
+// default given mDNS defaults off (ESP32-6du.8): use the configured broker, no querier
+// needed. A discovery mode auto-enables the querier (see parse_config coherence check).
+MqttMode mqtt_mode = MQTT_MODE_CONFIGURED_ONLY;
 
 const char* UNIQUE_ID = "";
 char device_id[MAX_DEVICE_ID_CHARS] = {0};
@@ -307,6 +309,14 @@ bool loadPlatformConfiguration() {
       mqtt_mode = MQTT_MODE_DISCOVERY_ONLY;
     }
     Serial.printf("CONFIG: mqtt_mode=%s\n", mode_str);
+  }
+
+  // Coherence (ESP32-6du.8): a discovery mqtt_mode locates the broker via mDNS, so it
+  // needs the querier. If discovery is requested but mdns_discovery is off, enable it —
+  // otherwise no broker can ever be found and the device never connects.
+  if (mqtt_mode != MQTT_MODE_CONFIGURED_ONLY && !mdns_discovery) {
+    mdns_discovery = true;
+    Serial.println("CONFIG: mqtt_mode needs discovery — enabling mdns_discovery (ESP32-6du.8)");
   }
 
   return true;

@@ -53,10 +53,12 @@ void ota_check_timeout();
 
 // MQTT broker resolution mode
 enum MqttMode {
-  MQTT_MODE_DISCOVERY_ONLY = 0,      // mDNS only, ignore config (default)
+  MQTT_MODE_DISCOVERY_ONLY = 0,      // mDNS only, ignore config
   MQTT_MODE_DISCOVERY_WITH_FALLBACK, // mDNS first, fall back to config
-  MQTT_MODE_CONFIGURED_ONLY          // config only, no mDNS discovery
+  MQTT_MODE_CONFIGURED_ONLY          // config only, no mDNS discovery (default)
 };
+// NOTE: a discovery mode (not CONFIGURED_ONLY) auto-enables mdns_discovery at config
+// load (ESP32-6du.8), so the mode and the querier gate can't be set incoherently.
 
 extern MqttMode mqtt_mode;
 
