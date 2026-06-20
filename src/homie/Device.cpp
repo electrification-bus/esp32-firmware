@@ -103,6 +103,38 @@ Node* Device::getNode(const char* id) {
   return nullptr;
 }
 
+// --- Nested-device tree (Homie 5 parent/child) ---
+
+void Device::addChild(Device* child) {
+  if (!child) return;
+  child->_parent = this;
+  child->_next_sibling = nullptr;
+  // Append to the sibling list so children keep insertion order.
+  if (!_first_child) {
+    _first_child = child;
+  } else {
+    Device* s = _first_child;
+    while (s->_next_sibling) s = s->_next_sibling;
+    s->_next_sibling = child;
+  }
+  _num_children++;
+  Serial.printf("Device '%s': added child '%s'\n", _id, child->getId());
+}
+
+Device* Device::root() {
+  Device* d = this;
+  while (d->_parent) d = d->_parent;
+  return d;
+}
+
+const char* Device::parentId() {
+  return _parent ? _parent->getId() : nullptr;
+}
+
+const char* Device::rootId() {
+  return _parent ? root()->getId() : nullptr;
+}
+
 void Device::setState(DeviceState state) {
   DeviceState previous_state = _state;
   _state = state;

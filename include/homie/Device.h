@@ -50,6 +50,20 @@ class Device {
    Node* getNode(const char* id);
    Node* operator[](const char* node_id_key) { return getNode(node_id_key); };
 
+   // --- Nested-device tree (Homie 5 parent/child) ---
+   // Devices form a tree via intrusive parent/first-child/next-sibling links
+   // (no fixed child cap, no heap array). A root device has no parent; children
+   // share the root's MQTT connection. See A-epic for the full nested model.
+   void    addChild(Device* child);        // link child under this device
+   Device* parent()      { return _parent; }
+   Device* root();                         // walk up; returns this if no parent
+   Device* firstChild()  { return _first_child; }
+   Device* nextSibling() { return _next_sibling; }
+   int     childCount()  { return _num_children; }
+   bool    isRoot()      { return _parent == nullptr; }
+   const char* parentId();                 // parent device-id, or nullptr if root
+   const char* rootId();                   // root device-id, or nullptr if root
+
  private:
     char _id[64] = {0};
     char _name[32] = {0};
@@ -62,4 +76,9 @@ class Device {
     MQTTClient* _mqtt_client;
     int _num_nodes;
 
+    // Nested-device tree links (intrusive; null for a standalone/root device).
+    Device* _parent       = nullptr;
+    Device* _first_child  = nullptr;
+    Device* _next_sibling = nullptr;
+    int     _num_children = 0;
 };
