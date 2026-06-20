@@ -235,40 +235,19 @@ Runtime configuration (wifi, mqtt, device identity) written from the `device:`, 
 
 ## Adding a new library component
 
-A component is three files under `lib/<bus>/`:
+A *component* is a driver plus the metadata that makes it usable from the generator — three files under `lib/<bus>/`:
 
 ```
 lib/
   <bus>/
-    <name>.h        C++ class header
-    <name>.cpp      C++ implementation
-    <name>.yml      Homie node definition + generator metadata
+    <name>.h        C++ class header   ┐ the driver (see WritingADriver.md)
+    <name>.cpp      C++ implementation ┘
+    <name>.yml      Homie node definition + generator metadata (this section)
 ```
 
-### 1. Write the C++ class
+### 1. Write the driver
 
-The class must derive from `NodeEntity` (or a subclass like `ModbusRTUEntity`) and
-override `setup()` and `loop()`:
-
-```cpp
-// lib/i2c/mydevice.h
-#pragma once
-#include <node/NodeEntity.h>
-
-class MyDevice : public NodeEntity {
-public:
-    MyDevice(const char* homie_node_id);
-    bool setup() override;
-    void loop() override;
-private:
-    NodeProperty _temperature;
-};
-```
-
-`NodeProperty` members correspond to the properties declared in `<name>.yml`.  Call
-`NodeProperty::setup(node_id, property_id)` in `setup()` and
-`NodeProperty::set_value_and_publish(value)` in `loop()` (or wherever a new reading
-is available).
+The driver is a `NodeEntity` subclass — the `.h`/`.cpp` pair that talks to your hardware and carries each property's runtime value. It's the same class a hand-coded project would use, so it's documented in one place: **[WritingADriver.md](WritingADriver.md)**. Write it there, then come back for the generator wiring below.
 
 ### 2. Write the component YAML
 

@@ -111,7 +111,7 @@ void loop_homie() {
 
 Everything is statically allocated — no heap, no null-pointer risk, constructors fire before `setup()`. That's the house style for this firmware; keep to it.
 
-#### Declarative alternative: a property descriptor table
+### Declarative alternative: a property descriptor table
 
 For a node with several properties, the per-`addProperty` calls get repetitive and the positional `datatype`/`unit`/`settable`/`retained`/`format` arguments are easy to transpose. The type-safe **descriptor table** (D1/D2) reads like the `device.yml` and the compiler checks the datatype + array sizes:
 
@@ -149,105 +149,9 @@ The generator wires both; hand-coding, you do too. The node id is the glue.
 
 ## Writing a custom node entity
 
-A node entity is a `NodeEntity` subclass (or a `ModbusRTUEntity` subclass for Modbus devices). The contract, from [`include/node/NodeEntity.h`](../include/node/NodeEntity.h):
+The node entity (driver) is the `NodeEntity` subclass that talks to your hardware and carries each property's runtime value. Driver authoring — the `NodeEntity`/`NodeProperty` contract, the `.h`/`.cpp` skeleton, per-property `on_set` settable handlers, the omit-unavailable-values publishing discipline, and the hardware notes for the bundled drivers — is path-independent (a driver is the same whether you use the generator or hand-code), so it lives in one place: **[WritingADriver.md](WritingADriver.md)**.
 
-- Constructor takes the Homie node id and chains to `NodeEntity(homie_node_id)`.
-- Override `bool setup()` — chain `NodeEntity::setup()` first, then `.setup(node_id, property_id)` each `NodeProperty` member.
-- Override `void loop()` — read your hardware, `.set(value)` and `.publish()` each property (gate with `pollIntervalTrigger()` so you don't spam the bus).
-- For settable properties, override `set(bool/int/float/const char*)` and/or `entity_settable_callback(...)`. Or — for a per-property handler instead of one node-level callback that switches on property-id — use `NodeProperty::on_set()` (below).
-
-##### Per-property settable handlers (`on_set`)
-
-`NodeProperty::on_set(handler, ctx)` registers a **plain function pointer** (`void(*)(void* ctx, const char* value)`) plus an opaque context for *one* settable property — no `std::function`, no lambda, no heap. The author writes a `static` trampoline and passes `this` as the context to recover instance state:
-
-```cpp
-class MyRelay : public NodeEntity {
-    NodeProperty _state;
-    static void on_state_set(void* ctx, const char* value) {     // static, no capture
-        static_cast<MyRelay*>(ctx)->set_relay(strcmp(value, "true") == 0);
-    }
-public:
-    MyRelay(const char* id) : NodeEntity(id) {}
-    bool setup() override {
-        NodeEntity::setup();
-        _state.setup(getNodeId(), "state");
-        _state.on_set(&MyRelay::on_state_set, this);             // fn-ptr + context
-        return true;
-    }
-};
-```
-
-`on_set` subscribes the property's `/set` topic (QoS 0) and fires the handler with the decoded payload on each command — a cleaner alternative to one `entity_settable_callback` that `if/else`s over every property-id. Declare the property `settable` so it also advertises in `$description`.
-
-The BME280 driver in [`lib/i2c/bme280.h`](../lib/i2c/bme280.h) / [`bme280.cpp`](../lib/i2c/bme280.cpp) is a clean worked example. Skeleton:
-
-```cpp
-// lib/i2c/mydevice.h
-#pragma once
-#include <node/NodeEntity.h>
-
-class MyDevice : public NodeEntity {
-public:
-    MyDevice(const char* homie_node_id) : NodeEntity(homie_node_id) {}
-    bool setup() override;
-    void loop() override;
-private:
-    NodeProperty temperature;
-    int _read_interval = 10000, _since_last_read = 0;
-};
-```
-
-```cpp
-// lib/i2c/mydevice.cpp
-#include <i2c/mydevice.h>
-
-bool MyDevice::setup() {
-    NodeEntity::setup();                       // base class first
-    temperature.setup(getNodeId(), "temperature");
-    // ... begin() your sensor here ...
-    return true;
-}
-
-void MyDevice::loop() {
-    if (millis() - _since_last_read < _read_interval) return;
-    _since_last_read = millis();
-    temperature.set(read_my_sensor());         // update value
-    temperature.publish();                     // push to MQTT
-}
-```
-
-Then instantiate it and register its properties in `src/homie.cpp` exactly as shown above. (If you also want it usable from the generator later, add a `lib/<bus>/<name>.yml` with a `generator:` block — see [GenerateHomieDevice.md](GenerateHomieDevice.md#adding-a-new-library-component).)
-
-#### Publishing discipline: omit unavailable values, never publish sentinels
-
-When a reading isn't available — a sensor read fails, hardware isn't connected yet, a value is genuinely unknown — **omit the property rather than publishing a sentinel** like `0`, `-1`, `-999`, or `NaN`. A consumer can't distinguish a real `0` from a "no data" `0`, so sentinels silently corrupt downstream logic. Two cases:
-
-- **Never seen a value yet** — just don't call `.publish()`. A `NodeProperty` won't publish anything until its first `.set(...)`, so a read failure on the very first poll simply leaves the topic absent (no phantom retained value).
-- **Had a value, now unavailable** — call `.clearValue()` on the `NodeProperty`. It retracts the retained topic (publishes a zero-length, retained message, which MQTT treats as "delete") so consumers see the property disappear rather than go stale, and it won't republish the old value until a fresh `.set(...)`.
-
-```cpp
-void MyDevice::loop() {
-    if (millis() - _since_last_read < _read_interval) return;
-    _since_last_read = millis();
-    float v;
-    if (read_my_sensor(&v)) {
-        temperature.set(v);
-        temperature.publish();
-    } else {
-        temperature.clearValue();   // omit, don't publish a fake reading
-    }
-}
-```
-
-(This is distinct from an *empty-string string value*, which is a real value published as a single `0x00` byte — see the Homie "empty string values" rule. `clearValue()` retracts the topic entirely.)
-
-### Hardware notes for the bundled drivers
-
-These apply whichever path you use (generator or hand-coded) — they're properties of the drivers, not the workflow:
-
-- **Modbus RS485 (`modbus/sht20`, `modbus/eletechsup32`)** — `get_serial1()` returns the correct `HardwareSerial` for the active board (Serial1 on WROOM, Serial2 on WROVER); pass it to the constructor. RS485 wiring goes on the UART pins defined in [`include/pins.h`](../include/pins.h); Modbus address defaults live in `config.h`.
-- **`ble/serial_bms` (JBD BMS over BLE)** — sets `NODE_REQUIRES_BLUETOOTH` in its constructor, which suppresses WiFi-STA init on classic ESP32 boards to avoid BLE/WiFi radio contention. On WROVER boards BLE and WiFi coexist (PSRAM heap routing), so the suppression isn't needed. The BMS BLE address is cached in NVS after the first scan; force a re-scan with `rescan = true`.
-- **`spi/atm90e32_energy_meter` (ATM90E32 over SPI)** — chip-select and calibration pins are in [`include/pins.h`](../include/pins.h); voltage/current-gain calibration values are set in the `EnergyMeter` constructor.
+Write your driver there, then come back here for the hand-coded wiring: instantiate it as a static object and register its properties in `register_homie_properties()` exactly as shown above. The node id is the glue between the two layers.
 
 ---
 
@@ -278,6 +182,7 @@ In this mode you do **not** implement `register_homie_properties()` / `setup_hom
 
 ## See also
 
+- [WritingADriver.md](WritingADriver.md) — authoring a `NodeEntity` driver (shared by both paths)
 - [GenerateHomieDevice.md](GenerateHomieDevice.md) — the `device.yml` generator path (the easier default)
 - [`include/homie/Device.h`](../include/homie/Device.h), [`Node.h`](../include/homie/Node.h), [`Property.h`](../include/homie/Property.h) — the registration API
 - [`include/node/NodeEntity.h`](../include/node/NodeEntity.h) — the node-entity base class

@@ -83,6 +83,7 @@ VSCode users: use the PlatformIO IDE's project-tasks pane for build/upload/monit
   - [GettingStartedVSCode.md](doc/GettingStartedVSCode.md)
   - [GettingStartedCLI.md](doc/GettingStartedCLI.md)
 - **Building from device.yml**: [GenerateHomieDevice.md](doc/GenerateHomieDevice.md)
+- **Writing a driver** (authoring a `NodeEntity` subclass — the reusable hardware unit, shared by both the generator and hand-coded paths): [WritingADriver.md](doc/WritingADriver.md)
 - **Nested / proxied devices** (bridge role, the `{proxier}-{proxied}` model): [NestedBridgeExample.md](doc/NestedBridgeExample.md)
 - **Building without the generator** (hand-coded device/controller; type-safe descriptor tables + `on_set` handlers): [HandCodedDevice.md](doc/HandCodedDevice.md)
 - **Configuration overlays** (incl. `${chip_id}` device-id templating, `mqtt_qos`, `mdns_enabled`): [Configuration.md](doc/Configuration.md)
