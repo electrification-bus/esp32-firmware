@@ -7,6 +7,7 @@
 #include <platform/network.h>
 
 Device theDevice;
+Device* g_active_setup_device = nullptr;  // see config.h; set by NodeEntity::setup()
 
 static JsonObject config_json;
 static JsonDocument homie_config_json;

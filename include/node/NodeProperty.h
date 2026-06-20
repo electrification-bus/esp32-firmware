@@ -9,13 +9,17 @@ class NodeProperty {
         ~NodeProperty(){};
 
         void setup(const char* node_id, const char* property_id) {
+            // Build topic + load the initial value against the entity's OWN device
+            // (set by NodeEntity::setup() via g_active_setup_device), so a nested
+            // child device's property values publish under the child's topic.
+            Device* dev = g_active_setup_device ? g_active_setup_device : &theDevice;
             set_homie_property_id(property_id);
             char _top[128] = {0};
-            snprintf(_top, sizeof(_top), "%s%s/%s", theDevice.topic(), node_id, property_id);
+            snprintf(_top, sizeof(_top), "%s%s/%s", dev->topic(), node_id, property_id);
             Serial.printf("NodeProperty: setup() topic: %s\n", _top);
             set_topic(_top);
-            // Load initial value from theDevice (already populated from homie.yml)
-            Node* n = theDevice.getNode(node_id);
+            // Load initial value from the owning device (populated from homie.yml)
+            Node* n = dev->getNode(node_id);
             if (n) {
                 Property* p = n->getProperty(property_id);
                 if (p) {
@@ -27,8 +31,9 @@ class NodeProperty {
 
         void setup(const char* node_id, const char* property_id, entity_settable_callback_t cb, NodeEntity* ne) {
             setup(node_id, property_id);
+            Device* dev = g_active_setup_device ? g_active_setup_device : &theDevice;
             char _top[128] = {0};
-            snprintf(_top, sizeof(_top), "%s%s/%s/%s", theDevice.topic(), node_id, property_id, HOMIE_TOPIC_SET);
+            snprintf(_top, sizeof(_top), "%s%s/%s/%s", dev->topic(), node_id, property_id, HOMIE_TOPIC_SET);
             entity_subscribe_for_callbacks(_top, cb, ne);
         }
         const char* homie_property_id()    const    {return _homie_property_id;}

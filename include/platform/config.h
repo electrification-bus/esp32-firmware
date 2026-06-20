@@ -90,3 +90,9 @@ JsonDocument* get_platform_config();
 JsonDocument* get_homie_config();
 
 extern Device theDevice;
+
+// The device whose entity is currently running setup() — set by NodeEntity::setup()
+// (which every driver chains to first) so NodeProperty.setup() builds topics/loads
+// values against the entity's OWN device (root or a nested child) instead of the
+// global theDevice. Null falls back to theDevice (single-device default).
+extern Device* g_active_setup_device;

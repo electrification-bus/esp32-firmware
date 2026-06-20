@@ -20,6 +20,9 @@ class NodeEntity {
         virtual const char* getHomieNodeId();
 
         void setDevice(Device* device) {_device = device;};
+        // This entity's Homie device — its assigned device, or the root theDevice
+        // when unassigned (single-device default). Drives where property values publish.
+        Device* device() { return _device ? _device : &theDevice; }
         const char* getPropertyTopic(const char* property_id, char* buf, size_t bufSize = 128);
         Node* getNode(const char* id);
         void publish(const char* node_id);

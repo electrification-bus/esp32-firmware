@@ -20,7 +20,11 @@ void NodeEntity::setHomieNodeId(const char* id) {
     _homie_node_id[sizeof(_homie_node_id) - 1] = '\0'; // Ensure null termination
 }
 bool NodeEntity::setup() {
-    Serial.printf("NodeEntity::setup() '%s'\n", _homie_node_id);
+    // Record this entity's device as the active setup context so the
+    // NodeProperty.setup() calls that follow (in the derived driver's setup())
+    // build topics + load initial values against THIS device (root or child).
+    g_active_setup_device = device();
+    Serial.printf("NodeEntity::setup() '%s' (device '%s')\n", _homie_node_id, device()->getId());
     return true;
 }
 
@@ -31,7 +35,7 @@ bool NodeEntity::setup(const char* homie_node_id) {
 
 //returns local alloc - caller must not retain
 const char* NodeEntity::getPropertyTopic(const char* property_id, char* buf, size_t bufSize) {
-  snprintf(buf, bufSize, "%s%s/%s", theDevice.topic(), _homie_node_id, property_id);
+  snprintf(buf, bufSize, "%s%s/%s", device()->topic(), _homie_node_id, property_id);
   return buf;
 }
 
