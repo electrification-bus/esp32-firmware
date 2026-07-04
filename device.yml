@@ -4,15 +4,18 @@
 # build (they are gitignored); `./ebus-esp32 generate` regenerates them on their own.
 #
 # Available components (lib/<bus>/<name>.yml):
-#   i2c/bme280                  — BME280 temp/pressure/humidity (I2C)
-#   modbus/sht20                — SHT20 temp/humidity (Modbus RTU)
-#   modbus/eletechsup32         — 32-ch voltage/current detector (Modbus RTU)
-#   gpio/ssr                    — Solid-state relay (GPIO)
+#   i2c/bme280                  — BME280 temp/pressure/humidity (I2C); requires pin_sda, pin_scl
+#   modbus/sht20                — SHT20 temp/humidity (Modbus RTU); requires pin_rs485_a, pin_rs485_b
+#   modbus/eletechsup32         — 32-ch voltage/current detector (Modbus RTU); requires pin_rs485_a, pin_rs485_b
+#   gpio/ssr                    — Solid-state relay (GPIO); requires pin
 #   ble/serial_bms              — JBD Smart BMS (BLE)
-#   spi/atm90e32_energy_meter   — 6-CT energy meter (SPI); requires cs1_pin, cs2_pin
+#   spi/atm90e32_energy_meter   — 6-CT energy meter (SPI); requires pin_cs1, pin_cs2
+#
+# All modbus/* nodes share one RS485 bus — give every modbus node instance the SAME
+# pin_rs485_a/pin_rs485_b; only the first one initialized actually configures the bus.
 
 device:
-  name: EBUS
+  name: sht20
   # id is a TEMPLATE, resolved on-device at boot to a Homie-legal id. Device-ids are
   # OPAQUE (consumers identify by $type + info/serial-number, never by parsing the id).
   # Placeholders: ${chip_id} (full eFuse MAC hex, unique), ${chip_id_short} (last 3
@@ -42,15 +45,15 @@ mqtt:
   #   configured-only         - use only the mqtt_host/port from this config file
   #   discovery-with-fallback - try mDNS discovery first, fall back to config if none found
   #   discovery-only          - use only mDNS discovery, ignore configured mqtt_host/port
-  mode: discovery-with-fallback
-  host: ''
+  mode: configured-only
+  host: 192.168.1.70
   port: 1883
   username: ''
   password: ''
   # qos: QoS for retained Homie publications ($state, $description, property values).
   # Homie 5 recommends 2 (default if omitted). Non-retained messages and /set are
   # always QoS 0 per spec. Valid: 0, 1, 2.
-  qos: 2
+  qos: 1
 
 # mDNS is OFF by default (opt-in). It's non-essential — Homie device discovery is over
 # MQTT; mDNS only advertises <device>.local for the web UI/OTA, and the bundled ESP-IDF
@@ -59,7 +62,7 @@ mdns:
   enabled: false
 
 nodes:
-  - component: modbus/sht20
+  - component: modbus/sht20 
     id: environment_sht20
     config:
        pin_rs485_a: 36
