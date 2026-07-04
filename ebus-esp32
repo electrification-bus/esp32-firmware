@@ -18,6 +18,7 @@ On Windows, invoke via the wrapper: `ebus-esp32.bat run` (or `python ebus-esp32 
 """
 
 import sys
+import re
 import argparse
 import subprocess
 import shutil
@@ -76,6 +77,31 @@ def _coord(*argv: str) -> int:
         return 0
     return subprocess.run([str(script), *argv[1:]], cwd=ROOT).returncode
 
+# ── yaml helpers ───────────────────────────────────────────────────────────────
+
+def load_yaml_file(path: Path, *, require_mapping: bool = True) -> dict:
+    """Parse a YAML file, turning malformed YAML (or a valid-but-wrong-shaped
+    document, e.g. a list instead of a mapping) into a clean, actionable error —
+    file path plus line/column — instead of a raw Python traceback or a confusing
+    AttributeError several calls later when .get() hits the wrong type."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        print(f"ERROR: {path} is not valid YAML:", file=sys.stderr)
+        mark = getattr(e, "problem_mark", None)
+        if mark is not None:
+            print(f"  at line {mark.line + 1}, column {mark.column + 1}", file=sys.stderr)
+        problem = getattr(e, "problem", None) or str(e)
+        print(f"  {problem}", file=sys.stderr)
+        sys.exit(1)
+    if require_mapping and not isinstance(doc, dict):
+        print(f"ERROR: {path} must be a YAML mapping (key: value) at the top level, "
+              f"got {type(doc).__name__ if doc is not None else 'an empty document'}",
+              file=sys.stderr)
+        sys.exit(1)
+    return doc
+
 # ── device.yml helpers ─────────────────────────────────────────────────────────
 
 def load_device_yml(path: Path) -> dict:
@@ -83,8 +109,7 @@ def load_device_yml(path: Path) -> dict:
         print(f"ERROR: {path} not found.", file=sys.stderr)
         print("Create one from the format in doc/GenerateHomieDevice.md", file=sys.stderr)
         sys.exit(1)
-    with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    return load_yaml_file(path)
 
 def get_board(cfg: dict) -> str:
     board = cfg.get("device", {}).get("board")
@@ -105,25 +130,65 @@ _HOMIE_CPP_HEADER = """\
 #include <homie.h>
 """
 
-def find_component_yml(component: str) -> Path:
+def find_component_yml(component: str):
+    """Resolve a device.yml `component:` string to its lib/<bus>/<name>.yml path, or
+    None if it doesn't match anything — callers report this, never raise, so a typo'd
+    component in device.yml is a clear ERROR message rather than a Python traceback."""
     parts = component.split("/")
     if len(parts) == 2:
         p = LIB_DIR / parts[0] / f"{parts[1]}.yml"
-        if p.exists():
-            return p
-        raise FileNotFoundError(f"Component yml not found: {p}")
+        return p if p.exists() else None
     for sub in LIB_DIR.iterdir():
         if sub.is_dir():
             candidate = sub / f"{component}.yml"
             if candidate.exists():
                 return candidate
-    raise FileNotFoundError(f"No component yml found for: {component!r}")
+    return None
 
 def fmt_ctor(template: str, node_id: str, config: dict) -> str:
     result = template.replace("{id}", node_id)
     for k, v in (config or {}).items():
         result = result.replace(f"{{config.{k}}}", str(v))
     return result
+
+_CONFIG_KEY_RE = re.compile(r"\{config\.(\w+)\}")
+
+def required_config_keys(ctor_tmpl: str) -> set:
+    """Config keys a component's constructor template actually substitutes, e.g.
+    '{config.pin}' -> {'pin'}."""
+    return set(_CONFIG_KEY_RE.findall(ctor_tmpl))
+
+def check_config_keys(node_id: str, component: str, comp_path: Path,
+                       ctor_tmpl: str, node_cfg: dict) -> None:
+    """Catch a missing or typo'd config: key at generate time instead of letting it
+    surface as a raw '{config.foo}' left in the generated C++ (a confusing compile
+    error far from the actual mistake in device.yml)."""
+    required = required_config_keys(ctor_tmpl)
+    node_cfg = node_cfg or {}
+    provided = set(node_cfg.keys())
+    missing = sorted(required - provided)
+    # A key present with no value (`pin:` with nothing after the colon, or explicit
+    # `pin: null`) parses as {"pin": None} — present, so it wouldn't show up as
+    # "missing" above, but str(None) would land the literal text "None" in the
+    # generated C++ constructor call. Treat it as its own case, not silently OK.
+    empty = sorted(k for k in required if k in node_cfg and node_cfg[k] is None)
+    extra = sorted(provided - required)
+    if missing or empty or extra:
+        parts = []
+        if missing:
+            parts.append(f"missing required key(s): {', '.join(missing)}")
+        if empty:
+            parts.append(f"required key(s) present but with no value: {', '.join(empty)} "
+                         f"(check for a trailing ':' with nothing after it)")
+        if extra:
+            # Reported alongside `missing` so a typo (e.g. 'pinn' instead of 'pin')
+            # shows up as BOTH "missing pin" and "unrecognized pinn" in one message —
+            # the pairing is what makes it obvious it's a typo, not just an omission.
+            parts.append(f"unrecognized key(s): {', '.join(extra)} (check for a typo)")
+        print(f"ERROR: device.yml node '{node_id}' (component '{component}') config: block "
+              f"problem — {'; '.join(parts)}. Expected: {', '.join(sorted(required)) or 'none'} "
+              f"— see {comp_path}", file=sys.stderr)
+        sys.exit(1)
 
 def cmd_generate(args) -> None:
     device_yml = Path(args.device_yml)
@@ -139,6 +204,7 @@ def cmd_generate(args) -> None:
     setups            = []
     loops             = []
     homie_nodes       = []   # ROOT device's nodes only (data/homie.yml)
+    seen_node_ids     = {}   # node_id -> component that first used it (duplicate-id check)
 
     def _cvar(s):
         return "".join(c if (c.isalnum() or c == "_") else "_" for c in str(s))
@@ -146,20 +212,58 @@ def cmd_generate(args) -> None:
     def emit_node(entry, dev_access, setdev_addr, is_root):
         # dev_access: C++ device access prefix — "device->" (root) or "dev_x." (child)
         # setdev_addr: entity's device address ("&dev_x") for a child; None for root
-        component = entry["component"]
+        if not isinstance(entry, dict):
+            print(f"ERROR: device.yml has incorrect YAML under nodes: — check the "
+                  f"indentation and syntax of that entry", file=sys.stderr)
+            sys.exit(1)
+        component = entry.get("component")
         node_id   = entry.get("id")
-        node_cfg  = entry.get("config", {})
+        node_cfg  = entry.get("config") or {}
+        if not isinstance(node_cfg, dict):
+            print(f"ERROR: device.yml has incorrect YAML in node '{node_id or component}'s "
+                  f"config: block — check the indentation and syntax", file=sys.stderr)
+            sys.exit(1)
+        if not component:
+            print(f"ERROR: device.yml node entry missing required 'component' field: "
+                  f"{entry!r}", file=sys.stderr)
+            sys.exit(1)
         comp_path = find_component_yml(component)
-        with open(comp_path, encoding="utf-8") as f:
-            comp = yaml.safe_load(f)
+        if comp_path is None:
+            if "/" in component:
+                expected = f"lib/{component}.yml"
+            else:
+                expected = f"lib/<bus>/{component}.yml (searched every <bus> under {LIB_DIR})"
+            print(f"ERROR: device.yml node '{node_id or component}' references component "
+                  f"'{component}', which does not match any component file — expected "
+                  f"{expected}", file=sys.stderr)
+            sys.exit(1)
+        comp = load_yaml_file(comp_path)
         gen = comp.get("generator")
         if not gen:
             print(f"WARNING: no generator block in {comp_path} — skipping")
             return
+        missing = [k for k in ("class", "header", "constructor") if k not in gen]
+        if missing:
+            print(f"ERROR: component yml '{comp_path}' generator block missing required "
+                  f"field(s): {', '.join(missing)}", file=sys.stderr)
+            sys.exit(1)
         cls, header, ctor_tmpl = gen["class"], gen["header"], gen["constructor"]
         comp_nodes = comp.get("nodes", [])
+        explicit_id = bool(node_id)
         if not node_id:
+            if comp_nodes and "id" not in comp_nodes[0]:
+                print(f"ERROR: component yml '{comp_path}' first node entry missing "
+                      f"required 'id' field: {comp_nodes[0]!r}", file=sys.stderr)
+                sys.exit(1)
             node_id = comp_nodes[0]["id"] if comp_nodes else component.split("/")[-1]
+        if node_id in seen_node_ids:
+            hint = "" if explicit_id else " (defaulted from the component — add an explicit 'id:' to disambiguate)"
+            print(f"ERROR: node id '{node_id}' is used by more than one node — first by "
+                  f"component '{seen_node_ids[node_id]}', again by component "
+                  f"'{component}'{hint}. Every node needs a unique id.", file=sys.stderr)
+            sys.exit(1)
+        seen_node_ids[node_id] = component
+        check_config_keys(node_id, component, comp_path, ctor_tmpl, node_cfg)
         includes.append(f"#include <{header}>")
         decls.append(f"{cls} {node_id}{fmt_ctor(ctor_tmpl, node_id, node_cfg)};")
         setups.append(f"    {node_id}.setup();")
@@ -169,6 +273,10 @@ def cmd_generate(args) -> None:
         single = len(comp_nodes) == 1
         for n in comp_nodes:
             nc = dict(n)
+            if not single and "id" not in n:
+                print(f"ERROR: component yml '{comp_path}' node entry missing required "
+                      f"'id' field: {n!r}", file=sys.stderr)
+                sys.exit(1)
             effective_node_id = node_id if single else n["id"]
             if single:
                 nc["id"] = node_id
@@ -216,9 +324,25 @@ def cmd_generate(args) -> None:
 
     def emit_device(dev_cfg, dev_access, dev_addr, runtime_id_expr, is_root):
         # Emit this device's nodes, then recurse into nested child devices.
-        for entry in dev_cfg.get("nodes", []):
+        nodes_list = dev_cfg.get("nodes") or []
+        if not isinstance(nodes_list, list):
+            print(f"ERROR: device.yml nodes: value isn't a list (got "
+                  f"{type(nodes_list).__name__}: {nodes_list!r}) — expected a list of "
+                  f"'- component: ...' entries", file=sys.stderr)
+            sys.exit(1)
+        for entry in nodes_list:
             emit_node(entry, dev_access, None if is_root else dev_addr, is_root)
-        for child in dev_cfg.get("children", []):
+        children_list = dev_cfg.get("children") or []
+        if not isinstance(children_list, list):
+            print(f"ERROR: device.yml children: value isn't a list (got "
+                  f"{type(children_list).__name__}: {children_list!r}) — expected a list "
+                  f"of child device entries", file=sys.stderr)
+            sys.exit(1)
+        for child in children_list:
+            if not isinstance(child, dict) or "id" not in child:
+                print(f"ERROR: device.yml child device entry missing required 'id' field "
+                      f"(got {child!r})", file=sys.stderr)
+                sys.exit(1)
             cid    = child["id"]                 # suffix; runtime id = <parent>-<cid>
             cvar   = "dev_" + _cvar(cid)
             cidbuf = "childId_" + _cvar(cid)
@@ -483,7 +607,7 @@ def _apply_overlay(config_path: Path) -> None:
     """Merge ~/.config/eBus/config.yml fields into the generated config.yml."""
     if not CONFIG_OVERLAY.exists():
         return
-    raw = yaml.safe_load(CONFIG_OVERLAY.read_text(encoding="utf-8")) or {}
+    raw = load_yaml_file(CONFIG_OVERLAY, require_mapping=False) or {}
     # Support both flat {key: val} and {config: [{key: val}]} overlay formats
     if "config" in raw and isinstance(raw["config"], list):
         overrides = raw["config"][0] or {}
@@ -491,7 +615,7 @@ def _apply_overlay(config_path: Path) -> None:
         overrides = raw
     if not overrides:
         return
-    doc = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    doc = load_yaml_file(config_path, require_mapping=False) or {}
     base = doc.get("config", [{}])[0] or {}
     for k, v in overrides.items():
         if v is not None and v != "":
