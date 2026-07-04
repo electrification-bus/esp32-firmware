@@ -6,7 +6,7 @@
 
 class BME280 : public NodeEntity, public Adafruit_BME280 {
     public:
-        BME280(const char* homie_node_id);
+        BME280(const char* homie_node_id, int pin_sda, int pin_scl);
         ~BME280(){};
 
         void setPins(int8_t sda, int8_t scl);

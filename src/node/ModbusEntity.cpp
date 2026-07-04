@@ -4,7 +4,7 @@
 // Static member initialization
 bool ModbusRTUEntity::_modbus_subsystem_initialized = false;
 
-void ModbusRTUEntity::ensureModbusSubsystem() {
+void ModbusRTUEntity::ensureModbusSubsystem(int pin_rs485_a, int pin_rs485_b) {
     if (!_modbus_subsystem_initialized) {
         Serial.println("=== MODBUS SUBSYSTEM INIT START ===");
         Serial.println("ModbusRTUEntity: First modbus device - starting subsystem");
@@ -17,7 +17,7 @@ void ModbusRTUEntity::ensureModbusSubsystem() {
         modbus_task_start(0);
 
         Serial.println("MODBUS: Setting up RS485 serial...");
-        setup_modbus_master();
+        setup_modbus_master(pin_rs485_a, pin_rs485_b);
 
         _modbus_subsystem_initialized = true;
         Serial.printf("MODBUS: Subsystem initialized, queue_ready=%d\n", modbus_queue_ready());
@@ -29,12 +29,14 @@ bool ModbusRTUEntity::isModbusInitialized() {
     return _modbus_subsystem_initialized;
 }
 
-ModbusRTUEntity::ModbusRTUEntity(const char* homie_id) : NodeEntity(homie_id) {
+ModbusRTUEntity::ModbusRTUEntity(const char* homie_id, int pin_rs485_a, int pin_rs485_b) : NodeEntity(homie_id) {
     _modbus_address = 0;
     _poll_timestamp = 0;
     _use_async_queue = false;
     _pending_command_id = 0;
     _serial = nullptr;
+    _pin_rs485_a = pin_rs485_a;
+    _pin_rs485_b = pin_rs485_b;
 }
 
 void ModbusRTUEntity::setSerial(Stream* serial) {
@@ -80,7 +82,7 @@ bool ModbusRTUEntity::setup() {
     Serial.printf("ModbusRTUEntity::setup() '%s' addr=%d\n", getNodeId(), _modbus_address);
 
     // Ensure modbus subsystem (queue, task, serial hardware) is initialized
-    ensureModbusSubsystem();
+    ensureModbusSubsystem(_pin_rs485_a, _pin_rs485_b);
 
     // Use device-specified serial or default to serial1
     if (_serial == nullptr) {

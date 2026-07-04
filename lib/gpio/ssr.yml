@@ -16,7 +16,15 @@ nodes:
         description: "The state of the relay (on/off)"
 extensions: []
 implementation: homie-esp32-sdk
+# This component's entry in device.yml MUST include a config: block with `pin`
+# (the relay's control GPIO) — the generator substitutes it straight into the C++
+# constructor below, so a missing/omitted key breaks the generated build. Example:
+#
+#   - component: gpio/ssr
+#     id: relay1
+#     config:
+#       pin: 15
 generator:
   class: SSR
   header: gpio/ssr.h
-  constructor: '("{id}")'
+  constructor: '("{id}", {config.pin})'

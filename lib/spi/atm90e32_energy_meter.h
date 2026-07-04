@@ -142,23 +142,23 @@ public:
        Constructor with default calibration values.
 
        @param homie_node_id  Unique node identifier for Homie MQTT
-       @param cs1_pin        Chip select pin for IC1 (CTs 1-3)
-       @param cs2_pin        Chip select pin for IC2 (CTs 4-6)
+       @param pin_cs1        Chip select pin for IC1 (CTs 1-3)
+       @param pin_cs2        Chip select pin for IC2 (CTs 4-6)
     */
-    EnergyMeter(const char* homie_node_id, int cs1_pin, int cs2_pin);
+    EnergyMeter(const char* homie_node_id, int pin_cs1, int pin_cs2);
 
     /*
        Constructor with custom calibration values.
 
        @param homie_node_id  Unique node identifier for Homie MQTT
-       @param cs1_pin        Chip select pin for IC1 (CTs 1-3)
-       @param cs2_pin        Chip select pin for IC2 (CTs 4-6)
+       @param pin_cs1        Chip select pin for IC1 (CTs 1-3)
+       @param pin_cs2        Chip select pin for IC2 (CTs 4-6)
        @param lineFreq       Line frequency calibration (4231=60Hz, 135=50Hz)
        @param pgaGain        PGA gain (0=1x, 21=2x, 42=4x)
        @param voltageGain    Voltage RMS gain calibration
        @param currentGain    Current RMS gain calibration (same for all CTs)
     */
-    EnergyMeter(const char* homie_node_id, int cs1_pin, int cs2_pin,
+    EnergyMeter(const char* homie_node_id, int pin_cs1, int pin_cs2,
                 unsigned short lineFreq, unsigned short pgaGain,
                 unsigned short voltageGain, unsigned short currentGain);
 
@@ -171,6 +171,9 @@ public:
 
     // Configuration
     void setReadInterval(int interval_ms) { _read_interval = interval_ms; }
+    // Chip-select pins for board 0 — takes effect on the next setup(); multi-board
+    // setups (NUM_ENERGY_BOARDS > 1) need per-board access, not covered by this setter
+    void set_pins(int pin_cs1, int pin_cs2) { _cs1[0] = pin_cs1; _cs2[0] = pin_cs2; }
 
     // Direct access to energy model data
     EnergyModel& getModel() { return _model; }
@@ -252,11 +255,11 @@ private:
 
    // Example multi-board initialization:
    //
-   // const int cs1_pins[3] = {15, 47, 21};
-   // const int cs2_pins[3] = {16, 2, 19};
+   // const int pin_cs1_all[3] = {15, 47, 21};
+   // const int pin_cs2_all[3] = {16, 2, 19};
    //
    // // Create with arrays (requires EnergyMeterMulti class - see below)
-   // EnergyMeterMulti meter("energy", cs1_pins, cs2_pins, 3);
+   // EnergyMeterMulti meter("energy", pin_cs1_all, pin_cs2_all, 3);
    //
    // Per-board voltage calibration may be needed due to transformer variations:
    // meter.setVoltageGain(0, 10885);  // Board 0 IC1 & IC2

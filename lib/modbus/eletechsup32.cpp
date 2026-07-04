@@ -3,8 +3,8 @@
 #include <modbus/eletechsup32.h>
 #include <platform/mqtt_client.h>
 
-Modbus_Eletechsup32::Modbus_Eletechsup32(const char* homie_node_id, Stream& serial, uint8_t addr)
-    : ModbusRTUEntity(homie_node_id) {
+Modbus_Eletechsup32::Modbus_Eletechsup32(const char* homie_node_id, Stream& serial, int pin_rs485_a, int pin_rs485_b, uint8_t addr)
+    : ModbusRTUEntity(homie_node_id, pin_rs485_a, pin_rs485_b) {
     _modbus_address = addr;
     _serial = &serial;
     _poll_timestamp = 0;

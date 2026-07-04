@@ -124,9 +124,10 @@ void MyDevice::loop() {
 
 These apply whichever path you use (generator or hand-coded) — they're properties of the drivers, not the workflow:
 
-- **Modbus RS485 (`modbus/sht20`, `modbus/eletechsup32`)** — `get_serial1()` returns the correct `HardwareSerial` for the active board (Serial1 on WROOM, Serial2 on WROVER); pass it to the constructor. RS485 wiring goes on the UART pins defined in [`include/pins.h`](../include/pins.h); Modbus address defaults live in `config.h`.
+- **Modbus RS485 (`modbus/sht20`, `modbus/eletechsup32`)** — `get_serial1()` returns the correct `HardwareSerial` for the active board (Serial1 on WROOM, Serial2 on WROVER); pass it to the constructor along with `pin_rs485_a`/`pin_rs485_b` (from that node's `config:` block — see the reference values documented at the top of [`lib/modbus/sht20.yml`](../lib/modbus/sht20.yml)). All modbus nodes share one physical bus, so every instance must be given the same pins; only the first node's `setup()` actually configures the UART. Modbus address defaults live in `config.h`.
 - **`ble/serial_bms` (JBD BMS over BLE)** — sets `NODE_REQUIRES_BLUETOOTH` in its constructor, which suppresses WiFi-STA init on classic ESP32 boards to avoid BLE/WiFi radio contention. On WROVER boards BLE and WiFi coexist (PSRAM heap routing), so the suppression isn't needed. The BMS BLE address is cached in NVS after the first scan; force a re-scan with `rescan = true`.
-- **`spi/atm90e32_energy_meter` (ATM90E32 over SPI)** — chip-select and calibration pins are in [`include/pins.h`](../include/pins.h); voltage/current-gain calibration values are set in the `EnergyMeter` constructor.
+- **`spi/atm90e32_energy_meter` (ATM90E32 over SPI)** — chip-select pins come from that node's `config:` block (`pin_cs1`/`pin_cs2` — see the reference values documented at the top of [`lib/spi/atm90e32_energy_meter.yml`](../lib/spi/atm90e32_energy_meter.yml)); voltage/current-gain calibration values are set in the `EnergyMeter` constructor.
+- **`i2c/bme280` (BME280 over I2C)** — SDA/SCL pins come from that node's `config:` block (`pin_sda`/`pin_scl` — see the reference values documented at the top of [`lib/i2c/bme280.yml`](../lib/i2c/bme280.yml)); on WROVER boards, move SCL off GPIO 16/17 since PSRAM uses those pins.
 
 ## Borrowing protocol knowledge from ESPHome (reference, don't copy)
 

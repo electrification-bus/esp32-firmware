@@ -30,7 +30,22 @@ nodes:
         value: 0.0
 extensions: []
 implementation: homie-esp32-sdk
+# This component's entry in device.yml MUST include a config: block with
+# pin_sda/pin_scl (I2C bus pins) — the generator substitutes them straight into
+# the C++ constructor below, so missing/omitted keys break the generated build.
+# Example:
+#
+#   - component: i2c/bme280
+#     id: environment_bme280
+#     config:
+#       pin_sda: 13
+#       pin_scl: 16
+#
+# Reference values by board (WROVER boards must move SCL off GPIO 16/17 — PSRAM
+# uses those pins):
+#   esp32-poe-iso / esp32-s3-devkitc-1: pin_sda: 13, pin_scl: 16
+#   esp32-poe-iso-wrover:               pin_sda: 13, pin_scl: 14
 generator:
   class: BME280
   header: i2c/bme280.h
-  constructor: '("{id}")'
+  constructor: '("{id}", {config.pin_sda}, {config.pin_scl})'

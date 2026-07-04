@@ -1,7 +1,6 @@
 #pragma once
 #include <Arduino.h>
 #include <ArduinoYaml.h>
-#include <pins.h>
 #include <util/jsonUtils.h>
 #include <homie/homie.h>
 #include <homie/Device.h>

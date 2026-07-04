@@ -63,20 +63,28 @@ mqtt:
   password: mypass
 
 nodes:
-  - component: i2c/bme280               # lib/i2c/bme280 — no extra config needed
+  - component: i2c/bme280               # lib/i2c/bme280
     id: environment_bme280              # C++ object name + Homie node id
+    config:
+      pin_sda: 13
+      pin_scl: 16
 
   - component: modbus/sht20
     id: environment_sht20
+    config:
+      pin_rs485_a: 6                      # shared RS485 bus — same value on every modbus node
+      pin_rs485_b: 7
 
   - component: gpio/ssr
     id: relay1
+    config:
+      pin: 4
 
   - component: spi/atm90e32_energy_meter
     id: energy_meter
     config:                             # component-specific parameters
-      cs1_pin: 15
-      cs2_pin: 16
+      pin_cs1: 15
+      pin_cs2: 16
 ```
 
 ### device fields
@@ -121,12 +129,12 @@ id: panel-main            # fixed literal — logs a warning (two units collide 
 
 | Component | Class | Constructor extras |
 |-----------|-------|--------------------|
-| `i2c/bme280` | `BME280` | none |
-| `modbus/sht20` | `Modbus_SHT20` | none (uses `get_serial1()`) |
-| `modbus/eletechsup32` | `Modbus_Eletechsup32` | none (uses `get_serial1()`) |
-| `gpio/ssr` | `SSR` | none |
+| `i2c/bme280` | `BME280` | `pin_sda`, `pin_scl` |
+| `modbus/sht20` | `Modbus_SHT20` | `pin_rs485_a`, `pin_rs485_b` (uses `get_serial1()`) |
+| `modbus/eletechsup32` | `Modbus_Eletechsup32` | `pin_rs485_a`, `pin_rs485_b` (uses `get_serial1()`) |
+| `gpio/ssr` | `SSR` | `pin` |
 | `ble/serial_bms` | `SerialBMS` | none |
-| `spi/atm90e32_energy_meter` | `EnergyMeter` | `cs1_pin`, `cs2_pin` |
+| `spi/atm90e32_energy_meter` | `EnergyMeter` | `pin_cs1`, `pin_cs2` |
 
 Multiple instances of the same component are allowed; give each a unique `id`.
 
@@ -201,9 +209,9 @@ Example output for the quickstart config above:
 #include <gpio/ssr.h>
 #include <spi/atm90e32_energy_meter.h>
 
-BME280 environment_bme280("environment_bme280");
-Modbus_SHT20 environment_sht20("environment_sht20", get_serial1());
-SSR relay1("relay1");
+BME280 environment_bme280("environment_bme280", 13, 16);
+Modbus_SHT20 environment_sht20("environment_sht20", get_serial1(), 6, 7);
+SSR relay1("relay1", 4);
 EnergyMeter energy_meter("energy_meter", 15, 16);
 
 void setup_homie() {

@@ -3,7 +3,7 @@
 
 class SSR : public NodeEntity {
     public:
-        SSR(const char* homie_node_id) : NodeEntity(homie_node_id), _state(false), _pin(-1) {};
+        SSR(const char* homie_node_id, int pin) : NodeEntity(homie_node_id), _state(false), _pin(pin) {};
         ~SSR(){};
 
         bool setup() override;
@@ -12,6 +12,7 @@ class SSR : public NodeEntity {
 
         //const char* getNodeId() const override { return "relay1"; };
         bool getState() { return _state; };
+        void set_pin(int pin) { _pin = pin; }
         void set_on_state();
         void set_off_state();  
         void set_ssr_state(bool onoff);
@@ -19,7 +20,6 @@ class SSR : public NodeEntity {
     private:
         const char _homie_node_id[32] = {0};
         NodeProperty _state_property;
-        NodeProperty _pin_property;
         bool _state;
         bool LOW_TRIGGER = true;
         int _pin;

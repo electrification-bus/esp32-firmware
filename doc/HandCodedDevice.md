@@ -70,8 +70,8 @@ A complete `src/homie.cpp` for an SHT20 sensor + an SSR relay — identical in s
 
 // 1. Node objects — statically allocated; constructors run before setup().
 //    The constructor arg is the Homie node id (also the C++ object's identity).
-Modbus_SHT20 environment_sht20("environment_sht20", get_serial1());
-SSR          relay1("relay1");
+Modbus_SHT20 environment_sht20("environment_sht20", get_serial1(), 6, 7);
+SSR          relay1("relay1", 4);
 
 // 2. One static Property per published property — these define the topology.
 static Property _prop_sht20_temperature;

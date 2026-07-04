@@ -1,12 +1,11 @@
 #include <Adafruit_BME280.h>
 #include <i2c/bme280.h>
 #include <config.h>
-#include <pins.h>
 
 #define BME_ADDR 0x76
 
-BME280::BME280(const char* homie_node_id) : NodeEntity(homie_node_id), Adafruit_BME280() {
-  setPins(BME280_SDA_PIN, BME280_SCL_PIN);
+BME280::BME280(const char* homie_node_id, int pin_sda, int pin_scl) : NodeEntity(homie_node_id), Adafruit_BME280() {
+  setPins(pin_sda, pin_scl);
   _read_interval = 10000;
   _since_last_read = 0;
 }

@@ -7,11 +7,14 @@
 class ModbusRTUEntity : public NodeEntity, public ModbusMaster {
 
     public:
-        ModbusRTUEntity(const char* homie_id);
+        ModbusRTUEntity(const char* homie_id, int pin_rs485_a, int pin_rs485_b);
         ~ModbusRTUEntity(){};
 
-        // Static methods for lazy modbus subsystem initialization
-        static void ensureModbusSubsystem();
+        // Static methods for lazy modbus subsystem initialization. The RS485 bus is
+        // shared by all Modbus devices, so only the first caller's pins take effect —
+        // every modbus/*.yml component's config: block should specify the same
+        // pin_rs485_a/pin_rs485_b.
+        static void ensureModbusSubsystem(int pin_rs485_a, int pin_rs485_b);
         static bool isModbusInitialized();
 
         void loop() override;
@@ -42,6 +45,10 @@ class ModbusRTUEntity : public NodeEntity, public ModbusMaster {
         void setSerial(Stream* serial);
         Stream* getSerial() const;
 
+        // RS485 bus pins - takes effect on the next setup() (ensureModbusSubsystem());
+        // shared by all modbus/* nodes, so keep them consistent across instances
+        void set_pins(int pin_rs485_a, int pin_rs485_b) { _pin_rs485_a = pin_rs485_a; _pin_rs485_b = pin_rs485_b; }
+
     protected:
         // Called by derived class setup() to store serial reference
         void initModbus(Stream& serial);
@@ -51,6 +58,8 @@ class ModbusRTUEntity : public NodeEntity, public ModbusMaster {
         bool _use_async_queue;          // Toggle between sync and async modes
         uint32_t _pending_command_id;   // Track outstanding async command
         Stream* _serial;                // Serial port for this device
+        int _pin_rs485_a;               // RS485 transceiver pin A (module RXD)
+        int _pin_rs485_b;               // RS485 transceiver pin B (module TXD)
 
     private:
         static bool _modbus_subsystem_initialized;

@@ -73,20 +73,20 @@ void EnergyModel::init(unsigned short lineFreq, unsigned short pgagain, unsigned
    -------------------------------------------------------------------
 */
 
-EnergyMeter::EnergyMeter(const char* homie_node_id, int cs1_pin, int cs2_pin)
+EnergyMeter::EnergyMeter(const char* homie_node_id, int pin_cs1, int pin_cs2)
     : NodeEntity(homie_node_id) {
-    _cs1[0] = cs1_pin;
-    _cs2[0] = cs2_pin;
+    _cs1[0] = pin_cs1;
+    _cs2[0] = pin_cs2;
     initCalibration(LINE_FREQ_DEFAULT, PGA_GAIN_DEFAULT,
                     VOLTAGE_GAIN_DEFAULT, CURRENT_GAIN_DEFAULT);
 }
 
-EnergyMeter::EnergyMeter(const char* homie_node_id, int cs1_pin, int cs2_pin,
+EnergyMeter::EnergyMeter(const char* homie_node_id, int pin_cs1, int pin_cs2,
                          unsigned short lineFreq, unsigned short pgaGain,
                          unsigned short voltageGain, unsigned short currentGain)
     : NodeEntity(homie_node_id) {
-    _cs1[0] = cs1_pin;
-    _cs2[0] = cs2_pin;
+    _cs1[0] = pin_cs1;
+    _cs2[0] = pin_cs2;
     initCalibration(lineFreq, pgaGain, voltageGain, currentGain);
 }
 

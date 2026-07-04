@@ -61,6 +61,6 @@ mdns:
 nodes:
   - component: modbus/sht20
     id: environment_sht20
-
-  - component: gpio/ssr
-    id: relay1
+    config:
+       pin_rs485_a: 36
+       pin_rs485_b: 4

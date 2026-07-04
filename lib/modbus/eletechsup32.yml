@@ -21,7 +21,25 @@ nodes:
         value: false
 extensions: []
 implementation: homie-esp32-sdk
+# This component's entry in device.yml MUST include a config: block with
+# pin_rs485_a/pin_rs485_b (A -> RS485 module's "RXD" silk screen pin, B -> its
+# "TXD" pin) — the generator substitutes them straight into the C++ constructor
+# below, so missing/omitted keys break the generated build. Example:
+#
+#   - component: modbus/eletechsup32
+#     id: voltage_current_detector
+#     config:
+#       pin_rs485_a: 36
+#       pin_rs485_b: 4
+#
+# All modbus/* nodes share ONE physical RS485 bus, so every modbus node instance in
+# device.yml must be given the SAME pin_rs485_a/pin_rs485_b — only the first node's
+# setup() actually configures the UART; the rest are expected to match.
+#
+# Reference values by board:
+#   esp32-poe-iso (Olimex, Ethernet):   pin_rs485_a: 36, pin_rs485_b: 4
+#   esp32-s3-devkitc-1 / other boards:  pin_rs485_a: 6,  pin_rs485_b: 7
 generator:
   class: Modbus_Eletechsup32
   header: modbus/eletechsup32.h
-  constructor: '("{id}", get_serial1())'
+  constructor: '("{id}", get_serial1(), {config.pin_rs485_a}, {config.pin_rs485_b})'

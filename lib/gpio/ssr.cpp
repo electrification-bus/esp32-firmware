@@ -1,17 +1,14 @@
 #include <Arduino.h>
 #include <gpio/ssr.h>
-#include <pins.h>
 #include <config.h>
 
-#define DEBUG_SSR false
+#define DEBUG_SSR true
 
 int last_toggle = millis();
 
 bool SSR::setup() {
     NodeEntity::setup();  // Base class first
     _state_property.setup(getNodeId(), "state", &NodeEntity::entity_settable_callback, (NodeEntity*)this);
-    _pin_property  .setup(getNodeId(), "pin");
-    _pin = atoi(_pin_property.value());
     Serial.printf("SSR: pin=%d\n", _pin);
     pinMode(_pin, OUTPUT);
     if (LOW_TRIGGER) {

@@ -4,7 +4,7 @@
 
 class Modbus_SHT20 : public ModbusRTUEntity {
     public:
-        Modbus_SHT20(const char* homie_node_id, Stream& serial, uint8_t addr = SHT20_ADDR, bool useAsyncQueue = true);
+        Modbus_SHT20(const char* homie_node_id, Stream& serial, int pin_rs485_a, int pin_rs485_b, uint8_t addr = SHT20_ADDR, bool useAsyncQueue = true);
         ~Modbus_SHT20() {};
         bool setup() override;
 

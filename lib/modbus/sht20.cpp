@@ -4,8 +4,8 @@
 
 #define PAUSE_ON_RAMP_LEVELS 30000
 
-Modbus_SHT20::Modbus_SHT20(const char* homie_node_id, Stream& serial, uint8_t addr, bool useAsyncQueue)
-    : ModbusRTUEntity(homie_node_id) {
+Modbus_SHT20::Modbus_SHT20(const char* homie_node_id, Stream& serial, int pin_rs485_a, int pin_rs485_b, uint8_t addr, bool useAsyncQueue)
+    : ModbusRTUEntity(homie_node_id, pin_rs485_a, pin_rs485_b) {
     _modbus_address = addr;
     _serial = &serial;
     _use_async_queue = useAsyncQueue;

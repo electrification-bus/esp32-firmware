@@ -28,7 +28,7 @@ include/                      Header files
   node/                       NodeEntity classes by subsystem (gpio/, i2c/, modbus/, spi/)
   platform/                   Platform-specific helpers
   util/                       Shared utility code
-  pins.h, homie.h             Top-level project headers
+  homie.h                     Top-level project header
 lib/                          Project-local C++ libraries — custom code and forks
                               (ble/, gpio/, i2c/, modbus/, spi/)
 data/                         LittleFS image source

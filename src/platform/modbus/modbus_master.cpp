@@ -10,30 +10,30 @@
 unsigned long lastPollMillis = 0;
 
 #ifdef USE_SOFTWARE_SERIAL
-SoftwareSerial _modbus1(RS485_RX_1, RS485_TX_1);
+SoftwareSerial _modbus1;
 #endif
 
-void setup_modbus_master() {
-    Serial.printf("MODBUS MASTER: Configuring RS485 pins RX=%d, TX=%d\n", RS485_RX_1, RS485_TX_1);
+void setup_modbus_master(int pin_rs485_a, int pin_rs485_b) {
+    Serial.printf("MODBUS MASTER: Configuring RS485 pins A(RX)=%d, B(TX)=%d\n", pin_rs485_a, pin_rs485_b);
 
     // Only reset pins that support output (GPIO 34-39 are input-only on ESP32)
-    if (RS485_TX_1 < GPIO_NUM_34) {
-        gpio_reset_pin(RS485_TX_1);
+    if (pin_rs485_b < GPIO_NUM_34) {
+        gpio_reset_pin((gpio_num_t)pin_rs485_b);
     }
-    if (RS485_RX_1 < GPIO_NUM_34) {
-        gpio_reset_pin(RS485_RX_1);
+    if (pin_rs485_a < GPIO_NUM_34) {
+        gpio_reset_pin((gpio_num_t)pin_rs485_a);
     }
 
 #ifdef USE_SOFTWARE_SERIAL
     Serial.println("MODBUS MASTER: Starting SoftwareSerial at 9600 baud");
-    _modbus1.begin(9600);
+    _modbus1.begin(9600, SWSERIAL_8N1, pin_rs485_a, pin_rs485_b);
 #elif defined(BOARD_HAS_PSRAM)
     // WROVER: Use Serial2 — Serial1 default pins (GPIO 9/10) are connected to SPI flash
     Serial.println("MODBUS MASTER: Starting HardwareSerial (Serial2) at 9600 baud");
-    Serial2.begin(9600, SERIAL_8N1, RS485_RX_1, RS485_TX_1);
+    Serial2.begin(9600, SERIAL_8N1, pin_rs485_a, pin_rs485_b);
 #else
     Serial.println("MODBUS MASTER: Starting HardwareSerial (Serial1) at 9600 baud");
-    Serial1.begin(9600, SERIAL_8N1, RS485_RX_1, RS485_TX_1);
+    Serial1.begin(9600, SERIAL_8N1, pin_rs485_a, pin_rs485_b);
 #endif
 
     Serial.println("MODBUS MASTER: RS485 serial initialized");
