@@ -1,14 +1,14 @@
 #include <Arduino.h>
 #include <platform/config.h>
-#include <platform/modbus/modbus_master.h>
-#include <platform/modbus/modbus_queue.h>
+#include "modbus_master.h"
+#include "modbus_queue.h"
 
-// EspSoftwareSerial is only in the build when some modbus/* component in device.yml
-// actually needs it — see generator.lib_deps in lib/modbus/sht20.yml, collected by
-// `ebus-esp32 generate` into build/platformio.ini (a lean, standalone PlatformIO
-// config for the active board — see write_lean_platformio_ini() in ebus-esp32).
-// __has_include reflects that directly: no generator-emitted #define needed, just
-// ask the preprocessor whether the header is actually reachable in this build.
+// This file is part of the lib/platform private library: it is only compiled when
+// some modbus/* component in device.yml pulls it in via <platform/modbus/...>
+// includes, and lib/platform/library.json then auto-installs EspSoftwareSerial
+// (and ModbusMaster) as its dependencies. __has_include reflects that directly:
+// no generator-emitted #define needed, just ask the preprocessor whether the
+// header is actually reachable in this build.
 //
 // USE_SOFTWARE_SERIAL (set per-board in platformio.ini) is a separate, existing
 // hardware-capability switch: some boards (WROVER) must use HardwareSerial even

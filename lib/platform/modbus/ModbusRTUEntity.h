@@ -1,8 +1,8 @@
 #pragma once
 #include <Arduino.h>
 #include <node/NodeEntity.h>
-#include <platform/modbus/modbus_master.h>
-#include <platform/modbus/modbus_queue.h>
+#include "modbus_master.h"
+#include "modbus_queue.h"
 
 class ModbusRTUEntity : public NodeEntity, public ModbusMaster {
 

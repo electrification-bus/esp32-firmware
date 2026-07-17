@@ -43,6 +43,4 @@ generator:
   class: Modbus_Eletechsup32
   header: modbus/eletechsup32.h
   constructor: '("{id}", get_serial1(), {config.pin_rs485_a}, {config.pin_rs485_b})'
-  # See lib/modbus/sht20.yml for what this does (build/platformio.ini generation).
-  lib_deps:
-    - plerup/EspSoftwareSerial @ ^8.2.0
+  # No lib_deps: modbus deps come from lib/platform/library.json (see sht20.yml).

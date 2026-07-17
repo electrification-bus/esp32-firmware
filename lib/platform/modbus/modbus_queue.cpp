@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include <ModbusMaster.h>
-#include <platform/modbus/modbus_queue.h>
-#include <platform/modbus/modbus_master.h>
-#include <node/ModbusRTUEntity.h>
+#include "modbus_queue.h"
+#include "modbus_master.h"
+#include "ModbusRTUEntity.h"
 
 // FreeRTOS queue handles
 static QueueHandle_t modbus_command_queue = NULL;

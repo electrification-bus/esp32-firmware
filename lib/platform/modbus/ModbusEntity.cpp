@@ -1,4 +1,4 @@
-#include <node/ModbusRTUEntity.h>
+#include "ModbusRTUEntity.h"
 #include <platform/config.h>
 
 // Static member initialization

@@ -1,6 +1,6 @@
 #pragma once
 #include <Arduino.h>
-#include <node/ModbusRTUEntity.h>
+#include <platform/modbus/ModbusRTUEntity.h>
 
 class Modbus_Eletechsup32 : public ModbusRTUEntity {
     public:

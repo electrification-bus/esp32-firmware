@@ -1,6 +1,6 @@
 #pragma once
 
-#include <node/ModbusRTUEntity.h>
+#include <platform/modbus/ModbusRTUEntity.h>
 
 class Modbus_SHT20 : public ModbusRTUEntity {
     public:

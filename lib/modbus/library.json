@@ -1,6 +1,7 @@
 {
   "name": "modbus",
   "version": "0.0.1",
+  "description": "Modbus RTU components (SHT20, Eletechsup32). Compiled only when device.yml uses one. The modbus platform support they build on lives in lib/platform/modbus, pulled in automatically via <platform/modbus/...> includes (along with its ModbusMaster/EspSoftwareSerial deps — see lib/platform/library.json).",
   "build": {
     "includeDir": "..",
     "srcDir": "."

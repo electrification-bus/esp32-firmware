@@ -1,0 +1,13 @@
+{
+  "name": "platform",
+  "version": "0.0.1",
+  "description": "Component-supporting platform code, grouped by feature in subfolders. Compiled only when a component library pulls it in via <platform/...> includes; PlatformIO then auto-installs the dependencies below, so they must NOT be listed in platformio.ini's [common].lib_deps.",
+  "build": {
+    "includeDir": "..",
+    "srcDir": "."
+  },
+  "dependencies": {
+    "4-20ma/ModbusMaster": "2.0.1",
+    "plerup/EspSoftwareSerial": "^8.2.0"
+  }
+}
