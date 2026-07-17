@@ -10,8 +10,19 @@
 #define PREFS_KEY_MQTT_USER   "mqtt_user"
 #define PREFS_KEY_MQTT_PASS   "mqtt_pass"
 #define PREFS_KEY_PASSPHRASE  "passphrase"
+#define PREFS_KEY_FW_URL      "fw_url"
+#define PREFS_KEY_FS_URL      "fs_url"
 
 static Preferences prefs;
+
+// True once the corresponding OTA URL came from the portal (NVS at boot, or a
+// portal save this session) — distinguishes user-entered URLs from config.yml
+// defaults so the UI only prefills what the user actually configured.
+static bool _fw_url_from_portal = false;
+static bool _fs_url_from_portal = false;
+
+bool portal_prefs_has_fw_url() { return _fw_url_from_portal; }
+bool portal_prefs_has_fs_url() { return _fs_url_from_portal; }
 
 void portal_prefs_save_wifi(const char* ssid, const char* password) {
     prefs.begin(PREFS_NAMESPACE, false);
@@ -36,6 +47,22 @@ void portal_prefs_save_passphrase(const char* passphrase) {
     prefs.putString(PREFS_KEY_PASSPHRASE, passphrase);
     prefs.end();
     Serial.println("PREFS: Saved device passphrase");
+}
+
+void portal_prefs_save_firmware_url(const char* url) {
+    prefs.begin(PREFS_NAMESPACE, false);
+    prefs.putString(PREFS_KEY_FW_URL, url);
+    prefs.end();
+    _fw_url_from_portal = true;
+    Serial.printf("PREFS: Saved firmware URL='%s'\n", url);
+}
+
+void portal_prefs_save_fs_url(const char* url) {
+    prefs.begin(PREFS_NAMESPACE, false);
+    prefs.putString(PREFS_KEY_FS_URL, url);
+    prefs.end();
+    _fs_url_from_portal = true;
+    Serial.printf("PREFS: Saved filesystem URL='%s'\n", url);
 }
 
 void portal_prefs_load_fallbacks() {
@@ -96,6 +123,24 @@ void portal_prefs_load_fallbacks() {
     if (mqtt_any)
         Serial.println("PREFS: NVRAM PREF OVERRIDES CONFIG: clear via POST /api/reset-prefs");
 
+    len = prefs.getString(PREFS_KEY_FW_URL, buf, sizeof(buf));
+    if (len > 0) {
+        strncpy(firmware_url, buf, sizeof(firmware_url) - 1);
+        firmware_url[sizeof(firmware_url) - 1] = '\0';
+        _fw_url_from_portal = true;
+        Serial.printf("PREFS: NVRAM firmware_url='%s'\n", firmware_url);
+        any = true;
+    }
+
+    len = prefs.getString(PREFS_KEY_FS_URL, buf, sizeof(buf));
+    if (len > 0) {
+        strncpy(fs_url, buf, sizeof(fs_url) - 1);
+        fs_url[sizeof(fs_url) - 1] = '\0';
+        _fs_url_from_portal = true;
+        Serial.printf("PREFS: NVRAM fs_url='%s'\n", fs_url);
+        any = true;
+    }
+
     len = prefs.getString(PREFS_KEY_PASSPHRASE, buf, sizeof(buf));
     if (len > 0) {
         strncpy(device_passphrase, buf, sizeof(device_passphrase) - 1);
@@ -143,4 +188,44 @@ void portal_auth_record_failure() {
 
 void portal_auth_reset() {
     _auth_failures = 0;
+}
+
+// --- Portal session tokens (RAM only, single slot — one admin at a time) ---
+#define SESSION_TOKEN_LEN 32
+static char _session_token[SESSION_TOKEN_LEN + 1] = {0};
+static unsigned long _session_created = 0;
+static unsigned long _session_last_use = 0;
+
+const char* portal_session_create() {
+    // esp_random() draws from the hardware TRNG (WiFi/BT RF noise) — 128 bits
+    for (int i = 0; i < SESSION_TOKEN_LEN; i += 8) {
+        snprintf(&_session_token[i], 9, "%08lx", (unsigned long)esp_random());
+    }
+    _session_created = _session_last_use = millis();
+    Serial.println("SESSION: token issued (15 min idle / 2 h max)");
+    return _session_token;
+}
+
+void portal_session_clear() {
+    _session_token[0] = '\0';
+}
+
+bool portal_session_valid(const char* token) {
+    if (_session_token[0] == '\0' || token == NULL) return false;
+    unsigned long now = millis();
+    if (now - _session_last_use > SESSION_IDLE_TIMEOUT_MS ||
+        now - _session_created > SESSION_MAX_LIFETIME_MS) {
+        portal_session_clear();
+        Serial.println("SESSION: expired");
+        return false;
+    }
+    if (strlen(token) != SESSION_TOKEN_LEN) return false;  // length isn't secret
+    // Constant-time compare — no early exit, so timing doesn't leak a prefix match
+    uint8_t diff = 0;
+    for (int i = 0; i < SESSION_TOKEN_LEN; i++) {
+        diff |= (uint8_t)token[i] ^ (uint8_t)_session_token[i];
+    }
+    if (diff != 0) return false;
+    _session_last_use = now;  // sliding idle window
+    return true;
 }

@@ -96,11 +96,35 @@ paths:
                   value:
                     status: none
 
+  /api/login:
+    post:
+      summary: Exchange passphrase for a session token
+      security:
+        - basicAuth: []
+      description: |
+        Authenticates with the device passphrase (Basic auth) and returns a
+        random session token. Subsequent admin requests may send it in the
+        X-Session-Token header instead of re-sending the passphrase.
+        Expires after 15 min idle or 2 h absolute; invalidated by reboot,
+        passphrase change, or reset-prefs.
+      responses:
+        "200":
+          description: Session token issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    example: "3fa85f64c9b2de7a1a2b3c4d5e6f7a8b"
+
   /api/mqtt:
     post:
       summary: Save MQTT configuration
       security:
         - basicAuth: []
+        - sessionAuth: []
       description: |
         Saves MQTT broker settings to NVS. Invalidates cached CA cert
         so the next connection fetches a fresh cert for the (possibly new) broker.
@@ -152,6 +176,7 @@ paths:
       summary: Save firmware URL
       security:
         - basicAuth: []
+        - sessionAuth: []
       description: Saves the OTA firmware update URL.
       requestBody:
         required: true
@@ -187,6 +212,7 @@ paths:
       summary: Reset all portal preferences
       security:
         - basicAuth: []
+        - sessionAuth: []
       description: Clears all NVS preferences (WiFi, MQTT, etc). Reboot to use YML config.
       responses:
         "200":
@@ -208,6 +234,7 @@ paths:
       summary: Reboot the device
       security:
         - basicAuth: []
+        - sessionAuth: []
       description: Triggers an ESP.restart() after a short delay.
       responses:
         "200":
@@ -261,6 +288,7 @@ paths:
         Requires HTTP Basic Auth (admin / device_passphrase).
       security:
         - basicAuth: []
+        - sessionAuth: []
       requestBody:
         required: true
         content:
@@ -319,6 +347,7 @@ paths:
         (default 10) and always starts disabled on reboot.
       security:
         - basicAuth: []
+        - sessionAuth: []
       requestBody:
         required: true
         content:
@@ -541,6 +570,13 @@ components:
       description: |
         Username: "admin", Password: device_passphrase from config.yml.
         Rate limited: 5 failures triggers 5-minute lockout.
+    sessionAuth:
+      type: apiKey
+      in: header
+      name: X-Session-Token
+      description: |
+        Session token from POST /api/login. Expires after 15 min idle or
+        2 h absolute; invalidated by reboot, passphrase change, or reset-prefs.
 
   schemas:
     StatusResponse:

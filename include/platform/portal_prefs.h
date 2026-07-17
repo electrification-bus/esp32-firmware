@@ -1,8 +1,9 @@
 #pragma once
 #include <Arduino.h>
 
-// Persist captive portal settings (WiFi, MQTT) to NVS via Arduino Preferences.
-// Portal-saved values override config.yml — the user explicitly configured them.
+// Persist captive portal settings (WiFi, MQTT, OTA URLs) to NVS via Arduino
+// Preferences. Portal-saved values override config.yml — the user explicitly
+// configured them.
 
 // Save WiFi credentials to NVS (called from captive portal on user submit)
 void portal_prefs_save_wifi(const char* ssid, const char* password);
@@ -13,11 +14,21 @@ void portal_prefs_save_mqtt(const char* host, uint16_t port, const char* user, c
 // Save device passphrase to NVS (called from captive portal on user submit)
 void portal_prefs_save_passphrase(const char* passphrase);
 
+// Save OTA firmware / filesystem image URLs to NVS (called from captive portal
+// when an OTA update is started with a URL)
+void portal_prefs_save_firmware_url(const char* url);
+void portal_prefs_save_fs_url(const char* url);
+
+// True if the OTA URL was set via the portal (NVS or this session) rather than
+// inherited from config.yml — used to decide whether the UI should prefill it.
+bool portal_prefs_has_fw_url();
+bool portal_prefs_has_fs_url();
+
 // Load saved values into globals, overriding config.yml where portal values exist.
 // Call after loadPlatformConfiguration().
 void portal_prefs_load_fallbacks();
 
-// Clear all portal-saved settings (WiFi + MQTT + passphrase) so next boot uses config.yml only.
+// Clear all portal-saved settings (WiFi + MQTT + OTA URLs + passphrase) so next boot uses config.yml only.
 void portal_prefs_clear();
 
 // Auth rate limiting — returns true if locked out (too many failures)
@@ -27,3 +38,15 @@ void portal_prefs_clear();
 bool portal_auth_is_locked();
 void portal_auth_record_failure();
 void portal_auth_reset();
+
+// --- Portal session tokens (RAM only) ---
+// POST /api/login exchanges the device passphrase (Basic auth) for a random
+// session token; admin endpoints then accept X-Session-Token instead of the
+// passphrase for the rest of the browser session. Invalidated by idle/absolute
+// timeout, passphrase change, reset-prefs, or reboot (RAM only).
+#define SESSION_IDLE_TIMEOUT_MS (15UL * 60UL * 1000UL)       // 15 min inactivity
+#define SESSION_MAX_LIFETIME_MS (2UL * 60UL * 60UL * 1000UL) // 2 h absolute cap
+
+const char* portal_session_create();           // issue new token (32 hex chars)
+bool portal_session_valid(const char* token);  // constant-time; refreshes idle timer
+void portal_session_clear();                   // invalidate the active session

@@ -92,6 +92,17 @@
   <div class="field"><label>Password</label><input type="password" id="password" placeholder="(optional)"></div>
   <div class="field"><label>Port</label><select id="port" style="width:100%;padding:10px;border:1px solid #444;border-radius:6px;background:#16213e;color:#e0e0e0;font-size:1em"><option value="1883">1883 (MQTT)</option><option value="8883">8883 (MQTTS / TLS)</option></select></div>
   <button type="button" id="mqtt-save" disabled>Save MQTT</button>
+  <div id="mqtt-confirm" class="wifi-pass-panel">
+    <div class="field" style="margin-bottom:10px">
+      <label>Device passphrase</label>
+      <div class="pass-wrap">
+        <input type="password" id="mqtt-admin-pass" placeholder="device_passphrase from config.yml">
+        <span class="pass-toggle" id="mqtt-admin-pass-toggle">&#x1f441;</span>
+      </div>
+    </div>
+    <button type="button" id="mqtt-confirm-yes" style="width:48%;margin-right:4%;background:#1565c0;color:#fff">Save</button>
+    <button type="button" id="mqtt-confirm-cancel" style="width:48%">Cancel</button>
+  </div>
   <div class="status" id="mqtt-status"></div>
 
   <h2>Firmware</h2>
@@ -101,7 +112,7 @@
   <div id="fw-confirm" class="wifi-pass-panel">
     <p style="margin-bottom:6px;font-size:0.9em;color:#f44336">Start OTA update?</p>
     <div id="fw-confirm-urls" style="font-size:0.8em;color:#aaa;margin-bottom:10px;line-height:1.6"></div>
-    <div class="field" style="margin-bottom:10px">
+    <div class="field" style="margin-bottom:10px" id="fw-pass-field">
       <label>Device passphrase</label>
       <div class="pass-wrap">
         <input type="password" id="fw-passphrase" placeholder="device_passphrase from config.yml">
@@ -137,8 +148,8 @@
   <div class="status" id="pass-status"></div>
   <button type="button" id="btn-reset-prefs" style="margin-top:8px">Reset to YML Config Only</button>
   <div id="reset-confirm" class="wifi-pass-panel">
-    <p style="margin-bottom:10px;font-size:0.9em;color:#f44336">Clear all portal-saved settings (WiFi + MQTT + passphrase)?<br>Next boot will use only YML config.</p>
-    <div class="field" style="margin-bottom:10px">
+    <p style="margin-bottom:10px;font-size:0.9em;color:#f44336">Clear all portal-saved settings (WiFi + MQTT + OTA URLs + passphrase)?<br>Next boot will use only YML config.</p>
+    <div class="field" style="margin-bottom:10px" id="reset-pass-field">
       <label>Device passphrase</label>
       <div class="pass-wrap">
         <input type="password" id="reset-passphrase" placeholder="device_passphrase from config.yml">
@@ -152,7 +163,7 @@
   <button type="button" id="btn-reboot" style="margin-top:8px">Reboot</button>
   <div id="reboot-confirm" class="wifi-pass-panel">
     <p style="margin-bottom:10px;font-size:0.9em;color:#f44336">Reboot the device now?</p>
-    <div class="field" style="margin-bottom:10px">
+    <div class="field" style="margin-bottom:10px" id="reboot-pass-field">
       <label>Device passphrase</label>
       <div class="pass-wrap">
         <input type="password" id="reboot-passphrase" placeholder="device_passphrase from config.yml">
@@ -166,6 +177,17 @@
 
   <script>
     (function() {
+      // Mobile keyboards auto-capitalize the first letter of entry fields -
+      // wrong for hostnames, usernames, URLs and passphrases (and for password
+      // fields temporarily toggled visible). Turn it off everywhere, along
+      // with autocorrect/spellcheck.
+      var allInputs = document.querySelectorAll('input');
+      for (var ai = 0; ai < allInputs.length; ai++) {
+        allInputs[ai].setAttribute('autocapitalize', 'off');
+        allInputs[ai].setAttribute('autocorrect', 'off');
+        allInputs[ai].setAttribute('spellcheck', 'false');
+      }
+
       var wifiList = document.getElementById('wifi-list');
       var wifiLoading = document.getElementById('wifi-loading');
       var wifiJoinBtn = document.getElementById('wifi-join');
@@ -247,6 +269,11 @@
             document.getElementById('wifi-section').style.display = 'block';
             loadWifiNetworks();
           }
+          // Prefill OTA URLs with the device's current (portal-persisted or
+          // config.yml) values
+          if (d.fw_url) document.getElementById('fw-url').value = d.fw_url;
+          if (d.fs_url) document.getElementById('fs-url').value = d.fs_url;
+          updateFwSaveBtn();
         })
         .catch(function() {});
 
@@ -333,8 +360,11 @@
         wifiPassInput.value = '';
       }
 
-      // Join Network button reveals password panel
+      // Join Network button reveals password panel. Re-enable Connect here:
+      // a prior SUCCESSFUL connect leaves it disabled (resetWifiUI only runs
+      // on failure paths), which would dead-lock joining a second network.
       wifiJoinBtn.addEventListener('click', function() {
+        wifiConnectBtn.disabled = false;
         wifiPassPanel.className = 'wifi-pass-panel visible';
         wifiPassInput.focus();
       });
@@ -406,32 +436,90 @@
         });
       }
 
-      // Save MQTT button - click handler with fetch, same pattern as WiFi Connect
-      document.getElementById('mqtt-save').addEventListener('click', function() {
+      // Save MQTT - passphrase panel revealed on demand, same pattern as
+      // firmware/reboot. With an active session the save happens directly.
+      var mqttAdminPassInput = document.getElementById('mqtt-admin-pass');
+      var mqttConfirmPanel = document.getElementById('mqtt-confirm');
+      document.getElementById('mqtt-admin-pass-toggle').addEventListener('click', function() {
+        mqttAdminPassInput.type = mqttAdminPassInput.type === 'password' ? 'text' : 'password';
+      });
+      function doMqttSave() {
         var btn = document.getElementById('mqtt-save');
         var status = document.getElementById('mqtt-status');
-        btn.disabled = true;
-        status.className = 'status';
-        status.textContent = 'Saving...';
-        var body = JSON.stringify({
-          broker: document.getElementById('broker').value,
-          username: document.getElementById('username').value,
-          password: document.getElementById('password').value,
-          port: parseInt(document.getElementById('port').value) || 1883
-        });
-        fetch('/api/mqtt', { method: 'POST', headers: {'Content-Type':'application/json'}, body: body })
-          .then(function(r) { return r.json(); })
-          .then(function() {
-            status.className = 'status ok';
-            status.textContent = 'Saved. Device will connect to broker.';
-            setTimeout(updateMqttStatus, 3000);
-          })
-          .catch(function(err) {
-            status.className = 'status err';
-            status.textContent = 'Error: ' + err.message;
-            btn.disabled = false;
+        ensureSession(mqttAdminPassInput, status, function(headers) {
+          mqttConfirmPanel.className = 'wifi-pass-panel';
+          btn.disabled = true;
+          status.className = 'status';
+          status.textContent = 'Saving...';
+          headers['Content-Type'] = 'application/json';
+          var body = JSON.stringify({
+            broker: document.getElementById('broker').value,
+            username: document.getElementById('username').value,
+            password: document.getElementById('password').value,
+            port: parseInt(document.getElementById('port').value) || 1883
           });
+          fetch('/api/mqtt', { method: 'POST', headers: headers, body: body })
+            .then(function(r) {
+              if (r.status === 401) { sessionExpired(status); btn.disabled = false; return; }
+              if (r.status === 429) { status.className = 'status err'; status.textContent = 'Too many failed attempts. Try again later.'; btn.disabled = false; return; }
+              return r.json().then(function() {
+                status.className = 'status ok';
+                status.textContent = 'Saved. Device will connect to broker.';
+                setTimeout(updateMqttStatus, 3000);
+              });
+            })
+            .catch(function(err) {
+              status.className = 'status err';
+              status.textContent = 'Error: ' + err.message;
+              btn.disabled = false;
+            });
+        });
+      }
+      document.getElementById('mqtt-save').addEventListener('click', function() {
+        if (sessionToken) { doMqttSave(); return; }
+        mqttAdminPassInput.value = '';
+        mqttConfirmPanel.className = 'wifi-pass-panel visible';
+        mqttConfirmPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
+        mqttAdminPassInput.focus();
       });
+      document.getElementById('mqtt-confirm-yes').addEventListener('click', doMqttSave);
+      document.getElementById('mqtt-confirm-cancel').addEventListener('click', function() {
+        mqttConfirmPanel.className = 'wifi-pass-panel';
+      });
+
+      // --- Session auth: passphrase is exchanged once (POST /api/login) for a
+      // token kept in this variable only (dies with the tab); later privileged
+      // actions send X-Session-Token instead of prompting again.
+      var sessionToken = '';
+
+      function sessionExpired(status) {
+        sessionToken = '';
+        status.className = 'status err';
+        status.textContent = 'Session expired - enter passphrase and retry.';
+      }
+
+      // Show/hide a passphrase field depending on whether a session is active
+      function updatePassField(id) {
+        document.getElementById(id).style.display = sessionToken ? 'none' : 'block';
+      }
+
+      // Run action(headers) with auth headers, logging in first if needed
+      function ensureSession(passInput, status, action) {
+        if (sessionToken) { action({ 'X-Session-Token': sessionToken }); return; }
+        var pass = passInput.value;
+        if (!pass) { status.className = 'status err'; status.textContent = 'Enter the device passphrase.'; return; }
+        fetch('/api/login', { method: 'POST', headers: { 'Authorization': 'Basic ' + btoa('admin:' + pass) } })
+          .then(function(r) {
+            if (r.status === 401) { status.className = 'status err'; status.textContent = 'Wrong passphrase.'; return; }
+            if (r.status === 429) { status.className = 'status err'; status.textContent = 'Too many failed attempts. Try again later.'; return; }
+            if (!r.ok) { status.className = 'status err'; status.textContent = 'Login failed (' + r.status + ').'; return; }
+            return r.json().then(function(d) {
+              sessionToken = d.token || '';
+              action({ 'X-Session-Token': sessionToken });
+            });
+          })
+          .catch(function(err) { status.className = 'status err'; status.textContent = 'Error: ' + err.message; });
+      }
 
       // Reset to YML Config - reveal confirmation panel
       var resetPanel = document.getElementById('reset-confirm');
@@ -441,6 +529,7 @@
       });
       document.getElementById('btn-reset-prefs').addEventListener('click', function() {
         resetPassInput.value = '';
+        updatePassField('reset-pass-field');
         resetPanel.className = 'wifi-pass-panel visible';
         resetPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
       });
@@ -449,21 +538,22 @@
       });
       document.getElementById('reset-yes').addEventListener('click', function() {
         var status = document.getElementById('reset-status');
-        var pass = resetPassInput.value;
-        if (!pass) { status.className = 'status err'; status.textContent = 'Enter the device passphrase.'; return; }
-        resetPanel.className = 'wifi-pass-panel';
-        status.className = 'status';
-        status.textContent = 'Clearing...';
-        fetch('/api/reset-prefs', {
-          method: 'POST',
-          headers: { 'Authorization': 'Basic ' + btoa('admin:' + pass) }
-        })
-          .then(function(r) {
-            if (r.status === 401) { status.className = 'status err'; status.textContent = 'Wrong passphrase.'; }
-            else if (r.status === 429) { status.className = 'status err'; status.textContent = 'Too many failed attempts. Try again later.'; }
-            else return r.json().then(function(d) { status.className = 'status ok'; status.textContent = d.message || 'Preferences cleared.'; });
-          })
-          .catch(function(err) { status.className = 'status err'; status.textContent = 'Error: ' + err.message; });
+        ensureSession(resetPassInput, status, function(headers) {
+          resetPanel.className = 'wifi-pass-panel';
+          status.className = 'status';
+          status.textContent = 'Clearing...';
+          fetch('/api/reset-prefs', { method: 'POST', headers: headers })
+            .then(function(r) {
+              if (r.status === 401) { sessionExpired(status); }
+              else if (r.status === 429) { status.className = 'status err'; status.textContent = 'Too many failed attempts. Try again later.'; }
+              else return r.json().then(function(d) {
+                status.className = 'status ok';
+                status.textContent = d.message || 'Preferences cleared.';
+                sessionToken = '';  // reset also invalidates sessions server-side
+              });
+            })
+            .catch(function(err) { status.className = 'status err'; status.textContent = 'Error: ' + err.message; });
+        });
       });
 
       // Change Passphrase - reveal confirmation panel
@@ -502,7 +592,11 @@
           .then(function(r) {
             if (r.status === 401) { status.className = 'status err'; status.textContent = 'Wrong passphrase.'; }
             else if (r.status === 429) { status.className = 'status err'; status.textContent = 'Too many failed attempts. Try again later.'; }
-            else { status.className = 'status ok'; status.textContent = 'Passphrase updated.'; }
+            else {
+              status.className = 'status ok';
+              status.textContent = 'Passphrase updated.';
+              sessionToken = '';  // server invalidated sessions on passphrase change
+            }
           })
           .catch(function(err) { status.className = 'status err'; status.textContent = 'Error: ' + err.message; });
       });
@@ -515,6 +609,7 @@
       });
       document.getElementById('btn-reboot').addEventListener('click', function() {
         rebootPassInput.value = '';
+        updatePassField('reboot-pass-field');
         rebootPanel.className = 'wifi-pass-panel visible';
         rebootPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
       });
@@ -523,36 +618,30 @@
       });
       document.getElementById('reboot-yes').addEventListener('click', function() {
         var status = document.getElementById('reboot-status');
-        var pass = rebootPassInput.value;
-        if (!pass) {
-          status.className = 'status error';
-          status.textContent = 'Enter the device passphrase.';
-          return;
-        }
-        rebootPanel.className = 'wifi-pass-panel';
-        status.className = 'status';
-        status.textContent = 'Sending reboot request...';
-        fetch('/api/reboot', {
-          method: 'POST',
-          headers: { 'Authorization': 'Basic ' + btoa('admin:' + pass) }
-        })
-          .then(function(r) {
-            if (r.status === 401) {
-              status.className = 'status error';
-              status.textContent = 'Wrong passphrase.';
-            } else if (r.status === 429) {
-              status.className = 'status error';
-              status.textContent = 'Too many failed attempts. Try again later.';
-            } else {
+        ensureSession(rebootPassInput, status, function(headers) {
+          rebootPanel.className = 'wifi-pass-panel';
+          status.className = 'status';
+          status.textContent = 'Sending reboot request...';
+          fetch('/api/reboot', { method: 'POST', headers: headers })
+            .then(function(r) {
+              if (r.status === 401) {
+                sessionExpired(status);
+              } else if (r.status === 429) {
+                status.className = 'status err';
+                status.textContent = 'Too many failed attempts. Try again later.';
+              } else {
+                status.className = 'status ok';
+                status.textContent = 'Device is rebooting...';
+                sessionToken = '';  // sessions are RAM-only, gone after reboot
+              }
+            })
+            .catch(function() {
+              // Network drop after reboot command is expected
               status.className = 'status ok';
               status.textContent = 'Device is rebooting...';
-            }
-          })
-          .catch(function() {
-            // Network drop after reboot command is expected
-            status.className = 'status ok';
-            status.textContent = 'Device is rebooting...';
-          });
+              sessionToken = '';
+            });
+        });
       });
 
       // Firmware / Filesystem OTA
@@ -579,6 +668,7 @@
         if (fwUrlInput.value.trim()) lines += 'FW: ' + fwUrlInput.value.trim();
         fwConfirmUrls.innerHTML = lines;
         fwPassInput.value = '';
+        updatePassField('fw-pass-field');
         fwConfirmPanel.className = 'wifi-pass-panel visible';
         fwConfirmPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
       });
@@ -589,47 +679,43 @@
 
       document.getElementById('fw-confirm-yes').addEventListener('click', function() {
         var status = document.getElementById('fw-status');
-        var pass = fwPassInput.value;
-        if (!pass) {
-          status.className = 'status error';
-          status.textContent = 'Enter the device passphrase.';
-          return;
-        }
-        fwConfirmPanel.className = 'wifi-pass-panel';
-        status.className = 'status';
+        ensureSession(fwPassInput, status, function(headers) {
+          fwConfirmPanel.className = 'wifi-pass-panel';
+          status.className = 'status';
 
-        var auth = { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa('admin:' + pass) };
-        var fsUrl = fsUrlInput.value.trim();
-        var fwUrl = fwUrlInput.value.trim();
+          headers['Content-Type'] = 'application/json';
+          var fsUrl = fsUrlInput.value.trim();
+          var fwUrl = fwUrlInput.value.trim();
 
-        function postFirmware() {
-          if (!fwUrl) {
-            status.className = 'status ok';
-            status.textContent = 'Update started. Device will reboot when complete.';
-            return;
+          function postFirmware() {
+            if (!fwUrl) {
+              status.className = 'status ok';
+              status.textContent = 'Update started. Device will reboot when complete.';
+              return;
+            }
+            status.textContent = 'Queuing firmware update...';
+            fetch('/api/firmware', { method: 'POST', headers: headers, body: JSON.stringify({ url: fwUrl }) })
+              .then(function(r) {
+                if (r.status === 401) { sessionExpired(status); }
+                else if (r.status === 429) { status.className = 'status err'; status.textContent = 'Too many failed attempts. Try again later.'; }
+                else { status.className = 'status ok'; status.textContent = 'Update started. Device will reboot when complete.'; }
+              })
+              .catch(function(err) { status.className = 'status err'; status.textContent = 'Error: ' + err.message; });
           }
-          status.textContent = 'Queuing firmware update...';
-          fetch('/api/firmware', { method: 'POST', headers: auth, body: JSON.stringify({ url: fwUrl }) })
-            .then(function(r) {
-              if (r.status === 401) { status.className = 'status error'; status.textContent = 'Wrong passphrase.'; }
-              else if (r.status === 429) { status.className = 'status error'; status.textContent = 'Too many failed attempts. Try again later.'; }
-              else { status.className = 'status ok'; status.textContent = 'Update started. Device will reboot when complete.'; }
-            })
-            .catch(function(err) { status.className = 'status error'; status.textContent = 'Error: ' + err.message; });
-        }
 
-        if (fsUrl) {
-          status.textContent = 'Queuing filesystem update...';
-          fetch('/api/filesystem', { method: 'POST', headers: auth, body: JSON.stringify({ url: fsUrl }) })
-            .then(function(r) {
-              if (r.status === 401) { status.className = 'status error'; status.textContent = 'Wrong passphrase.'; }
-              else if (r.status === 429) { status.className = 'status error'; status.textContent = 'Too many failed attempts. Try again later.'; }
-              else { postFirmware(); }
-            })
-            .catch(function(err) { status.className = 'status error'; status.textContent = 'Error: ' + err.message; });
-        } else {
-          postFirmware();
-        }
+          if (fsUrl) {
+            status.textContent = 'Queuing filesystem update...';
+            fetch('/api/filesystem', { method: 'POST', headers: headers, body: JSON.stringify({ url: fsUrl }) })
+              .then(function(r) {
+                if (r.status === 401) { sessionExpired(status); }
+                else if (r.status === 429) { status.className = 'status err'; status.textContent = 'Too many failed attempts. Try again later.'; }
+                else { postFirmware(); }
+              })
+              .catch(function(err) { status.className = 'status err'; status.textContent = 'Error: ' + err.message; });
+          } else {
+            postFirmware();
+          }
+        });
       });
     })();
   </script>

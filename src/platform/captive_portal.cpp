@@ -195,7 +195,9 @@ static void accumulateBody(AsyncWebServerRequest *request, uint8_t *data, size_t
 }
 
 #ifdef CONFIG_WIFI_AP
-// Handle POST /api/wifi - save WiFi credentials and begin connection
+// Handle POST /api/wifi - save WiFi credentials and begin connection.
+// Deliberately unauthenticated: this is the first-time-setup path (user on the
+// captive AP joining the device to a network), before any passphrase workflow.
 static void handleWifiSave(AsyncWebServerRequest *request) {
     Serial.printf("PORTAL: handleWifiSave called, body=%d bytes\n", post_body_len);
 
@@ -285,17 +287,23 @@ bool captive_portal_mqtt_changed() {
     return false;
 }
 
-// Handle GET /api/device-info - return device name and topic as JSON
+// Handle GET /api/device-info - return device name, topic and OTA URLs as JSON
 static void handleDeviceInfo(AsyncWebServerRequest *request) {
-    static char json_buf[256];
+    static char json_buf[640];  // sized for two 128-byte OTA URLs
 #ifdef CONFIG_WIFI_AP
     const char* wifi_enabled = "true";
 #else
     const char* wifi_enabled = "false";
 #endif
+    // Only expose portal-set OTA URLs (empty otherwise): the UI prefills these
+    // as real field values, and config.yml defaults like example.com should
+    // stay as dimmed placeholders, not look user-entered.
     snprintf(json_buf, sizeof(json_buf),
-        "{\"name\":\"%s\",\"topic\":\"%s/%s/\",\"wifi_enabled\":%s,\"role\":\"%s\"}",
-        device_name, HOMIE_TOPIC_PREFIX, getDeviceID(), wifi_enabled, homie_role);
+        "{\"name\":\"%s\",\"topic\":\"%s/%s/\",\"wifi_enabled\":%s,\"role\":\"%s\","
+        "\"fw_url\":\"%s\",\"fs_url\":\"%s\"}",
+        device_name, HOMIE_TOPIC_PREFIX, getDeviceID(), wifi_enabled, homie_role,
+        portal_prefs_has_fw_url() ? firmware_url : "",
+        portal_prefs_has_fs_url() ? fs_url : "");
     request->send(200, "application/json", json_buf);
 }
 
@@ -342,9 +350,17 @@ static void serveConfigPage(AsyncWebServerRequest *request) {
     request->send(response);
 }
 
-// --- Basic Auth helper (shared by all admin POST endpoints) ---
-// Returns true if authorized, sends error response and returns false otherwise.
+// --- Auth helper (shared by all admin POST endpoints) ---
+// Accepts either a session token from POST /api/login (X-Session-Token header)
+// or Basic auth with the device passphrase. Returns true if authorized, sends
+// error response and returns false otherwise.
 static bool requireAuth(AsyncWebServerRequest *request) {
+    // Session token first — checked before the lockout so an attacker hammering
+    // the passphrase can't lock out an already-authenticated admin.
+    if (request->hasHeader("X-Session-Token") &&
+        portal_session_valid(request->getHeader("X-Session-Token")->value().c_str())) {
+        return true;
+    }
     if (portal_auth_is_locked()) {
         request->send(429, "application/json",
             "{\"status\":\"error\",\"message\":\"Too many failed attempts. Try again later.\"}");
@@ -367,6 +383,16 @@ static bool requireAuth(AsyncWebServerRequest *request) {
     }
     portal_auth_reset();
     return true;
+}
+
+// Handle POST /api/login - exchange the device passphrase (Basic auth) for a
+// session token; subsequent admin requests may send X-Session-Token instead of
+// re-sending the passphrase. See portal_session_create() for lifetime rules.
+static void handleLogin(AsyncWebServerRequest *request) {
+    if (!requireAuth(request)) return;
+    static char json_buf[64];
+    snprintf(json_buf, sizeof(json_buf), "{\"token\":\"%s\"}", portal_session_create());
+    request->send(200, "application/json", json_buf);
 }
 
 // Handle POST /api/mqtt - save MQTT configuration from JSON body
@@ -428,6 +454,8 @@ static void handleFirmwareSave(AsyncWebServerRequest *request) {
     if (doc["url"].is<const char*>()) {
         strncpy(firmware_url, doc["url"].as<const char*>(), sizeof(firmware_url) - 1);
         firmware_url[sizeof(firmware_url) - 1] = '\0';
+        // Persist to NVS like the other portal settings (survives reboot)
+        portal_prefs_save_firmware_url(firmware_url);
     }
 
     Serial.printf("PORTAL: Firmware URL saved - '%s'\n", firmware_url);
@@ -450,6 +478,8 @@ static void handleFilesystemSave(AsyncWebServerRequest *request) {
     if (doc["url"].is<const char*>()) {
         strncpy(fs_url, doc["url"].as<const char*>(), sizeof(fs_url) - 1);
         fs_url[sizeof(fs_url) - 1] = '\0';
+        // Persist to NVS like the other portal settings (survives reboot)
+        portal_prefs_save_fs_url(fs_url);
     }
 
     Serial.printf("PORTAL: Filesystem URL saved - '%s'\n", fs_url);
@@ -597,6 +627,7 @@ static void handlePassphraseSave(AsyncWebServerRequest *request) {
     }
 
     portal_prefs_save_passphrase(device_passphrase);
+    portal_session_clear();  // old sessions were authorized by the old passphrase
     Serial.println("PORTAL: Device passphrase updated");
     request->send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Passphrase saved. Takes effect immediately.\"}");
 }
@@ -606,6 +637,7 @@ static void handleResetPrefs(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
     Serial.println("PORTAL: Resetting all portal preferences");
     portal_prefs_clear();
+    portal_session_clear();  // passphrase may have reverted to the yml value
     request->send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Preferences cleared. Reboot to use YML config.\"}");
 }
 
@@ -678,6 +710,7 @@ void captive_portal_start() {
     server.on("/api/mqtt", HTTP_POST, handleMqttSave, NULL, accumulateBody);
     server.on("/api/firmware", HTTP_POST, handleFirmwareSave, NULL, accumulateBody);
     server.on("/api/filesystem", HTTP_POST, handleFilesystemSave, NULL, accumulateBody);
+    server.on("/api/login", HTTP_POST, handleLogin);
     server.on("/api/passphrase", HTTP_POST, handlePassphraseSave, NULL, accumulateBody);
     server.on("/api/reset-prefs", HTTP_POST, handleResetPrefs);
     server.on("/api/reboot", HTTP_POST, handleReboot);
