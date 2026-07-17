@@ -356,6 +356,11 @@
                 wifiStatus.textContent = 'Connected! IP: ' + d.ip;
                 wifiPassPanel.className = 'wifi-pass-panel';
                 updateCurrentWifi();
+                // Device reconnects MQTT with current settings ~2s after a portal
+                // WiFi connect (settle period) - refresh the banner while that happens
+                setTimeout(updateMqttStatus, 4000);
+                setTimeout(updateMqttStatus, 8000);
+                setTimeout(updateMqttStatus, 14000);
               } else if (d.status === 'auth_fail' || d.status === 'failed' || d.status === 'no_ssid') {
                 wifiStatus.className = 'status err';
                 wifiStatus.textContent = d.message || 'Connection failed.';

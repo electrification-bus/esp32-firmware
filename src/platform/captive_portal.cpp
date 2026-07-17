@@ -16,7 +16,17 @@ static DNSServer dnsServer;
 #endif
 
 static AsyncWebServer server(80);
-static volatile bool portal_mqtt_changed = false;  // set when MQTT config saved via portal
+// Set when the effective MQTT config changed via the portal: MQTT settings saved,
+// or a portal-initiated WiFi connect succeeded (broker reachability changed).
+// Consumers react by reconnecting MQTT with the current settings.
+static volatile bool portal_mqtt_changed = false;
+
+// WiFi-connect trigger is deferred: GOT_IP fires while the network stack is still
+// settling (ARP/DNS/routing), so hold off the MQTT reconnect for a short grace
+// period instead of raising portal_mqtt_changed directly from the event handler.
+#define PORTAL_MQTT_SETTLE_MS 2000
+static volatile bool portal_mqtt_pending = false;
+static volatile unsigned long portal_mqtt_pending_since = 0;
 
 #ifdef CONFIG_WIFI_AP
 // WiFi STA connection state tracked via event handler
@@ -30,6 +40,15 @@ static void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
             Serial.println("PORTAL: WiFi STA associated");
             break;
         case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+            // Portal-initiated connect succeeded (wifi_connecting is only set by
+            // handleWifiSave): refresh MQTT with the current settings — the broker
+            // may only be reachable now that WiFi is up, or MQTT may be sitting on
+            // a connection attempt from before the network change. Deferred via
+            // portal_mqtt_pending so the network stack gets a settle period first.
+            if (wifi_connecting) {
+                portal_mqtt_pending = true;
+                portal_mqtt_pending_since = millis();
+            }
             wifi_connected = true;
             wifi_connecting = false;
             wifi_disconnect_reason = 0;
@@ -251,10 +270,16 @@ static void handleWifiStatus(AsyncWebServerRequest *request) {
 }
 #endif // CONFIG_WIFI_AP
 
-// Returns true (once) when MQTT config was changed via portal
+// Returns true (once) when the effective MQTT config changed via the portal —
+// MQTT settings saved, or a portal-initiated WiFi connect succeeded (reported
+// only after a short settle period, see PORTAL_MQTT_SETTLE_MS).
 bool captive_portal_mqtt_changed() {
     if (portal_mqtt_changed) {
         portal_mqtt_changed = false;
+        return true;
+    }
+    if (portal_mqtt_pending && (millis() - portal_mqtt_pending_since) >= PORTAL_MQTT_SETTLE_MS) {
+        portal_mqtt_pending = false;
         return true;
     }
     return false;

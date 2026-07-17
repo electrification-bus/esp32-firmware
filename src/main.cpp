@@ -137,7 +137,7 @@ void loop() {
 
     // Handle MQTT reconfiguration from web server
     if (captive_portal_mqtt_changed()) {
-        Serial.println("MQTT config updated via web server, reconnecting...");
+        Serial.println("PORTAL: MQTT config or network changed, reconnecting MQTT with current settings...");
         mqtt_restart();
         setup_mqtt();
     }
@@ -320,7 +320,7 @@ void loop_housekeeping() {
     captive_portal_loop();
     // Handle MQTT reconfiguration from web server
     if (captive_portal_mqtt_changed()) {
-        Serial.println("MQTT config updated via web server, reconnecting...");
+        Serial.println("PORTAL: MQTT config or network changed, reconnecting MQTT with current settings...");
         mqtt_restart();
         setup_mqtt();
     }

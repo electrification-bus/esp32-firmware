@@ -11,6 +11,8 @@ void captive_portal_start();
 // Without CONFIG_WIFI_AP: no-op.
 void captive_portal_loop();
 
-// Returns true (once) when MQTT configuration has been saved via the web server.
-// Caller should restart MQTT connection with new settings.
+// Returns true (once) when the effective MQTT configuration changed via the web
+// server: MQTT settings saved, or a portal-initiated WiFi connect succeeded (the
+// broker may only be reachable on the new network).
+// Caller should restart MQTT connection with the current settings.
 bool captive_portal_mqtt_changed();
