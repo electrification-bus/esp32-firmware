@@ -49,3 +49,5 @@ generator:
   class: BME280
   header: i2c/bme280.h
   constructor: '("{id}", {config.pin_sda}, {config.pin_scl})'
+  lib_deps:
+    - https://github.com/adafruit/Adafruit_BME280_Library.git

@@ -3,13 +3,23 @@
 #include <platform/modbus/modbus_master.h>
 #include <platform/modbus/modbus_queue.h>
 
-#ifdef USE_SOFTWARE_SERIAL
+// EspSoftwareSerial is only in the build when some modbus/* component in device.yml
+// actually needs it — see generator.lib_deps in lib/modbus/sht20.yml, collected by
+// `ebus-esp32 generate` into build/platformio.ini (a lean, standalone PlatformIO
+// config for the active board — see write_lean_platformio_ini() in ebus-esp32).
+// __has_include reflects that directly: no generator-emitted #define needed, just
+// ask the preprocessor whether the header is actually reachable in this build.
+//
+// USE_SOFTWARE_SERIAL (set per-board in platformio.ini) is a separate, existing
+// hardware-capability switch: some boards (WROVER) must use HardwareSerial even
+// when SoftwareSerial IS present in the build (SoftwareSerial crashes with PSRAM).
+#if defined(USE_SOFTWARE_SERIAL) && __has_include(<SoftwareSerial.h>)
 #include <SoftwareSerial.h>
 #endif
 
 unsigned long lastPollMillis = 0;
 
-#ifdef USE_SOFTWARE_SERIAL
+#if defined(USE_SOFTWARE_SERIAL) && __has_include(<SoftwareSerial.h>)
 SoftwareSerial _modbus1;
 #endif
 
@@ -24,7 +34,7 @@ void setup_modbus_master(int pin_rs485_a, int pin_rs485_b) {
         gpio_reset_pin((gpio_num_t)pin_rs485_a);
     }
 
-#ifdef USE_SOFTWARE_SERIAL
+#if defined(USE_SOFTWARE_SERIAL) && __has_include(<SoftwareSerial.h>)
     Serial.println("MODBUS MASTER: Starting SoftwareSerial at 9600 baud");
     _modbus1.begin(9600, SWSERIAL_8N1, pin_rs485_a, pin_rs485_b);
 #elif defined(BOARD_HAS_PSRAM)
@@ -40,7 +50,7 @@ void setup_modbus_master(int pin_rs485_a, int pin_rs485_b) {
 }
 
 Stream& get_serial1() {
-#ifdef USE_SOFTWARE_SERIAL
+#if defined(USE_SOFTWARE_SERIAL) && __has_include(<SoftwareSerial.h>)
     return _modbus1;
 #elif defined(BOARD_HAS_PSRAM)
     return Serial2;

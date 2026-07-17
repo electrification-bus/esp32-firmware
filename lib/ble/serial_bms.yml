@@ -134,3 +134,5 @@ generator:
   class: SerialBMS
   header: ble/serial_bms.h
   constructor: '("{id}")'
+  lib_deps:
+    - h2zero/NimBLE-Arduino @ ^1.4.0

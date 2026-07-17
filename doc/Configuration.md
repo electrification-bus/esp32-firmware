@@ -101,7 +101,7 @@ See [`platformio_local.ini.example`](../platformio_local.ini.example) for fully-
 
 ### What does NOT belong in `platformio_local.ini`
 
-- New library dependencies — if a library needs to be added, it belongs in `platformio.ini`'s `[common] lib_deps` so everyone gets it.
+- New library dependencies — if a library needs to be added, it belongs in the shared base so everyone gets it: base platform libraries go in `platformio.ini`'s `[common] lib_deps`; libraries needed by one component go in that component's `lib/<bus>/<name>.yml` under `generator.lib_deps` (the generator adds them to `build/platformio.ini` only when `device.yml` uses the component).
 - New `[env:*]` blocks for new boards — same; they belong in the shared base.
 - Configuration that other developers will also need — that defeats the purpose. Use `platformio_local.ini` strictly for **per-developer / per-machine** preferences.
 

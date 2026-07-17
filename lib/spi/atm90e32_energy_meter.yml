@@ -79,3 +79,5 @@ generator:
   class: EnergyMeter
   header: spi/atm90e32_energy_meter.h
   constructor: '("{id}", {config.pin_cs1}, {config.pin_cs2})'
+  lib_deps:
+    - https://github.com/CircuitSetup/ATM90E32.git

@@ -45,3 +45,12 @@ generator:
   class: Modbus_SHT20
   header: modbus/sht20.h
   constructor: '("{id}", get_serial1(), {config.pin_rs485_a}, {config.pin_rs485_b})'
+  # PlatformIO libraries this component needs. `ebus-esp32 build/run/check/compiledb`
+  # collects lib_deps from every component actually used in device.yml and writes a
+  # lean, standalone build/platformio.ini (gitignored) — the active board's env
+  # copied from platformio.ini, with [common].lib_deps pruned to drop any library
+  # that's in some component's lib_deps catalog but not actually needed this build,
+  # then extended with what IS needed. Without any modbus/* node in device.yml,
+  # EspSoftwareSerial is never even listed, so it's never compiled or linked.
+  lib_deps:
+    - plerup/EspSoftwareSerial @ ^8.2.0
