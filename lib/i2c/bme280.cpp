@@ -1,6 +1,6 @@
 #include <Adafruit_BME280.h>
 #include <i2c/bme280.h>
-#include <config.h>
+#include <platform/config.h>
 
 #define BME_ADDR 0x76
 

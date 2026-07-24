@@ -24,7 +24,7 @@ device:
   #   ${chip_id} -> b0b21c90f570   |   ebus-${chip_id} -> ebus-b0b21c90f570
   id: ${chip_id}
   type: energy
-  board: esp32-poe-iso          # must match a [env:…] in platformio.ini
+  board: esp32-poe-iso-idf5          # must match a [env:…] in platformio.ini
   device_type: ebus
   firmware_name: ESP32POEISO Firmware
   firmware_version: 1.0.0

@@ -5,9 +5,17 @@ import os, glob
 # PlatformIO's generated include path for library builds is unreliable on
 # Windows paths — this script adds them explicitly via SCons.
 #
-# Also add WiFi/src so ETH.h can find WiFi.h — Arduino ESP32 ETH.h
-# includes WiFi.h but PlatformIO's LDF does not propagate this dependency
-# when compiling the Ethernet library as a separate unit.
+# It also adds every bundled framework library's src/ dir (WiFi, Ethernet,
+# Network, FS, SPI, ...) AND every lib_deps-fetched library's own root/src dir
+# (ArduinoJson, YAMLDuino, ...). Libraries #include each other (e.g.
+# Ethernet/ETH.h includes WiFi.h and SPI.h; YAMLDuino's ArduinoYaml.cpp
+# conditionally includes ArduinoJson.h via __has_include) but PlatformIO's LDF
+# does not reliably propagate those inter-library include paths when compiling
+# each as a separate unit on Windows — so rather than hand-listing individual
+# headers (which breaks again on the next framework restructuring — arduino-esp32
+# v3.x already split networking into a separate Network lib), add every
+# libraries/*/src directory (framework) and every libdeps/<env>/* + */src
+# directory (lib_deps) that exists, unconditionally.
 #
 # NOTE: $FRAMEWORK_DIR is set by the framework builder SConscript which runs
 # AFTER pre: extra_scripts. Fall back to searching the PlatformIO packages dir.
@@ -31,33 +39,32 @@ if not framework_dir or not os.path.isdir(framework_dir):
     elif matches:
         framework_dir = sorted(matches)[-1]
 
-# Locate WiFi.h — check both old (v2.x) and merged (v3.x) locations
-wifi_src = None
-for candidate in ["libraries/WiFi/src", "libraries/Ethernet/src"]:
-    path = os.path.join(framework_dir, candidate).replace("\\", "/")
-    if os.path.isfile(os.path.join(path, "WiFi.h")):
-        wifi_src = path
-        break
-
-# Locate Network.h — arduino-esp32 v3.x split networking base into Network lib
-network_src = None
-network_path = os.path.join(framework_dir, "libraries/Network/src").replace("\\", "/")
-if os.path.isfile(os.path.join(network_path, "Network.h")):
-    network_src = network_path
-
 extra_cpppath = [
     env.subst("$PROJECT_INCLUDE_DIR"),
     env.subst("$PROJECT_DIR") + "/lib",
 ]
-if wifi_src:
-    extra_cpppath.append(wifi_src)
-if network_src:
-    extra_cpppath.append(network_src)
 
+lib_srcs = []
+if framework_dir and os.path.isdir(framework_dir):
+    libraries_dir = os.path.join(framework_dir, "libraries")
+    for src_dir in sorted(glob.glob(os.path.join(libraries_dir, "*", "src"))):
+        if os.path.isdir(src_dir):
+            lib_srcs.append(src_dir.replace("\\", "/"))
+
+libdeps_dir = env.subst("$PROJECT_LIBDEPS_DIR") + "/" + env.subst("$PIOENV")
+if os.path.isdir(libdeps_dir):
+    for lib_dir in sorted(glob.glob(os.path.join(libdeps_dir, "*"))):
+        if not os.path.isdir(lib_dir):
+            continue
+        # Root dir first — some libraries (e.g. ArduinoJson) keep their main
+        # header at the library root, not under src/.
+        lib_srcs.append(lib_dir.replace("\\", "/"))
+        src_dir = os.path.join(lib_dir, "src")
+        if os.path.isdir(src_dir):
+            lib_srcs.append(src_dir.replace("\\", "/"))
+
+extra_cpppath += lib_srcs
 env.Append(CPPPATH=extra_cpppath)
 
-# Belt-and-suspenders: raw -I flag survives env cloning in framework builds
-if wifi_src:
-    env.Append(CCFLAGS=["-I" + wifi_src])
-if network_src:
-    env.Append(CCFLAGS=["-I" + network_src])
+# Belt-and-suspenders: raw -I flags survive env cloning in framework builds
+env.Append(CCFLAGS=["-I" + p for p in lib_srcs])

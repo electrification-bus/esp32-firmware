@@ -149,7 +149,7 @@ static bool mdns_query_one_service(const char* service, uint16_t default_port) {
     }
 
     // Use the broker's IP address directly
-    IPAddress broker_ip = MDNS.IP(i);
+    IPAddress broker_ip = MDNS.address(i);
     if (broker_ip == IPAddress(0, 0, 0, 0)) {
       Serial.printf("mDNS:   [%d] No IP resolved, skipping\n", i);
       continue;

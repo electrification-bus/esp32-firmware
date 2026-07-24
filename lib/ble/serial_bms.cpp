@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <time.h>
 #include "esp_log.h"
-#include <config.h>
+#include <platform/config.h>
 #include <ble/serial_bms.h>
 #include <platform/mqtt_client.h>
 #include <Preferences.h>

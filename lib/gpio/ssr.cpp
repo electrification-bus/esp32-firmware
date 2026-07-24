@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <gpio/ssr.h>
-#include <config.h>
+#include <platform/config.h>
 
 #define DEBUG_SSR true
 

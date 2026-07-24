@@ -29,6 +29,7 @@
 
 #include <platform/mqtt_client.h>
 #include <TimeLib.h>
+#include <WiFiClient.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoYaml.h>
 #include <platform/config.h>
