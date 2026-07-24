@@ -244,6 +244,28 @@ def write_lean_platformio_ini(board: str, used_lib_deps: list) -> None:
         if dep not in kept_deps:
             kept_deps.append(dep)
 
+    # If this build's lib_deps set differs from the PREVIOUS build/platformio.ini
+    # for this board, PlatformIO will reassign different short-hash library build
+    # subdirectories (lib5d2, lib836, ...) for the same source files. .pio/build/
+    # doesn't get pruned when a library drops out, so its stale SCons dependency
+    # database (.sconsign.dblite) and orphaned object files can silently persist
+    # and get reused — the generated firmware then reflects a PREVIOUS device.yml
+    # state despite src/homie.cpp being freshly regenerated. Force a clean env
+    # build dir whenever the active lib_deps set actually changes, so this can't
+    # happen silently; a same-lib_deps rebuild stays incremental as normal.
+    previous_deps = None
+    if GENERATED_INI.exists():
+        prev = configparser.RawConfigParser()
+        prev.read(GENERATED_INI, encoding="utf-8")
+        if prev.has_section("common"):
+            previous_deps = sorted(l.strip() for l in prev.get("common", "lib_deps").splitlines() if l.strip())
+    if previous_deps is not None and previous_deps != sorted(kept_deps):
+        env_build_dir = ROOT / ".pio" / "build" / board
+        if env_build_dir.exists():
+            shutil.rmtree(env_build_dir)
+            print(f"  lib_deps changed for env:{board} — removed stale {env_build_dir.relative_to(ROOT)} "
+                  f"to avoid a mismatched incremental build")
+
     out = configparser.RawConfigParser()
     for section in ("platformio", "env", "common"):
         if src.has_section(section):
