@@ -18,6 +18,7 @@ On Windows, invoke via the wrapper: `ebus-esp32.bat run` (or `python ebus-esp32 
 """
 
 import sys
+import os
 import re
 import argparse
 import subprocess
@@ -56,6 +57,17 @@ def find_pio() -> str:
     print("Install: https://platformio.org/install/cli", file=sys.stderr)
     sys.exit(1)
 
+def pio_env() -> dict:
+    """Environment for a `pio` subprocess, forcing UTF-8 stdout. Without this,
+    PlatformIO's own Python process crashes (UnicodeEncodeError, cp1252 can't
+    represent an esptool progress-output character) on Windows consoles not
+    already set to a UTF-8 codepage — and the crash happens mid-flash, not at
+    a safe boundary, so an interrupted firmware upload can leave the chip
+    erased-but-unbootable rather than just showing an ugly error."""
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
 def pio_run(board: str, targets: list, port: str = None) -> int:
     pio = find_pio()
     cmd = [pio, "run", "-e", board]
@@ -68,7 +80,7 @@ def pio_run(board: str, targets: list, port: str = None) -> int:
         cmd += ["-t", t]
     if port:
         cmd += ["--upload-port", port]
-    return subprocess.run(cmd, cwd=ROOT).returncode
+    return subprocess.run(cmd, cwd=ROOT, env=pio_env()).returncode
 
 # ── tmux serial-port handoff ────────────────────────────────────────────────────
 # Coordinate the serial port with a monitor running in a tmux pane (via the bin/_*
@@ -650,7 +662,7 @@ def cmd_monitor(args) -> None:
     if args.port:
         cmd += ["--port", args.port]
     try:
-        subprocess.run(cmd, cwd=ROOT)
+        subprocess.run(cmd, cwd=ROOT, env=pio_env())
     finally:
         _coord("_monitor-release", port)
 
@@ -672,7 +684,7 @@ def cmd_clean(args) -> None:
 
 def cmd_devices(args) -> None:
     pio = find_pio()
-    subprocess.run([pio, "device", "list", "--serial"], cwd=ROOT)
+    subprocess.run([pio, "device", "list", "--serial"], cwd=ROOT, env=pio_env())
 
 # ── envs ───────────────────────────────────────────────────────────────────────
 
@@ -707,7 +719,7 @@ def cmd_check(args) -> None:
     cmd = [pio, "check", "-e", board]
     if GENERATED_INI.exists():
         cmd += ["-c", str(GENERATED_INI)]
-    sys.exit(subprocess.run(cmd, cwd=ROOT).returncode)
+    sys.exit(subprocess.run(cmd, cwd=ROOT, env=pio_env()).returncode)
 
 # ── monitors (serial-port-sharing breadcrumbs) ──────────────────────────────────
 

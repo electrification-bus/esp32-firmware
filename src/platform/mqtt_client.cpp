@@ -138,7 +138,16 @@ void mqtt_process_queue() {
     }
 }
 
-subscribed_settable_property_t settable_properties[128];
+// Heap-allocated on first subscription (not a static array — see Device.cpp's
+// _description_json comment). settable_properties[i] indexing works unchanged
+// since a pointer subscripts identically to an array.
+static subscribed_settable_property_t* settable_properties = nullptr;
+static subscribed_settable_property_t* ensure_settable_properties() {
+  if (settable_properties == nullptr) {
+    settable_properties = new subscribed_settable_property_t[128];
+  }
+  return settable_properties;
+}
 
 // Fallback callback for unhandled messages (used by controller)
 static mqtt_fallback_callback_t _fallback_callback = nullptr;
@@ -331,6 +340,7 @@ void generateTopics() {
 }
 
 void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb, Property* instance) {
+   ensure_settable_properties();
    // Check if topic already registered (avoid duplicates on reconnection)
    for(int i=0; i<num_subscribers; i++) {
      if (strcmp(settable_properties[i].topic, topic) == 0) {
@@ -350,6 +360,7 @@ void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb,
 // D3: register a per-property fn-ptr handler (+context) for a /set topic. Updates an
 // existing entry's handler in place (reconnect-safe), else appends a new subscriber.
 void subscribe_settable_handler(const char* topic, settable_handler_t handler, void* ctx) {
+   ensure_settable_properties();
    for (int i = 0; i < num_subscribers; i++) {
      if (strcmp(settable_properties[i].topic, topic) == 0) {
        settable_properties[i].handler = handler;
@@ -369,6 +380,7 @@ void subscribe_settable_handler(const char* topic, settable_handler_t handler, v
 
 
 void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_t cb, NodeEntity* entity) {
+   ensure_settable_properties();
    for(int i=0;i<num_subscribers;i++) {
      if (strcmp(settable_properties[i].topic, topic) == 0) {
        //add entity pointer
@@ -517,8 +529,10 @@ void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data)
 // MQTT Subscriber callback
 //
 // all subscriptions arrive here
-// Note: Homie $description payloads can be large, use static buffer to avoid stack overflow
-static char _mqtt_payload_buf[MAX_DATA_LEN];
+// Note: Homie $description payloads can be large, use a heap buffer (allocated on
+// first use, not a static array — see Device.cpp's _description_json comment) to
+// avoid stack overflow.
+static char* _mqtt_payload_buf = nullptr;
 
 // MQTTClient uses onMessageAdvanced callback with signature:
 // void callback(MQTTClient *client, char topic[], char bytes[], int length)
@@ -531,6 +545,9 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
     return;
   }
 
+  if (_mqtt_payload_buf == nullptr) {
+    _mqtt_payload_buf = new char[MAX_DATA_LEN];
+  }
   char* payload_buf = _mqtt_payload_buf;
   strncpy(payload_buf, bytes, length);
   payload_buf[length] = '\0'; //ensure null-termination

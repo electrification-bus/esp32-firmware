@@ -134,5 +134,14 @@ generator:
   class: SerialBMS
   header: ble/serial_bms.h
   constructor: '("{id}")'
+  # NimBLE-Arduino 2.x's static footprint (~6-7KB DRAM) can overflow the DRAM
+  # budget on non-PSRAM boards (e.g. esp32-poe-iso: no PSRAM, ~320KB total SRAM)
+  # once Ethernet/MQTT/TLS/Modbus/etc. are also linked in. platformio.ini's
+  # esp32-poe-iso-idf5 env already trims this with CONFIG_BT_NIMBLE_ROLE_*_DISABLED
+  # / MAX_CONNECTIONS=1 / MAX_BONDS=1 (this project only ever acts as a BLE client
+  # connecting to one BMS), which helps but may not be enough by itself — the
+  # PSRAM-equipped esp32-poe-iso-wrover env is the reliable target for BLE-equipped
+  # devices. Don't assume "compiles" means "links" for this component on a
+  # non-PSRAM board without checking the DRAM usage report.
   lib_deps:
-    - h2zero/NimBLE-Arduino @ ^1.4.0
+    - h2zero/NimBLE-Arduino @ ^2.0.0

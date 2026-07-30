@@ -60,10 +60,20 @@ const char* homie_config_file = "/homie.yml";
 const char* homie_config_file_backup = "/homie_config_from_SD.yml";
 const char* config_file_backup = "/config_from_SD.yml";
 
-// TLS certificate buffer - sized for typical CA certs (up to 4KB)
+// TLS certificate buffer - sized for typical CA certs (up to 4KB). Heap-allocated
+// on first use rather than a static array — see Device.cpp's _description_json
+// comment for why (idf5/pioarduino early-boot static-footprint threshold).
 #define CA_CERT_MAX_SIZE 4096
-static char ca_cert_buffer[CA_CERT_MAX_SIZE] = {0};
+static char* ca_cert_buffer = nullptr;
 static bool ca_cert_loaded = false;
+
+static char* ca_cert_buf() {
+  if (ca_cert_buffer == nullptr) {
+    ca_cert_buffer = new char[CA_CERT_MAX_SIZE];
+    ca_cert_buffer[0] = '\0';
+  }
+  return ca_cert_buffer;
+}
 
 const bool default_value = false; // default value for property
 bool current_value = default_value;
@@ -438,13 +448,13 @@ void mqtt_build_cert_path(const char* hostname, char* out, size_t out_len) {
 
 void mqtt_invalidate_ca_cert() {
   ca_cert_loaded = false;
-  ca_cert_buffer[0] = '\0';
+  ca_cert_buf()[0] = '\0';
   Serial.println("TLS: CA cert cache invalidated");
 }
 
 const char* mqtt_load_ca_cert() {
   if (ca_cert_loaded) {
-    return ca_cert_buffer;
+    return ca_cert_buf();
   }
 
   // Build dynamic cert path from broker hostname
@@ -483,8 +493,8 @@ const char* mqtt_load_ca_cert() {
     return nullptr;
   }
 
-  size_t bytesRead = certFile.readBytes(ca_cert_buffer, certSize);
-  ca_cert_buffer[bytesRead] = '\0';
+  size_t bytesRead = certFile.readBytes(ca_cert_buf(), certSize);
+  ca_cert_buf()[bytesRead] = '\0';
   certFile.close();
 
 
@@ -495,7 +505,7 @@ const char* mqtt_load_ca_cert() {
 
   ca_cert_loaded = true;
   Serial.printf("TLS: CA certificate loaded (%d bytes) from '%s'\n", bytesRead, actual_path);
-  return ca_cert_buffer;
+  return ca_cert_buf();
 }
 
 // --- OTA enable/disable with auto-timeout ---

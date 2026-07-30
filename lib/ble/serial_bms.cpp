@@ -57,8 +57,9 @@ class BmsClientCallbacks : public NimBLEClientCallbacks {
     void onConnect(NimBLEClient* pClient) override {
         Serial.println("BMS BLE: GATT connected");
     }
-    void onDisconnect(NimBLEClient* pClient) override {
-        Serial.printf("BMS BLE: Disconnected (reason=%d)\n", pClient->getLastError());
+    void onDisconnect(NimBLEClient* pClient, int reason) override {
+        (void)pClient;
+        Serial.printf("BMS BLE: Disconnected (reason=%d)\n", reason);
         if (_active_bms) {
             _active_bms->disconnect();
         }
@@ -231,23 +232,23 @@ bool SerialBMS::scanAndConnect() {
 
     NimBLEScan* scan = NimBLEDevice::getScan();
     scan->setActiveScan(true);
-    NimBLEScanResults results = scan->start(BMS_SCAN_DURATION);
+    NimBLEScanResults results = scan->getResults(BMS_SCAN_DURATION);
 
     int best_rssi = -999;
     int best_idx = -1;
     int match_idx = -1;
 
     for (int i = 0; i < results.getCount(); i++) {
-        NimBLEAdvertisedDevice device = results.getDevice(i);
-        const char* name = device.getName().c_str();
+        const NimBLEAdvertisedDevice* device = results.getDevice(i);
+        const char* name = device->getName().c_str();
         char addr_str[18];
-        strncpy(addr_str, device.getAddress().toString().c_str(), sizeof(addr_str) - 1);
+        strncpy(addr_str, device->getAddress().toString().c_str(), sizeof(addr_str) - 1);
         addr_str[sizeof(addr_str) - 1] = '\0';
-        int rssi = device.getRSSI();
+        int rssi = device->getRSSI();
 
         Serial.printf("BMS BLE: Scan found: '%s' (%s) RSSI=%d\n", name, addr_str, rssi);
 
-        if (device.isAdvertisingService(BMS_SERVICE_UUID)) {
+        if (device->isAdvertisingService(BMS_SERVICE_UUID)) {
             Serial.printf("BMS BLE: Service UUID match: %s\n", addr_str);
             match_idx = i;
             break;
@@ -279,15 +280,15 @@ bool SerialBMS::scanAndConnect() {
         return false;
     }
 
-    NimBLEAdvertisedDevice target = results.getDevice(target_idx);
+    const NimBLEAdvertisedDevice* target = results.getDevice(target_idx);
 
     if (match_idx < 0) {
         Serial.printf("BMS BLE: No name/UUID match, trying strongest: %s (RSSI=%d)\n",
-            target.getAddress().toString().c_str(), best_rssi);
+            target->getAddress().toString().c_str(), best_rssi);
     }
 
     char addr[18];
-    strncpy(addr, target.getAddress().toString().c_str(), sizeof(addr) - 1);
+    strncpy(addr, target->getAddress().toString().c_str(), sizeof(addr) - 1);
     addr[sizeof(addr) - 1] = '\0';
     setBleAddress(addr);
 
@@ -315,7 +316,7 @@ bool SerialBMS::connectToDevice(const char* ble_address) {
         _ble_client->setConnectTimeout(5);  // 5 seconds
     }
 
-    NimBLEAddress addr(ble_address);
+    NimBLEAddress addr(std::string(ble_address), BLE_ADDR_PUBLIC);
 
     unsigned long connect_start = millis();
     if (!_ble_client->connect(addr)) {
@@ -340,8 +341,8 @@ bool SerialBMS::connectToDevice(const char* ble_address) {
     if (_write_char == nullptr) {
         Serial.println("BMS BLE: Write char ff02 not found");
         // Debug: list all characteristics in service
-        for (int i = 0; i < service->getCharacteristics()->size(); i++) {
-            NimBLERemoteCharacteristic* c = (*service->getCharacteristics())[i];
+        for (size_t i = 0; i < service->getCharacteristics().size(); i++) {
+            NimBLERemoteCharacteristic* c = service->getCharacteristics()[i];
             Serial.printf("BMS BLE:   char: %s\n",
                 c->getUUID().toString().c_str());
         }

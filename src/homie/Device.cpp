@@ -404,8 +404,22 @@ void Device::publishState() {
   }
 }
 
-// Static buffer for $description JSON (avoid stack allocation)
-static char _description_json[MAX_DATA_LEN];
+// Heap-allocated on first use (not a static array): on the idf5/pioarduino build,
+// total .bss/.data footprint crossing a threshold somewhere between ~97KB and
+// ~105KB corrupts/exhausts a small early-boot heap region that FreeRTOS's own
+// vApplicationGetIdleTaskMemory() draws its very first allocation from during
+// vTaskStartScheduler() — before app_main()/setup() ever runs. This single
+// MAX_DATA_LEN (8192 byte) static array was the exact size of the margin between
+// a working and a crashing build. Allocating it lazily here (first reached only
+// from Device::publish(), i.e. from setup(), long after the scheduler has already
+// started successfully) avoids counting against that early static-footprint budget.
+static char* _description_json = nullptr;
+static char* description_json_buf() {
+  if (_description_json == nullptr) {
+    _description_json = new char[MAX_DATA_LEN];
+  }
+  return _description_json;
+}
 
 // FNV-1a, 32-bit. Cheap, no library, fine for change-detection on an ESP32 (the
 // issue calls out avoiding SHA-256). Not cryptographic — collisions are harmless
@@ -424,9 +438,10 @@ static uint32_t fnv1a_32(const char* data, size_t len) {
 // $description is deterministic (no always-fresh `version` timestamp like the python
 // SDK), so the whole serialized buffer is hashed directly — nothing to strip.
 uint32_t Device::buildDescription(size_t* out_len) {
-  size_t len = toJson(_description_json, sizeof(_description_json));
+  char* buf = description_json_buf();
+  size_t len = toJson(buf, MAX_DATA_LEN);
   if (out_len) *out_len = len;
-  return fnv1a_32(_description_json, len);
+  return fnv1a_32(buf, len);
 }
 
 void Device::publish() {
@@ -455,7 +470,7 @@ void Device::publish() {
     snprintf(top, sizeof(top), "%s%s", topic(), HOMIE_$DESCRIPTION);
     Serial.printf("DEVICE: $description JSON size: %d bytes\n", len);
     // MQTTClient publish: (topic, payload, retained, qos). $description retained -> QoS 2 (C4)
-    if (!_mqtt_client->publish(top, _description_json, true, homie_qos(true))) {
+    if (!_mqtt_client->publish(top, description_json_buf(), true, homie_qos(true))) {
         Serial.println("MQTT publish: $description failed");
     } else {
         _last_description_hash = h;
