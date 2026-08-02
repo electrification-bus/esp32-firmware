@@ -33,7 +33,8 @@ That is the whole loop. The commands below are for finer control.
 ./ebus-esp32 build    [device.yml]                          compile firmware (regenerates first, via the pre-build hook)
 ./ebus-esp32 run      [--port PORT] [device.yml]            build and flash firmware + filesystem
 ./ebus-esp32 push     [--port PORT] [--fs-only] [device.yml]  flash without forcing a rebuild
-./ebus-esp32 monitor  [--port PORT] [device.yml]            open the serial monitor
+./ebus-esp32 monitor  [--net|--serial] [--host ADDR] [--port PORT] [device.yml]
+                                                            watch the device (network by default)
 ./ebus-esp32 clean    [device.yml]                          clean PlatformIO build artifacts
 ./ebus-esp32 devices                                        list attached serial devices
 ./ebus-esp32 envs     [device.yml]                          list available board environments

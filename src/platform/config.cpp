@@ -1,5 +1,6 @@
 #include <platform/config.h>
 #include <Arduino.h>
+#include <platform/log_stream.h>
 #include <LittleFS.h>
 #include <ArduinoYaml.h>
 #include <util/jsonUtils.h>
@@ -22,6 +23,7 @@ uint16_t mqtt_port;
 uint8_t mqtt_qos = 2;   // QoS for retained Homie publications; Homie 5 recommends 2 (C4)
 bool mdns_discovery = false;   // mDNS querier (broker discovery) — off by default (ESP32-6du.6)
 bool mdns_advertise = false;   // mDNS responder (service advertising) — off by default; ESP32-9mx crash surface
+uint16_t log_tcp_port = LOG_TCP_PORT_DEFAULT;   // serial-over-TCP console; 0 = off
 char mqtt_username[64] = {0};
 char mqtt_password[64] = {0};
 char device_id_prefix[32] = {0};
@@ -238,6 +240,11 @@ bool loadPlatformConfiguration() {
   }
   if (config_json["mdns_advertise"].is<bool>()) {
     mdns_advertise = config_json["mdns_advertise"].as<bool>();
+  }
+
+  // Serial-over-TCP console port; 0 disables the listener (see log_stream.h).
+  if (config_json["log_tcp_port"].is<uint16_t>()) {
+    log_tcp_port = config_json["log_tcp_port"].as<uint16_t>();
   }
 
   if (config_json["mqtt_username"].is<JsonString>()) {

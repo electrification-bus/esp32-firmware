@@ -8,8 +8,11 @@ ebus-esp32 — eBus ESP32 firmware CLI
   ./ebus-esp32 run --port COM3           Specify serial port
   ./ebus-esp32 push                      Flash pre-built firmware + filesystem (no build)
   ./ebus-esp32 push --fs-only            Flash filesystem only (no build)
-  ./ebus-esp32 monitor                   Open serial monitor
-  ./ebus-esp32 monitor --port COM3
+  ./ebus-esp32 monitor                   Watch the device — over the network if its
+                                         address is known, else over USB
+  ./ebus-esp32 monitor --serial          Force USB (and learn the device's IP)
+  ./ebus-esp32 monitor --net --host IP   Force the network console at a given address
+  ./ebus-esp32 run --monitor             Flash, then watch over the network
   ./ebus-esp32 clean                     Clean build artifacts
   ./ebus-esp32 devices                   List attached serial devices
   ./ebus-esp32 envs                      List available PlatformIO board environments
@@ -20,6 +23,9 @@ On Windows, invoke via the wrapper: `ebus-esp32.bat run` (or `python ebus-esp32 
 import sys
 import os
 import re
+import json
+import time
+import socket
 import argparse
 import subprocess
 import shutil
@@ -40,6 +46,7 @@ GENERATED_INI  = BUILD_DIR / "platformio.ini"
 CONFIG_DIR     = Path.home() / ".config" / "eBus"
 CONFIG_OVERLAY = CONFIG_DIR / "config.yml"   # per-developer overlay, merged in by generate
 CONFIG_EXAMPLE = DATA_DIR / "config.yml.example"   # seed for `config-init`
+MONITOR_HOSTS  = BUILD_DIR / "monitor-hosts.json"  # learned board -> last-known device IP
 
 # ── pio helper ─────────────────────────────────────────────────────────────────
 
@@ -139,6 +146,17 @@ def get_board(cfg: dict) -> str:
         print("ERROR: device.yml missing device.board", file=sys.stderr)
         sys.exit(1)
     return board
+
+def get_log_port(cfg: dict) -> int:
+    """Port the firmware's serial-over-TCP console listens on (device.yml
+    `log.tcp_port`, default 23; 0 disables it). Single source for both the
+    generated data/config.yml and the `--net` monitor's socket:// URL, so the two
+    can never disagree."""
+    try:
+        return int((cfg.get("log") or {}).get("tcp_port", 23))
+    except (TypeError, ValueError):
+        print("ERROR: device.yml log.tcp_port must be an integer", file=sys.stderr)
+        sys.exit(1)
 
 # ── generate ───────────────────────────────────────────────────────────────────
 
@@ -542,6 +560,8 @@ def cmd_generate(args) -> None:
         "mqtt_port":        mqtt_cfg.get("port") or 1883,
         "mqtt_qos":         mqtt_cfg.get("qos") if mqtt_cfg.get("qos") is not None else 2,
         "mdns_enabled":     bool((cfg.get("mdns") or {}).get("enabled", False)),  # opt-in (ESP32-9mx)
+        # Serial-over-TCP console port (device.yml: config.log.tcp_port); 0 disables.
+        "log_tcp_port":     get_log_port(cfg),
         "mqtt_username":    mqtt_cfg.get("username") or "",
         "mqtt_password":    mqtt_cfg.get("password") or "",
         "device_id":        device_id_tmpl              or "",   # template (see above)
@@ -584,6 +604,9 @@ def cmd_build(args) -> None:
     bin_path = ROOT / ".pio" / "build" / board / "firmware.bin"
     if bin_path.exists():
         print(f"\nfirmware: {bin_path}  ({bin_path.stat().st_size / 1024:.1f} KB)")
+    # `build` does not flash, so this attaches to whatever the device is already
+    # running — useful for watching a live board while iterating on a build.
+    post_monitor(cfg, args)
 
 # ── run / push ─────────────────────────────────────────────────────────────────
 
@@ -640,31 +663,212 @@ def cmd_run(args) -> None:
     cmd_generate(args)
     cfg = load_device_yml(Path(args.device_yml))
     _upload(cfg, args, build=True)
+    post_monitor(cfg, args)
 
 def cmd_push(args) -> None:
     # No generate here: push is explicitly "flash pre-built artifacts, no rebuild" —
     # it doesn't compile, so build/platformio.ini isn't consulted either way.
     cfg = load_device_yml(Path(args.device_yml))
     _upload(cfg, args, build=False)
+    post_monitor(cfg, args)
 
 # ── monitor ────────────────────────────────────────────────────────────────────
+#
+# Two transports, one command:
+#
+#   serial   pio device monitor over USB — the original behaviour.
+#   network  pio device monitor --port socket://<host>:<log.tcp_port>, reading the
+#            firmware's serial-over-TCP console (include/platform/log_stream.h). No
+#            extra tooling: pyserial (which pio's monitor uses) speaks socket:// URLs
+#            natively, and the device replays its ring buffer to each new client, so
+#            the boot log survives connecting late.
+#
+# Host resolution, in order: --host, then the address learned from a previous serial
+# session (cached per board in build/monitor-hosts.json), then <device.name>.local.
+# There is no mDNS browse — the firmware advertises _telnet._tcp, but mdns is opt-in
+# and off by default, so the cache is what makes `--net` work with no arguments.
+
+# main.cpp prints exactly these once an interface has an IP. Scraping them while a
+# serial monitor is already running is how the cache gets populated, at zero cost to
+# the user: flash over USB once, and every later `--net` monitor knows the address.
+_IP_LEARN_RE = re.compile(r"Network:\s+(?:WiFi STA|Ethernet)\s+IP=(\d{1,3}(?:\.\d{1,3}){3})")
+
+def _hosts_load() -> dict:
+    """Learned board -> host map. A corrupt/missing cache is not an error: the
+    monitor still works with an explicit --host."""
+    try:
+        data = json.loads(MONITOR_HOSTS.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+def _host_learn(board: str, host: str) -> None:
+    hosts = _hosts_load()
+    if hosts.get(board) == host:
+        return
+    hosts[board] = host
+    try:
+        BUILD_DIR.mkdir(parents=True, exist_ok=True)
+        MONITOR_HOSTS.write_text(json.dumps(hosts, indent=2) + "\n", encoding="utf-8")
+        print(f"\n[ebus] learned device address {host} for {board}"
+              f"  ->  ebus-esp32 monitor --net\n", flush=True)
+    except OSError as e:
+        print(f"[ebus] WARNING: could not cache device address: {e}", file=sys.stderr)
+
+def resolve_host(cfg: dict, board: str, explicit: str = None):
+    """(host, source) for the network monitor, or (None, None) if nothing is known."""
+    if explicit:
+        return explicit, "--host"
+    cached = _hosts_load().get(board)
+    if cached:
+        return cached, f"learned, {MONITOR_HOSTS.relative_to(ROOT)}"
+    name = (cfg.get("device") or {}).get("name")
+    if name:
+        # Best-effort guess, and only usable if mdns.enabled is true in device.yml AND
+        # this host has working mDNS. Resolve it *now* rather than handing back a name
+        # that would burn the whole --monitor-wait timing out: on a first run there is
+        # no cache, and falling straight through to the USB monitor (which is what
+        # populates the cache) is the useful behaviour.
+        guess = f"{name}.local"
+        try:
+            socket.getaddrinfo(guess, None)
+            return guess, "guess from device.name"
+        except OSError:
+            pass
+    return None, None
+
+def _pio_monitor_cmd(board: str) -> list:
+    # NB: no `-c build/platformio.ini` here, unlike pio_run(). `pio device monitor`
+    # has no --project-conf option (only -d/--project-dir and -e/--environment), so
+    # passing -c is a hard "No such option" error. `-e` reads the tracked
+    # platformio.ini, which is where monitor_speed lives anyway.
+    return [find_pio(), "device", "monitor", "-e", board]
+
+def _wait_for_log_port(host: str, port: int, timeout: int) -> bool:
+    """Poll until the device's log listener accepts a connection. After a flash the
+    board reboots and has to associate with WiFi first, so a fresh `run --monitor`
+    is expected to spend a few seconds here."""
+    deadline  = time.time() + timeout
+    announced = False
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=2):
+                return True
+        except OSError:
+            if not announced:
+                print(f"waiting for {host}:{port} to come up (up to {timeout}s, Ctrl-C to give up)...",
+                      flush=True)
+                announced = True
+            time.sleep(1.0)
+    return False
+
+def monitor_net(cfg: dict, board: str, host: str, source: str, wait: int) -> int:
+    """Attach pio's monitor to the device's TCP console. Returns a process rc."""
+    port = get_log_port(cfg)
+    if port == 0:
+        print("ERROR: device.yml sets log.tcp_port: 0 — the firmware's TCP console is "
+              "disabled.\n       Set a port (default 23), then re-flash the filesystem: "
+              "ebus-esp32 push --fs-only", file=sys.stderr)
+        return 1
+    # flush: pio's monitor writes straight to the terminal, so without this our
+    # header block-buffers behind it whenever output is piped (tee'd build logs).
+    print(f"--- monitor over network: {host}:{port} (host {source}) ---", flush=True)
+    if not _wait_for_log_port(host, port, wait):
+        print(f"\nERROR: no response from {host}:{port} after {wait}s.", file=sys.stderr)
+        print("Things to check:", file=sys.stderr)
+        print(f"  - is {host} still the device's address?  (override with --host)", file=sys.stderr)
+        print( "  - did the device get on the network?     (watch over USB: ebus-esp32 monitor --serial)", file=sys.stderr)
+        print( "  - is the firmware current?               (the TCP console needs a build that has it)", file=sys.stderr)
+        return 1
+    cmd = _pio_monitor_cmd(board) + ["--port", f"socket://{host}:{port}"]
+    try:
+        return subprocess.run(cmd, cwd=ROOT, env=pio_env()).returncode
+    except KeyboardInterrupt:
+        return 0
+
+def monitor_serial(cfg: dict, board: str, port: str, learn: bool = True) -> int:
+    """USB monitor. With learn=True the stream is relayed through this process so the
+    device's IP can be scraped for the --net cache; that relay costs interactivity
+    (keystrokes are no longer forwarded to the device), so --no-learn keeps pio
+    attached directly to the terminal."""
+    # Drop a tmux breadcrumb so a later `run`/`push` can pause
+    # and resume this monitor; tagged "ebus" so resume relaunches this CLI. No-op
+    # outside tmux. Cleared on exit whether the monitor quits normally or via Ctrl-C.
+    _coord("_monitor-record", board, port or "", "ebus")
+    cmd = _pio_monitor_cmd(board)
+    if port:
+        cmd += ["--port", port]
+    try:
+        if not learn:
+            return subprocess.run(cmd, cwd=ROOT, env=pio_env()).returncode
+        env = pio_env()
+        env["PYTHONUNBUFFERED"] = "1"   # else pio's output block-buffers into the pipe
+        proc = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True,
+                                errors="replace", bufsize=1)
+        try:
+            for line in proc.stdout:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                m = _IP_LEARN_RE.search(line)
+                if m:
+                    _host_learn(board, m.group(1))
+        except KeyboardInterrupt:
+            pass
+        finally:
+            if proc.poll() is None:
+                proc.terminate()
+            try:
+                return proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                return proc.wait()
+    finally:
+        _coord("_monitor-release", port or "")
 
 def cmd_monitor(args) -> None:
     cfg   = load_device_yml(Path(args.device_yml))
     board = get_board(cfg)
-    pio   = find_pio()
-    port  = args.port or ""
-    # Drop a tmux breadcrumb so a later `run`/`push` can pause
-    # and resume this monitor; tagged "ebus" so resume relaunches this CLI. No-op
-    # outside tmux. Cleared on exit whether the monitor quits normally or via Ctrl-C.
-    _coord("_monitor-record", board, port, "ebus")
-    cmd = [pio, "device", "monitor", "-e", board]
-    if args.port:
-        cmd += ["--port", args.port]
-    try:
-        subprocess.run(cmd, cwd=ROOT, env=pio_env())
-    finally:
-        _coord("_monitor-release", port)
+
+    if args.serial and (args.net or args.host):
+        print("ERROR: --serial cannot be combined with --net/--host", file=sys.stderr)
+        sys.exit(2)
+
+    # --port names a serial device, so it forces the USB transport; --serial does so
+    # explicitly. Everything else prefers the network, which is the point of the
+    # feature — an installed board has no cable to plug into.
+    if args.serial or args.port:
+        sys.exit(monitor_serial(cfg, board, args.port, learn=not args.no_learn))
+
+    host, source = resolve_host(cfg, board, args.host)
+    if not host:
+        if args.net:
+            print("ERROR: --net given but no device address is known.", file=sys.stderr)
+            print("       Name it with --host <ip>, or watch over USB once to learn it:",
+                  file=sys.stderr)
+            print("         ebus-esp32 monitor --serial", file=sys.stderr)
+            sys.exit(1)
+        print("No device address known yet — falling back to the USB monitor.")
+        print("Its IP will be learned from the boot log and used by later --net runs.\n")
+        sys.exit(monitor_serial(cfg, board, args.port, learn=not args.no_learn))
+    sys.exit(monitor_net(cfg, board, host, source, args.monitor_wait))
+
+def post_monitor(cfg: dict, args) -> None:
+    """Shared tail for build/run/push --monitor. Never fails the command that ran
+    before it: the flash already succeeded, so a monitor that cannot attach is a
+    reportable annoyance, not a reason to exit non-zero."""
+    if not getattr(args, "monitor", False):
+        return
+    board = get_board(cfg)
+    host, source = resolve_host(cfg, board, getattr(args, "host", None))
+    if not host:
+        print("\n--monitor: no device address known yet.")
+        print("  Watch over USB once and the address is cached automatically:")
+        print("    ebus-esp32 monitor --serial")
+        print("  Or name it directly:  ebus-esp32 monitor --net --host <ip>")
+        return
+    print()
+    monitor_net(cfg, board, host, source, getattr(args, "monitor_wait", 90))
 
 # ── clean ──────────────────────────────────────────────────────────────────────
 
@@ -793,7 +997,10 @@ def main():
             "  ./ebus-esp32 run --port COM3",
             "  ./ebus-esp32 push",
             "  ./ebus-esp32 push --fs-only",
-            "  ./ebus-esp32 monitor --port COM3",
+            "  ./ebus-esp32 monitor                   (network if an address is known, else USB)",
+            "  ./ebus-esp32 monitor --serial          (force USB; also learns the device IP)",
+            "  ./ebus-esp32 monitor --net --host 192.168.1.42",
+            "  ./ebus-esp32 run --monitor             (flash, then watch over the network)",
             "  ./ebus-esp32 clean",
             "  ./ebus-esp32 devices",
             "  ./ebus-esp32 envs",
@@ -804,6 +1011,18 @@ def main():
                        help="device config file (default: device.yml)")
     port_arg    = dict(default=None, metavar="PORT",
                        help="serial port, e.g. COM3 or /dev/ttyUSB0 (auto-detected if omitted)")
+    host_arg    = dict(default=None, metavar="ADDR",
+                       help="device IP/hostname for the network monitor "
+                            "(default: address learned from a previous serial session)")
+    wait_arg    = dict(type=int, default=90, metavar="SECONDS",
+                       help="how long to wait for the device's TCP console to answer (default: 90)")
+
+    def add_monitor_flags(p, wait_default: int):
+        """--monitor tail shared by build/run/push."""
+        p.add_argument("--monitor", action="store_true",
+                       help="when finished, attach the network monitor to the device's TCP console")
+        p.add_argument("--host", **host_arg)
+        p.add_argument("--monitor-wait", **dict(wait_arg, default=wait_default))
 
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -812,22 +1031,34 @@ def main():
 
     p = sub.add_parser("build", help="Generate then compile firmware via PlatformIO")
     p.add_argument("device_yml", **dev_yml_arg)
+    add_monitor_flags(p, 30)   # no flash, so the device should already be up
 
     p = sub.add_parser("run", help="Generate, build, and flash firmware + filesystem to device")
     p.add_argument("device_yml", **dev_yml_arg)
     p.add_argument("--port", **port_arg)
     p.add_argument("--fs-only", action="store_true", help="flash filesystem only (skip firmware)")
     p.add_argument("--erase", action="store_true", help="full chip erase first (recover from a stale-boot OTA slot)")
+    add_monitor_flags(p, 90)   # board reboots and must re-associate with WiFi first
 
     p = sub.add_parser("push", help="Flash pre-built firmware + filesystem (no generate/build)")
     p.add_argument("device_yml", **dev_yml_arg)
     p.add_argument("--port", **port_arg)
     p.add_argument("--fs-only", action="store_true", help="flash filesystem only (skip firmware)")
     p.add_argument("--erase", action="store_true", help="full chip erase first (recover from a stale-boot OTA slot)")
+    add_monitor_flags(p, 90)
 
-    p = sub.add_parser("monitor", help="Open serial monitor")
+    p = sub.add_parser("monitor", help="Open the device monitor (network by default, USB with --serial)")
     p.add_argument("device_yml", **dev_yml_arg)
     p.add_argument("--port", **port_arg)
+    p.add_argument("--host", **host_arg)
+    p.add_argument("--net", "--network", dest="net", action="store_true",
+                   help="force the network monitor (the default when an address is known)")
+    p.add_argument("--serial", action="store_true",
+                   help="force the USB serial monitor (implied by --port)")
+    p.add_argument("--no-learn", action="store_true",
+                   help="serial only: do not relay the stream through this CLI to learn the "
+                        "device IP — keeps the monitor fully interactive")
+    p.add_argument("--monitor-wait", **wait_arg)
 
     p = sub.add_parser("clean", help="Clean PlatformIO build artifacts")
     p.add_argument("device_yml", **dev_yml_arg)

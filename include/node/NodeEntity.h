@@ -1,4 +1,10 @@
 #pragma once
+// Routes this file's (and every lib/ component's) Serial.printf output through the
+// UART + TCP console tee. src/ gets this via build_src_flags in platformio.ini;
+// lib/ components are compiled without those flags, so they pick it up here — every
+// component includes NodeEntity.h. See include/platform/log_stream.h.
+#include <platform/log_stream.h>
+
 #include <homie/Device.h>
 #include <homie/Node.h>
 #include <homie/Property.h>

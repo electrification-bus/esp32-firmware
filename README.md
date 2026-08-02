@@ -69,9 +69,15 @@ Edit `device.yml` (the declarative device definition), then drive everything thr
 ./ebus-esp32 run --port COM3                override serial port
 ./ebus-esp32 push                           flash firmware + filesystem without forcing a rebuild
 ./ebus-esp32 push --fs-only                 flash filesystem only (re-flash config without rebuilding)
-./ebus-esp32 monitor                        open serial console (real terminal only)
+./ebus-esp32 monitor                        watch the device — over the network if its address is
+                                            known, else over USB (real terminal only)
+./ebus-esp32 monitor --serial               force USB, and learn the device's IP for later --net use
+./ebus-esp32 monitor --net --host 10.0.0.5  network console at a specific address
+./ebus-esp32 run --monitor                  flash, then attach the network console
 ./ebus-esp32 devices                        list attached serial devices
 ```
+
+The network console reads the firmware's serial-over-TCP log (`log.tcp_port` in `device.yml`, default 23), so a board installed without a USB cable can still be watched — it replays its ring buffer on connect, so the boot log survives connecting late. `--monitor` also works on `build` and `push`. See [GettingStartedCLI.md](doc/GettingStartedCLI.md#network-console-no-usb-cable).
 
 The generated `src/homie.cpp`, `data/homie.yml`, and `data/config.yml` are gitignored and rebuilt from `device.yml` before every `pio run` (a PlatformIO pre-build hook) — `device.yml` and the `lib/<bus>/*.yml` component definitions are the only tracked source. First-time setup of your personal config overlay is a one-line copy — see [GettingStartedCLI.md](doc/GettingStartedCLI.md). On Windows use `ebus-esp32.bat` (or `python ebus-esp32`).
 

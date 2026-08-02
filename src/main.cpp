@@ -12,6 +12,7 @@
  */
 
 #include <Arduino.h>
+#include <platform/log_stream.h>
 #include <platform/network.h>
 #include <platform/config.h>
 #include <platform/mqtt_client.h>
@@ -71,14 +72,29 @@ void setup() {
     // Start web server (captive portal with WiFi AP, or HTTP API over ethernet)
     captive_portal_start();
 
+    // Associate STA with the configured credentials BEFORE the wait below. On
+    // CONFIG_WIFI_AP boards client_connected() is STA-only (there is no Ethernet to
+    // satisfy it) and captive_portal_start() only brings up the AP — it never calls
+    // WiFi.begin(). Starting STA after the loop meant the loop could never exit on
+    // its own, so a board with wifi credentials in device.yml still parked at
+    // "Waiting for network connection..." until someone provisioned via the portal.
+    setup_wifi_sta();  // no-op if no wifi_ssid configured
+
+    // Serial log over TCP. Started here — before the wait below, not after — because
+    // the listener binds INADDR_ANY and needs no IP of its own. The AP is already up
+    // at this point, so a failing STA association (bad credentials, absent network)
+    // can be watched from a laptop joined to the device's own AP:
+    //   pio device monitor --port socket://192.168.4.1:23
+    // and, once STA does associate, at the device's LAN address on the same port.
+    log_tcp_begin(log_tcp_port);
+
     // Wait for at least one network interface to get an IP
     while (!client_connected()) {
+        log_tcp_loop();         // keep the remote monitor fed while setup() blocks here
         captive_portal_loop();  // Keep portal responsive while waiting
         Serial.println("Waiting for network connection...");
         delay(1000);
     }
-
-    setup_wifi_sta();  // no-op if no wifi_ssid configured
 
     // Log which interfaces are active
     const char* eth_ip = get_eth_ip();
@@ -93,6 +109,7 @@ void setup() {
     // In discovery-only mode, only wait for mDNS (ignore configured broker)
     if (mqtt_mode == MQTT_MODE_DISCOVERY_ONLY) {
         while (!mdns_has_broker()) {
+            log_tcp_loop();   // keep the remote monitor fed while setup() blocks here
             captive_portal_loop();
             loop_mdns();
             if (captive_portal_mqtt_changed()) break;
@@ -101,6 +118,7 @@ void setup() {
         }
     } else {
         while (!has_mqtt_broker() && !mdns_has_broker()) {
+            log_tcp_loop();   // keep the remote monitor fed while setup() blocks here
             captive_portal_loop();
             loop_mdns();
             if (captive_portal_mqtt_changed()) break;
@@ -133,6 +151,7 @@ void setup() {
 }
 
 void loop() {
+    log_tcp_loop();     // accept monitors, push buffered log; never blocks
     captive_portal_loop();
 
     // Handle MQTT reconfiguration from web server
@@ -244,14 +263,29 @@ void setup() {
     // Start web server (captive portal with WiFi AP, or HTTP API over ethernet)
     captive_portal_start();
 
+    // Associate STA with the configured credentials BEFORE the wait below. On
+    // CONFIG_WIFI_AP boards client_connected() is STA-only (there is no Ethernet to
+    // satisfy it) and captive_portal_start() only brings up the AP — it never calls
+    // WiFi.begin(). Starting STA after the loop meant the loop could never exit on
+    // its own, so a board with wifi credentials in device.yml still parked at
+    // "Waiting for network connection..." until someone provisioned via the portal.
+    setup_wifi_sta();  // no-op if no wifi_ssid configured
+
+    // Serial log over TCP. Started here — before the wait below, not after — because
+    // the listener binds INADDR_ANY and needs no IP of its own. The AP is already up
+    // at this point, so a failing STA association (bad credentials, absent network)
+    // can be watched from a laptop joined to the device's own AP:
+    //   pio device monitor --port socket://192.168.4.1:23
+    // and, once STA does associate, at the device's LAN address on the same port.
+    log_tcp_begin(log_tcp_port);
+
     // Wait for at least one network interface to get an IP
     while (!client_connected()) {
+        log_tcp_loop();         // keep the remote monitor fed while setup() blocks here
         captive_portal_loop();  // Keep portal responsive while waiting
         Serial.println("Waiting for network connection...");
         delay(1000);
     }
-
-    setup_wifi_sta();  // no-op if no wifi_ssid configured
 
     // Log which interfaces are active
     const char* eth_ip = get_eth_ip();
@@ -269,6 +303,7 @@ void setup() {
     // In discovery-only mode, only wait for mDNS (ignore configured broker)
     if (mqtt_mode == MQTT_MODE_DISCOVERY_ONLY) {
         while (!mdns_has_broker()) {
+            log_tcp_loop();   // keep the remote monitor fed while setup() blocks here
             captive_portal_loop();
             loop_mdns();
             if (captive_portal_mqtt_changed()) break;
@@ -277,6 +312,7 @@ void setup() {
         }
     } else {
         while (!has_mqtt_broker() && !mdns_has_broker()) {
+            log_tcp_loop();   // keep the remote monitor fed while setup() blocks here
             captive_portal_loop();
             loop_mdns();
             if (captive_portal_mqtt_changed()) break;
@@ -317,6 +353,7 @@ void setup() {
 }
 
 void loop_housekeeping() {
+    log_tcp_loop();     // accept monitors, push buffered log; never blocks
     captive_portal_loop();
     // Handle MQTT reconfiguration from web server
     if (captive_portal_mqtt_changed()) {

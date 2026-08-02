@@ -36,6 +36,16 @@ config:
     # Legacy: `mdns_enabled: true` sets both at once.
     mdns_discovery: false
     mdns_advertise: false
+    # Serial-over-TCP console. Everything the firmware prints to Serial is also
+    # streamed to TCP clients on this port, so an installed board can be watched
+    # without a USB cable:
+    #     pio device monitor --port socket://<device-ip>:23
+    #     idf.py monitor -p socket://<device-ip>:23
+    #     nc <device-ip> 23
+    # A new client is first replayed the ring buffer, so the boot log is not lost.
+    # 0 disables the listener. The stream is UNAUTHENTICATED — set 0 on any network
+    # where the log contents should not be readable by everyone on the LAN.
+    log_tcp_port: 23
     mqtt_host: public.cloud.shiftr.io
     mqtt_port: 1883
     mqtt_username: public

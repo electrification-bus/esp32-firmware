@@ -13,6 +13,7 @@
 #include <platform/network.h>
 #include <homie/homie.h>
 #include <platform/mdns_strings.h>
+#include <platform/log_stream.h>
 
 // Forward declaration to avoid circular include with mqtt_client.h
 extern boolean mqtt_connected();
@@ -305,6 +306,16 @@ void mdns_register_services() {
   mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_HTTP_PATH, MDNS_VAL_HTTP_PATH);
   mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_HTTP_API, MDNS_VAL_HTTP_API);
   Serial.printf("mDNS: Added _http._tcp service (path=%s)\n", MDNS_VAL_HTTP_PATH);
+
+  // ============================================================
+  // _telnet._tcp service - serial log stream, so a monitor can find the device
+  // by name instead of by IP. Only advertised when the listener is actually up.
+  // ============================================================
+  if (log_tcp_running()) {
+    MDNS.addService(MDNS_SVC_LOG, MDNS_PROTO_TCP, log_tcp_get_port());
+    mdns_add_txt(MDNS_SVC_LOG, MDNS_PROTO_TCP, MDNS_TXT_LOG_KIND, MDNS_VAL_LOG_KIND);
+    Serial.printf("mDNS: Added _telnet._tcp service (serial log, port %u)\n", log_tcp_get_port());
+  }
 
   // ============================================================
   // _homie._tcp service - Homie protocol device/controller discovery

@@ -61,6 +61,17 @@ mqtt:
 mdns:
   enabled: false
 
+# Serial console over TCP. The firmware tees every Serial.printf() to this port as
+# well as the UART, so an installed board can be watched without a USB cable:
+#   ./ebus-esp32 monitor --net          (address learned from a previous USB session)
+#   ./ebus-esp32 run --monitor          (flash, then attach)
+#   pio device monitor --port socket://<device-ip>:23
+# A new client is replayed the ring buffer first, so the boot log is not lost.
+# 0 disables the listener. UNAUTHENTICATED — use 0 on networks where the log should
+# not be readable by everyone on the LAN.
+log:
+  tcp_port: 23
+
 nodes:
   - component: modbus/sht20 
     id: environment_sht20

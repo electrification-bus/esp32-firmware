@@ -77,6 +77,14 @@ extern MqttMode mqtt_mode;
 extern bool mdns_discovery;
 extern bool mdns_advertise;
 
+// Serial-over-TCP console port (see include/platform/log_stream.h). The device's
+// Serial.printf output is streamed to any TCP client here, in addition to the USB
+// UART, so an installed board can be monitored with:
+//     pio device monitor --port socket://<device-ip>:<port>
+// Config key `log_tcp_port`; 0 disables the listener. NOTE: the stream is
+// unauthenticated — anything the firmware prints is readable by anyone on the LAN.
+extern uint16_t log_tcp_port;
+
 // TLS/SSL support for MQTT (port 8883)
 #define MQTT_SECURE_PORT 8883
 

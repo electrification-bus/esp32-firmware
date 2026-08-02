@@ -47,7 +47,9 @@ The overlay is **merged** into the generated `data/config.yml` every time you `g
 ./ebus-esp32 run              build and flash firmware + filesystem over USB
 ./ebus-esp32 push             flash firmware + filesystem without forcing a rebuild
 ./ebus-esp32 push --fs-only   flash filesystem only (re-flash config without rebuilding)
-./ebus-esp32 monitor          open serial monitor — must be in a REAL terminal (see below)
+./ebus-esp32 monitor          watch the device — network if its address is known, else USB (see below)
+./ebus-esp32 monitor --serial force the USB monitor — must be in a REAL terminal (see below)
+./ebus-esp32 run --monitor    flash, then attach the network console
 ./ebus-esp32 clean            clean build artifacts
 ```
 
@@ -61,6 +63,34 @@ Override the serial port when auto-detection picks the wrong one:
 ```
 
 `./ebus-esp32 envs` lists every `[env:*]` defined in `platformio.ini`.
+
+## Network console — no USB cable
+
+The firmware tees its console to a TCP listener (`include/platform/log_stream.h`), so an installed board with no reachable USB port can still be watched. `pio device monitor` speaks pyserial `socket://` URLs natively, so this needs no extra tooling — and the device replays its ring buffer to each new client, so you still get the boot log after connecting late.
+
+```sh
+./ebus-esp32 monitor                        # network if an address is known, else USB
+./ebus-esp32 monitor --net --host 10.0.0.5  # a specific device
+./ebus-esp32 run --monitor                  # flash, wait for the board to rejoin, then attach
+./ebus-esp32 build --monitor                # attach to a board that is already running
+```
+
+**How the address is found**, in order:
+
+1. `--host <ip|name>`
+2. the address learned from a previous USB session, cached per board in `build/monitor-hosts.json` (gitignored)
+3. `<device.name>.local` — only resolves if `mdns.enabled: true` in `device.yml`
+
+The cache is what makes the bare `--net` form work. `./ebus-esp32 monitor --serial` populates it by watching for the `Network: WiFi STA IP=` / `Network: Ethernet IP=` lines the firmware prints at boot: **flash over USB once, and every later network monitor knows where the board is.** To do that the CLI relays the serial stream through itself, which costs interactivity (keystrokes are no longer forwarded to the device) — pass `--no-learn` to keep pio attached directly to the terminal.
+
+The port comes from `log.tcp_port` in `device.yml` (default 23; `0` disables the listener):
+
+```yaml
+log:
+  tcp_port: 23
+```
+
+Two caveats. The stream is **unauthenticated** — anyone on the LAN can read it, so set `tcp_port: 0` on untrusted networks. And **crashes do not arrive over it**: panic handlers and backtraces are written below this layer, after the scheduler is gone, so a board's last words still need the USB cable.
 
 ## Serial monitor — needs a real terminal
 

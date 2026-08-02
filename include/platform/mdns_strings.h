@@ -47,6 +47,11 @@
 #define MDNS_VAL_HTTP_API       "openapi"
 #define MDNS_VAL_HTTP_PATH      "/api/openapi.yml"
 
+// _telnet._tcp - serial-over-TCP console log stream (include/platform/log_stream.h)
+#define MDNS_SVC_LOG            "_telnet"
+#define MDNS_TXT_LOG_KIND       "kind"
+#define MDNS_VAL_LOG_KIND       "serial-log"    // read-only log tap, not a shell
+
 // _ebus._tcp additional TXT records
 #define MDNS_TXT_CA_CERT_PATH   "ca_cert_path"
 #define MDNS_VAL_CA_CERT_PATH   "/api/broker-cert"
