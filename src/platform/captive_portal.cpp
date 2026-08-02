@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
+#include <Update.h>          // Update / U_FLASH / U_SPIFFS for the OTA push endpoints
 #include <ArduinoJson.h>
 #include <homie/homie.h>
 #include <platform/portal_prefs.h>
@@ -580,6 +581,190 @@ static void handleOtaStatus(AsyncWebServerRequest *request) {
     request->send(200, "application/json", json_buf);
 }
 
+// --- OTA image push: POST /api/ota/firmware, POST /api/ota/filesystem ---
+//
+// Streams the raw request body straight into Update.write(). Deliberately does NOT
+// use accumulateBody: a firmware image is >1MB and post_body_buf is 2KB.
+//
+//   curl -u admin:<passphrase> --data-binary @firmware.bin
+//        http://<device-ip>/api/ota/firmware
+//   (one line; no trailing backslash here — it would continue the comment)
+//
+// Flash writes happen on the AsyncTCP task, which is why CONFIG_ASYNC_TCP_STACK_SIZE
+// is raised in platformio.ini. The reboot is deferred to captive_portal_loop() so the
+// response is actually flushed to the client first.
+
+static bool     ota_push_active   = false;   // Update.begin() succeeded, writes in flight
+static bool     ota_push_failed   = false;
+static bool     ota_push_done     = false;   // Update.end() succeeded
+static int      ota_push_target   = U_FLASH;
+static size_t   ota_push_written  = 0;
+static char     ota_push_error[96] = {0};
+static bool     ota_push_reboot_pending = false;
+static uint32_t ota_push_reboot_at      = 0;
+
+static void ota_push_fail(const char* msg) {
+    ota_push_failed = true;
+    strncpy(ota_push_error, msg, sizeof(ota_push_error) - 1);
+    ota_push_error[sizeof(ota_push_error) - 1] = '\0';
+    Serial.printf("PORTAL: OTA push failed - %s\n", ota_push_error);
+    if (ota_push_active) {
+        Update.abort();
+        ota_push_active = false;
+    }
+    // A failed filesystem write leaves LittleFS unmounted (see below) — remount so
+    // the device stays serviceable instead of needing a power cycle.
+    if (ota_push_target == U_SPIFFS) LittleFS.begin(true);
+}
+
+// Side-effect-free authorization check. requireAuth() sends its own 401/429, which
+// must not happen from a body callback (the request handler would then send a second
+// response). The body callback only needs a yes/no to decide whether to touch flash;
+// the request handler below still calls requireAuth() to produce the real response.
+static bool portalAuthorized(AsyncWebServerRequest *request) {
+    if (request->hasHeader("X-Session-Token") &&
+        portal_session_valid(request->getHeader("X-Session-Token")->value().c_str())) {
+        return true;
+    }
+    if (portal_auth_is_locked()) return false;
+    if (device_passphrase[0] == '\0') return false;
+    return request->authenticate("admin", device_passphrase);
+}
+
+static void otaPushBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
+                        size_t index, size_t total, int update_type) {
+    if (index == 0) {
+        ota_push_failed  = false;
+        ota_push_done    = false;
+        ota_push_written = 0;
+        ota_push_error[0] = '\0';
+        ota_push_target  = update_type;
+
+        // Authorize on the FIRST CHUNK. Body callbacks run before the request
+        // handler, so checking only there would let an unauthenticated client on the
+        // LAN stream an entire image into the flash before being refused.
+        if (!portalAuthorized(request)) {
+            ota_push_failed = true;   // stay silent; requireAuth() replies 401 later
+            return;
+        }
+        if (!ota_is_enabled()) { ota_push_fail("OTA not enabled"); return; }
+        if (ota_push_active)   { ota_push_fail("another push in progress"); return; }
+        if (total == 0)        { ota_push_fail("missing or zero Content-Length"); return; }
+
+        // App images begin with the ESP image magic byte. Refuse anything else up
+        // front rather than half-writing a bad app partition.
+        // 0xE9 is the ESP image header magic (spelled out rather than pulled from
+        // esp_app_format.h, which is not otherwise needed in this file).
+        if (update_type == U_FLASH && len > 0 && data[0] != 0xE9) {
+            ota_push_fail("not an ESP32 firmware image (bad magic byte)");
+            return;
+        }
+        // The filesystem partition cannot be rewritten while mounted.
+        if (update_type == U_SPIFFS) LittleFS.end();
+
+        if (!Update.begin(total, update_type)) {
+            ota_push_fail(Update.errorString());
+            return;
+        }
+        ota_push_active = true;
+        // Stack probe, part 1 of 2. uxTaskGetStackHighWaterMark(NULL) reports the
+        // MINIMUM free stack this task has ever had, in bytes (ESP-IDF returns bytes,
+        // not words like vanilla FreeRTOS). Sampling it here — before any flash write
+        // — gives the baseline to compare the post-transfer figure against.
+        // Called only at the first and last chunk on purpose: the call scans the whole
+        // stack for the fill pattern, so doing it per chunk would slow the transfer.
+        Serial.printf("PORTAL: OTA push started (%s, %u bytes), async_tcp stack: "
+                      "%u bytes free of %u before writes\n",
+                      update_type == U_SPIFFS ? "filesystem" : "firmware", (unsigned)total,
+                      (unsigned)uxTaskGetStackHighWaterMark(NULL),
+                      (unsigned)CONFIG_ASYNC_TCP_STACK_SIZE);
+    }
+
+    if (ota_push_failed || !ota_push_active) return;
+
+    if (len && Update.write(data, len) != len) {
+        ota_push_fail(Update.errorString());
+        return;
+    }
+    ota_push_written += len;
+
+    if (index + len >= total) {
+        if (!Update.end(true)) {
+            ota_push_fail(Update.errorString());
+            return;
+        }
+        ota_push_active = false;
+        ota_push_done   = true;
+        // Stack probe, part 2 of 2. This is the number that sizes
+        // CONFIG_ASYNC_TCP_STACK_SIZE: the low-water mark AFTER the flash-write path
+        // has run, i.e. the worst case actually observed. Keep a few KB of margin
+        // (flash encryption, a future TLS listener, and library updates all push it
+        // up); if this reports a lot more free than that, the setting can come down.
+        // A watchdog reset or a "stack canary watchpoint triggered" panic partway
+        // through a push is the failure mode this is here to rule out.
+        uint32_t low_water = (uint32_t)uxTaskGetStackHighWaterMark(NULL);
+        Serial.printf("PORTAL: OTA push complete (%u bytes written), async_tcp stack: "
+                      "%u bytes free of %u at low-water (used %u)\n",
+                      (unsigned)ota_push_written, (unsigned)low_water,
+                      (unsigned)CONFIG_ASYNC_TCP_STACK_SIZE,
+                      (unsigned)(CONFIG_ASYNC_TCP_STACK_SIZE - low_water));
+    }
+}
+
+static void otaPushFirmwareBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
+                                size_t index, size_t total) {
+    otaPushBody(request, data, len, index, total, U_FLASH);
+}
+
+static void otaPushFilesystemBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
+                                  size_t index, size_t total) {
+    otaPushBody(request, data, len, index, total, U_SPIFFS);
+}
+
+// Final handler — runs after the whole body has been streamed above.
+static void handleOtaPushDone(AsyncWebServerRequest *request) {
+    if (!requireAuth(request)) return;   // sends 401/429 and records the failure
+
+    static char resp[192];
+    const char* target = ota_push_target == U_SPIFFS ? "filesystem" : "firmware";
+
+    if (!ota_push_done) {
+        snprintf(resp, sizeof(resp), "{\"status\":\"error\",\"target\":\"%s\",\"message\":\"%s\"}",
+                 target, ota_push_error[0] ? ota_push_error : "no image received");
+        request->send(400, "application/json", resp);
+        ota_push_failed = false;
+        return;
+    }
+
+    // ?reboot=0 defers the restart so a client can push the filesystem AND the
+    // firmware in one session and reboot once at the end (see `ebus-esp32 push --ota`).
+    // Default is to reboot, so a plain one-image curl still takes effect immediately.
+    bool reboot = true;
+    if (request->hasParam("reboot")) {
+        const char* v = request->getParam("reboot")->value().c_str();
+        reboot = !(strcmp(v, "0") == 0 || strcasecmp(v, "false") == 0 ||
+                                          strcasecmp(v, "no")    == 0);
+    }
+
+    // Staying up after a filesystem write means remounting it — the portal serves
+    // its pages from LittleFS, and the write path unmounted it.
+    if (!reboot && ota_push_target == U_SPIFFS) LittleFS.begin(true);
+
+    snprintf(resp, sizeof(resp),
+             "{\"status\":\"ok\",\"target\":\"%s\",\"bytes\":%u,\"message\":\"%s\"}",
+             target, (unsigned)ota_push_written,
+             reboot ? "rebooting" : "staged, awaiting reboot");
+    request->send(200, "application/json", resp);
+
+    ota_push_done = false;
+    if (reboot) {
+        // Reboot from the main loop, not here: this runs on the AsyncTCP task and the
+        // response above has not gone out on the wire yet.
+        ota_push_reboot_pending = true;
+        ota_push_reboot_at      = millis() + 500;
+    }
+}
+
 // Handle POST /api/ota - enable or disable OTA (requires Basic Auth)
 static void handleOtaToggle(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
@@ -668,6 +853,13 @@ void captive_portal_loop() {
 #endif
     ota_check_timeout();
     ota_loop();
+
+    // Deferred reboot after a successful image push — see handleOtaPushDone().
+    if (ota_push_reboot_pending && (int32_t)(millis() - ota_push_reboot_at) >= 0) {
+        ota_push_reboot_pending = false;
+        Serial.println("PORTAL: rebooting after OTA push");
+        ESP.restart();
+    }
 }
 
 void captive_portal_start() {
@@ -716,8 +908,18 @@ void captive_portal_start() {
     server.on("/api/reboot", HTTP_POST, handleReboot);
     server.on("/api/broker-cert", HTTP_GET, handleBrokerCert);
     server.on("/api/broker-cert", HTTP_POST, handleBrokerCertUpload, NULL, accumulateBody);
-    server.on("/api/ota", HTTP_GET, handleOtaStatus);
-    server.on("/api/ota", HTTP_POST, handleOtaToggle, NULL, accumulateBody);
+    // AsyncURIMatcher::exact() is REQUIRED on these two, not cosmetic. A bare
+    // server.on("/api/ota", ...) uses the library's BackwardCompatible matcher,
+    // which is ^{uri}(/.*)?$ — so "/api/ota" also matches "/api/ota/filesystem",
+    // and _attachHandler() takes the FIRST handler that matches. Registered plain
+    // and first, the toggle below swallowed every image push: the body went to
+    // accumulateBody (2KB static, image discarded) and handleOtaToggle tried to
+    // parse a firmware binary as JSON. exact() confines each route to its own URI.
+    server.on(AsyncURIMatcher::exact("/api/ota"), HTTP_GET, handleOtaStatus);
+    server.on(AsyncURIMatcher::exact("/api/ota"), HTTP_POST, handleOtaToggle, NULL, accumulateBody);
+    // Image push — distinct paths; /api/ota itself is the enable/disable toggle.
+    server.on(AsyncURIMatcher::exact("/api/ota/firmware"),   HTTP_POST, handleOtaPushDone, NULL, otaPushFirmwareBody);
+    server.on(AsyncURIMatcher::exact("/api/ota/filesystem"), HTTP_POST, handleOtaPushDone, NULL, otaPushFilesystemBody);
     server.on("/api/openapi.yml", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(LittleFS, "/openapi.yml", "text/yaml");
     });

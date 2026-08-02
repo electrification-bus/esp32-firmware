@@ -101,7 +101,7 @@ VSCode users: use the PlatformIO IDE's project-tasks pane for build/upload/monit
   - [proposals/OTAActivation.md](doc/proposals/OTAActivation.md)
   - [proposals/DeviceProvisioningAPI.md](doc/proposals/DeviceProvisioningAPI.md)
 - **Subsystem notes**
-  - [ESP32HomieOTA.md](doc/ESP32HomieOTA.md)
+  - [ESP32OTA.md](doc/ESP32OTA.md) — OTA push over TCP, pull from URL, partitions
   - [MDNS.md](doc/MDNS.md)
   - [Authentication.md](doc/Authentication.md)
   - [Controller.md](doc/Controller.md)

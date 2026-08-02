@@ -4,10 +4,13 @@
 bool setup_wifi();
 bool setup_wifi_sta();  // Start WiFi STA using saved wifi_ssid/wifi_password credentials
 bool setup_mdns();
-void setup_ota();
 void setup_ethernet();
 
-void loop_ota();
+// NB: no setup_ota()/loop_ota() here. ArduinoOTA (espota, port 3232) was removed —
+// it was never called, and its protocol has the device dial back to a TCP port on
+// the *host*, which does not survive NAT/VPN/host firewalls. Push images instead to
+// POST /api/ota/{firmware,filesystem} on the portal (see captive_portal.cpp); pulling
+// from a URL still works via ota_start_update() in platform/ota.h.
 void loop_mdns();
 
 bool client_connected();

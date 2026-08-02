@@ -26,6 +26,8 @@ import re
 import json
 import time
 import socket
+import base64
+import http.client
 import argparse
 import subprocess
 import shutil
@@ -614,6 +616,13 @@ def _upload(cfg, args, build: bool) -> None:
     board = get_board(cfg)
     port  = getattr(args, "port", None)
 
+    # --ota replaces the USB upload entirely: no serial port, so none of the tmux
+    # port-handoff below applies.
+    target = _ota_target(cfg, args)
+    if target:
+        ota_push(cfg, args, *target)
+        return
+
     # Pause a tmux serial monitor holding the port (no-op if none / outside tmux).
     # A non-zero rc means ambiguous monitors (multiple live, no port given) — abort
     # so the user can disambiguate with --port.
@@ -656,6 +665,110 @@ def _upload(cfg, args, build: bool) -> None:
     finally:
         # Resume the monitor in its tmux pane (no-op if nothing was paused).
         _coord("_flash-coord", "restart", port or "")
+
+# ── OTA push over TCP ──────────────────────────────────────────────────────────
+#
+# Flash a board that has no reachable USB cable, by POSTing the built images to the
+# portal's OTA endpoints (see the "OTA image push" block in captive_portal.cpp).
+#
+# Order matters: the filesystem goes first with ?reboot=0, then the firmware with the
+# reboot, so both land in a single session and the board restarts once at the end.
+
+OTA_CHUNK = 4096
+
+def _ota_request(host: str, path: str, passphrase: str, payload: bytes,
+                 content_type: str, label: str, timeout: int = 120):
+    """POST payload with pre-emptive Basic auth. Returns (status, body_text).
+
+    Pre-emptive matters: urllib's auth handler waits for a 401 and then RETRIES, which
+    for a 1.3MB image means uploading it twice. Sending Authorization up front makes
+    it one pass. Content-Length is set explicitly for the same reason chunked encoding
+    is avoided — the device sizes Update.begin() from it and rejects a zero.
+    """
+    auth = base64.b64encode(f"admin:{passphrase}".encode()).decode()
+    # No explicit port: HTTPConnection parses "host:port" when given one and defaults
+    # to 80 otherwise, so --host accepts either form.
+    conn = http.client.HTTPConnection(host, timeout=timeout)
+    try:
+        conn.putrequest("POST", path, skip_accept_encoding=True)
+        conn.putheader("Authorization", "Basic " + auth)
+        conn.putheader("Content-Type", content_type)
+        conn.putheader("Content-Length", str(len(payload)))
+        conn.endheaders()
+        total = len(payload)
+        sent  = 0
+        last  = -1
+        for off in range(0, total, OTA_CHUNK):
+            conn.send(payload[off:off + OTA_CHUNK])
+            sent += len(payload[off:off + OTA_CHUNK])
+            pct = sent * 100 // total if total else 100
+            if pct != last and pct % 5 == 0 and pct < 100:   # 100% printed once, below
+                last = pct
+                print(f"\r  {label}: {pct:3d}%  ({sent}/{total} bytes)", end="", flush=True)
+        print(f"\r  {label}: 100%  ({total}/{total} bytes)", flush=True)
+        resp = conn.getresponse()
+        return resp.status, resp.read().decode("utf-8", "replace").strip()
+    finally:
+        conn.close()
+
+def _ota_push_image(host: str, path: str, passphrase: str, image: Path,
+                    label: str, reboot: bool) -> None:
+    if not image.exists():
+        print(f"ERROR: {image} not found — build first (ebus-esp32 build)", file=sys.stderr)
+        sys.exit(1)
+    url = path if reboot else path + "?reboot=0"
+    status, body = _ota_request(host, url, passphrase, image.read_bytes(),
+                                "application/octet-stream", label)
+    if status != 200:
+        print(f"\n{label} FAILED: HTTP {status} {body}", file=sys.stderr)
+        sys.exit(1)
+    print(f"  -> {body}")
+
+def ota_push(cfg: dict, args, host: str, source: str) -> None:
+    board      = get_board(cfg)
+    passphrase = getattr(args, "passphrase", None) or \
+                 (cfg.get("device") or {}).get("device_passphrase") or ""
+    if not passphrase:
+        print("ERROR: no device_passphrase in device.yml (and no --passphrase given).\n"
+              "       The OTA endpoints require it.", file=sys.stderr)
+        sys.exit(1)
+
+    build_dir = ROOT / ".pio" / "build" / board
+    fw, fs = build_dir / "firmware.bin", build_dir / "littlefs.bin"
+
+    print(f"\n--- OTA push to {host} (host {source}, env {board}) ---")
+
+    # The endpoints are gated on ota_is_enabled(), which is a timed window — open it
+    # first or every push comes back "OTA not enabled".
+    status, body = _ota_request(host, "/api/ota", passphrase, b'{"enabled":true}',
+                                "application/json", "enable OTA", timeout=15)
+    if status != 200:
+        print(f"\nCould not enable OTA: HTTP {status} {body}", file=sys.stderr)
+        if status == 401:
+            print("  (check device_passphrase in device.yml)", file=sys.stderr)
+        sys.exit(1)
+
+    # Filesystem first, staged; firmware last and it carries the reboot. With
+    # --fs-only there is no second image, so the filesystem push reboots instead.
+    if not args.fs_only:
+        _ota_push_image(host, "/api/ota/filesystem", passphrase, fs, "filesystem", reboot=False)
+        _ota_push_image(host, "/api/ota/firmware",   passphrase, fw, "firmware",   reboot=True)
+    else:
+        _ota_push_image(host, "/api/ota/filesystem", passphrase, fs, "filesystem", reboot=True)
+
+    print("\ndone — device rebooting.")
+
+def _ota_target(cfg, args):
+    """(host, source) when this invocation should flash over the network, else None."""
+    if not getattr(args, "ota", False):
+        return None
+    host, source = resolve_host(cfg, get_board(cfg), getattr(args, "host", None))
+    if not host:
+        print("ERROR: --ota given but no device address is known.", file=sys.stderr)
+        print("       Pass --host <ip>, or learn it once over USB: ebus-esp32 monitor --serial",
+              file=sys.stderr)
+        sys.exit(1)
+    return host, source
 
 def cmd_run(args) -> None:
     # Explicit generate here — see cmd_build for why build/platformio.ini needs to
@@ -1001,6 +1114,8 @@ def main():
             "  ./ebus-esp32 monitor --serial          (force USB; also learns the device IP)",
             "  ./ebus-esp32 monitor --net --host 192.168.1.42",
             "  ./ebus-esp32 run --monitor             (flash, then watch over the network)",
+            "  ./ebus-esp32 push --ota --host 192.168.1.42     (flash fw+fs over TCP, no cable)",
+            "  ./ebus-esp32 run --ota --monitor       (build, flash over TCP, then watch)",
             "  ./ebus-esp32 clean",
             "  ./ebus-esp32 devices",
             "  ./ebus-esp32 envs",
@@ -1024,6 +1139,15 @@ def main():
         p.add_argument("--host", **host_arg)
         p.add_argument("--monitor-wait", **dict(wait_arg, default=wait_default))
 
+    def add_ota_flags(p):
+        """--ota upload transport, shared by run/push."""
+        p.add_argument("--ota", action="store_true",
+                       help="flash over the network (POST the images to the device's OTA "
+                            "endpoints) instead of over USB")
+        p.add_argument("--passphrase", default=None, metavar="PASS",
+                       help="device passphrase for the OTA endpoints "
+                            "(default: device.device_passphrase from device.yml)")
+
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("generate", help="Generate src/homie.cpp + data/*.yml from device.yml")
@@ -1038,6 +1162,7 @@ def main():
     p.add_argument("--port", **port_arg)
     p.add_argument("--fs-only", action="store_true", help="flash filesystem only (skip firmware)")
     p.add_argument("--erase", action="store_true", help="full chip erase first (recover from a stale-boot OTA slot)")
+    add_ota_flags(p)
     add_monitor_flags(p, 90)   # board reboots and must re-associate with WiFi first
 
     p = sub.add_parser("push", help="Flash pre-built firmware + filesystem (no generate/build)")
@@ -1045,6 +1170,7 @@ def main():
     p.add_argument("--port", **port_arg)
     p.add_argument("--fs-only", action="store_true", help="flash filesystem only (skip firmware)")
     p.add_argument("--erase", action="store_true", help="full chip erase first (recover from a stale-boot OTA slot)")
+    add_ota_flags(p)
     add_monitor_flags(p, 90)
 
     p = sub.add_parser("monitor", help="Open the device monitor (network by default, USB with --serial)")
