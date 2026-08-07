@@ -203,7 +203,8 @@ bool mdns_has_broker() {
 bool setup_mdns() {
   // mDNS split into two independent gates (ESP32-6du.6): mdns_discovery (querier —
   // find the broker, crash-safe, high value) and mdns_advertise (responder — register
-  // service records, the ESP32-9mx crash surface). Both off by default.
+  // service records, the ESP32-9mx crash surface). Defaults are build-conditional —
+  // see the #if in config.cpp.
   if (!mdns_discovery && !mdns_advertise) {
     Serial.println("mDNS: disabled (mdns_discovery=false, mdns_advertise=false)");
     return false;
@@ -390,6 +391,23 @@ void WiFiEvent(WiFiEvent_t event)
       Serial.print(ETH.linkSpeed());
       Serial.println("Mbps");
       eth_connected = true;
+      // Make Ethernet the default route (preferred over WiFi for MQTT).
+      //
+      // This runs on the "arduino_events" task, which does NOT hold the lwIP TCPIP core
+      // lock. ESP-IDF 5.x enables CONFIG_LWIP_CHECK_THREAD_SAFETY, so calling a raw lwIP
+      // API from here aborts the chip:
+      //     assert failed: netif_set_default ... (Required to lock TCPIP core functionality!)
+      // — on every DHCP lease, i.e. a boot loop. IDF 4.x had no such check, which is why
+      // the netif_list walk below survived unnoticed on the 2.0.x platform.
+      // ETH.setDefault() wraps esp_netif_set_default_netif(), which does the locking
+      // itself; it only exists in arduino-esp32 3.x, hence the version split.
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+      if (ETH.setDefault()) {
+        Serial.println("ETH: Set as default route (preferred for MQTT)");
+      } else {
+        Serial.println("ETH: WARNING - failed to set default route");
+      }
+#else
       {
         uint32_t eth_ip_u32 = (uint32_t)ETH.localIP();
         struct netif *nif;
@@ -401,6 +419,7 @@ void WiFiEvent(WiFiEvent_t event)
           }
         }
       }
+#endif
       configTime(0, 0, "pool.ntp.org", "time.nist.gov");
       setenv("TZ", NTP_TIMEZONE, 1);
       tzset();
