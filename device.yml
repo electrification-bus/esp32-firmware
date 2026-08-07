@@ -31,9 +31,9 @@ device:
   # its fleet without touching this tracked file.
   id_prefix: ''
   type: energy
-  board: esp32-s3-devkitc-1-idf5          # must match a [env:…] in platformio.ini
+  board: esp32-poe-iso-idf5          # must match a [env:…] in platformio.ini
   device_type: ebus
-  firmware_name: devkitc Firmware
+  firmware_name: ESP32-POE-ISO Firmware
   firmware_version: 1.0.0
   firmware_url: http://example.com/firmware.bin
   # mDNS device info
