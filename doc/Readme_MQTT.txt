@@ -40,11 +40,11 @@ MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
 
 In config.yml, set port to 8883:
 ```yaml
-config:
-  - mqtt_host: your-broker.example.com
-    mqtt_port: 8883
-    mqtt_username: your_username
-    mqtt_password: your_password
+mqtt:
+  host: your-broker.example.com
+  port: 8883
+  username: your_username
+  password: your_password
 ```
 
 ## Troubleshooting

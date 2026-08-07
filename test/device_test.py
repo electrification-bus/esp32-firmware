@@ -160,21 +160,23 @@ class HomieDeviceTest:
         """Load MQTT configuration from config.yml"""
         try:
             with open(self.config_path, 'r') as f:
-                config = yaml.safe_load(f)
+                cfg = yaml.safe_load(f)
 
-            # Handle nested config structure
-            if 'config' in config:
-                cfg = config['config']
-                if isinstance(cfg, list) and len(cfg) > 0:
-                    cfg = cfg[0]
-            else:
-                cfg = config
+            # config.yml uses device.yml's sections (mqtt: { host: ... }); older generated
+            # and hand-maintained files are flat (mqtt_host: ...). Read both, section first —
+            # same rule the firmware applies, see cfg_value() in src/platform/config.cpp.
+            def get(section, key, flat_key, default):
+                sec = cfg.get(section)
+                if isinstance(sec, dict) and sec.get(key) is not None:
+                    return sec[key]
+                value = cfg.get(flat_key)
+                return default if value is None else value
 
-            self.mqtt_host = cfg.get('mqtt_host', 'localhost')
-            self.mqtt_port = int(cfg.get('mqtt_port', 1883))
-            self.mqtt_user = cfg.get('mqtt_username', '')
-            self.mqtt_pass = cfg.get('mqtt_password', '')
-            self.device_id = cfg.get('device_id', '')
+            self.mqtt_host = get('mqtt', 'host', 'mqtt_host', 'localhost')
+            self.mqtt_port = int(get('mqtt', 'port', 'mqtt_port', 1883))
+            self.mqtt_user = get('mqtt', 'username', 'mqtt_username', '')
+            self.mqtt_pass = get('mqtt', 'password', 'mqtt_password', '')
+            self.device_id = get('device', 'id', 'device_id', '')
 
             self.log(LogLevel.INFO, f"Config loaded: {self.mqtt_host}:{self.mqtt_port} device={self.device_id}")
             return True

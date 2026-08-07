@@ -59,13 +59,20 @@ This walks you from a fresh machine to building and flashing the firmware using 
 
 Beyond the standard PlatformIO IDE "Project Tasks" sidebar (Build / Upload / Upload Filesystem Image / Monitor / etc.), this project ships one extra task in [`.vscode/tasks.json`](../.vscode/tasks.json) that isn't covered by the PIO extension. It wraps the LSP helper for regenerating the compilation database.
 
-Before you build for the first time, bootstrap your per-developer config overlay once from a terminal (this is a manual step, not a VSCode task):
+Before you build for the first time, optionally create your per-developer config overlay from a terminal (this is a manual step, not a VSCode task). There is no template to copy — write `config-overlay.yml` in the repo root with only the keys you want to override, using `device.yml`'s own sections and key names:
 
-```sh
-mkdir -p ~/.config/eBus && cp data/config.yml.example ~/.config/eBus/config.yml
+```yaml
+# config-overlay.yml
+wifi:
+  ssid: my-network
+  password: hunter2
+mqtt:
+  host: broker.example.com
+  username: me
+  password: s3cret
 ```
 
-Then edit `~/.config/eBus/config.yml` with your MQTT credentials and other personal settings. Its non-empty fields are merged into the generated `data/config.yml` automatically on every build (a PlatformIO pre-build hook runs `./ebus-esp32 generate` first), so there's no separate sync step.
+Its non-empty fields are merged into the generated `data/config.yml` automatically on every build (a PlatformIO pre-build hook runs `./ebus-esp32 generate` first), so there's no separate sync step.
 
 Trigger the custom task via **Cmd-Shift-P → "Tasks: Run Task"** (Ctrl-Shift-P on Windows/Linux):
 

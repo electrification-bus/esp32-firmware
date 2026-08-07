@@ -45,9 +45,15 @@ INCLUDE_DIR  = ROOT / "include"
 BUILD_DIR    = ROOT / "build"   # gitignored — generator scratch space, e.g. platformio.ini
 PLATFORMIO_INI = ROOT / "platformio.ini"
 GENERATED_INI  = BUILD_DIR / "platformio.ini"
-CONFIG_DIR     = Path.home() / ".config" / "eBus"
-CONFIG_OVERLAY = CONFIG_DIR / "config.yml"   # per-developer overlay, merged in by generate
-CONFIG_EXAMPLE = DATA_DIR / "config.yml.example"   # seed for `config-init`
+# Per-developer config overlay: gitignored, repo-root, merged into the generated
+# data/config.yml on every generate. No template and no init step — the file either
+# exists and is overlaid, or it doesn't. Sits beside platformio_local.ini, which solves
+# the same problem the same way. NOT under data/: that is the LittleFS payload and every
+# byte there is flashed to a 192KB partition.
+# Legacy: this used to live at ~/.config/eBus/config.yml; config-status warns if one is
+# still lying around so it isn't silently ignored.
+CONFIG_OVERLAY        = ROOT / "config-overlay.yml"
+CONFIG_OVERLAY_LEGACY = Path.home() / ".config" / "eBus" / "config.yml"
 MONITOR_HOSTS  = BUILD_DIR / "monitor-hosts.json"  # learned board -> last-known device IP
 
 # ── pio helper ─────────────────────────────────────────────────────────────────
@@ -554,30 +560,61 @@ def cmd_generate(args) -> None:
               f"(got {device_id_tmpl!r} — a bare {{...}} is parsed as YAML, not a string; use $)",
               file=sys.stderr)
         sys.exit(1)
-    config_doc = {"config": [{
-        "wifi_ssid":        wifi.get("ssid")     or "",
-        "wifi_password":    wifi.get("password") or "",
-        "mqtt_mode":        mqtt_cfg.get("mode") or "configured-only",
-        "mqtt_host":        mqtt_cfg.get("host") or "",
-        "mqtt_port":        mqtt_cfg.get("port") or 1883,
-        "mqtt_qos":         mqtt_cfg.get("qos") if mqtt_cfg.get("qos") is not None else 2,
-        "mdns_enabled":     bool((cfg.get("mdns") or {}).get("enabled", False)),  # opt-in (ESP32-9mx)
-        # Serial-over-TCP console port (device.yml: config.log.tcp_port); 0 disables.
-        "log_tcp_port":     get_log_port(cfg),
-        "mqtt_username":    mqtt_cfg.get("username") or "",
-        "mqtt_password":    mqtt_cfg.get("password") or "",
-        "device_id":        device_id_tmpl              or "",   # template (see above)
-        "device_name":      device.get("name")         or "",
-        "device_type":      device.get("device_type")  or device.get("type") or "",
-        "firmware_name":    device.get("firmware_name")    or "",
-        "firmware_version": device.get("firmware_version") or "",
-        "firmware_url":     device.get("firmware_url")     or "",
-        "manufacturer":     device.get("manufacturer")     or "",
-        "model":            device.get("model")            or "",
-        "serial_number":    device.get("serial_number")    or "",
-        "homie_role":       device.get("homie_role")       or "device",
-        "device_passphrase":device.get("device_passphrase") or "changeme",
-    }]}
+    # config.yml mirrors device.yml's SECTIONS (device/wifi/mqtt/log/mdns) key-for-key, so
+    # there is exactly one vocabulary a human ever types: device.yml, config-overlay.yml and
+    # the generated file all look the same. (The flat wifi_ssid/mqtt_host form this replaced
+    # meant an overlay written in device.yml's shape merged in as dead nested keys that the
+    # firmware never read — silently, since every key was "valid".) The firmware still
+    # accepts the flat form as a fallback; see loadPlatformConfiguration() in config.cpp.
+    config_doc = {
+        "device": {
+            "id":                device_id_tmpl                  or "",   # template (see above)
+            # Optional deployment-scoped segment prepended to the resolved id at boot
+            # ("lab1" -> lab1-ebus-b0b21c90f570). Empty = no prefix. Typically set from
+            # config-overlay.yml so a site can namespace a fleet without editing device.yml.
+            "id_prefix":         device.get("id_prefix")         or "",
+            "name":              device.get("name")              or "",
+            # device.yml carries BOTH `type:` (Homie $type) and `device_type:`; the latter
+            # wins, exactly as it did in the flat form. Emitted under its device.yml name so
+            # an overlay section can be pasted straight across.
+            "device_type":       device.get("device_type") or device.get("type") or "",
+            "firmware_name":     device.get("firmware_name")     or "",
+            "firmware_version":  device.get("firmware_version")  or "",
+            "firmware_url":      device.get("firmware_url")      or "",
+            "manufacturer":      device.get("manufacturer")      or "",
+            "model":             device.get("model")             or "",
+            "serial_number":     device.get("serial_number")     or "",
+            "homie_role":        device.get("homie_role")        or "device",
+            "device_passphrase": device.get("device_passphrase") or "changeme",
+        },
+        "wifi": {
+            "ssid":     wifi.get("ssid")     or "",
+            "password": wifi.get("password") or "",
+        },
+        "mqtt": {
+            "mode":     mqtt_cfg.get("mode") or "configured-only",
+            "host":     mqtt_cfg.get("host") or "",
+            "port":     mqtt_cfg.get("port") or 1883,
+            "qos":      mqtt_cfg.get("qos") if mqtt_cfg.get("qos") is not None else 2,
+            "username": mqtt_cfg.get("username") or "",
+            "password": mqtt_cfg.get("password") or "",
+        },
+        "log": {
+            # Serial-over-TCP console port (device.yml: log.tcp_port); 0 disables.
+            "tcp_port": get_log_port(cfg),
+        },
+    }
+    # mDNS is TRI-STATE. Emitting these keys unconditionally would defeat the firmware's
+    # build-conditional default (off for WiFi-AP builds, on for Ethernet-only ones — see
+    # config.cpp), because loadPlatformConfiguration() applies a key whenever it is present.
+    # So the whole section is omitted when device.yml says nothing about mdns; a present key
+    # — true OR false — always wins at runtime.
+    mdns_cfg = cfg.get("mdns") or {}
+    mdns_out = {k: bool(mdns_cfg[k]) for k in ("enabled", "discovery", "advertise")
+                if mdns_cfg.get(k) is not None}
+    if mdns_out:
+        config_doc["mdns"] = mdns_out
+
     out_config = DATA_DIR / "config.yml"
     with open(out_config, "w", encoding="utf-8") as f:
         yaml.dump(config_doc, f, allow_unicode=True, sort_keys=False)
@@ -1047,52 +1084,106 @@ def cmd_monitors(args) -> None:
 
 # ── config overlay ───────────────────────────────────────────────────────────
 #
-# The per-developer overlay at ~/.config/eBus/config.yml is applied automatically
-# by `generate` (see the _apply_overlay call in cmd_generate) — the overlay is *merged*
-# into data/config.yml (non-empty overlay fields win, everything else keeps the
-# device.yml-derived default) on every generate, so there's no manual stage step. The
-# `config-init` / `config-status` subcommands below bootstrap and inspect that overlay.
+# config-overlay.yml (repo root, gitignored) is merged into the generated data/config.yml
+# on every generate — non-empty overlay fields win, everything else keeps its
+# device.yml-derived value. There is deliberately NO init step and NO tracked template:
+# an overlay is either there and applied, or absent and ignored.
+#
+# The overlay is written in device.yml's shape: the same device/wifi/mqtt/log/mdns sections
+# with the same key names. Only those sections are accepted — nodes: and device.board decide
+# what firmware gets GENERATED and stay device.yml's job alone, so every developer builds the
+# same structure and only the connectivity/identity values differ.
+#
+# Keeping credentials here rather than in device.yml is the whole point — device.yml is
+# tracked, this file is not.
+
+OVERLAY_SECTIONS = ("device", "wifi", "mqtt", "log", "mdns")
+
+def _flat_key_hint(key: str) -> str:
+    """Rewrite a legacy flat key (wifi_ssid) as its section form (wifi: / ssid:)."""
+    for section in ("wifi", "mqtt", "log", "mdns"):
+        if key.startswith(section + "_"):
+            return f"{section}:\n      {key[len(section) + 1:]}: ..."
+    if key == "device_id" or key.startswith("firmware_") or key in (
+            "manufacturer", "model", "serial_number", "homie_role",
+            "device_name", "device_type", "device_passphrase", "device_id_prefix"):
+        leaf = {"device_id": "id", "device_name": "name"}.get(key, key)
+        return f"device:\n      {leaf}: ..."
+    return ""
+
+def _deep_merge(base: dict, overrides: dict) -> int:
+    """Recursively apply overrides onto base. Returns the number of leaf values set.
+
+    Empty-string and null leaves are skipped so a key left blank in the overlay falls back
+    to its device.yml-derived value rather than blanking it.
+    """
+    applied = 0
+    for k, v in overrides.items():
+        if isinstance(v, dict):
+            node = base.get(k)
+            if not isinstance(node, dict):
+                node = {}
+                base[k] = node
+            applied += _deep_merge(node, v)
+        elif v is not None and v != "":
+            base[k] = v
+            applied += 1
+    return applied
 
 def _apply_overlay(config_path: Path) -> None:
-    """Merge ~/.config/eBus/config.yml fields into the generated config.yml."""
+    """Merge config-overlay.yml sections into the generated config.yml."""
     if not CONFIG_OVERLAY.exists():
         return
-    raw = load_yaml_file(CONFIG_OVERLAY, require_mapping=False) or {}
-    # Support both flat {key: val} and {config: [{key: val}]} overlay formats
-    if "config" in raw and isinstance(raw["config"], list):
-        overrides = raw["config"][0] or {}
-    else:
-        overrides = raw
+    # Sections sit at the top level, same as device.yml and the generated config.yml.
+    overrides = load_yaml_file(CONFIG_OVERLAY, require_mapping=False) or {}
     if not overrides:
         return
-    doc = load_yaml_file(config_path, require_mapping=False) or {}
-    base = doc.get("config", [{}])[0] or {}
+    # Validate BEFORE merging. An unrecognised key used to be copied in verbatim and then
+    # ignored by the firmware, which reads sections — the overlay looked applied (it was in
+    # the generated file) but changed nothing. Fail loudly instead.
+    problems = []
     for k, v in overrides.items():
-        if v is not None and v != "":
-            base[k] = v
-    doc["config"] = [base]
+        if k not in OVERLAY_SECTIONS:
+            hint = _flat_key_hint(k)
+            problems.append(f"  {k}: not an overlay section"
+                            + (f" — did you mean\n    {hint}" if hint else ""))
+        elif not isinstance(v, dict):
+            problems.append(f"  {k}: must be a section (a nested block), got {type(v).__name__}")
+    if problems:
+        print(f"ERROR: {CONFIG_OVERLAY.name} is not valid:", file=sys.stderr)
+        for p in problems:
+            print(p, file=sys.stderr)
+        print(f"\nValid sections: {', '.join(OVERLAY_SECTIONS)} — same shape and key names as "
+              f"device.yml.\nnodes: and device.board are deliberately not overridable.",
+              file=sys.stderr)
+        sys.exit(1)
+    doc = load_yaml_file(config_path, require_mapping=False) or {}
+    applied = _deep_merge(doc, overrides)
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.dump(doc, f, allow_unicode=True, sort_keys=False)
-    print(f"  overlay:   {CONFIG_OVERLAY} ({len(overrides)} field(s))")
-
-def cmd_config_init(args) -> None:
-    if CONFIG_OVERLAY.exists():
-        print(f"overlay already exists: {CONFIG_OVERLAY}")
-        print("edit it directly; this command will not clobber")
-        return
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    shutil.copy(CONFIG_EXAMPLE, CONFIG_OVERLAY)
-    print(f"created {CONFIG_OVERLAY}")
-    print("edit it with your MQTT broker, credentials, device id, etc.")
-    print("it is merged into data/config.yml automatically on the next build")
+    print(f"  overlay:   {CONFIG_OVERLAY} ({applied} field(s))")
 
 def cmd_config_status(args) -> None:
     print(f"overlay path:    {CONFIG_OVERLAY}")
     if CONFIG_OVERLAY.exists():
-        print(f"overlay state:   present ({CONFIG_OVERLAY.stat().st_size} bytes) — merged into data/config.yml on every build")
+        print(f"overlay state:   ACTIVE ({CONFIG_OVERLAY.stat().st_size} bytes) — merged into "
+              f"data/config.yml on every build")
     else:
-        print("overlay state:   MISSING (optional — device.yml still builds; run `./ebus-esp32 config-init` to add one)")
-    print(f"example path:    {CONFIG_EXAMPLE}")
+        print("overlay state:   none (optional — device.yml supplies everything)")
+        print()
+        print("To add one, create config-overlay.yml with only the keys you want to")
+        print(f"override, using device.yml's sections ({', '.join(OVERLAY_SECTIONS)}) and")
+        print("key names. e.g.:")
+        print()
+        print("  wifi:")
+        print("    ssid: my-network")
+        print("    password: hunter2")
+        print("  mqtt:")
+        print("    host: broker.example.com")
+        print()
+    if CONFIG_OVERLAY_LEGACY.exists():
+        print(f"NOTE: a legacy overlay exists at {CONFIG_OVERLAY_LEGACY}")
+        print("      it is NO LONGER READ — move its contents to config-overlay.yml")
     print("data/config.yml: generated from device.yml + overlay by the pre-build hook (gitignored)")
 
 # ── main ───────────────────────────────────────────────────────────────────────
@@ -1201,8 +1292,7 @@ def main():
     p.add_argument("device_yml", **dev_yml_arg)
 
     sub.add_parser("monitors", help="List active serial-monitor sessions (port-sharing breadcrumbs)")
-    sub.add_parser("config-init", help="Bootstrap the per-developer config overlay from data/config.yml.example")
-    sub.add_parser("config-status", help="Show config-overlay state")
+    sub.add_parser("config-status", help="Show whether a config-overlay.yml is active")
 
     args = parser.parse_args()
 
@@ -1218,7 +1308,6 @@ def main():
         "compiledb":     cmd_compiledb,
         "check":         cmd_check,
         "monitors":      cmd_monitors,
-        "config-init":   cmd_config_init,
         "config-status": cmd_config_status,
     }
     dispatch[args.command](args)

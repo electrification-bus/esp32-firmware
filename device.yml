@@ -23,10 +23,17 @@ device:
   # (no placeholder) collides across units.
   #   ${chip_id} -> b0b21c90f570   |   ebus-${chip_id} -> ebus-b0b21c90f570
   id: ${chip_id}
+  # id_prefix is an OPTIONAL deployment-scoped segment prepended to the resolved id with a
+  # hyphen: id_prefix "lab1" + id "ebus-${chip_id}" -> "lab1-ebus-b0b21c90f570". It is
+  # sanitized to Homie-legal characters on its own, so "Lab 1" also yields "lab1". Empty or
+  # omitted = no prefix. It adds NO per-unit uniqueness (every board on a site shares it) —
+  # keep a ${chip_id} in `id:`. Usually set from config-overlay.yml so a site can namespace
+  # its fleet without touching this tracked file.
+  id_prefix: ''
   type: energy
-  board: esp32-poe-iso-idf5          # must match a [env:…] in platformio.ini
+  board: esp32-s3-devkitc-1-idf5          # must match a [env:…] in platformio.ini
   device_type: ebus
-  firmware_name: ESP32POEISO Firmware
+  firmware_name: devkitc Firmware
   firmware_version: 1.0.0
   firmware_url: http://example.com/firmware.bin
   # mDNS device info
@@ -37,8 +44,8 @@ device:
   device_passphrase: changeme  # required for OTA and admin REST endpoints
 
 wifi:
-  ssid: ""
-  password: ""
+  ssid: ''
+  password: ''
 
 mqtt:
   # mqtt_mode controls how the MQTT broker is resolved:
@@ -46,7 +53,7 @@ mqtt:
   #   discovery-with-fallback - try mDNS discovery first, fall back to config if none found
   #   discovery-only          - use only mDNS discovery, ignore configured mqtt_host/port
   mode: configured-only
-  host: 192.168.1.70
+  host: ''
   port: 1883
   username: ''
   password: ''
@@ -55,11 +62,24 @@ mqtt:
   # always QoS 0 per spec. Valid: 0, 1, 2.
   qos: 1
 
-# mDNS is OFF by default (opt-in). It's non-essential — Homie device discovery is over
-# MQTT; mDNS only advertises <device>.local for the web UI/OTA, and the bundled ESP-IDF
-# responder can crash on certain packets. Set enabled: true only if you want .local.
-mdns:
-  enabled: false
+# mDNS default depends on the BUILD, and this key overrides it:
+#   Ethernet-only AND arduino-esp32 3.x (esp32-poe-iso*-idf5)  -> ON
+#   everything else (WiFi-AP builds, and ALL 2.0.x envs)       -> OFF
+# The 2.0.x exclusion is deliberate: its precompiled mDNS responder has an upstream
+# null-deref on inbound packets (doc/MDNS.md). 3.x carries the rewrite.
+# Ethernet boards DO serve the same web UI on port 80 — what they lack is the CAPTIVE
+# half of it (softAP + DNS hijack + the redirect endpoints, all #ifdef CONFIG_WIFI_AP in
+# captive_portal.cpp). Nothing steers a browser to them, and they take an unpredictable
+# DHCP lease, so you know the UI is up but not what address it is on. <device>.local is
+# the practical way to reach it — and it is what makes the _telnet._tcp advert of the
+# serial console findable by name. WiFi-AP builds already hand you 192.168.4.1 and land
+# you on that UI, so they stay off: the bundled ESP-IDF responder can crash on certain
+# packets, and that risk is not worth re-taking there.
+#
+# COMMENT THIS BLOCK OUT to accept the build default. Setting it — true or false —
+# pins the behaviour for every build of this device.
+#mdns:
+#  enabled: false
 
 # Serial console over TCP. The firmware tees every Serial.printf() to this port as
 # well as the UART, so an installed board can be watched without a USB cable:

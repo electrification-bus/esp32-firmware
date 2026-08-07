@@ -52,7 +52,7 @@ nodes:
       - id: pf_ct1
         name: Power Factor CT1
         datatype: float
-        unit: ""
+        unit: ''
         settable: false
         retained: true
         value: 0.0

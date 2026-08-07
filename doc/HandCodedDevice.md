@@ -16,7 +16,7 @@ Running `./ebus-esp32 generate` turns `device.yml` into three files:
 |---|---|---|
 | `src/homie.cpp` | Static node objects + `setup_homie()` / `loop_homie()` / `register_homie_properties()` | **You write this by hand** |
 | `data/homie.yml` | Homie 5 device header (`$name` / `$type` / version) read at boot | You maintain it |
-| `data/config.yml` | Runtime config (wifi, mqtt, device identity) | You maintain it (or keep using the `~/.config/eBus/config.yml` overlay) |
+| `data/config.yml` | Runtime config (wifi, mqtt, device identity) | You maintain it (or keep using the `config-overlay.yml` overlay) |
 
 In a generator project these three are gitignored and rebuilt on every `pio run`. In a hand-coded project they are **your tracked source** — so the first step is to take ownership of them.
 
@@ -160,7 +160,7 @@ Write your driver there, then come back here for the hand-coded wiring: instanti
 The firmware reads both from the LittleFS image at boot:
 
 - **`data/homie.yml`** supplies the device-level header (`homie:` version, `name:`, `type:`). The published node topology comes from `register_homie_properties()`, so the simplest reliable starting point is a generated `homie.yml` — keep its header and trim or adjust the `nodes:` to match. See the format in [GenerateHomieDevice.md](GenerateHomieDevice.md#datahomieyml).
-- **`data/config.yml`** is the runtime config (wifi / mqtt / device identity). Schema and safe defaults live in [`data/config.yml.example`](../data/config.yml.example). You can still keep your secrets in the `~/.config/eBus/config.yml` overlay — but note the overlay is *merged by the generator*, so in a hand-coded project either edit `data/config.yml` directly or run `./ebus-esp32 generate` once to fold the overlay in before you opt out.
+- **`data/config.yml`** is the runtime config (wifi / mqtt / device identity). It uses the same `device:`/`wifi:`/`mqtt:`/`log:`/`mdns:` sections as `device.yml` — run `./ebus-esp32 generate` once and keep the result as your starting point; [Configuration.md](Configuration.md#variables-youll-commonly-set) documents every key. You can still keep your secrets in the `config-overlay.yml` overlay — but note the overlay is *merged by the generator*, so in a hand-coded project either edit `data/config.yml` directly or run `./ebus-esp32 generate` once to fold the overlay in before you opt out. The firmware also still accepts the older flat form (`mqtt_host:` rather than `mqtt: host:`) **at the top level**, so a hand-maintained file mid-conversion keeps working — but the single-element `config:` list that older files wrapped everything in is no longer parsed. If your file starts with `config:`, unwrap it (promote the sections one level) or regenerate.
 
 Re-flash the filesystem after editing either file: `pio run -e <board> -t uploadfs` (or add `-t upload` for firmware + filesystem).
 

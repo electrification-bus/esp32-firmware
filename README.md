@@ -17,7 +17,7 @@ Pick the path that matches how you work:
 
 Both produce the same firmware. The CLI path uses the `./ebus-esp32` tool and a `./bin/pio` shim; the VSCode path drives the same `pio` CLI through the PlatformIO IDE extension. Either way, [doc/GenerateHomieDevice.md](doc/GenerateHomieDevice.md) explains how `device.yml` defines the device.
 
-After initial setup, read [doc/Configuration.md](doc/Configuration.md) once to understand how the two per-developer overlay files (`~/.config/eBus/config.yml` and `platformio_local.ini`) keep your MQTT credentials and PIO tweaks out of the shared repo.
+After initial setup, read [doc/Configuration.md](doc/Configuration.md) once to understand how the two per-developer overlay files (`config-overlay.yml` and `platformio_local.ini`) keep your MQTT credentials and PIO tweaks out of the shared repo.
 
 ## Project Layout
 
@@ -31,9 +31,9 @@ include/                      Header files
   homie.h                     Top-level project header
 lib/                          Project-local C++ libraries — custom code and forks
                               (ble/, gpio/, i2c/, modbus/, spi/)
-data/                         LittleFS image source
-  config.yml.example          Schema + safe-defaults template (tracked)
-  config.yml                  Per-developer staged config (gitignored, derived from overlay)
+data/                         LittleFS image source — everything here is flashed to the
+                              device, so keep it lean (4MB boards have a 192KB partition)
+  config.yml                  Generated runtime config (gitignored; device.yml + overlay)
 partitions/                   ESP32 flash partition tables — one CSV per flash size
 examples/                     Standalone example sketches
 scripts/                      Build hooks (generate_homie.py pre-build generator, add_project_include.py)
@@ -53,8 +53,11 @@ doc/                          Documentation
                               indent style (counterpart to .vscode/)
 bin/pio                       Repo-local shim to PlatformIO Core (~/.platformio/penv/bin/pio)
 platformio.ini                Shared build config (tracked)
-platformio_local.ini.example  Per-developer overrides template (tracked)
-platformio_local.ini          Your local overrides (gitignored, optional)
+platformio_local.ini.example  Per-developer PIO overrides template (tracked)
+platformio_local.ini          Your local PIO overrides (gitignored, optional)
+config-overlay.yml            Your per-developer config overlay (gitignored, optional).
+                              Create it only to override device.yml values — e.g. real
+                              broker credentials that must not be committed
 LICENSE                       MIT
 ```
 
@@ -79,7 +82,7 @@ Edit `device.yml` (the declarative device definition), then drive everything thr
 
 The network console reads the firmware's serial-over-TCP log (`log.tcp_port` in `device.yml`, default 23), so a board installed without a USB cable can still be watched — it replays its ring buffer on connect, so the boot log survives connecting late. `--monitor` also works on `build` and `push`. See [GettingStartedCLI.md](doc/GettingStartedCLI.md#network-console-no-usb-cable).
 
-The generated `src/homie.cpp`, `data/homie.yml`, and `data/config.yml` are gitignored and rebuilt from `device.yml` before every `pio run` (a PlatformIO pre-build hook) — `device.yml` and the `lib/<bus>/*.yml` component definitions are the only tracked source. First-time setup of your personal config overlay is a one-line copy — see [GettingStartedCLI.md](doc/GettingStartedCLI.md). On Windows use `ebus-esp32.bat` (or `python ebus-esp32`).
+The generated `src/homie.cpp`, `data/homie.yml`, and `data/config.yml` are gitignored and rebuilt from `device.yml` before every `pio run` (a PlatformIO pre-build hook) — `device.yml` and the `lib/<bus>/*.yml` component definitions are the only tracked source. To keep real credentials out of the tracked `device.yml`, create a gitignored `config-overlay.yml` with just the keys you want to override, written in `device.yml`'s own sections and key names — see [GettingStartedCLI.md](doc/GettingStartedCLI.md). On Windows use `ebus-esp32.bat` (or `python ebus-esp32`).
 
 VSCode users: use the PlatformIO IDE's project-tasks pane for build/upload/monitor; the `./ebus-esp32` generate step runs automatically as a pre-build hook, so the IDE's Build/Upload buttons pick up `device.yml` changes too.
 

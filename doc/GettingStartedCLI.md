@@ -7,7 +7,7 @@ This is the command-line counterpart to [`GettingStartedVSCode.md`](GettingStart
 - A small **`./bin/pio` shim** that points at PlatformIO Core installed under `~/.platformio/penv/`. No `$PATH` edits required — if the VSCode PlatformIO extension is installed, the shim already works.
 - **`./ebus-esp32`** — the project CLI (a Python script with a shebang; run it directly on Unix/Mac, or `ebus-esp32.bat` / `python ebus-esp32` on Windows). All generate, build, flash, and monitor commands go through it.
 - **`device.yml`** — the declarative device definition and the source of truth. `./ebus-esp32 generate` (run automatically before every build by a PlatformIO pre-build hook) turns it into `src/homie.cpp`, `data/homie.yml`, and `data/config.yml`. Those three are **gitignored** — regenerated, never committed.
-- A **per-developer config overlay** at `~/.config/eBus/config.yml` (gitignored, never committed). The repo carries `data/config.yml.example` as the schema + safe-defaults template; its non-empty fields are merged into the generated `data/config.yml` during `generate`, so your real broker and credentials never land in `device.yml`.
+- A **per-developer config overlay** at `config-overlay.yml` (gitignored, never committed). There is no template to copy — create it only if you need it. It is written in `device.yml`'s own shape (the same `device:`/`wifi:`/`mqtt:`/`log:`/`mdns:` sections and key names), and its non-empty fields are merged into the generated `data/config.yml` during `generate`, so your real broker and credentials never land in `device.yml`.
 
 ## Prerequisites
 
@@ -21,22 +21,25 @@ This is the command-line counterpart to [`GettingStartedVSCode.md`](GettingStart
 git clone <repo-url>
 cd esp32-sdk
 
-# Bootstrap your personal config overlay from the schema example, once.
-# (Skip if ~/.config/eBus/config.yml already exists — this would overwrite it.)
-mkdir -p ~/.config/eBus
-cp data/config.yml.example ~/.config/eBus/config.yml
-
-# Edit it with your MQTT broker, credentials, device id, etc. The example
-# defaults point at the public Shiftr.io test broker for first-boot smoke
-# testing — replace with your real broker for any actual use.
-$EDITOR ~/.config/eBus/config.yml
+# Optional: create a personal config overlay with only the keys you want to
+# override. It uses device.yml's own sections and key names, so copy the block
+# you care about out of device.yml and change the values:
+#
+#   wifi:
+#     ssid: my-network
+#     password: hunter2
+#   mqtt:
+#     host: broker.example.com
+#
+# There is no template to copy — create the file only if you need it.
+$EDITOR config-overlay.yml
 
 # Sanity-check the toolchain and hardware
 ./ebus-esp32 envs        # list board environments from platformio.ini
 ./ebus-esp32 devices     # list attached USB-serial devices
 ```
 
-On Windows: `mkdir %USERPROFILE%\.config\eBus`, then `copy data\config.yml.example %USERPROFILE%\.config\eBus\config.yml`, and run the CLI as `ebus-esp32.bat envs`.
+On Windows, run the CLI as `ebus-esp32.bat envs` (or `python ebus-esp32 envs`).
 
 The overlay is **merged** into the generated `data/config.yml` every time you `generate` (and thus before every build) — there is no separate "stage" step. Non-empty overlay fields win; everything else falls back to the values derived from `device.yml`.
 
@@ -79,7 +82,10 @@ The firmware tees its console to a TCP listener (`include/platform/log_stream.h`
 
 1. `--host <ip|name>`
 2. the address learned from a previous USB session, cached per board in `build/monitor-hosts.json` (gitignored)
-3. `<device.name>.local` — only resolves if `mdns.enabled: true` in `device.yml`
+3. `<device.name>.local` — needs the mDNS **responder** (`mdns.advertise`, or the legacy
+   `mdns.enabled` which sets both gates). On by default for Ethernet-only builds on
+   arduino-esp32 3.x, off otherwise; pin it with an `mdns:` section in `device.yml`
+   (see [MDNS.md](MDNS.md))
 
 The cache is what makes the bare `--net` form work. `./ebus-esp32 monitor --serial` populates it by watching for the `Network: WiFi STA IP=` / `Network: Ethernet IP=` lines the firmware prints at boot: **flash over USB once, and every later network monitor knows where the board is.** To do that the CLI relays the serial stream through itself, which costs interactivity (keystrokes are no longer forwarded to the device) — pass `--no-learn` to keep pio attached directly to the terminal.
 
@@ -150,7 +156,7 @@ Flash from any other shell, passing the same port — the monitor pane pauses an
 
 ## Config overlays — see Configuration.md
 
-Two overlay files keep per-developer settings out of the shared repo: `~/.config/eBus/config.yml` for firmware runtime config and `platformio_local.ini` for PlatformIO build/upload tweaks. The full model lives in [`Configuration.md`](Configuration.md). Read that doc once, after copying the overlay example in the bootstrap step above, to understand both overlays end-to-end.
+Two overlay files keep per-developer settings out of the shared repo: `config-overlay.yml` for firmware runtime config and `platformio_local.ini` for PlatformIO build/upload tweaks. The full model lives in [`Configuration.md`](Configuration.md). Read that doc once, after creating an overlay, to understand both overlays end-to-end.
 
 ## Emacs integration
 
@@ -168,7 +174,7 @@ Two overlay files keep per-developer settings out of the shared repo: `~/.config
 | PlatformIO not found | `~/.platformio/penv/...pio` doesn't exist | Install via VSCode PlatformIO extension or `pipx install platformio` |
 | `run` / `push` finds no port / hangs at "Connecting…" | No board attached, wrong port, or board not in bootloader state | `./ebus-esp32 devices` to list ports; some boards need BOOT held during reset for first flash |
 | `monitor` → `termios.error` | Running through a non-PTY context | Run in a real terminal window |
-| MQTT/wifi settings from your overlay aren't taking effect | Overlay missing, or a field left empty (empty fields don't override) | Confirm `~/.config/eBus/config.yml` exists (bootstrap step) and the field is non-empty, then re-run `./ebus-esp32 generate` |
+| MQTT/wifi settings from your overlay aren't taking effect | Overlay missing, or a field left empty (empty fields don't override) | Confirm `config-overlay.yml` exists and the field is non-empty, then re-run `./ebus-esp32 generate` — it prints `overlay: <path> (N field(s))` and errors out on any key it doesn't recognise. `./ebus-esp32 config-status` shows whether an overlay is active |
 | `src/homie.cpp` or `data/homie.yml` shows up as an untracked/modified file | These are generated outputs — gitignored, regenerated every build | Normal; never commit them. If one is *tracked* in your clone, `git rm --cached <file>` |
 | Device boots **stale firmware** after a flash that "verified" | The board's partition table is dual-OTA (two app slots); a confused `otadata` can boot the *previous* slot. Most often caused by a *combined* `pio run -t upload -t buildfs -t uploadfs` | Use `./ebus-esp32 run`/`push` (they flash firmware and filesystem in **separate** invocations, which avoids this). To recover a wedged board: `./ebus-esp32 run --erase` (full chip erase first). Never combine `-t upload` with `-t buildfs/uploadfs` in one `pio run`. |
 | Suspect a stale build object | `pio run -t clean` is unreliable here | `./ebus-esp32 clean` (removes the env build dir outright), then rebuild |

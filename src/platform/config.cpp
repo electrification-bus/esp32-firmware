@@ -21,8 +21,30 @@ char wifi_password[64] = {0};
 char mqtt_host[64] = {0};
 uint16_t mqtt_port;
 uint8_t mqtt_qos = 2;   // QoS for retained Homie publications; Homie 5 recommends 2 (C4)
-bool mdns_discovery = false;   // mDNS querier (broker discovery) — off by default (ESP32-6du.6)
-bool mdns_advertise = false;   // mDNS responder (service advertising) — off by default; ESP32-9mx crash surface
+// mDNS gates (ESP32-6du.6). The default is BUILD-CONDITIONAL; data/config.yml overrides
+// either gate at runtime, and omitting the keys there leaves these defaults in force.
+//
+// WiFi-AP builds default OFF: the captive portal already puts the device at a known
+// address (192.168.4.1) with a UI to read its DHCP lease from, so <name>.local buys
+// little against the ESP32-9mx responder crash surface.
+//
+// Ethernet-only builds default ON: there is no AP and no portal landing page, so the
+// board comes up on an unpredictable DHCP lease with nothing announcing it. mDNS is the
+// practical way to reach it — and it is what makes the _telnet._tcp advert of the
+// serial-over-TCP console usable by name (see mdns_register_services()).
+// The version test is NOT incidental. Per doc/MDNS.md the responder crash is a null-deref
+// inside the PRECOMPILED ESP-IDF mdns component shipped with arduino-esp32 2.0.x
+// (_mdns_remove_scheduled_answer <- mdns_parse_packet), triggered by inbound mDNS packets
+// and unfixable app-side. arduino-esp32 3.x carries the upstream rewrite. So mDNS defaults
+// on ONLY where both conditions hold: no captive portal to fall back on, AND a platform
+// without the known-crashy responder. Every 2.0.x env keeps the safe default.
+#if !defined(CONFIG_WIFI_AP) && ESP_ARDUINO_VERSION_MAJOR >= 3
+bool mdns_discovery = true;
+bool mdns_advertise = true;
+#else
+bool mdns_discovery = false;
+bool mdns_advertise = false;
+#endif
 uint16_t log_tcp_port = LOG_TCP_PORT_DEFAULT;   // serial-over-TCP console; 0 = off
 char mqtt_username[64] = {0};
 char mqtt_password[64] = {0};
@@ -93,8 +115,9 @@ JsonDocument* get_homie_config() {
 JsonDocument* get_platform_config() {
     return &platform_config_json;
 }
-// Device-id template from device.yml `id:` (config.yml `device_id`), e.g. "{chip_id}"
-// or "bess-{chip_id}". Resolved at boot in generateDeviceID(). Empty -> "{chip_id}".
+// Device-id template from device.yml `device.id`, e.g. "${chip_id}" or "bess-${chip_id}".
+// Resolved at boot in generateDeviceID(). Empty -> "${chip_id}". An optional
+// `device.id_prefix` is prepended to the result there.
 static char device_id_template[96] = {0};
 
 void chip_unique_id(uint8_t out[6]) {
@@ -111,10 +134,38 @@ void generateDeviceID() {
   // (last 3 bytes), {name}. Empty template -> "{chip_id}". The result is Homie-legal.
   uint8_t chip_id[6];
   chip_unique_id(chip_id);
-  resolve_device_id(device_id_template, chip_id, device_name, device_id, sizeof(device_id));
+  char resolved[MAX_DEVICE_ID_CHARS] = {0};
+  resolve_device_id(device_id_template, chip_id, device_name, resolved, sizeof(resolved));
+
+  // device.id_prefix (optional) is a DEPLOYMENT-scoped segment prepended to the resolved
+  // id: "lab1" + "ebus-b0b21c90f570" -> "lab1-ebus-b0b21c90f570". It exists so a site or
+  // developer can namespace a fleet from config-overlay.yml without editing the tracked
+  // `id:` template in device.yml. Each segment is sanitized INDEPENDENTLY and then joined
+  // with a hyphen — sanitizing after joining is not equivalent, since a run of hyphens
+  // across the seam would collapse (same rule as make_homie_child_id()).
+  if (device_id_prefix[0] != '\0') {
+    char prefix_id[sizeof(device_id_prefix)] = {0};
+    sanitize_homie_id(device_id_prefix, prefix_id, sizeof(prefix_id));
+    if (prefix_id[0] != '\0') {
+      snprintf(device_id, sizeof(device_id), "%s-%s", prefix_id, resolved);
+    } else {
+      // Every character was illegal (e.g. "!!!"); a silent drop would be worse than a note.
+      Serial.printf("CONFIG: WARNING device.id_prefix '%s' has no Homie-legal characters "
+                    "— ignoring it\n", device_id_prefix);
+      snprintf(device_id, sizeof(device_id), "%s", resolved);
+    }
+    if (strlen(prefix_id) + 1 + strlen(resolved) >= sizeof(device_id)) {
+      Serial.printf("CONFIG: WARNING device id truncated to '%s' (prefix + template exceeds "
+                    "%u chars)\n", device_id, (unsigned)(sizeof(device_id) - 1));
+    }
+  } else {
+    snprintf(device_id, sizeof(device_id), "%s", resolved);
+  }
+
   // A device-id is an OPAQUE topic-level identifier — consumers use $type + info for
   // identity, never parse the id. If the template carries no per-unit uniqueness source,
-  // warn: two identical units would collide on the broker.
+  // warn: two identical units would collide on the broker. A prefix does NOT count — it is
+  // deployment-scoped, identical across every unit that shares it.
   if (!strstr(device_id_template, "{chip_id")) {
     Serial.printf("CONFIG: WARNING device id '%s' is fixed (no {chip_id}/{chip_id_short} "
                   "in the template) — multiple units will collide on the broker\n", device_id);
@@ -167,6 +218,32 @@ bool loadConfiguration() {
   return true;
 }
 
+// ── data/config.yml key access ────────────────────────────────────────────────
+//
+// config.yml carries device/wifi/mqtt/log/mdns SECTIONS at the top level, mirroring
+// device.yml key-for-key (mqtt: { host: ... }). A hand-maintained file mid-conversion (see
+// doc/HandCodedDevice.md) may still use the FLAT form (mqtt_host: ...), so both are read:
+// section first, flat key as fallback. The flat fallback can be dropped once no
+// hand-maintained config carries one.
+static JsonVariant cfg_value(const char* section, const char* key, const char* flat_key) {
+  JsonVariant sec = config_json[section].as<JsonVariant>();
+  if (!sec.isNull()) {
+    JsonVariant v = sec[key].as<JsonVariant>();
+    if (!v.isNull()) return v;
+  }
+  return config_json[flat_key].as<JsonVariant>();
+}
+
+// Copy a string value into a fixed buffer, leaving it untouched when the key is absent.
+static void cfg_copy_str(const char* section, const char* key, const char* flat_key,
+                         char* dest, size_t dest_size) {
+  JsonVariant v = cfg_value(section, key, flat_key);
+  if (v.is<JsonString>()) {
+    strncpy(dest, v.as<JsonString>().c_str(), dest_size - 1);
+    dest[dest_size - 1] = '\0';
+  }
+}
+
 bool loadPlatformConfiguration() {
   File file;
 
@@ -183,7 +260,11 @@ bool loadPlatformConfiguration() {
   
     return false;
   }
-  JsonDocument yml_config; // https://arduinojson.org/v6/assistant to compute the capacity of static (deprecated).
+  // Parse into the file-static document, NOT a local: config_json below is a JsonObject
+  // referencing it, and get_config() hands that reference out. A local would be destroyed
+  // on return and leave both dangling.
+  JsonDocument& yml_config = platform_config_json;
+  yml_config.clear();
   Serial.printf("CONFIG: YAML config:'%s'\n", platform_config_file);
   DeserializationError error = deserializeYml( yml_config, file ); // convert yaml to json
 
@@ -200,124 +281,83 @@ bool loadPlatformConfiguration() {
   Serial.println();
 
   //TODO keys to #define header
-  JsonArray conf_array = yml_config["config"].as<JsonArray>();
-  config_json = conf_array[0].as<JsonObject>();
+  // Sections live at the TOP LEVEL, like data/homie.yml.
+  config_json = yml_config.as<JsonObject>();
 
-  // Safely copy string values with null checks
-  if (config_json["wifi_ssid"].is<JsonString>()) {
-    strncpy(wifi_ssid, config_json["wifi_ssid"].as<JsonString>().c_str(), sizeof(wifi_ssid) - 1);
-    wifi_ssid[sizeof(wifi_ssid) - 1] = '\0';
+  // Safely copy string values with null checks. Each read takes the section form first and
+  // falls back to the legacy flat key — see cfg_value() above.
+  cfg_copy_str("wifi", "ssid",     "wifi_ssid",     wifi_ssid,     sizeof(wifi_ssid));
+  cfg_copy_str("wifi", "password", "wifi_password", wifi_password, sizeof(wifi_password));
+
+  cfg_copy_str("mqtt", "host", "mqtt_host", mqtt_host, sizeof(mqtt_host));
+
+  JsonVariant v_mqtt_port = cfg_value("mqtt", "port", "mqtt_port");
+  if (v_mqtt_port.is<uint16_t>()) {
+    mqtt_port = v_mqtt_port.as<uint16_t>();
   }
 
-  if (config_json["wifi_password"].is<JsonString>()) {
-    strncpy(wifi_password, config_json["wifi_password"].as<JsonString>().c_str(), sizeof(wifi_password) - 1);
-    wifi_password[sizeof(wifi_password) - 1] = '\0';
-  }
-
-  if (config_json["mqtt_host"].is<JsonString>()) {
-    strncpy(mqtt_host, config_json["mqtt_host"].as<JsonString>().c_str(), sizeof(mqtt_host) - 1);
-    mqtt_host[sizeof(mqtt_host) - 1] = '\0';
-  }
-
-  if (config_json["mqtt_port"].is<uint16_t>()) {
-    mqtt_port = config_json["mqtt_port"].as<uint16_t>();
-  }
-
-  if (config_json["mqtt_qos"].is<int>()) {
-    int q = config_json["mqtt_qos"].as<int>();
+  JsonVariant v_mqtt_qos = cfg_value("mqtt", "qos", "mqtt_qos");
+  if (v_mqtt_qos.is<int>()) {
+    int q = v_mqtt_qos.as<int>();
     if (q >= 0 && q <= 2) mqtt_qos = (uint8_t)q;   // QoS for retained Homie publications (C4)
     else Serial.printf("CONFIG: ignoring invalid mqtt_qos=%d (must be 0-2)\n", q);
   }
 
   // mDNS gates (ESP32-6du.6). Legacy `mdns_enabled` sets BOTH; granular keys override.
-  if (config_json["mdns_enabled"].is<bool>()) {
-    bool en = config_json["mdns_enabled"].as<bool>();
+  JsonVariant v_mdns_enabled = cfg_value("mdns", "enabled", "mdns_enabled");
+  if (v_mdns_enabled.is<bool>()) {
+    bool en = v_mdns_enabled.as<bool>();
     mdns_discovery = en;
     mdns_advertise = en;
   }
-  if (config_json["mdns_discovery"].is<bool>()) {
-    mdns_discovery = config_json["mdns_discovery"].as<bool>();
+  JsonVariant v_mdns_discovery = cfg_value("mdns", "discovery", "mdns_discovery");
+  if (v_mdns_discovery.is<bool>()) {
+    mdns_discovery = v_mdns_discovery.as<bool>();
   }
-  if (config_json["mdns_advertise"].is<bool>()) {
-    mdns_advertise = config_json["mdns_advertise"].as<bool>();
+  JsonVariant v_mdns_advertise = cfg_value("mdns", "advertise", "mdns_advertise");
+  if (v_mdns_advertise.is<bool>()) {
+    mdns_advertise = v_mdns_advertise.as<bool>();
   }
 
   // Serial-over-TCP console port; 0 disables the listener (see log_stream.h).
-  if (config_json["log_tcp_port"].is<uint16_t>()) {
-    log_tcp_port = config_json["log_tcp_port"].as<uint16_t>();
+  JsonVariant v_log_port = cfg_value("log", "tcp_port", "log_tcp_port");
+  if (v_log_port.is<uint16_t>()) {
+    log_tcp_port = v_log_port.as<uint16_t>();
   }
 
-  if (config_json["mqtt_username"].is<JsonString>()) {
-    strncpy(mqtt_username, config_json["mqtt_username"].as<JsonString>().c_str(), sizeof(mqtt_username) - 1);
-    mqtt_username[sizeof(mqtt_username) - 1] = '\0';
-  }
+  cfg_copy_str("mqtt", "username", "mqtt_username", mqtt_username, sizeof(mqtt_username));
+  cfg_copy_str("mqtt", "password", "mqtt_password", mqtt_password, sizeof(mqtt_password));
 
-  if (config_json["mqtt_password"].is<JsonString>()) {
-    strncpy(mqtt_password, config_json["mqtt_password"].as<JsonString>().c_str(), sizeof(mqtt_password) - 1);
-    mqtt_password[sizeof(mqtt_password) - 1] = '\0';
-  }
-
-  if (config_json["device_id_prefix"].is<JsonString>()) {
-    strncpy(device_id_prefix, config_json["device_id_prefix"].as<JsonString>().c_str(), sizeof(device_id_prefix) - 1);
-    device_id_prefix[sizeof(device_id_prefix) - 1] = '\0';
-  }
+  cfg_copy_str("device", "id_prefix", "device_id_prefix", device_id_prefix, sizeof(device_id_prefix));
 
   // device_id is a TEMPLATE (e.g. "{chip_id}", "bess-{chip_id}"); resolved at boot in
   // generateDeviceID(). Empty -> "{chip_id}".
-  if (config_json["device_id"].is<JsonString>()) {
-    strncpy(device_id_template, config_json["device_id"].as<JsonString>().c_str(), sizeof(device_id_template) - 1);
-    device_id_template[sizeof(device_id_template) - 1] = '\0';
-  }
+  cfg_copy_str("device", "id", "device_id", device_id_template, sizeof(device_id_template));
 
   // device_name is loaded from homie.yml (name field), not config.yml
 
-  if (config_json["device_type"].is<JsonString>()) {
-    strncpy(device_type, config_json["device_type"].as<JsonString>().c_str(), sizeof(device_type) - 1);
-    device_type[sizeof(device_type) - 1] = '\0';
+  // device.yml carries both `device_type:` and `type:`; the generator prefers device_type
+  // and emits it under that name, so try it first and fall back to `type:` for an overlay
+  // or hand-written config that only set the short form.
+  cfg_copy_str("device", "device_type", "device_type", device_type, sizeof(device_type));
+  if (device_type[0] == '\0') {
+    cfg_copy_str("device", "type", "device_type", device_type, sizeof(device_type));
   }
 
-  if (config_json["manufacturer"].is<JsonString>()) {
-    strncpy(device_manufacturer, config_json["manufacturer"].as<JsonString>().c_str(), sizeof(device_manufacturer) - 1);
-    device_manufacturer[sizeof(device_manufacturer) - 1] = '\0';
-  }
+  cfg_copy_str("device", "manufacturer",  "manufacturer",  device_manufacturer, sizeof(device_manufacturer));
+  cfg_copy_str("device", "model",         "model",         device_model,        sizeof(device_model));
+  cfg_copy_str("device", "serial_number", "serial_number", device_serial,       sizeof(device_serial));
 
-  if (config_json["model"].is<JsonString>()) {
-    strncpy(device_model, config_json["model"].as<JsonString>().c_str(), sizeof(device_model) - 1);
-    device_model[sizeof(device_model) - 1] = '\0';
-  }
+  cfg_copy_str("device", "firmware_name",    "firmware_name",    firmware_name,    sizeof(firmware_name));
+  cfg_copy_str("device", "firmware_version", "firmware_version", firmware_version, sizeof(firmware_version));
+  cfg_copy_str("device", "firmware_url",     "firmware_url",     firmware_url,     sizeof(firmware_url));
 
-  if (config_json["serial_number"].is<JsonString>()) {
-    strncpy(device_serial, config_json["serial_number"].as<JsonString>().c_str(), sizeof(device_serial) - 1);
-    device_serial[sizeof(device_serial) - 1] = '\0';
-  }
+  cfg_copy_str("device", "homie_role",        "homie_role",        homie_role,        sizeof(homie_role));
+  cfg_copy_str("device", "device_passphrase", "device_passphrase", device_passphrase, sizeof(device_passphrase));
 
-  if (config_json["firmware_name"].is<JsonString>()) {
-    strncpy(firmware_name, config_json["firmware_name"].as<JsonString>().c_str(), sizeof(firmware_name) - 1);
-    firmware_name[sizeof(firmware_name) - 1] = '\0';
-  }
-
-  if (config_json["firmware_version"].is<JsonString>()) {
-    strncpy(firmware_version, config_json["firmware_version"].as<JsonString>().c_str(), sizeof(firmware_version) - 1);
-    firmware_version[sizeof(firmware_version) - 1] = '\0';
-  }
-
-  if (config_json["firmware_url"].is<JsonString>()) {
-    strncpy(firmware_url, config_json["firmware_url"].as<JsonString>().c_str(), sizeof(firmware_url) - 1);
-    firmware_url[sizeof(firmware_url) - 1] = '\0';
-  }
-
-  if (config_json["homie_role"].is<JsonString>()) {
-    strncpy(homie_role, config_json["homie_role"].as<JsonString>().c_str(), sizeof(homie_role) - 1);
-    homie_role[sizeof(homie_role) - 1] = '\0';
-  }
-
-  if (config_json["device_passphrase"].is<JsonString>()) {
-    strncpy(device_passphrase, config_json["device_passphrase"].as<JsonString>().c_str(), sizeof(device_passphrase) - 1);
-    device_passphrase[sizeof(device_passphrase) - 1] = '\0';
-  }
-
-  if (config_json["mqtt_mode"].is<JsonString>()) {
-    const char* mode_str = config_json["mqtt_mode"].as<JsonString>().c_str();
+  JsonVariant v_mqtt_mode = cfg_value("mqtt", "mode", "mqtt_mode");
+  if (v_mqtt_mode.is<JsonString>()) {
+    const char* mode_str = v_mqtt_mode.as<JsonString>().c_str();
     if (strcmp(mode_str, "configured-only") == 0) {
       mqtt_mode = MQTT_MODE_CONFIGURED_ONLY;
     } else if (strcmp(mode_str, "discovery-with-fallback") == 0) {

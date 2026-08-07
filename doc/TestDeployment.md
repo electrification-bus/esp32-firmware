@@ -49,7 +49,8 @@ void loop_homie() {}
 
 **data/config.yml**:
 ```yaml
-homie_role: controller
+device:
+  homie_role: controller
 ```
 
 ---

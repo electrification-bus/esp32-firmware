@@ -4,8 +4,8 @@ All authenticated REST endpoints use HTTP Basic Auth with username `admin` and t
 
 ```yaml
 # config.yml
-config:
-  - device_passphrase: changeme   # required for all admin POST endpoints
+device:
+  device_passphrase: changeme   # required for all admin POST endpoints
 ```
 
 If `device_passphrase` is empty or missing, all protected endpoints return `503 Service Unavailable`.

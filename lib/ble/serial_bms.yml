@@ -46,7 +46,7 @@ nodes:
       - id: cycles
         name: Charge Cycles
         datatype: integer
-        unit: ""          # dimensionless count (rrj.3)
+        unit: ''          # dimensionless count (rrj.3)
         settable: false
         retained: true
         value: 0
@@ -74,7 +74,7 @@ nodes:
         datatype: string
         settable: false
         retained: true
-        value: ""
+        value: ''
         description: "Comma-separated cell voltages in V"
       - id: charge_control
         name: Charge Control

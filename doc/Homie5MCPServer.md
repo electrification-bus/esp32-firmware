@@ -44,10 +44,10 @@ You should see log output as it subscribes and starts caching devices. `Ctrl-C` 
 
 | Variable | This project's value | Notes |
 |---|---|---|
-| `HOMIE_BROKER_URL` | `mqtt://<user>:<pass>@<host>:<port>` | Same broker your firmware uses — copy from `~/.config/eBus/config.yml` |
+| `HOMIE_BROKER_URL` | `mqtt://<user>:<pass>@<host>:<port>` | Same broker your firmware uses — copy from `config-overlay.yml`, or from `device.yml` |
 | `HOMIE_DOMAIN` | **`ebus`** | This project's Homie topic prefix is `ebus`, not the default `homie`. The MCP server defaults to `homie` and won't find anything if you forget this. |
 
-If your config has `mqtt_host: mqtt.yapjack.net`, `mqtt_username: dcj`, `mqtt_password: secret`, `mqtt_port: 1883`, your broker URL is:
+If your `mqtt:` section has `host: mqtt.yapjack.net`, `username: dcj`, `password: secret`, `port: 1883`, your broker URL is:
 
 ```
 mqtt://dcj:secret@mqtt.yapjack.net:1883
@@ -55,7 +55,7 @@ mqtt://dcj:secret@mqtt.yapjack.net:1883
 
 (For brokers with no auth, omit the `user:pass@` chunk.)
 
-See [Configuration.md](Configuration.md) for the canonical place credentials live (`~/.config/eBus/config.yml`).
+See [Configuration.md](Configuration.md) for the canonical place credentials live (`config-overlay.yml`).
 
 ## Wiring it into Claude Code
 

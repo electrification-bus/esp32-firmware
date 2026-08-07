@@ -32,8 +32,8 @@ device:
   device_passphrase: changeme
 
 wifi:
-  ssid: ""
-  password: ""
+  ssid: ''
+  password: ''
 
 mqtt:
   mode: configured-only

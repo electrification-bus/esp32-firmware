@@ -2,7 +2,7 @@
 
 This document covers how the firmware uses mDNS/DNS-SD: the use cases it serves, the two distinct mechanisms involved, and the services it advertises.
 
-> **Default: OFF.** mDNS is opt-in (`mdns_enabled: false` by default). The bundled ESP-IDF mDNS **responder** can crash on certain incoming packets (a null-deref in the precompiled `libmdns.a`, triggered by inbound mDNS traffic, not by our code). Homie device discovery runs over MQTT and does not need mDNS, so it ships disabled. See the *Crash status* note below.
+> **Default: build-conditional.** Both gates default **ON** for Ethernet-only builds on arduino-esp32 3.x (`esp32-poe-iso*-idf5`) and **OFF** everywhere else — WiFi-AP builds and every 2.0.x env. See [`config.cpp`](../src/platform/config.cpp#L41) for the test and `device.yml` for the reasoning. The bundled ESP-IDF mDNS **responder** can crash on certain incoming packets (a null-deref in the precompiled `libmdns.a` on 2.0.x, triggered by inbound mDNS traffic, not by our code); 3.x carries the upstream rewrite. Homie device discovery runs over MQTT and does not need mDNS, so builds that have a captive portal to fall back on leave it off. Override per-device with an `mdns:` section in `device.yml` (or `config-overlay.yml`) — omit the section entirely to keep the build default. See the *Crash status* note below.
 
 ## Use cases & two mechanisms
 
@@ -24,14 +24,16 @@ Two consequences fall out of this:
 1. **UC2 is the high-value, crash-safe path; UC1 is the low-value, crash-prone one.** So the cheap, valuable capability (find the broker) does not require the risky responder at all.
 2. **Discovery is transient.** Once the ESP32 has found and connected to the broker, it does not need to keep listening — UC2's browse is a one-shot at boot (a few attempts, then stop). The querier only re-engages as a reconnect fallback (below).
 
-### Target: split the gate (planned)
+### The split gate (implemented, ESP32-6du.6)
 
-Today a single `mdns_enabled` flag gates *both* mechanisms, and `setup_mdns()` starts the responder before it runs the broker query — so UC2 is currently hostage to the crash-prone responder. The planned design splits this into two independent gates so discovery can run with the responder off:
+A single flag used to gate *both* mechanisms, which left UC2 hostage to the crash-prone responder. There are now two independent gates, so discovery can run with the responder off:
 
-- `mdns_discovery` — the querier (UC2): browse for the broker, resolve `.local` names.
-- `mdns_advertise` — the responder (UC1/UC3): claim the hostname, register services.
+- `mdns.discovery` — the querier (UC2): browse for the broker, resolve `.local` names.
+- `mdns.advertise` — the responder (UC1/UC3): claim the hostname, register services.
 
-(Tracked in beads; the spike validating that a query-only `mdns_init()` — no `mdns_service_add()` — dodges the crash is part of this.)
+[`setup_mdns()`](../src/platform/network.cpp#L203) honours them separately: it returns early only when *both* are off, registers services solely under `mdns_advertise` ([network.cpp:262](../src/platform/network.cpp#L262)), and runs the broker query solely under `mdns_discovery` ([network.cpp:257](../src/platform/network.cpp#L257)). The reconnect re-query is likewise the querier's job ([network.cpp:514](../src/platform/network.cpp#L514)).
+
+`mdns.enabled` remains as a legacy convenience that sets both at once; the granular keys override it. Note the Arduino `MDNS.begin()` API couples `mdns_init()` with a hostname claim, so a discovery-only build still initialises the responder stack even though it registers no services.
 
 ## UC2 detail: broker discovery and (re)connection
 
@@ -158,17 +160,18 @@ browser = ServiceBrowser(zeroconf, "_homie._tcp.local.", MyListener())
 mDNS advertisement is configured via `data/config.yml`:
 
 ```yaml
-config:
-  - device_name: ESP32 POE ISO Homie    # Used for .local hostname
-    device_type: sensor
-    manufacturer: NESL
-    model: ESP32-POE-ISO
-    serial_number:                       # Leave empty to use device_id
-    firmware_name: ESP32POEISO Firmware
-    firmware_version: 1.0.0
-    homie_role: device                   # "device" or "controller"
-    mqtt_host: mqtt.example.com
-    mqtt_port: 1883
+device:
+  name: ESP32 POE ISO Homie        # Used for .local hostname
+  device_type: sensor
+  manufacturer: NESL
+  model: ESP32-POE-ISO
+  serial_number:                   # Leave empty to use device id
+  firmware_name: ESP32POEISO Firmware
+  firmware_version: 1.0.0
+  homie_role: device               # "device" or "controller"
+mqtt:
+  host: mqtt.example.com
+  port: 1883
 ```
 
 ## Implementation Notes

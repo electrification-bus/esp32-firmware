@@ -13,7 +13,7 @@ nodes:
       - id: proxied
         name: Proxied
         datatype: boolean
-        unit: ""
+        unit: ''
         settable: false
         retained: true
         value: false
@@ -22,13 +22,13 @@ nodes:
         datatype: string
         settable: false
         retained: true
-        value: ""
+        value: ''
       - id: vendor-name
         name: Vendor Name
         datatype: string
         settable: false
         retained: true
-        value: ""
+        value: ''
 extensions: []
 implementation: homie-esp32-sdk
 generator:

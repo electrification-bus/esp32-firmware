@@ -4,7 +4,7 @@
 
 ## Context
 
-This SDK currently loads device configuration (MQTT broker, WiFi credentials, device id, Homie role, OTA passphrase, etc.) from a YAML file baked into the LittleFS partition (`data/config.yml`). The recently-landed Proposal 2 fixed the "developers clobber each other's `config.yml`" problem by making the file a per-developer overlay at `~/.config/eBus/config.yml`, merged into the generated `data/config.yml` at build time. That solves the *development ergonomics* half of the problem. This proposal addresses the half it leaves open: secrets-handling and field deployment.
+This SDK currently loads device configuration (MQTT broker, WiFi credentials, device id, Homie role, OTA passphrase, etc.) from a YAML file baked into the LittleFS partition (`data/config.yml`). The recently-landed Proposal 2 fixed the "developers clobber each other's `config.yml`" problem by making the file a per-developer overlay at `config-overlay.yml`, merged into the generated `data/config.yml` at build time. That solves the *development ergonomics* half of the problem. This proposal addresses the half it leaves open: secrets-handling and field deployment.
 
 ## Problems Proposal 2 does not solve
 
@@ -59,8 +59,8 @@ On a freshly-flashed device, NVS is empty, so config.yml supplies defaults. Afte
 Composable. After Proposal 3 lands, Proposal 2's overlay still serves a real purpose: it's where developers put their *defaults* for fresh-flashed units. The flow becomes:
 
 ```
-clone repo → mkdir -p ~/.config/eBus && cp data/config.yml.example ~/.config/eBus/config.yml
-→ edit ~/.config/eBus/config.yml with your dev defaults
+clone repo → # optional: create config-overlay.yml with only the keys you want to override
+→ edit config-overlay.yml with your dev defaults
 → ./ebus-esp32 push --fs-only → device boots, NVS empty, falls back to YAML defaults → MQTT connects
                                                                       → device runs
 later, in the field:

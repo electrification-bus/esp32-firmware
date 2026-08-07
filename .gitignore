@@ -39,12 +39,16 @@ src/homie.cpp
 data/homie.yml
 build/
 
-# Per-developer config: merged from ~/.config/eBus/config.yml into the generated
-# data/config.yml by `./ebus-esp32 generate`. data/config.yml.example holds the
-# schema + safe defaults (tracked).
+# Generated runtime config — built from device.yml + config-overlay.yml on every
+# `./ebus-esp32 generate` (which the pre-build hook runs before every build).
 data/config.yml
 data/config.yml~
 data/config.yml.bak
+
+# Per-developer config overlay. Optional: if present, its non-empty fields are merged
+# over the device.yml-derived values, so real broker/WiFi credentials stay out of the
+# tracked device.yml. No template and no init step — create it only if you need it.
+config-overlay.yml
 
 # Per-developer PlatformIO overrides (merged in via [platformio] extra_configs).
 # platformio_local.ini.example holds a documented template.
