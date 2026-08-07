@@ -1194,22 +1194,24 @@ def main():
         description="eBus ESP32 firmware CLI — generate, build, and deploy firmware from device.yml",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="\n".join([
+            # Alphabetical, matching the subcommand list; bare form of each command first,
+            # then its flag variants in flag order.
             "examples:",
-            "  ./ebus-esp32 generate",
             "  ./ebus-esp32 build",
-            "  ./ebus-esp32 run",
-            "  ./ebus-esp32 run --port COM3",
-            "  ./ebus-esp32 push",
-            "  ./ebus-esp32 push --fs-only",
-            "  ./ebus-esp32 monitor                   (network if an address is known, else USB)",
-            "  ./ebus-esp32 monitor --serial          (force USB; also learns the device IP)",
-            "  ./ebus-esp32 monitor --net --host 192.168.1.42",
-            "  ./ebus-esp32 run --monitor             (flash, then watch over the network)",
-            "  ./ebus-esp32 push --ota --host 192.168.1.42     (flash fw+fs over TCP, no cable)",
-            "  ./ebus-esp32 run --ota --monitor       (build, flash over TCP, then watch)",
             "  ./ebus-esp32 clean",
             "  ./ebus-esp32 devices",
             "  ./ebus-esp32 envs",
+            "  ./ebus-esp32 generate",
+            "  ./ebus-esp32 monitor                            (network if an address is known, else USB)",
+            "  ./ebus-esp32 monitor --net --host 192.168.1.42",
+            "  ./ebus-esp32 monitor --serial                   (force USB; also learns the device IP)",
+            "  ./ebus-esp32 push",
+            "  ./ebus-esp32 push --fs-only",
+            "  ./ebus-esp32 push --ota --host 192.168.1.42     (flash fw+fs over TCP, no cable)",
+            "  ./ebus-esp32 run",
+            "  ./ebus-esp32 run --monitor                      (flash, then watch over the network)",
+            "  ./ebus-esp32 run --ota --monitor                (build, flash over TCP, then watch)",
+            "  ./ebus-esp32 run --port COM3",
         ]),
     )
 
@@ -1239,30 +1241,34 @@ def main():
                        help="device passphrase for the OTA endpoints "
                             "(default: device.device_passphrase from device.yml)")
 
+    # Subcommands are registered in ALPHABETICAL order: argparse lists them in the order
+    # they are added, both in the usage line and the help body, so this ordering IS the
+    # --help ordering. Keep new commands in place rather than appending, and mirror any
+    # addition in the epilog examples above (also alphabetical) and the dispatch below.
     sub = parser.add_subparsers(dest="command", required=True)
-
-    p = sub.add_parser("generate", help="Generate src/homie.cpp + data/*.yml from device.yml")
-    p.add_argument("device_yml", **dev_yml_arg)
 
     p = sub.add_parser("build", help="Generate then compile firmware via PlatformIO")
     p.add_argument("device_yml", **dev_yml_arg)
     add_monitor_flags(p, 30)   # no flash, so the device should already be up
 
-    p = sub.add_parser("run", help="Generate, build, and flash firmware + filesystem to device")
+    p = sub.add_parser("check", help="Run pio static analysis (cppcheck)")
     p.add_argument("device_yml", **dev_yml_arg)
-    p.add_argument("--port", **port_arg)
-    p.add_argument("--fs-only", action="store_true", help="flash filesystem only (skip firmware)")
-    p.add_argument("--erase", action="store_true", help="full chip erase first (recover from a stale-boot OTA slot)")
-    add_ota_flags(p)
-    add_monitor_flags(p, 90)   # board reboots and must re-associate with WiFi first
 
-    p = sub.add_parser("push", help="Flash pre-built firmware + filesystem (no generate/build)")
+    p = sub.add_parser("clean", help="Clean PlatformIO build artifacts")
     p.add_argument("device_yml", **dev_yml_arg)
-    p.add_argument("--port", **port_arg)
-    p.add_argument("--fs-only", action="store_true", help="flash filesystem only (skip firmware)")
-    p.add_argument("--erase", action="store_true", help="full chip erase first (recover from a stale-boot OTA slot)")
-    add_ota_flags(p)
-    add_monitor_flags(p, 90)
+
+    p = sub.add_parser("compiledb", help="Regenerate compile_commands.json for clangd / LSP")
+    p.add_argument("device_yml", **dev_yml_arg)
+
+    sub.add_parser("config-status", help="Show whether a config-overlay.yml is active")
+
+    sub.add_parser("devices", help="List attached serial devices")
+
+    p = sub.add_parser("envs", help="List available PlatformIO board environments")
+    p.add_argument("device_yml", **dev_yml_arg)
+
+    p = sub.add_parser("generate", help="Generate src/homie.cpp + data/*.yml from device.yml")
+    p.add_argument("device_yml", **dev_yml_arg)
 
     p = sub.add_parser("monitor", help="Open the device monitor (network by default, USB with --serial)")
     p.add_argument("device_yml", **dev_yml_arg)
@@ -1277,38 +1283,39 @@ def main():
                         "device IP — keeps the monitor fully interactive")
     p.add_argument("--monitor-wait", **wait_arg)
 
-    p = sub.add_parser("clean", help="Clean PlatformIO build artifacts")
-    p.add_argument("device_yml", **dev_yml_arg)
-
-    sub.add_parser("devices", help="List attached serial devices")
-
-    p = sub.add_parser("envs", help="List available PlatformIO board environments")
-    p.add_argument("device_yml", **dev_yml_arg)
-
-    p = sub.add_parser("compiledb", help="Regenerate compile_commands.json for clangd / LSP")
-    p.add_argument("device_yml", **dev_yml_arg)
-
-    p = sub.add_parser("check", help="Run pio static analysis (cppcheck)")
-    p.add_argument("device_yml", **dev_yml_arg)
-
     sub.add_parser("monitors", help="List active serial-monitor sessions (port-sharing breadcrumbs)")
-    sub.add_parser("config-status", help="Show whether a config-overlay.yml is active")
+
+    p = sub.add_parser("push", help="Flash pre-built firmware + filesystem (no generate/build)")
+    p.add_argument("device_yml", **dev_yml_arg)
+    p.add_argument("--port", **port_arg)
+    p.add_argument("--fs-only", action="store_true", help="flash filesystem only (skip firmware)")
+    p.add_argument("--erase", action="store_true", help="full chip erase first (recover from a stale-boot OTA slot)")
+    add_ota_flags(p)
+    add_monitor_flags(p, 90)
+
+    p = sub.add_parser("run", help="Generate, build, and flash firmware + filesystem to device")
+    p.add_argument("device_yml", **dev_yml_arg)
+    p.add_argument("--port", **port_arg)
+    p.add_argument("--fs-only", action="store_true", help="flash filesystem only (skip firmware)")
+    p.add_argument("--erase", action="store_true", help="full chip erase first (recover from a stale-boot OTA slot)")
+    add_ota_flags(p)
+    add_monitor_flags(p, 90)   # board reboots and must re-associate with WiFi first
 
     args = parser.parse_args()
 
-    dispatch = {
-        "generate": cmd_generate,
-        "build":    cmd_build,
-        "run":      cmd_run,
-        "push":     cmd_push,
-        "monitor":  cmd_monitor,
-        "clean":    cmd_clean,
-        "devices":  cmd_devices,
-        "envs":     cmd_envs,
-        "compiledb":     cmd_compiledb,
+    dispatch = {                       # same alphabetical order as the parsers above
+        "build":         cmd_build,
         "check":         cmd_check,
-        "monitors":      cmd_monitors,
+        "clean":         cmd_clean,
+        "compiledb":     cmd_compiledb,
         "config-status": cmd_config_status,
+        "devices":       cmd_devices,
+        "envs":          cmd_envs,
+        "generate":      cmd_generate,
+        "monitor":       cmd_monitor,
+        "monitors":      cmd_monitors,
+        "push":          cmd_push,
+        "run":           cmd_run,
     }
     dispatch[args.command](args)
 
