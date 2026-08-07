@@ -31,7 +31,11 @@ device:
   # its fleet without touching this tracked file.
   id_prefix: ''
   type: energy
-  board: esp32-poe-iso-idf5          # must match a [env:…] in platformio.ini
+  # environment names a [env:…] section in platformio.ini — NOT a PlatformIO `board`.
+  # An env pins platform (arduino-esp32 3.x vs 2.0.x), board, PSRAM, flash size, partitions
+  # and build flags together; six envs here share `board = esp32-poe-iso` and differ only
+  # in those, so the env name is the only thing that selects a build.
+  environment: esp32-poe-iso
   device_type: ebus
   firmware_name: ESP32-POE-ISO Firmware
   firmware_version: 1.0.0
@@ -63,8 +67,8 @@ mqtt:
   qos: 1
 
 # mDNS default depends on the BUILD, and this key overrides it:
-#   Ethernet-only AND arduino-esp32 3.x (esp32-poe-iso*-idf5)  -> ON
-#   everything else (WiFi-AP builds, and ALL 2.0.x envs)       -> OFF
+#   Ethernet-only AND arduino-esp32 3.x (the default, unsuffixed envs)  -> ON
+#   everything else (WiFi-AP builds, and every -arduino2 env)           -> OFF
 # The 2.0.x exclusion is deliberate: its precompiled mDNS responder has an upstream
 # null-deref on inbound packets (doc/MDNS.md). 3.x carries the rewrite.
 # Ethernet boards DO serve the same web UI on port 80 — what they lack is the CAPTIVE

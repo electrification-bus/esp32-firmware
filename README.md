@@ -122,7 +122,10 @@ Defined in [`platformio.ini`](platformio.ini). Run `./ebus-esp32 envs` to list, 
 | `esp32-poe-iso-wrover` | Same Olimex board with WROVER-E module (8 MB PSRAM) | NimBLE tuned for memory |
 | `esp32-poe-iso-16mb` | Same Olimex board, 16 MB flash variant | Larger partition table |
 | `esp32-s3-devkitc-1` | Espressif ESP32-S3-DevKitC | Native USB CDC |
-| `esp8266-homie`, `wesp32-poe`, `spiffs` | Other / legacy / utility envs | See `platformio.ini` |
+| `wesp32-poe`, `spiffs` | Silicognition wESP32; filesystem-only helper | See `platformio.ini` |
+| `*-arduino2` | Same boards on the legacy platform | arduino-esp32 2.0.17 / ESP-IDF 4.4.7, pinned. Kept for A/B until the 3.x port is verified on every board |
+
+Envs are named after the **arduino-esp32 core** they build against, because that is what the firmware branches on (`ESP_ARDUINO_VERSION_MAJOR`). Unsuffixed = 3.x (the default); `-arduino2` = the 2.0.x line.
 
 ## Using LLMs
 

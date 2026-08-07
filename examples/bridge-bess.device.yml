@@ -20,7 +20,7 @@ device:
   name: EBUS Bridge
   id: bridge-${chip_id}        # template, resolved on-device (opaque id; no quoting needed)
   type: energy.ebus.device.bridge
-  board: esp32-poe-iso          # must match a [env:…] in platformio.ini
+  environment: esp32-poe-iso          # must match a [env:…] in platformio.ini
   device_type: bridge
   firmware_name: ESP32POEISO Bridge
   firmware_version: 1.0.0

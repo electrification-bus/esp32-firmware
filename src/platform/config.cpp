@@ -86,7 +86,7 @@ const char* config_file_backup = "/config_from_SD.yml";
 
 // TLS certificate buffer - sized for typical CA certs (up to 4KB). Heap-allocated
 // on first use rather than a static array — see Device.cpp's _description_json
-// comment for why (idf5/pioarduino early-boot static-footprint threshold).
+// comment for why (arduino-esp32 3.x/pioarduino early-boot static-footprint threshold).
 #define CA_CERT_MAX_SIZE 4096
 static char* ca_cert_buffer = nullptr;
 static bool ca_cert_loaded = false;

@@ -404,7 +404,7 @@ void Device::publishState() {
   }
 }
 
-// Heap-allocated on first use (not a static array): on the idf5/pioarduino build,
+// Heap-allocated on first use (not a static array): on the arduino-esp32 3.x build,
 // total .bss/.data footprint crossing a threshold somewhere between ~97KB and
 // ~105KB corrupts/exhausts a small early-boot heap region that FreeRTOS's own
 // vApplicationGetIdleTaskMemory() draws its very first allocation from during
