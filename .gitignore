@@ -39,6 +39,15 @@ src/homie.cpp
 data/homie.yml
 build/
 
+# ESP-IDF Component Manager manifest, written by the pioarduino platform's
+# component_manager.py on every idf5 build when no manifest exists in the Arduino
+# framework dir or here. Default content is just the baseline floor
+# (dependencies: {idf: '>=5.1'}) — this project declares no registry components, so
+# it carries nothing worth tracking and is recreated identically if deleted. The
+# .orig sibling is that script's backup of a manifest it modified.
+src/idf_component.yml
+src/idf_component.yml.orig
+
 # Generated runtime config — built from device.yml + config-overlay.yml on every
 # `./ebus-esp32 generate` (which the pre-build hook runs before every build).
 data/config.yml
