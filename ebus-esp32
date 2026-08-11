@@ -654,9 +654,24 @@ def _upload(cfg, args, build: bool) -> None:
     port  = getattr(args, "port", None)
 
     # --ota replaces the USB upload entirely: no serial port, so none of the tmux
-    # port-handoff below applies.
+    # port-handoff below applies. ota_push() only transports whatever images already
+    # sit in .pio/build/<board>/ — unlike the USB path (where `upload`/`buildfs`
+    # compile as a side effect of flashing), nothing here builds them, so `run --ota`
+    # has to compile explicitly first. `push --ota` intentionally skips this, same as
+    # USB push.
     target = _ota_target(cfg, args)
     if target:
+        if build:
+            print(f"\n--- build (env: {board}) ---")
+            if not args.fs_only:
+                rc = pio_run(board, [])
+                if rc != 0:
+                    print(f"\nBUILD FAILED (exit {rc})", file=sys.stderr)
+                    sys.exit(rc)
+            rc = pio_run(board, ["buildfs"])
+            if rc != 0:
+                print(f"\nFilesystem build FAILED (exit {rc})", file=sys.stderr)
+                sys.exit(rc)
         ota_push(cfg, args, *target)
         return
 
