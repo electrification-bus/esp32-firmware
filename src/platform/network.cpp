@@ -148,8 +148,13 @@ static bool mdns_query_one_service(const char* service, uint16_t default_port) {
                      MDNS.txtKey(i, j).c_str(), MDNS.txt(i, j).c_str());
     }
 
-    // Use the broker's IP address directly
+    // Use the broker's IP address directly. Renamed IP() -> address() between
+    // arduino-esp32 2.0.x and 3.x's ESPmDNS.
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
     IPAddress broker_ip = MDNS.address(i);
+#else
+    IPAddress broker_ip = MDNS.IP(i);
+#endif
     if (broker_ip == IPAddress(0, 0, 0, 0)) {
       Serial.printf("mDNS:   [%d] No IP resolved, skipping\n", i);
       continue;
