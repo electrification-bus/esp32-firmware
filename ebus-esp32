@@ -662,13 +662,13 @@ def _upload(cfg, args, build: bool) -> None:
     target = _ota_target(cfg, args)
     if target:
         if build:
-            print(f"\n--- build (env: {board}) ---")
+            print(f"\n--- build (env: {env_name}) ---")
             if not args.fs_only:
-                rc = pio_run(board, [])
+                rc = pio_run(env_name, [])
                 if rc != 0:
                     print(f"\nBUILD FAILED (exit {rc})", file=sys.stderr)
                     sys.exit(rc)
-            rc = pio_run(board, ["buildfs"])
+            rc = pio_run(env_name, ["buildfs"])
             if rc != 0:
                 print(f"\nFilesystem build FAILED (exit {rc})", file=sys.stderr)
                 sys.exit(rc)
