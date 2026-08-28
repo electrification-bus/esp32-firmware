@@ -45,6 +45,7 @@ doc/                          Documentation
   GettingStartedCLI.md       Terminal / CLI onboarding
   Configuration.md            Per-developer overlay model (config.yml + platformio_local.ini)
   GenerateHomieDevice.md      How to configure and build a device from library components
+  GPIOPins.md                 Which pins are free on each board, and what to put on them
   proposals/RuntimeConfigViaNVS.md   Design note: future NVS-backed runtime credentials
   ...                         + several legacy proposal and subsystem notes
 .vscode/                      Tracked: extensions.json, settings.json, tasks.json
@@ -95,6 +96,7 @@ VSCode users: use the PlatformIO IDE's project-tasks pane for build/upload/monit
   - **Declaratively** (`device.yml` + the generator; the default path): [GenerateHomieDevice.md](doc/GenerateHomieDevice.md)
   - **In code** (hand-coded device/controller, no generator; type-safe descriptor tables + `on_set` handlers): [HandCodedDevice.md](doc/HandCodedDevice.md)
 - **Writing a driver** (authoring a `NodeEntity` subclass — the reusable hardware unit, shared by both paths above): [WritingADriver.md](doc/WritingADriver.md)
+- **Picking pins for a board** (what Ethernet/PSRAM/flash have already taken, and this SDK's reference values): [GPIOPins.md](doc/GPIOPins.md)
 - **Nested / proxied devices** (bridge role, the `{proxier}-{proxied}` model): [NestedBridgeExample.md](doc/NestedBridgeExample.md)
 - **Configuration overlays** (incl. `${chip_id}` device-id templating, `mqtt_qos`, `mdns_discovery` / `mdns_advertise`): [Configuration.md](doc/Configuration.md)
 - **LLM access to a running device via MCP**: [Homie5MCPServer.md](doc/Homie5MCPServer.md)
