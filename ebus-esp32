@@ -83,6 +83,38 @@ def pio_env() -> dict:
     env["PYTHONIOENCODING"] = "utf-8"
     return env
 
+# The two platform lines in platformio.ini share ONE package name,
+# framework-arduinoespressif32: the arduino3 envs want it at the pioarduino URL, the
+# -arduino2 envs at 2.0.17. Whichever built last owns the shared package directory, so
+# building one line evicts the other's framework. The next build of the evicted line then
+# dies in the platform's own arduino.py before compiling a single file:
+#
+#   build_script_path = str(Path(FRAMEWORK_DIR) / "tools" / "pioarduino-build.py")
+#   TypeError: expected str, bytes or os.PathLike object, not NoneType
+#
+# because FRAMEWORK_DIR resolved to None. The failing run reinstalls the package on its
+# way out, which is why running the same command a second time always works.
+#
+# Nothing has been compiled or flashed when this hits, so retrying once is safe rather
+# than merely convenient. Pin [platformio] default_envs in platformio_local.ini to stop
+# the VSCode extension causing it in the background — see that file.
+_FRAMEWORK_MISS_MARKER = "FRAMEWORK_DIR"
+
+def _pio_stream(cmd: list) -> tuple:
+    """Run pio, passing its output straight through, and report whether the missing
+    framework signature appeared. Returns (returncode, saw_marker)."""
+    proc = subprocess.Popen(cmd, cwd=ROOT, env=pio_env(),
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, bufsize=1)
+    saw = False
+    for line in proc.stdout:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        if _FRAMEWORK_MISS_MARKER in line:
+            saw = True
+    proc.wait()
+    return proc.returncode, saw
+
 def pio_run(env_name: str, targets: list, port: str = None) -> int:
     pio = find_pio()
     cmd = [pio, "run", "-e", env_name]
@@ -95,7 +127,14 @@ def pio_run(env_name: str, targets: list, port: str = None) -> int:
         cmd += ["-t", t]
     if port:
         cmd += ["--upload-port", port]
-    return subprocess.run(cmd, cwd=ROOT, env=pio_env()).returncode
+
+    rc, framework_missing = _pio_stream(cmd)
+    if rc != 0 and framework_missing:
+        print("\n--- the platform's framework package was missing (the two platform lines\n"
+              "    share it, so building one evicts the other). That run reinstalled it;\n"
+              "    retrying once. ---\n")
+        rc, _ = _pio_stream(cmd)
+    return rc
 
 # ── tmux serial-port handoff ────────────────────────────────────────────────────
 # Coordinate the serial port with a monitor running in a tmux pane (via the bin/_*
