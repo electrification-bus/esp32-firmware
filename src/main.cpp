@@ -56,11 +56,9 @@ void on_mqtt_reconnect() {
     Serial.println("CONTROLLER: Re-published $state after reconnect");
 }
 
-// Same session-takeover problem as the device half, and the same fix — see the long
-// explanation above the device-mode on_state_observed(). A controller that is running is
-// always "ready", so the comparison is against that constant rather than a state machine.
-// Must not publish from here — this runs inside the MQTT receive callback. See the
-// device-mode note; publishing mid-packet re-enters the client and reboots the board.
+// Same watch as the device half. A running controller is always "ready", so it compares
+// against that constant rather than a state machine.
+// Must not publish from here — runs inside the MQTT receive callback. See device half.
 static volatile bool _state_reassert_pending = false;
 
 static void on_state_observed(void* ctx, const char* value) {
@@ -260,40 +258,15 @@ void loop() {
 // child per Homie 5), so re-assert $state for the whole device tree, not just the root.
 
 // ── $state self-correction ────────────────────────────────────────────────────
-//
-// A retained $state of "lost" while the device is demonstrably alive and publishing
-// telemetry does not come from a real disconnect. It comes from MQTT session takeover:
-// the client id is stable and cleanSession is false, so when this device reconnects
-// before the broker has noticed the previous session died, the broker MUST terminate
-// that session — and terminating it fires ITS Last Will, $state = "lost", retained.
-//
-//     t0  broker accepts the new CONNECT
-//     t1  on_mqtt_reconnect() publishes $state = "ready"
-//     t2  broker tears down the OLD session, fires its will -> "lost" wins
-//
-// Re-asserting at t1 therefore cannot fix it; the will always lands afterwards. And the
-// wrong value then persists indefinitely, because $state is published only on a state
-// CHANGE while property values are republished every poll — which is exactly why the
-// device looks alive and "lost" at the same time.
-//
-// Homie 5 requires $state retained AND the will set to "lost" (both spec MUSTs), so
-// neither can be dropped. Instead the device SUBSCRIBES TO ITS OWN $state and corrects
-// any value that disagrees with reality.
-//
-// Why this rather than a timer: the broker only delivers when something publishes, so
-// there is no steady-state traffic and no guess about how long a takeover window is. The
-// broker also delivers the retained value the moment we subscribe, so a stale "lost"
-// left by a previous session is corrected at startup, and one arriving later is caught
-// live — both orderings, without ordering assumptions.
-//
-// It cannot loop: publishing "ready" echoes "ready" back, which matches, and stops. A
-// genuine "sleeping" or "disconnected" is not corrected either, because the comparison
-// is against the device's actual state, not a constant.
+// Watch our own retained $state and republish whenever the broker's value disagrees
+// with theDevice.state(). A session takeover makes the broker fire the PREVIOUS
+// session's will after we have already published "ready", so re-asserting at reconnect
+// loses the race; $state is only published on a change, so the wrong value then sticks.
+// Subscribing costs nothing until something publishes, catches the retained value at
+// subscribe time as well as later arrivals, and converges in one round trip.
 
-// Runs INSIDE the MQTT receive callback (subscriber_callback -> dispatch_settable), so it
-// must not publish: re-entering the client while it is mid-packet corrupts its state and
-// takes the device down, which shows up as a reboot loop republishing lost/init/ready.
-// Same discipline as the BLE notify path — record here, act from loop().
+// Runs inside the MQTT receive callback, so it must not publish — that re-enters the
+// client mid-packet. Record here, act from loop(), same as the BLE notify path.
 static volatile bool _state_reassert_pending = false;
 
 static void on_state_observed(void* ctx, const char* value) {
