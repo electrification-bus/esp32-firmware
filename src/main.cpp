@@ -44,12 +44,38 @@ void memstats() {
 unsigned long lastDiscoveryPrint = 0;
 unsigned long lastStatsCheck = 0;
 
+static void controller_state_topic(char* buf, size_t len) {
+    snprintf(buf, len, "%s/%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID(), HOMIE_$STATE);
+}
+
 // Callback to re-publish state after MQTT reconnection
 void on_mqtt_reconnect() {
     char state_topic[128];
-    snprintf(state_topic, sizeof(state_topic), "%s/%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID(), HOMIE_$STATE);
+    controller_state_topic(state_topic, sizeof(state_topic));
     mqtt_client.publish(state_topic, HOMIE_STATE_READY, true, homie_qos(true));  // retained -> QoS 2 (C4)
     Serial.println("CONTROLLER: Re-published $state after reconnect");
+}
+
+// Same session-takeover problem as the device half, and the same fix — see the long
+// explanation above the device-mode on_state_observed(). A controller that is running is
+// always "ready", so the comparison is against that constant rather than a state machine.
+// Must not publish from here — this runs inside the MQTT receive callback. See the
+// device-mode note; publishing mid-packet re-enters the client and reboots the board.
+static volatile bool _state_reassert_pending = false;
+
+static void on_state_observed(void* ctx, const char* value) {
+    (void)ctx;
+    if (strcmp(value, HOMIE_STATE_READY) == 0) return;
+    Serial.printf("CONTROLLER: broker holds $state='%s' but we are running — re-asserting\n", value);
+    _state_reassert_pending = true;
+}
+
+static void watch_own_state() {
+    char state_topic[128];
+    controller_state_topic(state_topic, sizeof(state_topic));
+    subscribe_settable_handler(state_topic, on_state_observed, nullptr);
+    if (mqtt_connected()) mqtt_client.subscribe(state_topic, homie_qos(true));
+    Serial.printf("CONTROLLER: watching %s for a stale 'lost'\n", state_topic);
 }
 
 void setup() {
@@ -134,6 +160,7 @@ void setup() {
 
     // Publish controller's own state (overrides LWT "lost" from previous session)
     on_mqtt_reconnect();
+    watch_own_state();
 
     // Initialize the Homie controller
     Serial.println("CONTROLLER: Initializing controller mode");
@@ -153,6 +180,14 @@ void setup() {
 void loop() {
     log_tcp_loop();     // accept monitors, push buffered log; never blocks
     captive_portal_loop();
+
+    // Deferred out of on_state_observed() — see the note there.
+    if (_state_reassert_pending) {
+        _state_reassert_pending = false;
+        char state_topic[128];
+        controller_state_topic(state_topic, sizeof(state_topic));
+        mqtt_client.publish(state_topic, HOMIE_STATE_READY, true, homie_qos(true));
+    }
 
     // Handle MQTT reconfiguration from web server
     if (captive_portal_mqtt_changed()) {
@@ -224,6 +259,64 @@ void loop() {
 // Callback to re-publish state and re-subscribe settable properties after MQTT reconnection.
 // The broker's Last Will marked the ROOT $state "lost" (which cascades lost to every
 // child per Homie 5), so re-assert $state for the whole device tree, not just the root.
+
+// ── $state self-correction ────────────────────────────────────────────────────
+//
+// A retained $state of "lost" while the device is demonstrably alive and publishing
+// telemetry does not come from a real disconnect. It comes from MQTT session takeover:
+// the client id is stable and cleanSession is false, so when this device reconnects
+// before the broker has noticed the previous session died, the broker MUST terminate
+// that session — and terminating it fires ITS Last Will, $state = "lost", retained.
+//
+//     t0  broker accepts the new CONNECT
+//     t1  on_mqtt_reconnect() publishes $state = "ready"
+//     t2  broker tears down the OLD session, fires its will -> "lost" wins
+//
+// Re-asserting at t1 therefore cannot fix it; the will always lands afterwards. And the
+// wrong value then persists indefinitely, because $state is published only on a state
+// CHANGE while property values are republished every poll — which is exactly why the
+// device looks alive and "lost" at the same time.
+//
+// Homie 5 requires $state retained AND the will set to "lost" (both spec MUSTs), so
+// neither can be dropped. Instead the device SUBSCRIBES TO ITS OWN $state and corrects
+// any value that disagrees with reality.
+//
+// Why this rather than a timer: the broker only delivers when something publishes, so
+// there is no steady-state traffic and no guess about how long a takeover window is. The
+// broker also delivers the retained value the moment we subscribe, so a stale "lost"
+// left by a previous session is corrected at startup, and one arriving later is caught
+// live — both orderings, without ordering assumptions.
+//
+// It cannot loop: publishing "ready" echoes "ready" back, which matches, and stops. A
+// genuine "sleeping" or "disconnected" is not corrected either, because the comparison
+// is against the device's actual state, not a constant.
+
+// Runs INSIDE the MQTT receive callback (subscriber_callback -> dispatch_settable), so it
+// must not publish: re-entering the client while it is mid-packet corrupts its state and
+// takes the device down, which shows up as a reboot loop republishing lost/init/ready.
+// Same discipline as the BLE notify path — record here, act from loop().
+static volatile bool _state_reassert_pending = false;
+
+static void on_state_observed(void* ctx, const char* value) {
+    (void)ctx;
+    const char* actual = device_state_to_cstr(theDevice.state());
+    if (strcmp(value, actual) == 0) return;   // broker agrees — nothing to do
+    Serial.printf("DEVICE: broker holds $state='%s' but this device is '%s' — re-asserting\n",
+                  value, actual);
+    _state_reassert_pending = true;
+}
+
+static void watch_own_state() {
+    char state_topic[160] = {0};
+    snprintf(state_topic, sizeof(state_topic), "%s%s", theDevice.topic(), HOMIE_$STATE);
+    // The handler table is keyed by exact topic and is re-subscribed wholesale on every
+    // reconnect, so registering here is enough to keep the watch alive across drops.
+    // The explicit subscribe covers the CURRENT connection, which is already up by now.
+    subscribe_settable_handler(state_topic, on_state_observed, nullptr);
+    if (mqtt_connected()) mqtt_client.subscribe(state_topic, homie_qos(true));
+    Serial.printf("DEVICE: watching %s for a stale 'lost'\n", state_topic);
+}
+
 void on_mqtt_reconnect() {
     theDevice.mqttConnected();  // re-subscribe settable property /set topics
     theDevice.publishStateTree();
@@ -347,6 +440,10 @@ void setup() {
     theDevice.setState(DeviceState::DEVICE_STATE_READY); // setState will publish the $state
     //loop_mqtt();  // Flush MQTT messages - ensure $state=ready is sent before continuing
 
+    // Start watching our own $state only now, with the real state settled, so the first
+    // retained value the broker hands back is compared against "ready" and not "init".
+    watch_own_state();
+
     setup_homie();
 
     memstats();
@@ -355,6 +452,13 @@ void setup() {
 void loop_housekeeping() {
     log_tcp_loop();     // accept monitors, push buffered log; never blocks
     captive_portal_loop();
+
+    // Deferred out of on_state_observed() — see the note there. Publishing "ready" here
+    // echoes back, matches, and clears; it cannot re-arm itself.
+    if (_state_reassert_pending) {
+        _state_reassert_pending = false;
+        theDevice.publishStateTree();
+    }
     // Handle MQTT reconfiguration from web server
     if (captive_portal_mqtt_changed()) {
         Serial.println("PORTAL: MQTT config or network changed, reconnecting MQTT with current settings...");
