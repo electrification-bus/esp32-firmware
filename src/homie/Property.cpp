@@ -176,21 +176,60 @@ bool Property::supportsTarget() {
 void Property::set_callback() const{
 }
 
+// The whole-tree publish path (Device::publishTree -> Node::publish -> here). This one
+// FORCES: it runs at boot and after a reconnect, where the point is to re-assert every
+// value onto a broker that may have lost its retained store. Gating it would mean a
+// reconnect republished nothing.
 void Property::publish() {
-    publish_value();
+    publish_value(true);
 }
 
 // Publish the current (coerced) value to the property topic. Returns the MQTT publish
 // result; false (no publish) if no value has been set yet. (C5 — was a TODO stub.)
-bool Property::publish_value() {
+// ---- publish-on-change gate ----
+
+bool Property::gate_allows(const char* payload, int len, bool force) {
+    if (force) return true;
+    if (!_retained) return true;              // event property: a repeat is a real event
+    if (len > PROPERTY_MEMO_MAX) return true; // longer than the memo — never gate blind
+    if (_last_pub_len != len) return true;
+    return memcmp(_last_pub, payload, len) != 0;
+}
+
+void Property::note_published(const char* payload, int len) {
+    if (len > PROPERTY_MEMO_MAX) { _last_pub_len = -1; return; }  // unmemoable: forget
+    memcpy(_last_pub, payload, len);
+    _last_pub_len = len;
+}
+
+bool Property::publish_value(bool force) {
     if (!_has_value) return false;  // C3: don't publish a phantom retained-empty value topic
-    if (_value[0] == '\0') {
-        // Empty-string VALUE -> single 0x00 byte; a zero-length payload would retract
-        // the retained topic (Homie §Empty string values). Length-aware overload.
-        static const char nul = 0x00;
-        return _mqtt_client->publish(topic(), &nul, 1, retained(), homie_qos(retained()));
-    }
-    return _mqtt_client->publish(topic(), _value, retained(), homie_qos(retained()));
+    // Empty-string VALUE -> single 0x00 byte; a zero-length payload would retract the
+    // retained topic (Homie §Empty string values). Length-aware overload.
+    static const char nul = 0x00;
+    const char* payload = (_value[0] == '\0') ? &nul : _value;
+    int len = (_value[0] == '\0') ? 1 : (int)strlen(_value);
+
+    // A suppressed republish is a success: nothing failed and the broker holds the value.
+    if (!gate_allows(payload, len, force)) return true;
+    if (!_mqtt_client) return false;
+    bool ok = _mqtt_client->publish(topic(), payload, len, retained(), homie_qos(retained()));
+    if (ok) note_published(payload, len);
+    return ok;
+}
+
+// Same value, same gate, but handed to the publish queue instead of the client — so a
+// driver running on the NimBLE or Modbus task can publish without racing the MQTT client.
+bool Property::publish_queued(bool force) {
+    if (!_has_value) return false;
+    static const char nul = 0x00;
+    const char* payload = (_value[0] == '\0') ? &nul : _value;
+    int len = (_value[0] == '\0') ? 1 : (int)strlen(_value);
+
+    if (!gate_allows(payload, len, force)) return true;
+    bool ok = mqtt_queue_publish(topic(), payload, len, retained());
+    if (ok) note_published(payload, len);
+    return ok;
 }
 
 // Mark this property UNAVAILABLE (rrj.4): retract its retained topic (zero-length,
@@ -198,6 +237,9 @@ bool Property::publish_value() {
 // so publish() won't re-emit the stale value until a fresh setValue().
 void Property::clearValue() {
     _has_value = false;
+    // Forget the memo: after a retraction the broker holds nothing, so the next set()
+    // must publish even if it happens to repeat the value that was there before.
+    _last_pub_len = -1;
     if (_mqtt_client) _mqtt_client->publish(topic(), "", true, homie_qos(true));
 }
 

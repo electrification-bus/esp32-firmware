@@ -65,7 +65,12 @@ int num_subscribers = 0;
 // ============================================================================
 #define MQTT_QUEUE_SIZE 16
 #define MQTT_TOPIC_MAX 128
-#define MQTT_PAYLOAD_MAX 64
+// Sized to match Property::_value, so a value that fits in the property model also fits
+// through the queue. It was 64, which silently truncated anything longer — a JSON array
+// of cell voltages, an enum list, a long string — and drivers worked around it by
+// bypassing the queue entirely (see examples/bms, which published cell_voltages with a
+// direct mqtt_client.publish for exactly this reason).
+#define MQTT_PAYLOAD_MAX 256
 
 struct MqttQueueItem {
     char topic[MQTT_TOPIC_MAX];
@@ -99,7 +104,14 @@ bool mqtt_queue_publish(const char* topic, const char* payload, bool retained) {
 // null-terminated zero-length payload. memcpy (not strncpy) preserves embedded NULs.
 bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool retained) {
     if (length < 0) length = 0;
-    if (length > MQTT_PAYLOAD_MAX) length = MQTT_PAYLOAD_MAX;
+    if (length > MQTT_PAYLOAD_MAX) {
+        // Truncating a payload silently produces a subtly wrong retained value that looks
+        // plausible — worse than a dropped message, because nothing downstream can tell.
+        // Say so, and say by how much, so the fix (raise MQTT_PAYLOAD_MAX) is obvious.
+        Serial.printf("MQTT: **ERROR -- payload for '%s' is %d bytes, max %d — TRUNCATED "
+                      "(raise MQTT_PAYLOAD_MAX)\n", topic, length, MQTT_PAYLOAD_MAX);
+        length = MQTT_PAYLOAD_MAX;
+    }
     if (mqtt_publish_queue == nullptr) {
         Serial.println("MQTT: Queue not initialized, publishing directly");
         return mqtt_client.publish(topic, payload, length, retained, homie_qos(retained));

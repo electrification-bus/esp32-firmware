@@ -54,7 +54,20 @@ public:
     bool is_json_datatype() const;
     void set_callback() const;
     void publish_target_value(const char* payload);
-    bool publish_value();
+
+    // Publish this property's value.
+    //
+    // publish_value()  — direct, for the main task (tree/$description/set echo).
+    // publish_queued() — via mqtt_queue, safe from ANY task. Drivers reach this through
+    //                    NodeProperty::publish(); it is the path a BLE or Modbus task uses.
+    //
+    // Both are gated on change: a RETAINED property whose payload is byte-identical to the
+    // one it last published is not republished, because the broker's retained store already
+    // holds exactly that and every subscriber already has it. `force` bypasses the gate for
+    // a whole-tree republish after reconnect.
+    bool publish_value(bool force = false);
+    bool publish_queued(bool force = false);
+
     void clearValue();   // rrj.4: mark unavailable — retract retained topic, no sentinel
     void mqtt_settable_callback(const char* topic, const char* payload);
     void device_new_value_callback(const char* sensor_value);
@@ -67,7 +80,28 @@ public:
     void serializeInto(JsonObject& obj);
     bool is_dirty() const { return _dirty_settable; }
     void clear_dirty() { _dirty_settable = false; }
+    // Payload last actually put on the wire, for the change gate. Exposed for tests and
+    // for anything that needs to know what the broker currently holds.
+    const char* last_published() const { return _last_pub_len >= 0 ? _last_pub : nullptr; }
+
 private:
+    // True when this payload should reach the wire. Three carve-outs, all deliberate:
+    //   - a NON-RETAINED (event) property is never gated: the broker stores nothing for it,
+    //     so an identical consecutive payload is a second real event, not a redundant
+    //     write, and suppressing it would lose the event.
+    //   - `force` is never gated (whole-tree republish after a reconnect).
+    //   - a payload longer than the memo is never gated — see PROPERTY_MEMO_MAX.
+    bool gate_allows(const char* payload, int len, bool force);
+    void note_published(const char* payload, int len);
+
+    // The memo is deliberately smaller than _value. Comparing exactly means never
+    // WRONGLY suppressing a publish; the cost is that values longer than this are always
+    // published. Sizing it to _value would add 256 bytes to every property on the device
+    // for a case (long JSON payloads) that is rare and republishes cheaply anyway.
+    static const int PROPERTY_MEMO_MAX = 64;
+    char _last_pub[PROPERTY_MEMO_MAX] = {0};
+    int  _last_pub_len = -1;          // -1 = nothing published on this topic yet
+
     bool _dirty_settable = false;
     bool _has_value = false;   // C3: false until setValue() — guards phantom retained-empty topics
     char _id[32] = {0};

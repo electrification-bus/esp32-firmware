@@ -327,9 +327,12 @@ bool SerialBMS::queryCellVoltages() {
         "],\"min\":%.3f,\"max\":%.3f,\"delta\":%.3f}",
         min_v, max_v, max_v - min_v);
 
-    // Publish directly — JSON exceeds mqtt_queue 64-byte payload limit
-    // Safe: BMS loop runs on core 1 same as MQTT client
-    mqtt_client.publish(_np_cell_voltages.topic(), json);
+    // Through the property like everything else. This used to be a direct
+    // mqtt_client.publish() because the queue truncated at 64 bytes — it no longer does
+    // (MQTT_PAYLOAD_MAX is 256, and over-long payloads are now reported rather than
+    // silently clipped). The direct call also published NON-retained, since the two-arg
+    // publish() defaults retained=false, which contradicted the property's declaration.
+    _np_cell_voltages.set_value_and_publish(json);
 
     return true;
 }
