@@ -5,11 +5,15 @@
 // component includes NodeEntity.h. See include/platform/log_stream.h.
 #include <platform/log_stream.h>
 
-#include <homie/Device.h>
-#include <homie/Node.h>
-#include <homie/Property.h>
+// Device, Node and Property appear here ONLY as pointers, so forward declarations are
+// enough and homie/Device.h's ArduinoJson payload (~20,000 preprocessed lines) stays out
+// of every driver translation unit. A driver that actually calls Device or Node methods
+// includes homie/Device.h itself — see lib/sim/battery_sim.cpp.
+#include <homie/homie_globals.h>   // class Device; theDevice, g_active_setup_device
+class Node;
+class Property;
 
-#include <node/NodeProperty.h>
+#include <node/NodeProperty.h>     // by-value member in every driver, so must be complete
 
 class NodeEntity {
     public:

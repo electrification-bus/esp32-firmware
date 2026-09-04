@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <platform/config.h>
 #include <modbus/eletechsup32.h>
 #include <platform/mqtt_client.h>
 

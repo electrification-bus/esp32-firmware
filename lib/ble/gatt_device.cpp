@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <ble/gatt_device.h>
-#include <platform/config.h>
+#include <homie/Property.h>   // entity_settable_callback(Property*) dereferences it
 #include <platform/mqtt_client.h>
 
 static int hex_nibble(char c) {

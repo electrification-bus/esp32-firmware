@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <gpio/digital_output.h>
-#include <platform/config.h>
+#include <homie/Property.h>   // entity_settable_callback(Property*) dereferences it
 
 // Accepts the spellings a human or a controller might publish.
 static bool truthy(const char* v) {

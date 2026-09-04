@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <sim/battery_sim.h>
+#include <homie/Device.h>     // calls device()->…
 
 bool BatterySim::setup() {
     NodeEntity::setup();   // base class first — sets the active device context (A2)

@@ -159,16 +159,7 @@ class Device {
     bool     _has_description_hash  = false;
 };
 
-// ---- process-wide device instances -------------------------------------------
-// Declared here rather than in platform/config.h so that NodeEntity/NodeProperty can
-// reach them without config.h's payload (ArduinoYaml, jsonUtils, homie/homie.h) landing
-// in every driver translation unit. config.h includes this header, so existing users are
-// unaffected. Both are defined in src/platform/config.cpp.
-
-extern Device theDevice;
-
-// The device whose entity is currently running setup() — set by NodeEntity::setup()
-// (which every driver chains to first) so NodeProperty::setup() builds topics and
-// resolves properties against the entity's OWN device (root or a nested child) instead
-// of the global theDevice. Null falls back to theDevice (single-device default).
-extern Device* g_active_setup_device;
+// theDevice / g_active_setup_device live in homie/homie_globals.h, so that a header
+// needing only the pointer (node/NodeEntity.h) can reach them without this one's
+// ArduinoJson payload. Included here so anything using Device also sees them.
+#include <homie/homie_globals.h>

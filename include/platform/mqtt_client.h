@@ -2,7 +2,13 @@
 #include <Arduino.h>
 //#include <PubSubClient.h>   // MQTT https://github.com/knolleary/pubsubclient PlatformIO lib: 89
 #include <MQTT.h>
-#include <homie/Property.h>
+// Property is used here ONLY as a pointer and in pointer-to-member typedefs, both of
+// which an incomplete type satisfies. Forward-declaring instead of including breaks a
+// real cycle: homie/Property.h includes this header, so including it back made
+// Property.h non-self-contained — putting `#include <homie/Property.h>` first in a new
+// file failed with "'Property' has not been declared". It only ever worked because every
+// existing translation unit happened to reach this header first.
+class Property;
 
 #ifndef MAX_DATA_LEN
 #define MAX_DATA_LEN 8192 //+2048

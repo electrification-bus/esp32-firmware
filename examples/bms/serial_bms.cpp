@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include <time.h>
-#include <platform/config.h>
 #include <platform/mqtt_client.h>
 #include "serial_bms.h"
+#include <homie/Property.h>   // entity_settable_callback(Property*) dereferences it
 
 // All NimBLE handling now lives in lib/ble/ble_client.* — this file contains only the
 // JBD protocol and the charging policy. That split is the whole point of the example:
