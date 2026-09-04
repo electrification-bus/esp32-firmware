@@ -22,10 +22,9 @@ bool BME280::setup() {
   air_pressure.setup(getNodeId(), "air_pressure");
 
   _since_last_read = millis();
-  _deviceWire = new TwoWire(0);
-  _deviceWire->begin(_sda, _scl);
+  _deviceWire.begin(_sda, _scl);
 
-  bool ok = begin(BME_ADDR, _deviceWire);
+  bool ok = begin(BME_ADDR, &_deviceWire);
   if (ok) {
     _bme_temp = getTemperatureSensor();
     _bme_pressure = getPressureSensor();

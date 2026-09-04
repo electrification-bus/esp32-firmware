@@ -15,13 +15,22 @@ static bool _nimble_started = false;
 // reason the settable-property table in mqtt_client.cpp is a fixed array.
 static BLEClientLink* _links[BLECLIENT_MAX_LINKS] = {nullptr};
 
-static void register_link(BLEClientLink* l) {
+// NimBLE holds this pointer for the lifetime of the client, so it must outlive
+// connectByAddress(). One per link and bounded at compile time, so it is a fixed pool
+// indexed by registry slot rather than a `new` that is never freed.
+class LinkClientCallbacks;
+static LinkClientCallbacks* callbacks_for_slot(int slot);
+
+// Returns the registry slot, which also indexes the NimBLE callbacks pool below.
+// -1 when the registry is full.
+static int register_link(BLEClientLink* l) {
     for (int i = 0; i < BLECLIENT_MAX_LINKS; i++) {
-        if (_links[i] == l) return;
-        if (_links[i] == nullptr) { _links[i] = l; return; }
+        if (_links[i] == l) return i;
+        if (_links[i] == nullptr) { _links[i] = l; return i; }
     }
     Serial.printf("BLE: link registry full (%d) — notifications for this device will be "
                   "DROPPED (raise BLECLIENT_MAX_LINKS)\n", BLECLIENT_MAX_LINKS);
+    return -1;
 }
 
 // ---- NimBLE callbacks -------------------------------------------------------
@@ -50,6 +59,15 @@ public:
         if (owner) owner->_onDisconnected();
     }
 };
+
+// The pool itself. Statically constructed, so the pointer handed to NimBLE is valid for
+// the whole run without a heap allocation that nobody ever frees.
+static LinkClientCallbacks _link_callbacks[BLECLIENT_MAX_LINKS];
+
+static LinkClientCallbacks* callbacks_for_slot(int slot) {
+    if (slot < 0 || slot >= BLECLIENT_MAX_LINKS) return nullptr;
+    return &_link_callbacks[slot];
+}
 
 // ---- configuration ----------------------------------------------------------
 
@@ -126,7 +144,7 @@ bool BLEClientLink::begin(const char* local_device_name) {
         _nimble_started = true;
         Serial.printf("%s: NimBLE ready (heap after: %u)\n", _tag, ESP.getFreeHeap());
     }
-    register_link(this);
+    _slot = register_link(this);
     _initialized = true;
 
     loadAddress();
@@ -249,10 +267,11 @@ bool BLEClientLink::connectByAddress(const char* address) {
     NimBLEClient* c = (NimBLEClient*)_client;
     if (c == nullptr) {
         c = NimBLEDevice::createClient();
-        LinkClientCallbacks* cb = new LinkClientCallbacks();   // one per link, never freed
-        cb->owner = this;
-        _client_callbacks = cb;
-        c->setClientCallbacks(cb, false);
+        LinkClientCallbacks* cb = callbacks_for_slot(_slot);
+        if (cb) {
+            cb->owner = this;
+            c->setClientCallbacks(cb, false);
+        }   // registry full: no disconnect notifications, already warned at begin()
         c->setConnectionParams(12, 12, 0, 200);
         c->setConnectTimeout(5);
         _client = c;

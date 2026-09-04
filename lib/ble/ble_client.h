@@ -115,11 +115,12 @@ private:
     void* _client              = nullptr;
     void* _write_char_handle   = nullptr;
     void* _notify_char_handle  = nullptr;
-    void* _client_callbacks    = nullptr;
 
     ble_notify_cb_t _notify_cb  = nullptr;
     void*           _notify_ctx = nullptr;
 
+    int      _slot        = -1;    // index in the file-static link registry, and
+                                   // into the matching NimBLE callbacks pool
     bool     _initialized = false;
     bool     _connected   = false;
     int      _rssi        = 0;

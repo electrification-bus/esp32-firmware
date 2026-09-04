@@ -253,7 +253,6 @@ void loop() {
 // DEVICE MODE - publishes own nodes and properties to MQTT broker
 // ============================================================================
 #include <homie/Device.h>
-#include <util/dict.h>
 #include <homie.h>
 
 // Callback to re-publish state and re-subscribe settable properties after MQTT reconnection.

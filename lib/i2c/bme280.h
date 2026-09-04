@@ -27,7 +27,11 @@ class BME280 : public NodeEntity, public Adafruit_BME280 {
         NodeProperty relative_humidity ;
 
     private:
-        TwoWire* _deviceWire;
+        // Owned by value: one TwoWire per BME280 node, constructed with the object
+        // rather than `new`-ed and never freed. NOTE this mirrors the previous
+        // behaviour exactly, including that two BME280 nodes would each hold their own
+        // TwoWire for bus 0 — fine for the single-sensor case this component is used in.
+        TwoWire _deviceWire{0};
         Adafruit_Sensor *_bme_temp = nullptr; //getTemperatureSensor();
         Adafruit_Sensor *_bme_pressure = nullptr; //getPressureSensor();
         Adafruit_Sensor *_bme_humidity = nullptr; //getHumiditySensor();
