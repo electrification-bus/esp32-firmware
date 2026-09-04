@@ -44,6 +44,19 @@ void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_
 // D3: register a per-property fn-ptr handler (+context) for a /set topic.
 void subscribe_settable_handler(const char* topic, settable_handler_t handler, void* ctx);
 void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int length);
+
+// Set a settable property from INSIDE the firmware, with no broker round-trip: the value
+// is delivered straight to the same handler an inbound /set would reach, so it still works
+// while MQTT is down. `topic` is the full /set topic
+// ("homie/5/<device-id>/<node>/<property>/set"). Returns false when no settable property
+// is registered for that topic (a config error — wrong node/property id — not a
+// transient one).
+//
+// This is how one component actuates another: address the target as <node>/<property>,
+// the same pair an MQTT controller would publish to, rather than holding a pointer to it.
+// A pointer can only be wired from a hand-coded src/homie.cpp (the generator cannot emit
+// cross-node links), which is why examples/bms still carries setContactor().
+bool deliver_local_set(const char* topic, const char* value);
 void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data);
 
 // Callback type for forwarding unhandled MQTT messages (used by controller)

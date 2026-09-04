@@ -9,8 +9,9 @@
 // choice and wiring — configuration and hardware, not code — so there is one component
 // rather than one per device. See examples/ssr/ for the relay-specific wiring knowledge.
 //
-// `state` is settable, so a controller, a sched/scheduler rule, or another component can
-// drive it by publishing to <node>/state/set.
+// `state` is settable, so a controller can drive it by publishing to <node>/state/set, and
+// another component can drive it locally via deliver_local_set() — no broker round-trip, so
+// it keeps working with MQTT down.
 
 class DigitalOutput : public NodeEntity {
 public:

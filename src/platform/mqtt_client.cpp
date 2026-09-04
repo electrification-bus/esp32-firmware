@@ -526,6 +526,75 @@ void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data)
     } while (*data++ != 0);
 }
 
+// Deliver `value` to every settable subscriber registered for `topic`, firing the same
+// three callback paths a remote /set does: the D3 fn-ptr handler, the Property* member
+// callback, and the entity callback (Property* overload when a Homie Property exists,
+// else the name-based one with the property id parsed back out of the topic).
+// Returns true if at least one subscriber matched.
+//
+// Factored out of subscriber_callback() so deliver_local_set() takes the IDENTICAL route
+// as an inbound message. One dispatch path, so a driver never needs to care where a set
+// came from.
+static bool dispatch_settable(const char* topic, const char* value) {
+  bool handled = false;
+  for(int i=0;i<num_subscribers;i++) {
+    //Serial.printf("MQTT CALLBACK: checking subscriber %d: topic '%s'\n", i, settable_properties[i].topic);
+    if (strcmp(settable_properties[i].topic, topic) == 0) {
+      handled = true;
+      // D3: per-property fn-ptr handler (+context) — the STL-free callback path.
+      if (settable_properties[i].handler) {
+          Serial.printf("MQTT: Invoking settable handler for topic '%s'\n", topic);
+          settable_properties[i].handler(settable_properties[i].handler_ctx, value);
+      }
+      if (settable_properties[i].property_callback && settable_properties[i].instance) {
+        Serial.printf("MQTT: Invoking property callback for topic '%s'\n", topic);
+          (settable_properties[i].instance->*settable_properties[i].property_callback)(topic, value);
+      }
+      if (settable_properties[i].entity_callback && settable_properties[i].entity) {
+          if (settable_properties[i].instance) {
+              // Homie Property exists — use Property* overload
+              Serial.printf("MQTT: Invoking entity callback for topic '%s'\n", topic);
+              (settable_properties[i].entity->*settable_properties[i].entity_callback)(settable_properties[i].instance);
+          } else {
+              // NodeProperty settable — extract property ID from topic, call name-based overload
+              const char* set_slash = strrchr(topic, '/');  // /set
+              if (set_slash && set_slash > topic) {
+                  const char* p = set_slash - 1;
+                  while (p > topic && *p != '/') p--;
+                  if (*p == '/') p++;
+                  char pid[32];
+                  int plen = set_slash - p;
+                  if (plen > 31) plen = 31;
+                  strncpy(pid, p, plen);
+                  pid[plen] = '\0';
+                  Serial.printf("MQTT: Invoking entity callback '%s'='%s'\n", pid, value);
+                  settable_properties[i].entity->entity_settable_callback(pid, value);
+              }
+          }
+      }
+    }
+  }
+  return handled;
+}
+
+// Set a property from INSIDE the firmware — no broker, no network, no loopback publish.
+// Anything that needs to actuate another node by topic uses this, and it keeps working
+// with the broker unreachable. The property's own publish() (called by the driver's
+// setter) is what reports the resulting value back to MQTT, exactly as it would for a
+// remote /set.
+//
+// `topic` is the full /set topic, e.g. "homie/5/<device-id>/relay1/state/set".
+// Returns false if no settable property is registered for it — the caller should treat
+// that as a configuration error (bad node/property id), not a transient failure.
+bool deliver_local_set(const char* topic, const char* value) {
+  Serial.printf("MQTT: local set '%s' = '%s'\n", topic, value);
+  bool handled = dispatch_settable(topic, value);
+  if (!handled) {
+    Serial.printf("MQTT: local set NOT DELIVERED — no settable property registered for '%s'\n", topic);
+  }
+  return handled;
+}
+
 // MQTT Subscriber callback
 //
 // all subscriptions arrive here
@@ -554,44 +623,7 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
   Serial.printf("\n***MQTT CALLBACK: topic '%s', payload '%s'\n", topic, payload_buf);
 
   //route to subscriber property
-  bool handled = false;
-  for(int i=0;i<num_subscribers;i++) {
-    //Serial.printf("MQTT CALLBACK: checking subscriber %d: topic '%s'\n", i, settable_properties[i].topic);
-    if (strcmp(settable_properties[i].topic, topic) == 0) {
-      handled = true;
-      // D3: per-property fn-ptr handler (+context) — the STL-free callback path.
-      if (settable_properties[i].handler) {
-          Serial.printf("MQTT: Invoking settable handler for topic '%s'\n", topic);
-          settable_properties[i].handler(settable_properties[i].handler_ctx, payload_buf);
-      }
-      if (settable_properties[i].property_callback && settable_properties[i].instance) {
-        Serial.printf("MQTT: Invoking property callback for topic '%s'\n", topic);
-          (settable_properties[i].instance->*settable_properties[i].property_callback)(topic, payload_buf);
-      }
-      if (settable_properties[i].entity_callback && settable_properties[i].entity) {
-          if (settable_properties[i].instance) {
-              // Homie Property exists — use Property* overload
-              Serial.printf("MQTT: Invoking entity callback for topic '%s'\n", topic);
-              (settable_properties[i].entity->*settable_properties[i].entity_callback)(settable_properties[i].instance);
-          } else {
-              // NodeProperty settable — extract property ID from topic, call name-based overload
-              const char* set_slash = strrchr(topic, '/');  // /set
-              if (set_slash && set_slash > topic) {
-                  const char* p = set_slash - 1;
-                  while (p > topic && *p != '/') p--;
-                  if (*p == '/') p++;
-                  char pid[32];
-                  int plen = set_slash - p;
-                  if (plen > 31) plen = 31;
-                  strncpy(pid, p, plen);
-                  pid[plen] = '\0';
-                  Serial.printf("MQTT: Invoking entity callback '%s'='%s'\n", pid, payload_buf);
-                  settable_properties[i].entity->entity_settable_callback(pid, payload_buf);
-              }
-          }
-      }
-    }
-  }
+  bool handled = dispatch_settable(topic, payload_buf);
 
   // If no property handler matched, forward to fallback callback (e.g., controller)
   // Pass the already null-terminated payload_buf to avoid duplicate buffer allocation

@@ -86,9 +86,8 @@ public:
 
     // Mirror charge_control onto an AC contactor. NOTE: the generator cannot wire a
     // pointer between two nodes, so this only works from a hand-coded src/homie.cpp
-    // (doc/HandCodedDevice.md). See README.md — addressing the relay as
-    // <node>/<property> instead is the cleaner route once deliver_local_set() is
-    // available on your branch.
+    // (doc/HandCodedDevice.md). deliver_local_set() is the cleaner route — address the
+    // relay as <node>/<property> and drop the pointer entirely. See README.md.
     void setContactor(DigitalOutput* out) { _ssr = out; }
 
 private:

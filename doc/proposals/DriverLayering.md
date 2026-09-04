@@ -7,8 +7,12 @@ the generic [`ble/gatt_device`](../../lib/ble/gatt_device.yml) component, and th
 driver moved to [`examples/bms/`](../../examples/bms/) as copy/paste reference — 923 lines
 down to ~610, with transport shared rather than duplicated.
 
-Outstanding: extracting the charging policy into `control/charge_manager`, which is still
-blocked on `deliver_local_set()` (see Sequencing below).
+Also shipped: `deliver_local_set()`, cherry-picked onto this branch on its own, so a
+component can actuate another node by `<node>/<property>` instead of by a hand-wired
+pointer.
+
+Outstanding: extracting the charging policy into `control/charge_manager`. No longer
+blocked — the mechanism exists; the policy simply has not been moved.
 
 **One revision from the design below:** the transport went into `lib/ble/ble_client.*`,
 not a separate `lib/blecore/`. The dependency trap described in the next section turned out
@@ -158,10 +162,11 @@ component has for actuating another node here is the `DigitalOutput*` contactor 
 generator cannot wire — it only works in a hand-coded `src/homie.cpp`. That constraint is
 precisely why the policy ended up inside the driver.
 
-`deliver_local_set()` (on the scheduler branch) removes it by letting any component address
-`<node>/<property>` through the same settable table MQTT uses. So:
+`deliver_local_set()` removes it by letting any component address `<node>/<property>`
+through the same settable table MQTT uses. It was cherry-picked onto this branch
+independently of the scheduler — none of it is scheduling-specific. So:
 
-1. Land the scheduler branch (brings `deliver_local_set()`).
+1. ~~Land the scheduler branch~~ — done, as an isolated `mqtt_client` change.
 2. Add `lib/blecore/` and port `serial_bms` onto `BLEDeviceEntity` — **no behaviour
    change**, purely a move. Verify against real hardware here.
 3. Add `ble/gatt_device` — proves the transport layer is device-agnostic.

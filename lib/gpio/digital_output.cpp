@@ -31,8 +31,8 @@ bool DigitalOutput::setup() {
 }
 
 void DigitalOutput::loop() {
-    // Nothing to poll — the output is driven entirely by /set, whether that comes from a
-    // controller over MQTT or from a sched/scheduler rule targeting <node>/state.
+    // Nothing to poll — the output is driven entirely by /set, whether that arrives from a
+    // controller over MQTT or locally from another component via deliver_local_set().
 }
 
 void DigitalOutput::applyState(bool on) {

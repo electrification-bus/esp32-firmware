@@ -99,14 +99,15 @@ worth reading before adapting it.
 **`setContactor()` only works hand-coded.** The AC contactor is reached through a raw `DigitalOutput*`
 pointer, and the generator cannot wire a pointer between two nodes — so it is only
 settable from a hand-coded `src/homie.cpp` ([HandCodedDevice.md](../../doc/HandCodedDevice.md)).
-The better route, on a branch that has `deliver_local_set()`, is to address the relay as
-`<node>/<property>` the way `sched/scheduler` does, and drop the pointer entirely.
+The better route is `deliver_local_set()`: address the relay as `<node>/<property>`, the
+same pair an MQTT controller would publish to, and drop the pointer entirely. That is a
+straightforward change to make when adapting this driver.
 
 **Policy and driver are still in one class.** `charge_manager()` and `isPeakTime()` do not
 belong in a BMS driver at all; they belong in a `control/` component that consumes SOC and
 drives a relay. See [doc/proposals/DriverLayering.md](../../doc/proposals/DriverLayering.md)
-for the intended end state. Splitting them needs `deliver_local_set()` for the same reason
-as above.
+for the intended end state. `deliver_local_set()` is what makes that split possible, and it
+is now available — the policy simply has not been moved yet.
 
 **One BMS per firmware.** Not a hard limit any more — `BLEClientLink` supports up to
 `BLECLIENT_MAX_LINKS` (4) concurrent connections — but this driver has only ever been run

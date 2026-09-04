@@ -41,8 +41,9 @@ implementation: homie-esp32-sdk
 #       active_low: true
 #       initial_state: false
 #
-# Driving it: publish to <node>/state/set from a controller, or target <node>/state from a
-# sched/scheduler rule. The component itself polls nothing.
+# Driving it: publish to <node>/state/set from a controller, or have another component
+# call deliver_local_set() on <node>/state — the local path needs no broker. The component
+# itself polls nothing.
 generator:
   class: DigitalOutput
   header: gpio/digital_output.h
