@@ -119,10 +119,7 @@ JsonDocument* get_node_config();
 JsonDocument* get_platform_config();
 JsonDocument* get_homie_config();
 
-extern Device theDevice;
-
-// The device whose entity is currently running setup() — set by NodeEntity::setup()
-// (which every driver chains to first) so NodeProperty.setup() builds topics/loads
-// values against the entity's OWN device (root or a nested child) instead of the
-// global theDevice. Null falls back to theDevice (single-device default).
-extern Device* g_active_setup_device;
+// theDevice and g_active_setup_device now live in homie/Device.h, next to the class they
+// are instances of. config.h includes it, so anything that got them from here still does
+// — but NodeEntity.h and NodeProperty can now reach them without pulling ArduinoYaml and
+// the rest of config.h into every driver translation unit.
