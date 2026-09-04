@@ -193,10 +193,26 @@ def find_component_yml(component: str):
                 return candidate
     return None
 
+def _cpp_literal(v) -> str:
+    """Render a YAML config value as a C++ source literal.
+
+    Booleans are the reason this exists: YAML `true` parses to Python True, whose str()
+    is "True" — not C++, so it fails the build with "\'True\' was not declared in this
+    scope", pointing at a generated file the author never wrote and no line of device.yml.
+
+    None is deliberately NOT special-cased: check_config_keys() already rejects a required
+    key that is present with no value, naming both the key and the node. Mapping None to ""
+    here would give a bare positional argument (`("id", , 15)`) a second chance to reach
+    the compiler if that check ever moved, while silently disagreeing with it meanwhile.
+    """
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    return str(v)
+
 def fmt_ctor(template: str, node_id: str, config: dict) -> str:
     result = template.replace("{id}", node_id)
     for k, v in (config or {}).items():
-        result = result.replace(f"{{config.{k}}}", str(v))
+        result = result.replace(f"{{config.{k}}}", _cpp_literal(v))
     return result
 
 _CONFIG_KEY_RE = re.compile(r"\{config\.(\w+)\}")
