@@ -1,5 +1,4 @@
 #pragma once
-#include <ArduinoJson.h>
 //#include <MQTTClient.h>
 #include <MQTT.h>
 #include <homie/homie.h>   // HOMIE_TYPE_MAXLEN
@@ -39,9 +38,12 @@ public:
     const char* topic();
     void publish();
     void clearRetained();   // publish empty (zero-length, retained) to each property topic
-    JsonDocument serialize();
-    void serializeInto(JsonObject& obj);
+    // JSON serialisation lives in homie/homie_json.h as a free function, so
+    // ArduinoJson stays out of this header — see node_serialize_into(), which
+    // iterates via numProperties()/propertyAt(). The old JsonDocument serialize()
+    // was never called and is gone.
     int numProperties() { return _num_properties;};
+    Property* propertyAt(int i) { return (i >= 0 && i < _num_properties) ? _properties[i] : nullptr; }
     void settable_callback(Property* property);
 private:
     char _id[64] = {0};

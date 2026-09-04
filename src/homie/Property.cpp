@@ -14,47 +14,6 @@ Property::Property(Node* node) {
     _parent_node = node;
 }
 
-void Property::from_dict(JsonObject* props_obj) {
-
-    if (jsonExists((*props_obj)[HOMIE_ID]) && (*props_obj)[HOMIE_ID].is<const char*>()) {
-        setId((*props_obj)[HOMIE_ID].as<const char*>());
-    }
-    if (jsonExists((*props_obj)[HOMIE_NAME]) && (*props_obj)[HOMIE_NAME].is<const char*>()) {
-        setName((*props_obj)[HOMIE_NAME].as<const char*>()); 
-    }
-    if (jsonExists((*props_obj)[HOMIE_DATATYPE]) && (*props_obj)[HOMIE_DATATYPE].is<const char*>()) {
-        setDatatype((*props_obj)[HOMIE_DATATYPE].as<const char*>());
-    }
-    if (jsonExists((*props_obj)[HOMIE_FORMAT]) && (*props_obj)[HOMIE_FORMAT].is<const char*>()) {
-        setFormat((*props_obj)[HOMIE_FORMAT].as<const char*>());  // required for enum/color (C1)
-    }
-    if (jsonExists((*props_obj)[HOMIE_UNIT]) && (*props_obj)[HOMIE_UNIT].is<const char*>()) {
-        setUnit((*props_obj)[HOMIE_UNIT].as<const char*>());
-    }
-    if (jsonExists((*props_obj)[HOMIE_SETTABLE]) && (*props_obj)[HOMIE_SETTABLE].is<bool>()) {
-        setSettable((*props_obj)[HOMIE_SETTABLE].as<bool>());
-    }
-    if (jsonExists((*props_obj)[HOMIE_RETAINED]) && (*props_obj)[HOMIE_RETAINED].is<bool>()) {
-        setRetained((*props_obj)[HOMIE_RETAINED].as<bool>());
-    }
-    if (jsonExists((*props_obj)[HOMIE_VALUE])) {
-        if ((*props_obj)[HOMIE_VALUE].is<bool>()) {
-            setValue((*props_obj)[HOMIE_VALUE].as<bool>());
-        }
-        if ((*props_obj)[HOMIE_VALUE].is<float>()) {
-            setValue((*props_obj)[HOMIE_VALUE].as<float>());
-        }
-        if ((*props_obj)[HOMIE_VALUE].is<const char*>()) {
-            setValue((*props_obj)[HOMIE_VALUE].as<const char*>());
-        }
-        if ((*props_obj)[HOMIE_VALUE].is<int>()) {
-            setValue((*props_obj)[HOMIE_VALUE].as<int>());
-        }
-        //TODO all types
-    }
-
-}
-
 void Property::setNode(Node* node) {
     _parent_node = node;
 }
@@ -341,28 +300,3 @@ void Property::setMQTTClient(MQTTClient* client) {
     _mqtt_client = client;
 }
 
-void Property::serialize(JsonDocument& json) {
-    json[HOMIE_NAME] = _name;
-    json[HOMIE_DATATYPE] = _datatype;
-    if (_settable) {
-        json[HOMIE_SETTABLE] = _settable;
-    }
-    if (!_retained) {
-        json[HOMIE_RETAINED] = _retained;
-    }
-    if (strlen(_format) != 0) {
-        json[HOMIE_FORMAT] = _format;
-    }
-    if (strlen(_unit) != 0) {
-        json[HOMIE_UNIT] = _unit;
-    }
-}
-
-void Property::serializeInto(JsonObject& obj) {
-    obj[HOMIE_NAME] = _name;
-    obj[HOMIE_DATATYPE] = _datatype;
-    if (_settable) obj[HOMIE_SETTABLE] = _settable;
-    if (!_retained) obj[HOMIE_RETAINED] = _retained;
-    if (strlen(_format) != 0) obj[HOMIE_FORMAT] = _format;
-    if (strlen(_unit) != 0) obj[HOMIE_UNIT] = _unit;
-}

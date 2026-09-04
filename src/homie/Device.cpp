@@ -2,6 +2,7 @@
 #include <ArduinoYaml.h>
 #include <homie/homie.h>
 #include <homie/Device.h>
+#include <homie/homie_json.h>   // property_from_dict / node_serialize_into
 #include <platform/config.h>
 #include <platform/mqtt_client.h>
 #include <util/jsonUtils.h>
@@ -41,7 +42,7 @@ void Device::addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json, boo
         prop->setNode(n); // required: set the parent node on the property before anything else
         prop->setMQTTClient(_mqtt_client);
         JsonObject props_obj = json_prop.as<JsonObject>();
-        prop->from_dict(&props_obj); // Initialize property from JsonObject
+        property_from_dict(*prop, &props_obj); // Initialize property from JsonObject
         n->addProperty(prop);
         if (subscribe && prop->settable()) {
           prop->subscribe();
@@ -379,7 +380,7 @@ size_t Device::serialize(char* buffer, size_t bufferSize) {
   JsonObject nodes_obj = json[HOMIE_NODES].to<JsonObject>();
   for (int i = 0; i < _num_nodes; i++) {
     JsonObject node_obj = nodes_obj[_nodes[i]->id()].to<JsonObject>();
-    _nodes[i]->serializeInto(node_obj);
+    node_serialize_into(*_nodes[i], node_obj);
   }
   // Surface silent truncation: serializeJson() caps output at bufferSize-1.
   // Per-device buffer sizing for large/nested trees is tracked in Epic A.

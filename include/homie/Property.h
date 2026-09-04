@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include <platform/mqtt_client.h>
 class Node;
 
@@ -72,12 +71,11 @@ public:
     void mqtt_settable_callback(const char* topic, const char* payload);
     void device_new_value_callback(const char* sensor_value);
     void subscribe();
-    void from_dict(JsonObject* props_obj);
     const char* topic();
     void publish();
     Node* getParentNode() const { return _parent_node; }
-    void serialize(JsonDocument& json);
-    void serializeInto(JsonObject& obj);
+    // JSON (de)serialisation lives in homie/homie_json.h as free functions, so
+    // ArduinoJson stays out of this header — see property_serialize_into().
     bool is_dirty() const { return _dirty_settable; }
     void clear_dirty() { _dirty_settable = false; }
     // Payload last actually put on the wire, for the change gate. Exposed for tests and

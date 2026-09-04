@@ -11,23 +11,6 @@ Node::Node() : _mqtt_client(nullptr), _device(nullptr) {
 Node::~Node() {
 }
 
-void Node::serializeInto(JsonObject& obj) {
-    obj[HOMIE_NAME] = _name;
-    obj[HOMIE_TYPE] = _type;
-    JsonObject props = obj[HOMIE_PROPERTIES].to<JsonObject>();
-    for (int i = 0; i < _num_properties; i++) {
-        JsonObject prop_obj = props[_properties[i]->id()].to<JsonObject>();
-        _properties[i]->serializeInto(prop_obj);
-    }
-}
-
-JsonDocument Node::serialize() {
-    JsonDocument json;
-    JsonObject obj = json.to<JsonObject>();
-    serializeInto(obj);
-    return json;
-}
-
 void Node::addProperty(Property* property) {
     if (_num_properties >= MAX_PROPERTIES) {
         Serial.printf("Node '%s': ERROR property limit (%d) reached — '%s' NOT added\n",

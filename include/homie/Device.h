@@ -136,7 +136,6 @@ class Device {
     char _topic[96] = {0};
     Node* _nodes[MAX_NODES] = {0};
     DeviceState _state = DEVICE_STATE_INIT;
-    JsonDocument _serialized;
     MQTTClient* _mqtt_client;
     int _num_nodes;
 
