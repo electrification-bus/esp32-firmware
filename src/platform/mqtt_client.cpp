@@ -156,7 +156,8 @@ void mqtt_process_queue() {
 static subscribed_settable_property_t* settable_properties = nullptr;
 static subscribed_settable_property_t* ensure_settable_properties() {
   if (settable_properties == nullptr) {
-    settable_properties = new subscribed_settable_property_t[128];
+    // (): value-initialise. Belt-and-braces with the struct's member initializers.
+    settable_properties = new subscribed_settable_property_t[128]();
   }
   return settable_properties;
 }
@@ -362,10 +363,13 @@ void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb,
        return;
      }
    }
-   // New subscription
+   // New subscription. Null the entity fields explicitly: an entry created here may
+   // never be visited by entity_subscribe_for_callbacks(), and dispatch branches on them.
    strcpy(settable_properties[num_subscribers].topic, topic);
    settable_properties[num_subscribers].property_callback = cb;
    settable_properties[num_subscribers].instance = instance;
+   settable_properties[num_subscribers].entity_callback = nullptr;
+   settable_properties[num_subscribers].entity = nullptr;
    num_subscribers++;
 }
 
@@ -384,9 +388,16 @@ void subscribe_settable_handler(const char* topic, settable_handler_t handler, v
      Serial.printf("MQTT: settable subscriber table full — handler for '%s' NOT registered\n", topic);
      return;
    }
+   // Null the property/entity fields explicitly. A topic registered ONLY here — a
+   // NodeProperty::on_set() handler, or a watch on a device attribute like $state — has
+   // no Property or NodeEntity behind it, and dispatch tests both before calling.
    strcpy(settable_properties[num_subscribers].topic, topic);
    settable_properties[num_subscribers].handler = handler;
    settable_properties[num_subscribers].handler_ctx = ctx;
+   settable_properties[num_subscribers].property_callback = nullptr;
+   settable_properties[num_subscribers].instance = nullptr;
+   settable_properties[num_subscribers].entity_callback = nullptr;
+   settable_properties[num_subscribers].entity = nullptr;
    num_subscribers++;
 }
 

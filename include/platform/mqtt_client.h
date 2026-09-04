@@ -31,12 +31,16 @@ typedef void (NodeEntity::*entity_settable_callback_t)(Property*);
 // /set payload.
 typedef void (*settable_handler_t)(void* ctx, const char* value);
 
+// EVERY member needs a default initializer. The dispatch tests each callback pointer for
+// null before using it, so an indeterminate one is not "unused garbage" — it is a branch
+// taken into a junk pointer-to-member. Three functions register entries here and each
+// sets only the fields it cares about, so whatever the others are is what dispatch sees.
 struct subscribed_settable_property_t {
-    char topic[128];
-    property_settable_callback_t property_callback;
-    entity_settable_callback_t entity_callback;
-    Property* instance; // store the instance to call the member function on
-    NodeEntity* entity; // Pointer to the associated hardware entity
+    char topic[128] = {0};
+    property_settable_callback_t property_callback = nullptr;
+    entity_settable_callback_t entity_callback = nullptr;
+    Property* instance = nullptr; // store the instance to call the member function on
+    NodeEntity* entity = nullptr; // Pointer to the associated hardware entity
     settable_handler_t handler = nullptr;   // D3: per-property fn-ptr handler
     void* handler_ctx = nullptr;            // D3: opaque context for handler
 };
