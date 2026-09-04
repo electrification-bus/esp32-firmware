@@ -2,7 +2,7 @@
 
 #include <node/NodeEntity.h>
 #include <ble/ble_client.h>
-#include <gpio/ssr.h>
+#include <gpio/digital_output.h>
 
 // JBD / Xiaoxiang Smart BMS over BLE (GATT).
 // Protocol derived from BTBatApp: BmsProtocol.kt + BtManager.kt (reference only).
@@ -89,7 +89,7 @@ public:
     // (doc/HandCodedDevice.md). See README.md — addressing the relay as
     // <node>/<property> instead is the cleaner route once deliver_local_set() is
     // available on your branch.
-    void setSSR(SSR* ssr) { _ssr = ssr; }
+    void setContactor(DigitalOutput* out) { _ssr = out; }
 
 private:
     // Transport — everything BLE lives here, shared with lib/ble/gatt_device.
@@ -106,7 +106,7 @@ private:
     // Policy
     bool isPeakTime();
 
-    SSR* _ssr;  // optional AC contactor mirrored from charge_control
+    DigitalOutput* _ssr;  // optional AC contactor mirrored from charge_control
 
     // Peak/off-peak scheduling state
     bool _peak_state_known;

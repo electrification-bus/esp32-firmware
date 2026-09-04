@@ -119,7 +119,7 @@ Consolidated from the component ymls, which remain the source of truth for what 
 | `modbus/*` (`pin_rs485_a`/`_b`) | 36 / 4 | 36 / 4 | 6 / 7 | **44 / 43** |
 | `i2c/bme280` (`pin_sda`/`pin_scl`) | 13 / 16 | 13 / **14** | 13 / 16 | 5 / 6 |
 | `spi/atm90e32_energy_meter` (`pin_cs1`/`pin_cs2`) | see note | see note | 15 / 16 | 8 / 9 |
-| `gpio/ssr`, `gpio/contact_input` | 14, 15, 2, 5 | 14, 15, 2, 5 | plenty | 1, 2, 3, 4 |
+| `gpio/digital_output` | 14, 15, 2, 5 | 14, 15, 2, 5 | plenty | 1, 2, 3, 4 |
 
 **ATM90E32 note:** `lib/spi/atm90e32_energy_meter.yml` gives 27 / 26 for "other ESP32
 boards". Those are **RMII pins on the PoE boards** and are not broken out there — the

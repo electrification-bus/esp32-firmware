@@ -24,7 +24,7 @@ All 7 node classes are exercised across the 4 device boards.
 | poe16-a    | esp32-poe-iso-16mb   | `Modbus_SHT20`, `Modbus_Eletechsup32`         | RS485 shared on UART1         |
 | poe16-b    | esp32-poe-iso-16mb   | `EnergyMeter` (ATM90E32), `OTANode`           | SPI                           |
 | poe4-a     | esp32-poe-iso        | `BME280`, `SerialBMS`                         | I2C + BLE                     |
-| poe4-b     | esp32-poe-iso        | `SSR`                                         | GPIO                          |
+| poe4-b     | esp32-poe-iso        | `DigitalOutput`                               | GPIO                          |
 
 ---
 
@@ -135,13 +135,13 @@ void loop_homie() {
 
 ---
 
-### 5. poe4-b — `esp32-poe-iso` — SSR
+### 5. poe4-b — `esp32-poe-iso` — DigitalOutput
 
 **platformio.ini** — default `esp32-poe-iso` flags (no changes).
 
 **homie.cpp**:
 ```cpp
-SSR ssr("relay1");
+DigitalOutput relay1("relay1", 4, true, false);
 
 void setup_homie() { ssr.setup(); }
 void loop_homie()  { ssr.loop();  }
@@ -178,4 +178,4 @@ pio run -e esp32-poe-iso      -t upload --upload-port COMx
 | `OTANode`             | poe16-b | —         | yes    |
 | `BME280`              | poe4-a  | I2C       | yes    |
 | `SerialBMS`           | poe4-a  | BLE       | yes    |
-| `SSR`                 | poe4-b  | GPIO      | yes    |
+| `DigitalOutput`       | poe4-b  | GPIO      | yes    |

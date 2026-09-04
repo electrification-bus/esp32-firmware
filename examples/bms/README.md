@@ -96,7 +96,7 @@ properties.
 These are the reasons this is an example rather than a shipped component, and they are
 worth reading before adapting it.
 
-**`setSSR()` only works hand-coded.** The AC contactor is reached through a raw `SSR*`
+**`setContactor()` only works hand-coded.** The AC contactor is reached through a raw `DigitalOutput*`
 pointer, and the generator cannot wire a pointer between two nodes — so it is only
 settable from a hand-coded `src/homie.cpp` ([HandCodedDevice.md](../../doc/HandCodedDevice.md)).
 The better route, on a branch that has `deliver_local_set()`, is to address the relay as

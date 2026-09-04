@@ -61,11 +61,14 @@ nodes:
   #    write_uuid:   "0000ff02-0000-1000-8000-00805f9b34fb"
 
   # ── Optional: AC contactor mirrored from charge_control ─────────────────────
-  # NOTE serial_bms reaches the relay through a raw SSR* set by setSSR(), which the
+  # NOTE serial_bms reaches the relay through a raw DigitalOutput* set by setContactor(),
+  # which the
   # generator cannot wire — adding this node is NOT enough on its own; it needs a
   # hand-coded src/homie.cpp (doc/HandCodedDevice.md). See README.md § Known rough edges.
   #
-  #- component: gpio/ssr
+  #- component: gpio/digital_output
   #  id: contactor
   #  config:
   #    pin: 15
+  #    active_low: true
+  #    initial_state: false

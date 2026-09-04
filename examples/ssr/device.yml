@@ -1,0 +1,65 @@
+# Solid-state relay driven from a GPIO.
+#
+# There is no "SSR driver" — an SSR is just a load on a digital output, so this uses the
+# generic gpio/digital_output component. What makes it an SSR is the wiring and the
+# sizing, which is what README.md in this folder is about. Read it before connecting
+# anything to mains.
+#
+# To try it:  cp examples/ssr/device.yml device.yml && ./ebus-esp32 run
+#
+#   mosquitto_pub -t 'homie/5/<device-id>/relay1/state/set' -m true
+#   mosquitto_sub -t 'homie/5/<device-id>/relay1/#' -v
+
+device:
+  name: Relay Board
+  id: relay-${chip_id}          # template, resolved on-device (opaque id)
+  type: control
+  environment: esp32-s3-devkitc-1   # must match a [env:…] in platformio.ini
+  device_type: ebus
+  firmware_name: Relay Board
+  firmware_version: 1.0.0
+  firmware_url: http://example.com/firmware.bin
+  manufacturer: NESL
+  model: ESP32-S3
+  serial_number:
+  homie_role: device
+  device_passphrase: changeme
+
+wifi:
+  ssid: ''
+  password: ''
+
+mqtt:
+  mode: configured-only
+  host: ''
+  port: 1883
+  username: ''
+  password: ''
+  qos: 1
+
+log:
+  tcp_port: 23
+
+nodes:
+  # active_low: true suits the common opto-isolated SSR and relay boards, which energise
+  # when the control pin is pulled DOWN. CHECK YOUR BOARD — getting this backwards means
+  # the load sits energised whenever the ESP32 is held in reset, which is the one state
+  # you cannot fix in software.
+  #
+  # initial_state: false — never boot a mains load on. A watchdog reset would otherwise
+  # re-energise it on every reboot loop.
+  - component: gpio/digital_output
+    id: relay1
+    config:
+      pin: 15
+      active_low: true
+      initial_state: false
+
+  # A second channel: same component, different pin. Nothing about the component is
+  # per-device, so a 4-channel relay board is just four of these.
+  #- component: gpio/digital_output
+  #  id: relay2
+  #  config:
+  #    pin: 16
+  #    active_low: true
+  #    initial_state: false

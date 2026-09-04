@@ -76,7 +76,7 @@ nodes:
       pin_rs485_a: 6                      # shared RS485 bus — same value on every modbus node
       pin_rs485_b: 7
 
-  - component: gpio/ssr
+  - component: gpio/digital_output
     id: relay1
     config:
       pin: 4
@@ -133,7 +133,7 @@ id: panel-main            # fixed literal — logs a warning (two units collide 
 | `i2c/bme280` | `BME280` | `pin_sda`, `pin_scl` |
 | `modbus/sht20` | `Modbus_SHT20` | `pin_rs485_a`, `pin_rs485_b` (uses `get_serial1()`) |
 | `modbus/eletechsup32` | `Modbus_Eletechsup32` | `pin_rs485_a`, `pin_rs485_b` (uses `get_serial1()`) |
-| `gpio/ssr` | `SSR` | `pin` |
+| `gpio/digital_output` | `DigitalOutput` | `pin`, `active_low`, `initial_state` |
 | `ble/gatt_device` | `GattDevice` | `address`, `name_filter`, `service_uuid`, `notify_uuid`, `write_uuid` |
 | `spi/atm90e32_energy_meter` | `EnergyMeter` | `pin_cs1`, `pin_cs2` |
 
@@ -207,12 +207,12 @@ Example output for the quickstart config above:
 
 #include <i2c/bme280.h>
 #include <modbus/sht20.h>
-#include <gpio/ssr.h>
+#include <gpio/digital_output.h>
 #include <spi/atm90e32_energy_meter.h>
 
 BME280 environment_bme280("environment_bme280", 13, 16);
 Modbus_SHT20 environment_sht20("environment_sht20", get_serial1(), 6, 7);
-SSR relay1("relay1", 4);
+DigitalOutput relay1("relay1", 4, true, false);
 EnergyMeter energy_meter("energy_meter", 15, 16);
 
 void setup_homie() {

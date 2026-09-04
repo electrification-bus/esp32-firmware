@@ -58,7 +58,7 @@ where `<board>` is an `[env:*]` from `platformio.ini`. The `./ebus-esp32` CLI is
 - `setup_homie()` — one-time setup of each node entity (called in `setup()`).
 - `loop_homie()` — per-iteration work for each node entity (called every `loop()`).
 
-A complete `src/homie.cpp` for an SHT20 sensor + an SSR relay — identical in shape to what the generator emits:
+A complete `src/homie.cpp` for an SHT20 sensor + a relay on a GPIO — identical in shape to what the generator emits:
 
 ```cpp
 #include <homie.h>
@@ -66,12 +66,12 @@ A complete `src/homie.cpp` for an SHT20 sensor + an SSR relay — identical in s
 #include <homie/Property.h>
 
 #include <modbus/sht20.h>          // NodeEntity subclasses from lib/<bus>/
-#include <gpio/ssr.h>
+#include <gpio/digital_output.h>
 
 // 1. Node objects — statically allocated; constructors run before setup().
 //    The constructor arg is the Homie node id (also the C++ object's identity).
 Modbus_SHT20 environment_sht20("environment_sht20", get_serial1(), 6, 7);
-SSR          relay1("relay1", 4);
+DigitalOutput relay1("relay1", 4, true, false);   // pin, active_low, initial_state
 
 // 2. One static Property per published property — these define the topology.
 static Property _prop_sht20_temperature;

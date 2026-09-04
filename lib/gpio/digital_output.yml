@@ -1,0 +1,49 @@
+homie: 5.0.1
+name: EBUS
+type: ebus
+state: init
+nodes:
+  - id: digital_output
+    name: Digital Output
+    type: gpio
+    properties:
+      - id: state
+        name: State
+        datatype: boolean
+        settable: true
+        retained: true
+        value: false
+        description: "True when the load is energised. Logical, not electrical — active_low inverts the pin, never this."
+extensions: []
+implementation: homie-esp32-sdk
+# One GPIO driven as a digital output, published as a settable boolean.
+#
+# Generic on purpose: pinMode(OUTPUT) + digitalWrite() is the same code for a solid-state
+# relay, a mechanical relay, a contactor coil, a MOSFET gate, an LED, a valve or a buzzer.
+# What differs is polarity, pin choice and wiring — configuration and hardware, not code.
+# For the relay-specific side of that (sizing, snubbers, why an SSR belongs in series with
+# its safety interlock) see examples/ssr/.
+#
+# config: keys
+#   pin            GPIO to drive (required)
+#   active_low     true when the load is energised by pulling the pin LOW. Most
+#                  opto-isolated relay and SSR boards are active-low; check yours, and
+#                  see doc/GPIOPins.md for what is free on your board.
+#   initial_state  logical state applied at boot. Use false unless you have a specific
+#                  reason: energising a pump, heater or contactor as a side effect of a
+#                  reboot is rarely what you want, and a watchdog reset would do it
+#                  repeatedly.
+#
+#   - component: gpio/digital_output
+#     id: pump_contactor
+#     config:
+#       pin: 15
+#       active_low: true
+#       initial_state: false
+#
+# Driving it: publish to <node>/state/set from a controller, or target <node>/state from a
+# sched/scheduler rule. The component itself polls nothing.
+generator:
+  class: DigitalOutput
+  header: gpio/digital_output.h
+  constructor: '("{id}", {config.pin}, {config.active_low}, {config.initial_state})'

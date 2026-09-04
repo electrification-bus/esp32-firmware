@@ -7,7 +7,8 @@
 #   i2c/bme280                  — BME280 temp/pressure/humidity (I2C); requires pin_sda, pin_scl
 #   modbus/sht20                — SHT20 temp/humidity (Modbus RTU); requires pin_rs485_a, pin_rs485_b
 #   modbus/eletechsup32         — 32-ch voltage/current detector (Modbus RTU); requires pin_rs485_a, pin_rs485_b
-#   gpio/ssr                    — Solid-state relay (GPIO); requires pin
+#   gpio/digital_output         — one GPIO as a settable boolean output (relay, SSR,
+#                                 contactor, LED, valve); requires pin, active_low, initial_state
 #   ble/gatt_device             — generic BLE GATT device (any service/notify/write UUIDs)
 #   (ble/serial_bms — JBD Smart BMS — is now a copy/paste example: examples/bms/)
 #   spi/atm90e32_energy_meter   — 6-CT energy meter (SPI); requires pin_cs1, pin_cs2

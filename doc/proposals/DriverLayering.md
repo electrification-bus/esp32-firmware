@@ -186,9 +186,10 @@ explicitly. Worth a short migration note when it happens.
 - **Renaming `spi/atm90e32_energy_meter`** at 365 lines. It is larger than the others but
   it is all protocol and calibration, with no policy in it.
 
-## Incidental
+## Incidental — resolved
 
-`lib/gpio/ssr.cpp` still ships `#define DEBUG_SSR true` and a 3-second self-toggle in
-`loop()`. That is a placeholder for a timer, and it drives a relay unbidden on any board
-that instantiates the component. It also hardcodes `LOW_TRIGGER`, so only active-low
-boards work. Worth fixing whenever `gpio/ssr` is next touched.
+`lib/gpio/ssr` shipped `#define DEBUG_SSR true` and a 3-second self-toggle in `loop()`,
+which drove a relay unbidden on any board that instantiated it. It has been replaced by
+the generic `gpio/digital_output`, which also makes the previously hardcoded
+`LOW_TRIGGER` an `active_low` config key and defaults the boot state to off. See
+[examples/ssr/](../../examples/ssr/).

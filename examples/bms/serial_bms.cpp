@@ -394,7 +394,7 @@ void SerialBMS::charge_manager() {
 
     bool peak = isPeakTime();
 
-    // --- SSR (AC contactor): transitions only at peak/off-peak boundary ---
+    // --- AC contactor (gpio/digital_output): transitions only at the peak boundary ---
     if (!_peak_state_known || peak != _last_peak_state) {
         if (peak) {
             // Entering peak: MOSFET off first, then open contactor
