@@ -46,7 +46,7 @@ The overlay is **merged** into the generated `data/config.yml` every time you `g
 ## The build / flash / monitor loop
 
 ```sh
-./ebus-esp32 build            compile firmware (regenerates from device.yml first, via the pre-build hook)
+./ebus-esp32 build            compile firmware + filesystem image (regenerates from device.yml first)
 ./ebus-esp32 run              build and flash firmware + filesystem over USB
 ./ebus-esp32 push             flash firmware + filesystem without forcing a rebuild
 ./ebus-esp32 push --fs-only   flash filesystem only (re-flash config without rebuilding)

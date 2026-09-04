@@ -3,7 +3,7 @@
 ebus-esp32 — eBus ESP32 firmware CLI
 
   ./ebus-esp32 generate                  Generate src/homie.cpp + data/*.yml from device.yml
-  ./ebus-esp32 build                     Generate then compile firmware
+  ./ebus-esp32 build                     Generate, then compile firmware + filesystem
   ./ebus-esp32 run                       Generate, build, and flash firmware + filesystem
   ./ebus-esp32 run --port COM3           Specify serial port
   ./ebus-esp32 push                      Flash pre-built firmware + filesystem (no build)
@@ -656,9 +656,23 @@ def cmd_build(args) -> None:
     if rc != 0:
         print(f"\nBUILD FAILED (exit {rc})", file=sys.stderr)
         sys.exit(rc)
-    bin_path = ROOT / ".pio" / "build" / env_name / "firmware.bin"
-    if bin_path.exists():
-        print(f"\nfirmware: {bin_path}  ({bin_path.stat().st_size / 1024:.1f} KB)")
+
+    # The filesystem image is part of what a build produces, not an upload-time
+    # side effect. It used to be built only on the way to flashing (`run`, and the
+    # USB half of `push`), which made `push --ota` a lie: it documents itself as
+    # flashing pre-built firmware AND filesystem, but nothing had ever produced the
+    # filesystem for it to flash. Building it here is what makes that contract true.
+    # It is also cheap — mklittlefs packing data/, no compilation.
+    rc = pio_run(env_name, ["buildfs"])
+    if rc != 0:
+        print(f"\nFILESYSTEM BUILD FAILED (exit {rc})", file=sys.stderr)
+        sys.exit(rc)
+
+    build_dir = ROOT / ".pio" / "build" / env_name
+    for label, path in (("firmware", build_dir / "firmware.bin"),
+                        ("filesystem", build_dir / "littlefs.bin")):
+        if path.exists():
+            print(f"\n{label}: {path}  ({path.stat().st_size / 1024:.1f} KB)")
     # `build` does not flash, so this attaches to whatever the device is already
     # running — useful for watching a live board while iterating on a build.
     post_monitor(cfg, args)
@@ -671,10 +685,11 @@ def _upload(cfg, args, build: bool) -> None:
 
     # --ota replaces the USB upload entirely: no serial port, so none of the tmux
     # port-handoff below applies. ota_push() only transports whatever images already
-    # sit in .pio/build/<board>/ — unlike the USB path (where `upload`/`buildfs`
-    # compile as a side effect of flashing), nothing here builds them, so `run --ota`
-    # has to compile explicitly first. `push --ota` intentionally skips this, same as
-    # USB push.
+    # sit in .pio/build/<board>/ — unlike the USB path, where `upload` and `buildfs`
+    # compile as a side effect of flashing — so `run --ota` has to compile explicitly
+    # first. `push --ota` deliberately does not: push means "flash what build made",
+    # and cmd_build now produces the filesystem image as well as the firmware, so
+    # there is something for it to flash. ota_push() checks both are present.
     target = _ota_target(cfg, args)
     if target:
         if build:
@@ -803,6 +818,34 @@ def ota_push(cfg: dict, args, host: str, source: str) -> None:
 
     build_dir = ROOT / ".pio" / "build" / env_name
     fw, fs = build_dir / "firmware.bin", build_dir / "littlefs.bin"
+
+    # push transports what is already on disk, so check it is actually there before
+    # opening an OTA window on the device. Without this a push that was never preceded
+    # by a build died in _ota_push_image() with a FileNotFoundError traceback.
+    missing = [(label, path) for label, path in
+               ((("firmware", fw),) if not args.fs_only else ()) + (("filesystem", fs),)
+               if not path.exists()]
+    if missing:
+        for label, path in missing:
+            print(f"ERROR: no {label} image at {path}", file=sys.stderr)
+        print("       push flashes pre-built images — run './ebus-esp32 build' first\n"
+              "       (or use './ebus-esp32 run --ota', which builds then pushes).",
+              file=sys.stderr)
+        sys.exit(1)
+
+    # Staleness matters more than absence here: a littlefs.bin older than the config it
+    # was packed from flashes cleanly, reports success, and leaves the device running
+    # yesterday's schedule. Its inputs are a known handful of files, so the check is
+    # cheap and exact. Firmware staleness is deliberately NOT second-guessed — that
+    # would mean stat()ing every source in src/ and lib/ to re-derive what the build
+    # system already knows, and `build` is the answer to it.
+    fs_inputs = [q for q in DATA_DIR.rglob("*") if q.is_file()]
+    fs_inputs += [q for q in (Path(args.device_yml), CONFIG_OVERLAY) if q.exists()]
+    newest = max((q.stat().st_mtime for q in fs_inputs), default=0)
+    if newest > fs.stat().st_mtime:
+        print(f"WARNING: {fs.name} is older than the config it is packed from — the "
+              f"device will get stale data/.\n"
+              f"         Run './ebus-esp32 build' to repack it.", file=sys.stderr)
 
     print(f"\n--- OTA push to {host} (host {source}, env {env_name}) ---")
 
@@ -1278,7 +1321,7 @@ def main():
     # addition in the epilog examples above (also alphabetical) and the dispatch below.
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("build", help="Generate then compile firmware via PlatformIO")
+    p = sub.add_parser("build", help="Generate, then compile firmware + filesystem image via PlatformIO")
     p.add_argument("device_yml", **dev_yml_arg)
     add_monitor_flags(p, 30)   # no flash, so the device should already be up
 

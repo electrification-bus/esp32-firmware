@@ -30,7 +30,7 @@ That is the whole loop. The commands below are for finer control.
 
 ```
 ./ebus-esp32 generate [device.yml]                          regenerate src/homie.cpp + data/*.yml (inspect without building)
-./ebus-esp32 build    [device.yml]                          compile firmware (regenerates first, via the pre-build hook)
+./ebus-esp32 build    [device.yml]                          compile firmware + filesystem image (regenerates first)
 ./ebus-esp32 run      [--port PORT] [device.yml]            build and flash firmware + filesystem
 ./ebus-esp32 push     [--port PORT] [--fs-only] [device.yml]  flash without forcing a rebuild
 ./ebus-esp32 monitor  [--net|--serial] [--host ADDR] [--port PORT] [device.yml]
