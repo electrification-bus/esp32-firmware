@@ -1,0 +1,71 @@
+# JBD / Xiaoxiang Smart BMS over BLE.
+#
+# COPY/PASTE EXAMPLE. The driver this references does not live under lib/, so copy it in
+# first — see README.md in this folder:
+#
+#   cp examples/bms/serial_bms.{h,cpp,yml} lib/ble/
+#   cp examples/bms/device.yml device.yml
+#   ./ebus-esp32 run
+#
+# The BMS is a NODE on the root device here. To publish it as a nested CHILD device
+# instead (the eBus bridge pattern), see examples/bridge-bess.device.yml.
+
+device:
+  name: BESS
+  id: bess-${chip_id}          # template, resolved on-device (opaque id)
+  type: energy.ebus.device.bess
+  environment: esp32-s3-devkitc-1   # BLE needs a WiFi/BLE board, not an Ethernet-only one
+  device_type: ebus
+  firmware_name: BESS BMS Monitor
+  firmware_version: 1.0.0
+  firmware_url: http://example.com/firmware.bin
+  manufacturer: NESL
+  model: ESP32-S3
+  serial_number:
+  homie_role: device
+  device_passphrase: changeme
+
+wifi:
+  ssid: ''
+  password: ''
+
+mqtt:
+  mode: configured-only
+  host: ''
+  port: 1883
+  username: ''
+  password: ''
+  qos: 1
+
+log:
+  tcp_port: 23
+
+nodes:
+  # The BMS address is discovered by scanning (name filter "xiaoxiang,jbd,bms") and then
+  # cached in NVS, so only the first boot scans. Publish true to bms/rescan/set to forget
+  # it — e.g. after swapping the battery.
+  - component: ble/serial_bms
+    id: bms
+
+  # ── Optional: the generic probe, alongside the real driver ──────────────────
+  # Handy while bringing up a new or unfamiliar BLE device — it needs no code. Note that
+  # BLECLIENT_MAX_LINKS (4) bounds how many BLE connections one firmware can hold.
+  #
+  #- component: ble/gatt_device
+  #  id: probe
+  #  config:
+  #    address: ""
+  #    name_filter: "MyDevice"
+  #    service_uuid: "0000ff00-0000-1000-8000-00805f9b34fb"
+  #    notify_uuid:  "0000ff01-0000-1000-8000-00805f9b34fb"
+  #    write_uuid:   "0000ff02-0000-1000-8000-00805f9b34fb"
+
+  # ── Optional: AC contactor mirrored from charge_control ─────────────────────
+  # NOTE serial_bms reaches the relay through a raw SSR* set by setSSR(), which the
+  # generator cannot wire — adding this node is NOT enough on its own; it needs a
+  # hand-coded src/homie.cpp (doc/HandCodedDevice.md). See README.md § Known rough edges.
+  #
+  #- component: gpio/ssr
+  #  id: contactor
+  #  config:
+  #    pin: 15

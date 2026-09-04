@@ -6,7 +6,8 @@
 // Publishes plausible state-of-charge + electrical values with NO external hardware,
 // so the "ESP32-as-bridge -> battery-as-child" Homie 5 nesting pattern is fully
 // bench-testable. To bridge a REAL JBD BMS instead, swap this component for
-// `ble/serial_bms` in the child's `nodes:` — the child-device structure is identical;
+// `ble/serial_bms` (copied in from examples/bms/) in the child's `nodes:` — the
+// child-device structure is identical;
 // only the data source changes. See doc/NestedBridgeExample.md.
 class BatterySim : public NodeEntity {
 public:

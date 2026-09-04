@@ -1,0 +1,92 @@
+homie: 5.0.1
+name: EBUS
+type: ebus
+state: init
+nodes:
+  - id: gatt_device
+    name: BLE GATT Device
+    type: ble
+    properties:
+      - id: connected
+        name: Connected
+        datatype: boolean
+        settable: false
+        retained: true
+        value: false
+        description: "True while the GATT link is up."
+      - id: address
+        name: BLE Address
+        datatype: string
+        settable: false
+        retained: true
+        description: "Resolved BLE address, from config or the scan. Cached in NVS so a reboot reconnects without scanning."
+      - id: rssi
+        name: RSSI
+        datatype: integer
+        unit: dBm
+        settable: false
+        retained: true
+        description: "Signal strength at the last connection. Retracted while disconnected."
+      - id: last-notify
+        name: Last Notification
+        datatype: string
+        settable: false
+        retained: true
+        description: "Most recent notification payload, as hex."
+      - id: notify-count
+        name: Notification Count
+        datatype: integer
+        unit: ""
+        settable: false
+        retained: true
+        value: 0
+        description: "Notifications received since boot."
+      - id: write
+        name: Write
+        datatype: string
+        settable: true
+        retained: false
+        description: "Publish hex bytes (e.g. DDA50300FFFD77) to send to the write characteristic. Spaces and colons are ignored."
+      - id: rescan
+        name: Rescan
+        datatype: boolean
+        settable: true
+        retained: false
+        description: "Publish true to drop the cached address and scan again."
+extensions: []
+implementation: homie-esp32-sdk
+# A GENERIC BLE GATT node — it knows no device protocol at all. Give it a service and a
+# notify characteristic (plus a write characteristic if the device accepts commands) and
+# it publishes every notification as hex and sends hex you publish to `write`.
+#
+# Use it to bring up an unfamiliar BLE device before writing any protocol code: watch
+# last-notify while poking write, and work out the framing from an MQTT client.
+#
+# config: keys
+#   address        "aa:bb:cc:dd:ee:ff" to connect directly, or "" to scan
+#   name_filter    comma-separated, case-insensitive substrings matched against the
+#                  advertised name when scanning, e.g. "xiaoxiang,jbd,bms". Ignored when
+#                  address is set. The service UUID is always tried first.
+#   service_uuid   GATT service to look for
+#   notify_uuid    characteristic to subscribe to (required)
+#   write_uuid     characteristic to write to, or "" for a notify-only device
+#
+#   - component: ble/gatt_device
+#     id: sensor_tag
+#     config:
+#       address: ""
+#       name_filter: "SensorTag"
+#       service_uuid: "0000ff00-0000-1000-8000-00805f9b34fb"
+#       notify_uuid:  "0000ff01-0000-1000-8000-00805f9b34fb"
+#       write_uuid:   "0000ff02-0000-1000-8000-00805f9b34fb"
+#
+# The transport underneath (lib/ble/ble_client.*) is shared: connection, reconnect
+# backoff and NVS address caching live there, which is what keeps this component ~150
+# lines. A real protocol driver is this plus framing — see examples/bms/ for a worked
+# one (JBD BMS), which is copy/paste reference, not a buildable component.
+generator:
+  class: GattDevice
+  header: ble/gatt_device.h
+  constructor: '("{id}", "{config.address}", "{config.name_filter}", "{config.service_uuid}", "{config.notify_uuid}", "{config.write_uuid}")'
+  lib_deps:
+    - h2zero/NimBLE-Arduino @ ^2.0.0

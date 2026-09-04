@@ -134,7 +134,7 @@ id: panel-main            # fixed literal — logs a warning (two units collide 
 | `modbus/sht20` | `Modbus_SHT20` | `pin_rs485_a`, `pin_rs485_b` (uses `get_serial1()`) |
 | `modbus/eletechsup32` | `Modbus_Eletechsup32` | `pin_rs485_a`, `pin_rs485_b` (uses `get_serial1()`) |
 | `gpio/ssr` | `SSR` | `pin` |
-| `ble/serial_bms` | `SerialBMS` | none |
+| `ble/gatt_device` | `GattDevice` | `address`, `name_filter`, `service_uuid`, `notify_uuid`, `write_uuid` |
 | `spi/atm90e32_energy_meter` | `EnergyMeter` | `pin_cs1`, `pin_cs2` |
 
 Multiple instances of the same component are allowed; give each a unique `id`.

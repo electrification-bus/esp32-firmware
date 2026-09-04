@@ -1,3 +1,13 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# COPY/PASTE EXAMPLE — not discovered where it sits.
+#
+# `ebus-esp32 generate` only looks under lib/<bus>/<name>.yml, so device.yml cannot
+# reference this file from examples/. To use it:
+#
+#     cp examples/bms/serial_bms.{h,cpp,yml} lib/ble/
+#
+# then add `- component: ble/serial_bms` to device.yml. See README.md in this folder.
+# ─────────────────────────────────────────────────────────────────────────────
 homie: 5.0.1
 name: EBUS
 type: ebus

@@ -7,5 +7,6 @@ Forward-looking design notes for features that are **not yet shipped** (or only 
 | [DeviceProvisioningAPI.md](DeviceProvisioningAPI.md) | not implemented | A REST endpoint to exchange a device passphrase for per-device MQTT broker credentials. |
 | [OTAActivation.md](OTAActivation.md) | partially implemented | OTA disabled by default, opened via an authenticated REST activation window (vs. always-listening firmware-url). |
 | [RuntimeConfigViaNVS.md](RuntimeConfigViaNVS.md) | not implemented | NVS-backed runtime credential/config provisioning (boot-time priority, captive-portal lifecycle). |
+| [DriverLayering.md](DriverLayering.md) | partially implemented | BLE transport (`lib/ble/ble_client`) and generic `ble/gatt_device` shipped; JBD driver moved to `examples/bms/`. Policy split into `control/` still outstanding. |
 
 When a proposal ships, fold its real behavior into the relevant `doc/` page and either delete the proposal or leave a one-line "implemented in X" stub here.

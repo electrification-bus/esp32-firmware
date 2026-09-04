@@ -78,11 +78,11 @@ children:
     name: Battery
     type: energy.ebus.device.bess
     nodes:
-      - component: ble/serial_bms     # was sim/battery_sim
+      - component: ble/serial_bms     # was sim/battery_sim (copy it in from examples/bms/ first)
         id: battery_bms
 ```
 
-Then enable NimBLE in `platformio.ini` (uncomment the `h2zero/NimBLE-Arduino` dep; BLE needs internal DRAM, so keep `CONFIG_WIFI_AP` off on non-PSRAM boards). The `serial_bms` driver scans for and connects to a JBD BMS over BLE and publishes its real readings under the same `<root>-bms` child topics.
+`serial_bms` is a copy/paste example rather than a shipped component, so copy it into place first (`cp examples/bms/serial_bms.{h,cpp,yml} lib/ble/` — see [examples/bms/README.md](../examples/bms/README.md)). Its yml declares the NimBLE dependency itself, so `./ebus-esp32 build` pulls the stack in automatically. BLE needs internal DRAM, so keep `CONFIG_WIFI_AP` off on non-PSRAM boards. The driver scans for and connects to a JBD BMS over BLE and publishes its real readings under the same `<root>-bms` child topics.
 
 ## Why this shapes the device API
 
