@@ -1,0 +1,66 @@
+#pragma once
+#include <platform/modbus/ModbusRTUEntity.h>
+
+// A Modbus RTU device described by its register map, not by C++.
+//
+// Most simple Modbus sensors are "read these registers, scale them, publish them". That
+// is what every driver in lib/modbus does; lib/modbus/sht20.cpp is 94 lines of which the
+// device-specific part is two register addresses and a /10 scale. This component takes
+// that map from device.yml instead, so a new sensor needs no code at all:
+//
+//   - component: modbus/register_device
+//     id: env1
+//     config: { address: 1, pin_rs485_a: 44, pin_rs485_b: 43 }
+//     registers:
+//       - { id: temperature,       reg: 1, scale: 0.1, signed: true, unit: "°C" }
+//       - { id: relative_humidity, reg: 2, scale: 0.1, unit: "%" }
+//
+// `ebus-esp32 generate` turns that list into BOTH the Homie properties and the static
+// ModbusRegisterDesc table below, so there is no runtime parsing and no heap.
+//
+// Write a real driver (sht20 is the worked example) when the device needs more than this:
+// multi-register values, non-linear decoding, writes, or a command sequence.
+
+#define MODBUS_MAX_REGISTERS 16
+
+struct ModbusRegisterDesc {
+    const char* id;         // Homie property id
+    uint16_t    reg;        // register address
+    bool        holding;    // false = input register (0x04), true = holding (0x03)
+    bool        is_signed;  // interpret the raw 16-bit value as signed
+    float       scale;      // published value = raw * scale
+};
+
+// One Modbus transaction covering a contiguous, same-function span of registers.
+// Built once in setup(); see the comment on plan_runs() for why the map is not simply
+// read entry by entry.
+struct ModbusRun {
+    uint16_t start_reg;   // address of the first register in the span
+    uint8_t  first;       // index into _order[] of the first descriptor
+    uint8_t  count;       // registers in the span (also the response word count)
+    bool     holding;     // function code for the whole span
+};
+
+class ModbusRegisterDevice : public ModbusRTUEntity {
+public:
+    ModbusRegisterDevice(const char* homie_node_id, Stream& serial,
+                         int pin_rs485_a, int pin_rs485_b, uint8_t addr,
+                         const ModbusRegisterDesc* regs, size_t count);
+    ~ModbusRegisterDevice() {}
+
+    bool setup() override;
+    uint8_t poll() override;
+
+private:
+    void plan_runs();
+    void publish_one(uint8_t desc_index, uint16_t raw);
+
+    const ModbusRegisterDesc* _regs;
+    size_t _count;
+    NodeProperty _props[MODBUS_MAX_REGISTERS];
+
+    // Descriptor indices sorted by (function, address) and the spans they collapse into.
+    uint8_t   _order[MODBUS_MAX_REGISTERS];
+    ModbusRun _runs[MODBUS_MAX_REGISTERS];   // worst case: nothing merges, one run each
+    uint8_t   _num_runs = 0;
+};

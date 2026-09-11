@@ -1,0 +1,72 @@
+homie: 5.0.1
+name: EBUS
+type: ebus
+state: init
+nodes:
+  # No properties here on purpose: they come from the device.yml entry's `registers:`
+  # list, because a register map is per-instance. See generator.properties_from below.
+  - id: modbus_device
+    name: Modbus Device
+    type: modbus
+extensions: []
+implementation: homie-esp32-sdk
+# A Modbus RTU device described by its REGISTER MAP rather than by C++.
+#
+# Most simple Modbus sensors are "read these registers, scale them, publish them" —
+# lib/modbus/sht20.cpp is 94 lines of which the device-specific part is two register
+# addresses and a /10 scale. This component takes that map from device.yml, so adding a
+# new sensor needs no code:
+#
+#   - component: modbus/register_device
+#     id: env1
+#     config:
+#       address: 1
+#       pin_rs485_a: 44
+#       pin_rs485_b: 43
+#     registers:
+#       - id: temperature
+#         reg: 1                 # 0x0001 also works — YAML reads it as an int
+#         scale: 0.1
+#         signed: true           # needed for anything that can go below zero
+#         unit: "°C"
+#       - id: relative_humidity
+#         reg: 2
+#         scale: 0.1
+#         unit: "%"
+#
+# register keys
+#   id           Homie property id (required, unique within the node)
+#   reg          register address (required, integer)
+#   type         "input" (default, function 0x04) or "holding" (0x03)
+#   datatype     float (default), integer or boolean — the Homie datatype
+#   scale        published value = raw * scale (default 1)
+#   signed       read the raw 16-bit value as signed (default false)
+#   unit         Homie unit; omit only for genuinely dimensionless values, and use
+#                unit: "" to say so, or the generator warns
+#   name         display name (defaults to a title-cased id)
+#   description  optional Homie description
+#
+# Contiguous same-function registers are collapsed into ONE Modbus transaction, so the
+# two-register map above is a single read — the same traffic a hand-written driver makes.
+# Runs never span a gap: a missing address ends the run rather than being read and thrown
+# away, because some slaves reject a request covering registers they do not implement.
+# device.yml order does not matter; the map is sorted internally, and the emitted table
+# stays in the order you wrote it so it stays diffable against the datasheet.
+#
+# All modbus/* nodes share ONE physical RS485 bus, so give every modbus node the SAME
+# pin_rs485_a/pin_rs485_b — only the first one initialised configures the UART.
+# Reference pins by board: doc/GPIOPins.md
+#
+# WHEN TO WRITE A REAL DRIVER INSTEAD: values spanning two registers, non-linear
+# decoding, writes, or a command sequence. lib/modbus/sht20.* is the worked example, and
+# is also what this component is measured against — if your device needs more than a map,
+# it needs code.
+generator:
+  class: ModbusRegisterDevice
+  header: modbus/register_device.h
+  # Properties come from the device.yml entry's `registers:` list rather than from the
+  # `nodes:` block above. The generator synthesizes the Homie properties AND a static
+  # ModbusRegisterDesc table, referenced below as {registers}/{registers_count}.
+  properties_from: registers
+  constructor: '("{id}", get_serial1(), {config.pin_rs485_a}, {config.pin_rs485_b}, {config.address}, {registers}, {registers_count})'
+  # No lib_deps: modbus deps come from lib/platform/library.json (see sht20.yml).

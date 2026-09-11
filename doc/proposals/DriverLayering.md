@@ -182,6 +182,93 @@ Step 4 renames retained MQTT topics — `bms/peak_begin_min` becomes
 at the old paths, and leaves stale retained topics on the broker that need clearing
 explicitly. Worth a short migration note when it happens.
 
+## Properties synthesized from device.yml (implemented, Modbus only)
+
+A separate axis from the transport/protocol/policy split above, and one that kept
+surfacing while implementing it.
+
+A node's Homie properties normally come from its **component yml**, which is right when
+the component knows its own shape — a BME280 always has temperature, humidity and
+pressure. It is wrong for a **generic** component, where the shape is per-instance: one
+Modbus register map is not another, one scheduler's rules are not another's.
+
+That limitation has now blocked three things. `sched/scheduler` could not generate
+per-rule properties and settled for a fixed node plus rule-id payloads. `control/well_pump`
+could not either. And a data-driven Modbus component was impossible outright, because its
+entire surface is per-instance.
+
+So `emit_node()` can now take properties from the device.yml entry. A component opts in:
+
+```yaml
+generator:
+  properties_from: registers
+```
+
+and its device.yml entry carries the list:
+
+```yaml
+- component: modbus/register_device
+  id: env1
+  config: { address: 1, pin_rs485_a: 36, pin_rs485_b: 4 }
+  registers:
+    - { id: temperature,       reg: 1, scale: 0.1, signed: true, unit: "°C" }
+    - { id: relative_humidity, reg: 2, scale: 0.1, unit: "%" }
+```
+
+The synthesized properties are injected into the component's node *before* the existing
+emission loop, so `addProperty()`, `data/homie.yml` and the missing-unit warning all work
+on them unchanged — the feature is an input to the existing machinery, not a parallel path
+through it. The same list also emits a static `ModbusRegisterDesc[]` into `src/homie.cpp`,
+referenced from the constructor via `{registers}` / `{registers_count}`, so the map costs
+no runtime parsing and no heap.
+
+**Scoped to Modbus registers deliberately.** The opt-in key names `registers` specifically
+rather than something generic, and one real consumer is enough to prove the shape before
+committing to it for scheduler rules or controller zones. Generalising is a rename and a
+second synthesizer, not a redesign.
+
+### Why this is not "move sht20 to examples/"
+
+The obvious-looking next step after the BLE split — give Modbus the same treatment — does
+not apply, and it is worth writing down why.
+
+The BLE split was justified by 923 lines carrying ~330 of duplicated transport, because
+`lib/ble` had no shared layer. Modbus already has one, `lib/platform/modbus`, which is
+exactly why `lib/modbus/sht20.cpp` is 94 lines and `eletechsup32.cpp` is 46. Of sht20's 94,
+the device-specific part is two register addresses, a `/10` scale, and publishing.
+**sht20 is the output of that refactor, not a candidate for it.**
+
+There is also no way to express it. A `component:` resolves to one yml, one class, one
+node; the transport arrives through the C++ include chain, not a declaration. "Use the
+sht20 example with the modbus driver" has no syntax, and needs none —
+`Modbus_SHT20 : public ModbusRTUEntity` already is that composition.
+
+`modbus/register_device` is the real parallel to `ble/gatt_device`: not moving a working
+driver out of `lib/`, but adding a generic one beside it that needs no code at all. The
+hand-written drivers stay, and the yml says when to reach for one — values spanning two
+registers, non-linear decoding, writes, or a command sequence.
+
+### Transactions
+
+Contiguous same-function registers are collapsed into one read, so a map costs the same
+bus traffic a hand-written driver would: an SHT20's two registers are a single
+transaction, and a 32-register block is one rather than thirty-two. Runs never span a
+gap — some slaves reject a request covering registers they do not implement — and the
+descriptor table stays in `device.yml` order, with sorting done on an index array, so
+the emitted table remains diffable against the datasheet.
+
+That removes the objection to porting `modbus/sht20` onto this component: it would drop
+from 94 lines to roughly 25 (a static table plus a constructor), keep
+`component: modbus/sht20` config-free because its yml still declares its own properties,
+and issue the identical single two-register read. Worth doing once it can be checked
+against real hardware, since sht20 is a driver in active use.
+
+### Known limits
+
+- 16-bit registers only — no 32-bit values spanning two registers. That is the most likely
+  first extension, and the descriptor struct has room for a `words` field.
+- Read-only. Writes would need settable properties routed back to `writeSingleRegister`.
+
 ## Non-goals
 
 - **Reorganising the rest of `lib/`.** The measurements above say it does not need it.

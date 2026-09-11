@@ -248,8 +248,14 @@ def _cpp_literal(v) -> str:
         return "true" if v else "false"
     return str(v)
 
-def fmt_ctor(template: str, node_id: str, config: dict) -> str:
+def fmt_ctor(template: str, node_id: str, config: dict, registers: list = None) -> str:
     result = template.replace("{id}", node_id)
+    # {registers} / {registers_count} name the static descriptor table emitted alongside
+    # the object, for components whose shape comes from device.yml rather than their yml.
+    if registers is not None:
+        cvar = "".join(c if (c.isalnum() or c == "_") else "_" for c in str(node_id))
+        result = result.replace("{registers}", f"_regs_{cvar}")
+        result = result.replace("{registers_count}", str(len(registers)))
     for k, v in (config or {}).items():
         result = result.replace(f"{{config.{k}}}", _cpp_literal(v))
     return result
@@ -379,6 +385,98 @@ def write_lean_platformio_ini(env_name: str, used_lib_deps: list) -> None:
     print(f"  generated: {GENERATED_INI.relative_to(ROOT)}  (env:{env_name}, "
           f"{len(kept_deps)} lib_deps, {len(base_deps) - len([d for d in base_deps if d in kept_deps])} pruned)")
 
+# ── properties synthesized from device.yml ─────────────────────────────────────
+#
+# Normally a node's Homie properties come from its component yml, which is right when the
+# component knows its own shape: a BME280 always has temperature/humidity/pressure. It is
+# wrong for a GENERIC component, where the shape is per-instance — one Modbus register map
+# is not another. Those components declare
+#
+#     generator:
+#       properties_from: registers
+#
+# and their device.yml entry carries a `registers:` list, which becomes both the Homie
+# properties and a static descriptor table compiled into src/homie.cpp.
+#
+# Scoped deliberately to Modbus registers for now. The mechanism generalises — the same
+# gap blocks per-rule scheduler properties and per-zone controller properties — but one
+# real consumer is enough to prove the shape before committing to it everywhere.
+
+# Homie datatypes a register can reasonably decode to.
+_REGISTER_DATATYPES = ("float", "integer", "boolean")
+
+def registers_to_properties(regs, node_id, comp_path):
+    """device.yml `registers:` -> the same property dicts a component yml would declare.
+    Returns the list; exits with a specific message on anything malformed, because a
+    register map typo otherwise surfaces as a property that silently never publishes."""
+    if not isinstance(regs, list) or not regs:
+        print(f"ERROR: node '{node_id}' uses component {comp_path.name}, which requires a "
+              f"non-empty 'registers:' list in its device.yml entry", file=sys.stderr)
+        sys.exit(1)
+
+    props, seen = [], set()
+    for i, r in enumerate(regs):
+        where = f"node '{node_id}' registers[{i}]"
+        if not isinstance(r, dict):
+            print(f"ERROR: {where}: expected a mapping, got {type(r).__name__}", file=sys.stderr)
+            sys.exit(1)
+        rid = r.get("id")
+        if not rid:
+            print(f"ERROR: {where}: missing required 'id'", file=sys.stderr)
+            sys.exit(1)
+        if rid in seen:
+            print(f"ERROR: {where}: duplicate register id '{rid}' — ids become property "
+                  f"topics and must be unique within the node", file=sys.stderr)
+            sys.exit(1)
+        seen.add(rid)
+        if r.get("reg") is None:
+            print(f"ERROR: {where} ('{rid}'): missing required 'reg' (the register "
+                  f"address, e.g. 1 or 0x0001)", file=sys.stderr)
+            sys.exit(1)
+        if not isinstance(r["reg"], int):
+            print(f"ERROR: {where} ('{rid}'): reg must be an integer, got {r['reg']!r}. "
+                  f"YAML reads 0x0001 as an int but \"0x0001\" as a string.", file=sys.stderr)
+            sys.exit(1)
+        kind = r.get("type", "input")
+        if kind not in ("input", "holding"):
+            print(f"ERROR: {where} ('{rid}'): type must be 'input' or 'holding', "
+                  f"got {kind!r}", file=sys.stderr)
+            sys.exit(1)
+        datatype = r.get("datatype", "float")
+        if datatype not in _REGISTER_DATATYPES:
+            print(f"ERROR: {where} ('{rid}'): datatype must be one of "
+                  f"{', '.join(_REGISTER_DATATYPES)}, got {datatype!r}", file=sys.stderr)
+            sys.exit(1)
+
+        prop = {"id": rid,
+                "name": r.get("name", rid.replace("_", " ").replace("-", " ").title()),
+                "datatype": datatype,
+                "settable": False,
+                "retained": True}
+        # Pass `unit` through only when present, so the generator's existing
+        # numeric-property-without-a-unit warning still fires on a forgotten one.
+        if "unit" in r:
+            prop["unit"] = r["unit"]
+        if r.get("description"):
+            prop["description"] = r["description"]
+        props.append(prop)
+    return props
+
+def registers_to_desc_table(regs, node_id):
+    """The C++ side: a static ModbusRegisterDesc[] compiled into src/homie.cpp, so the
+    register map costs no runtime parsing and no heap."""
+    lines = [f"static const ModbusRegisterDesc _regs_{_cvar_global(node_id)}[] = {{"]
+    for r in regs:
+        holding = "true" if r.get("type", "input") == "holding" else "false"
+        signed_ = "true" if r.get("signed", False) else "false"
+        scale = float(r.get("scale", 1))
+        lines.append(f'    {{ "{r["id"]}", {r["reg"]}, {holding}, {signed_}, {scale!r}f }},')
+    lines.append("};")
+    return lines
+
+def _cvar_global(s):
+    return "".join(c if (c.isalnum() or c == "_") else "_" for c in str(s))
+
 def cmd_generate(args) -> None:
     device_yml = Path(args.device_yml)
     cfg        = load_device_yml(device_yml)
@@ -440,6 +538,27 @@ def cmd_generate(args) -> None:
         cls, header, ctor_tmpl = gen["class"], gen["header"], gen["constructor"]
         comp_nodes = comp.get("nodes", [])
         explicit_id = bool(node_id)
+
+        # A component can declare that its properties come from the device.yml entry
+        # instead of from its own yml — see registers_to_properties(). The synthesized
+        # properties are injected into the component's (single) node here, BEFORE the
+        # emission loop below, so addProperty(), data/homie.yml and the missing-unit
+        # warning all work on them unchanged.
+        registers = None
+        if gen.get("properties_from") == "registers":
+            registers = entry.get("registers")
+            if len(comp_nodes) != 1:
+                print(f"ERROR: component yml '{comp_path}' uses properties_from: registers, "
+                      f"which requires exactly one node entry (found {len(comp_nodes)})",
+                      file=sys.stderr)
+                sys.exit(1)
+            comp_nodes = [dict(comp_nodes[0])]
+            comp_nodes[0]["properties"] = registers_to_properties(
+                registers, node_id or comp_nodes[0].get("id"), comp_path)
+        elif entry.get("registers"):
+            print(f"  WARNING: node '{node_id or component}' has a registers: list, but "
+                  f"component '{component}' does not declare generator.properties_from: "
+                  f"registers — the list is IGNORED", file=sys.stderr)
         if not node_id:
             if comp_nodes and "id" not in comp_nodes[0]:
                 print(f"ERROR: component yml '{comp_path}' first node entry missing "
@@ -458,7 +577,9 @@ def cmd_generate(args) -> None:
             if dep not in used_lib_deps:
                 used_lib_deps.append(dep)
         includes.append(f"#include <{header}>")
-        decls.append(f"{cls} {node_id}{fmt_ctor(ctor_tmpl, node_id, node_cfg)};")
+        if registers is not None:
+            decls.extend(registers_to_desc_table(registers, node_id))
+        decls.append(f"{cls} {node_id}{fmt_ctor(ctor_tmpl, node_id, node_cfg, registers)};")
         setups.append(f"    {node_id}.setup();")
         loops.append(f"    {node_id}.loop();")
         if setdev_addr:

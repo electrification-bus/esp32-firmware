@@ -1,0 +1,111 @@
+#include <Arduino.h>
+#include <modbus/register_device.h>
+
+// ModbusMaster's response buffer is 64 words, but ku8MaxBufferSize is private, so the
+// limit is mirrored here. MODBUS_MAX_REGISTERS (16) is already below it, making this a
+// guard rather than a live constraint — it only starts to matter if that is raised.
+#define MODBUS_MAX_RUN_WORDS 64
+
+ModbusRegisterDevice::ModbusRegisterDevice(const char* homie_node_id, Stream& serial,
+                                           int pin_rs485_a, int pin_rs485_b, uint8_t addr,
+                                           const ModbusRegisterDesc* regs, size_t count)
+    : ModbusRTUEntity(homie_node_id, pin_rs485_a, pin_rs485_b), _regs(regs), _count(count) {
+    _modbus_address = addr;
+    _serial = &serial;
+    _poll_timestamp = 0;
+    if (_count > MODBUS_MAX_REGISTERS) {
+        Serial.printf("MODBUS[%s]: **ERROR -- %u registers, max %d — the rest are IGNORED "
+                      "(raise MODBUS_MAX_REGISTERS)\n",
+                      homie_node_id, (unsigned)_count, MODBUS_MAX_REGISTERS);
+        _count = MODBUS_MAX_REGISTERS;
+    }
+}
+
+// Collapse the register map into the fewest Modbus transactions that still read only
+// registers the map actually names.
+//
+// Two rules, both deliberate. Runs never SPAN A GAP: reading across an address the device
+// does not implement makes some slaves reject the whole request, so a missing address
+// ends the run rather than being read and discarded. And a run never exceeds
+// ModbusMaster's response buffer.
+//
+// device.yml order is arbitrary, so this sorts an index array rather than the descriptor
+// table — the emitted table stays in the order it was written, which is what makes it
+// diffable against a datasheet.
+void ModbusRegisterDevice::plan_runs() {
+    for (size_t i = 0; i < _count; i++) _order[i] = (uint8_t)i;
+
+    // Insertion sort by (function, address). _count <= MODBUS_MAX_REGISTERS (16).
+    for (size_t i = 1; i < _count; i++) {
+        uint8_t key = _order[i];
+        int j = (int)i - 1;
+        while (j >= 0) {
+            const ModbusRegisterDesc& a = _regs[_order[j]];
+            const ModbusRegisterDesc& b = _regs[key];
+            bool after = (a.holding != b.holding) ? (a.holding && !b.holding)
+                                                  : (a.reg > b.reg);
+            if (!after) break;
+            _order[j + 1] = _order[j];
+            j--;
+        }
+        _order[j + 1] = key;
+    }
+
+    _num_runs = 0;
+    for (size_t i = 0; i < _count; i++) {
+        const ModbusRegisterDesc& d = _regs[_order[i]];
+        ModbusRun* run = _num_runs ? &_runs[_num_runs - 1] : nullptr;
+        bool extends = run
+                    && run->holding == d.holding
+                    && d.reg == (uint16_t)(run->start_reg + run->count)
+                    && run->count < MODBUS_MAX_RUN_WORDS;
+        if (extends) {
+            run->count++;
+        } else {
+            _runs[_num_runs++] = { d.reg, (uint8_t)i, 1, d.holding };
+        }
+    }
+}
+
+bool ModbusRegisterDevice::setup() {
+    ModbusRTUEntity::setup();   // brings up the shared RS485 bus
+    for (size_t i = 0; i < _count; i++) {
+        _props[i].setup(getNodeId(), _regs[i].id);
+    }
+    plan_runs();
+    Serial.printf("MODBUS[%s]: %u register(s) at slave address %u, in %u transaction(s)\n",
+                  getNodeId(), (unsigned)_count, _modbus_address, _num_runs);
+    return true;
+}
+
+void ModbusRegisterDevice::publish_one(uint8_t desc_index, uint16_t raw) {
+    const ModbusRegisterDesc& r = _regs[desc_index];
+    float value = (r.is_signed ? (float)(int16_t)raw : (float)raw) * r.scale;
+    Serial.printf("MODBUS[%s]: %s = %.4g\n", getNodeId(), r.id, value);
+    _props[desc_index].set_value_and_publish(value);
+}
+
+uint8_t ModbusRegisterDevice::poll() {
+    uint8_t last = ku8MBSuccess;
+
+    for (uint8_t i = 0; i < _num_runs; i++) {
+        const ModbusRun& run = _runs[i];
+        uint8_t rc = run.holding ? readHoldingRegisters(run.start_reg, run.count)
+                                 : readInputRegisters(run.start_reg, run.count);
+        if (rc != ku8MBSuccess) {
+            Serial.printf("MODBUS[%s]: read of %u register(s) from %u failed (0x%02X)\n",
+                          getNodeId(), run.count, run.start_reg, rc);
+            // Retract rather than publish a sentinel — a consumer cannot tell a real 0
+            // from a failed read. See doc/WritingADriver.md.
+            for (uint8_t k = 0; k < run.count; k++) _props[_order[run.first + k]].clearValue();
+            last = rc;
+            continue;
+        }
+        // The run is contiguous by construction, so response word k is the descriptor at
+        // _order[first + k].
+        for (uint8_t k = 0; k < run.count; k++) {
+            publish_one(_order[run.first + k], getResponseBuffer(k));
+        }
+    }
+    return last;
+}
