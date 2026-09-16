@@ -7,8 +7,8 @@
 // Contiguous, so register_device collapses them into the single two-register read this
 // driver has always issued.
 static const ModbusRegisterDesc SHT20_REGS[] = {
-    { "temperature",       1, false, true,  0.1f },
-    { "relative_humidity", 2, false, false, 0.1f },
+    { "temperature",       1, false, true,  0.1f, REGDEV_FLOAT },
+    { "relative_humidity", 2, false, false, 0.1f, REGDEV_FLOAT },
 };
 
 Modbus_SHT20::Modbus_SHT20(const char* homie_node_id, Stream& serial,

@@ -462,6 +462,16 @@ def registers_to_properties(regs, node_id, comp_path):
         props.append(prop)
     return props
 
+# Homie datatype -> the ModbusRegDatatype the driver publishes through. The two must
+# agree: the declared datatype goes into $description while this picks the
+# set_value_and_publish() overload, and a mismatch means a property whose payload
+# contradicts its own declaration ("1.0000" for a boolean).
+_REGISTER_DATATYPE_ENUM = {
+    "float":   "REGDEV_FLOAT",
+    "integer": "REGDEV_INTEGER",
+    "boolean": "REGDEV_BOOLEAN",
+}
+
 def registers_to_desc_table(regs, node_id):
     """The C++ side: a static ModbusRegisterDesc[] compiled into src/homie.cpp, so the
     register map costs no runtime parsing and no heap."""
@@ -470,7 +480,8 @@ def registers_to_desc_table(regs, node_id):
         holding = "true" if r.get("type", "input") == "holding" else "false"
         signed_ = "true" if r.get("signed", False) else "false"
         scale = float(r.get("scale", 1))
-        lines.append(f'    {{ "{r["id"]}", {r["reg"]}, {holding}, {signed_}, {scale!r}f }},')
+        dt = _REGISTER_DATATYPE_ENUM[r.get("datatype", "float")]
+        lines.append(f'    {{ "{r["id"]}", {r["reg"]}, {holding}, {signed_}, {scale!r}f, {dt} }},')
     lines.append("};")
     return lines
 

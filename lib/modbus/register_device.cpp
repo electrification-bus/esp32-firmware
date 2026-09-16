@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <modbus/register_device.h>
+#include <math.h>          // lroundf
 
 // ModbusMaster's response buffer is 64 words, but ku8MaxBufferSize is private, so the
 // limit is mirrored here. REGDEV_MAX_REGISTERS (16) is already below it, making this a
@@ -83,8 +84,30 @@ bool ModbusRegisterDevice::setup() {
 void ModbusRegisterDevice::publish_one(uint8_t desc_index, uint16_t raw) {
     const ModbusRegisterDesc& r = _regs[desc_index];
     float value = (r.is_signed ? (float)(int16_t)raw : (float)raw) * r.scale;
-    Serial.printf("MODBUS[%s]: %s = %.4g\n", getNodeId(), r.id, value);
-    _props[desc_index].set_value_and_publish(value);
+
+    // Publish through the overload matching the DECLARED datatype, not always the float
+    // one. NodeProperty::set(float) renders %.4f, so a property declared boolean in
+    // $description was going out as "1.0000" and an integer as "3.0000" — payloads that
+    // contradict the property's own declaration.
+    switch (r.datatype) {
+        case REGDEV_BOOLEAN:
+            // Off the RAW word: a scale on a boolean register is meaningless, and
+            // scaling could turn a set bit into 0.0 by rounding.
+            Serial.printf("MODBUS[%s]: %s = %s\n", getNodeId(), r.id, raw ? "true" : "false");
+            _props[desc_index].set_value_and_publish(raw != 0);
+            break;
+        case REGDEV_INTEGER: {
+            // Rounded, not truncated: a scaled reading of 23.5 is nearer 24 than 23.
+            int as_int = (int)lroundf(value);
+            Serial.printf("MODBUS[%s]: %s = %d\n", getNodeId(), r.id, as_int);
+            _props[desc_index].set_value_and_publish(as_int);
+            break;
+        }
+        default:
+            Serial.printf("MODBUS[%s]: %s = %.4g\n", getNodeId(), r.id, value);
+            _props[desc_index].set_value_and_publish(value);
+            break;
+    }
 }
 
 uint8_t ModbusRegisterDevice::poll() {

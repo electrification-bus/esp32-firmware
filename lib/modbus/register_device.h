@@ -26,12 +26,22 @@
 // anything compiled afterwards.
 #define REGDEV_MAX_REGISTERS 16
 
+// How the scaled value reaches MQTT. This must agree with the Homie `datatype` the
+// generator puts in $description — publishing "1.0000" for a property declared boolean
+// is a payload a strict controller should reject.
+enum ModbusRegDatatype : uint8_t {
+    REGDEV_FLOAT = 0,       // the default
+    REGDEV_INTEGER,
+    REGDEV_BOOLEAN,
+};
+
 struct ModbusRegisterDesc {
     const char* id;         // Homie property id
     uint16_t    reg;        // register address
     bool        holding;    // false = input register (0x04), true = holding (0x03)
     bool        is_signed;  // interpret the raw 16-bit value as signed
     float       scale;      // published value = raw * scale
+    uint8_t     datatype;   // ModbusRegDatatype — must match the declared Homie datatype
 };
 
 // One Modbus transaction covering a contiguous, same-function span of registers.
