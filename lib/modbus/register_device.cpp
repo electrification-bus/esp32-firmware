@@ -2,22 +2,24 @@
 #include <modbus/register_device.h>
 
 // ModbusMaster's response buffer is 64 words, but ku8MaxBufferSize is private, so the
-// limit is mirrored here. MODBUS_MAX_REGISTERS (16) is already below it, making this a
+// limit is mirrored here. REGDEV_MAX_REGISTERS (16) is already below it, making this a
 // guard rather than a live constraint — it only starts to matter if that is raised.
 #define MODBUS_MAX_RUN_WORDS 64
 
 ModbusRegisterDevice::ModbusRegisterDevice(const char* homie_node_id, Stream& serial,
                                            int pin_rs485_a, int pin_rs485_b, uint8_t addr,
-                                           const ModbusRegisterDesc* regs, size_t count)
+                                           const ModbusRegisterDesc* regs, size_t count,
+                                           bool useAsyncQueue)
     : ModbusRTUEntity(homie_node_id, pin_rs485_a, pin_rs485_b), _regs(regs), _count(count) {
     _modbus_address = addr;
     _serial = &serial;
     _poll_timestamp = 0;
-    if (_count > MODBUS_MAX_REGISTERS) {
+    _use_async_queue = useAsyncQueue;
+    if (_count > REGDEV_MAX_REGISTERS) {
         Serial.printf("MODBUS[%s]: **ERROR -- %u registers, max %d — the rest are IGNORED "
-                      "(raise MODBUS_MAX_REGISTERS)\n",
-                      homie_node_id, (unsigned)_count, MODBUS_MAX_REGISTERS);
-        _count = MODBUS_MAX_REGISTERS;
+                      "(raise REGDEV_MAX_REGISTERS)\n",
+                      homie_node_id, (unsigned)_count, REGDEV_MAX_REGISTERS);
+        _count = REGDEV_MAX_REGISTERS;
     }
 }
 
@@ -35,7 +37,7 @@ ModbusRegisterDevice::ModbusRegisterDevice(const char* homie_node_id, Stream& se
 void ModbusRegisterDevice::plan_runs() {
     for (size_t i = 0; i < _count; i++) _order[i] = (uint8_t)i;
 
-    // Insertion sort by (function, address). _count <= MODBUS_MAX_REGISTERS (16).
+    // Insertion sort by (function, address). _count <= REGDEV_MAX_REGISTERS (16).
     for (size_t i = 1; i < _count; i++) {
         uint8_t key = _order[i];
         int j = (int)i - 1;
@@ -62,7 +64,7 @@ void ModbusRegisterDevice::plan_runs() {
         if (extends) {
             run->count++;
         } else {
-            _runs[_num_runs++] = { d.reg, (uint8_t)i, 1, d.holding };
+            _runs[_num_runs++] = { d.reg, (uint8_t)i, 1, d.holding, 0 };
         }
     }
 }
@@ -108,4 +110,43 @@ uint8_t ModbusRegisterDevice::poll() {
         }
     }
     return last;
+}
+
+// ---- async path -------------------------------------------------------------
+// ModbusRTUEntity::loop() calls this instead of poll() when _use_async_queue is set.
+// Each run becomes one queued read; the command id is retained so the response can be
+// matched back exactly. Correlating on the id rather than on reg_address matters when a
+// map names the same address twice — that produces two runs which are otherwise
+// indistinguishable.
+
+void ModbusRegisterDevice::pollAsync() {
+    for (uint8_t i = 0; i < _num_runs; i++) {
+        ModbusRun& run = _runs[i];
+        run.cmd_id = run.holding ? queueReadHoldingRegisters(run.start_reg, run.count)
+                                 : queueReadInputRegisters(run.start_reg, run.count);
+    }
+}
+
+void ModbusRegisterDevice::handleAsyncResponse(ModbusResponse* resp) {
+    if (!resp) return;
+    for (uint8_t i = 0; i < _num_runs; i++) {
+        ModbusRun& run = _runs[i];
+        if (run.cmd_id == 0 || run.cmd_id != resp->command_id) continue;
+        run.cmd_id = 0;   // consumed
+
+        if (!resp->success) {
+            Serial.printf("MODBUS[%s]: async read of %u register(s) from %u failed "
+                          "(error=%d)\n", getNodeId(), run.count, run.start_reg,
+                          resp->error_code);
+            for (uint8_t k = 0; k < run.count; k++) _props[_order[run.first + k]].clearValue();
+            return;
+        }
+        // Short reads are possible in principle; publish only what actually arrived
+        // rather than reading past the end of the response buffer.
+        uint8_t words = (resp->data_length < run.count) ? (uint8_t)resp->data_length : run.count;
+        for (uint8_t k = 0; k < words; k++) {
+            publish_one(_order[run.first + k], resp->data[k]);
+        }
+        return;
+    }
 }

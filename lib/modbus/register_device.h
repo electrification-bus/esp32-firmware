@@ -21,7 +21,10 @@
 // Write a real driver (sht20 is the worked example) when the device needs more than this:
 // multi-register values, non-linear decoding, writes, or a command sequence.
 
-#define MODBUS_MAX_REGISTERS 16
+// REGDEV_ prefix, not MODBUS_: modbus_queue.h already defines MODBUS_MAX_REGISTERS (32)
+// for the response buffer, and redefining it here silently changed its meaning for
+// anything compiled afterwards.
+#define REGDEV_MAX_REGISTERS 16
 
 struct ModbusRegisterDesc {
     const char* id;         // Homie property id
@@ -39,17 +42,24 @@ struct ModbusRun {
     uint8_t  first;       // index into _order[] of the first descriptor
     uint8_t  count;       // registers in the span (also the response word count)
     bool     holding;     // function code for the whole span
+    uint32_t cmd_id;      // async: id of the outstanding queued read, 0 when none
 };
 
 class ModbusRegisterDevice : public ModbusRTUEntity {
 public:
+    // useAsyncQueue defaults true: the queued path does not block loop() on RS485
+    // turnaround, which at 9600 baud is milliseconds per transaction with MQTT, the
+    // captive portal and the log tee all sharing the same task.
     ModbusRegisterDevice(const char* homie_node_id, Stream& serial,
                          int pin_rs485_a, int pin_rs485_b, uint8_t addr,
-                         const ModbusRegisterDesc* regs, size_t count);
+                         const ModbusRegisterDesc* regs, size_t count,
+                         bool useAsyncQueue = true);
     ~ModbusRegisterDevice() {}
 
     bool setup() override;
-    uint8_t poll() override;
+    uint8_t poll() override;                                  // sync path
+    void pollAsync() override;                                // async path
+    void handleAsyncResponse(ModbusResponse* resp) override;
 
 private:
     void plan_runs();
@@ -57,10 +67,10 @@ private:
 
     const ModbusRegisterDesc* _regs;
     size_t _count;
-    NodeProperty _props[MODBUS_MAX_REGISTERS];
+    NodeProperty _props[REGDEV_MAX_REGISTERS];
 
     // Descriptor indices sorted by (function, address) and the spans they collapse into.
-    uint8_t   _order[MODBUS_MAX_REGISTERS];
-    ModbusRun _runs[MODBUS_MAX_REGISTERS];   // worst case: nothing merges, one run each
+    uint8_t   _order[REGDEV_MAX_REGISTERS];
+    ModbusRun _runs[REGDEV_MAX_REGISTERS];   // worst case: nothing merges, one run each
     uint8_t   _num_runs = 0;
 };
