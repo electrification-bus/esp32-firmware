@@ -209,7 +209,7 @@ and its device.yml entry carries the list:
 ```yaml
 - component: modbus/register_device
   id: env1
-  config: { address: 1, pin_rs485_a: 36, pin_rs485_b: 4 }
+  config: { address: 1 }          # RS485 pins come from the top-level buses.rs485 block
   registers:
     - { id: temperature,       reg: 1, scale: 0.1, signed: true, unit: "°C" }
     - { id: relative_humidity, reg: 2, scale: 0.1, unit: "%" }

@@ -11,9 +11,8 @@ class ModbusRTUEntity : public NodeEntity, public ModbusMaster {
         ~ModbusRTUEntity(){};
 
         // Static methods for lazy modbus subsystem initialization. The RS485 bus is
-        // shared by all Modbus devices, so only the first caller's pins take effect —
-        // every modbus/*.yml component's config: block should specify the same
-        // pin_rs485_a/pin_rs485_b.
+        // shared by all Modbus devices, so only the first caller's pins take effect;
+        // they all get the same pair from device.yml's buses.rs485 block.
         static void ensureModbusSubsystem(int pin_rs485_a, int pin_rs485_b);
         static bool isModbusInitialized();
 

@@ -248,7 +248,8 @@ def _cpp_literal(v) -> str:
         return "true" if v else "false"
     return str(v)
 
-def fmt_ctor(template: str, node_id: str, config: dict, registers: list = None) -> str:
+def fmt_ctor(template: str, node_id: str, config: dict, registers: list = None,
+             buses: dict = None) -> str:
     result = template.replace("{id}", node_id)
     # {registers} / {registers_count} name the static descriptor table emitted alongside
     # the object, for components whose shape comes from device.yml rather than their yml.
@@ -258,14 +259,58 @@ def fmt_ctor(template: str, node_id: str, config: dict, registers: list = None) 
         result = result.replace("{registers_count}", str(len(registers)))
     for k, v in (config or {}).items():
         result = result.replace(f"{{config.{k}}}", _cpp_literal(v))
+    # {bus.<name>.<key>} comes from device.yml's top-level buses: block — board facts
+    # shared by every node on that bus, so they are declared once rather than repeated
+    # (and required to agree) in each node's config:.
+    for bus_name, bus_cfg in (buses or {}).items():
+        for k, v in (bus_cfg or {}).items():
+            result = result.replace(f"{{bus.{bus_name}.{k}}}", _cpp_literal(v))
     return result
 
 _CONFIG_KEY_RE = re.compile(r"\{config\.(\w+)\}")
+_BUS_KEY_RE    = re.compile(r"\{bus\.(\w+)\.(\w+)\}")
 
 def required_config_keys(ctor_tmpl: str) -> set:
     """Config keys a component's constructor template actually substitutes, e.g.
     '{config.pin}' -> {'pin'}."""
     return set(_CONFIG_KEY_RE.findall(ctor_tmpl))
+
+def required_bus_keys(ctor_tmpl: str) -> set:
+    """(bus, key) pairs a constructor template substitutes, e.g. '{bus.i2c.pin_sda}'
+    -> {('i2c', 'pin_sda')}."""
+    return set(_BUS_KEY_RE.findall(ctor_tmpl))
+
+def check_bus_keys(node_id: str, component: str, comp_path: Path,
+                   ctor_tmpl: str, buses: dict) -> None:
+    """Every {bus.<name>.<key>} a component needs must be declared under device.yml's
+    top-level buses: block, with a value."""
+    required = sorted(required_bus_keys(ctor_tmpl))
+    if not required:
+        return
+    if buses is None:
+        buses = {}
+    if not isinstance(buses, dict):
+        print(f"ERROR: device.yml buses: value isn't a mapping (got "
+              f"{type(buses).__name__}) — expected e.g.\n"
+              f"  buses:\n    i2c: {{ pin_sda: 13, pin_scl: 16 }}", file=sys.stderr)
+        sys.exit(1)
+    problems = []
+    for bus, key in required:
+        bus_cfg = buses.get(bus)
+        if bus_cfg is None or not isinstance(bus_cfg, dict):
+            msg = f"buses.{bus} is not declared" if bus_cfg is None else f"buses.{bus} isn't a mapping"
+            if msg not in problems:
+                problems.append(msg)
+        elif key not in bus_cfg:
+            problems.append(f"buses.{bus}.{key} is missing")
+        elif bus_cfg[key] is None:
+            problems.append(f"buses.{bus}.{key} has no value")
+    if problems:
+        print(f"ERROR: device.yml node '{node_id}' (component '{component}') needs "
+              f"{'; '.join(problems)}. Bus pins are declared ONCE in the top-level buses: "
+              f"block (see doc/GPIOPins.md for reference values), not per node — see "
+              f"{comp_path}", file=sys.stderr)
+        sys.exit(1)
 
 def check_config_keys(node_id: str, component: str, comp_path: Path,
                        ctor_tmpl: str, node_cfg: dict) -> None:
@@ -294,6 +339,9 @@ def check_config_keys(node_id: str, component: str, comp_path: Path,
             # shows up as BOTH "missing pin" and "unrecognized pinn" in one message —
             # the pairing is what makes it obvious it's a typo, not just an omission.
             parts.append(f"unrecognized key(s): {', '.join(extra)} (check for a typo)")
+            if any(k.startswith("pin_") for k in extra):
+                parts.append("bus pins (pin_sda/pin_scl, pin_a/pin_b) are declared once in "
+                             "the top-level buses: block, not in a node's config:")
         print(f"ERROR: device.yml node '{node_id}' (component '{component}') config: block "
               f"problem — {'; '.join(parts)}. Expected: {', '.join(sorted(required)) or 'none'} "
               f"— see {comp_path}", file=sys.stderr)
@@ -493,6 +541,7 @@ def cmd_generate(args) -> None:
     cfg        = load_device_yml(device_yml)
     device     = cfg.get("device", {})
     nodes_cfg  = cfg.get("nodes", [])
+    buses_cfg  = cfg.get("buses") or {}
 
     includes          = []
     decls             = []   # entity object declarations
@@ -584,13 +633,14 @@ def cmd_generate(args) -> None:
             sys.exit(1)
         seen_node_ids[node_id] = component
         check_config_keys(node_id, component, comp_path, ctor_tmpl, node_cfg)
+        check_bus_keys(node_id, component, comp_path, ctor_tmpl, buses_cfg)
         for dep in gen.get("lib_deps") or []:
             if dep not in used_lib_deps:
                 used_lib_deps.append(dep)
         includes.append(f"#include <{header}>")
         if registers is not None:
             decls.extend(registers_to_desc_table(registers, node_id))
-        decls.append(f"{cls} {node_id}{fmt_ctor(ctor_tmpl, node_id, node_cfg, registers)};")
+        decls.append(f"{cls} {node_id}{fmt_ctor(ctor_tmpl, node_id, node_cfg, registers, buses_cfg)};")
         setups.append(f"    {node_id}.setup();")
         loops.append(f"    {node_id}.loop();")
         if setdev_addr:

@@ -111,13 +111,13 @@ before laying out a wESP32 build rather than assuming the PoE-ISO numbers transf
 
 ## This SDK's reference values
 
-Consolidated from the component ymls, which remain the source of truth for what each
-`config:` block expects:
+Bus pins go in device.yml's top-level `buses:` block, once per physical bus; only
+chip-selects and output pins are per node:
 
-| Component | esp32-poe-iso | esp32-poe-iso-wrover | esp32-s3-devkitc-1 | seeed_xiao_esp32s3 |
+| device.yml key | esp32-poe-iso | esp32-poe-iso-wrover | esp32-s3-devkitc-1 | seeed_xiao_esp32s3 |
 |---|---|---|---|---|
-| `modbus/*` (`pin_rs485_a`/`_b`) | 36 / 4 | 36 / 4 | 6 / 7 | **44 / 43** |
-| `i2c/bme280` (`pin_sda`/`pin_scl`) | 13 / 16 | 13 / **14** | 13 / 16 | 5 / 6 |
+| `buses.rs485` (`pin_a`/`pin_b`) — all `modbus/*` | 36 / 4 | 36 / 4 | 6 / 7 | **44 / 43** |
+| `buses.i2c` (`pin_sda`/`pin_scl`) — all `i2c/*` | 13 / 16 | 13 / **14** | 13 / 16 | 5 / 6 |
 | `spi/atm90e32_energy_meter` (`pin_cs1`/`pin_cs2`) | see note | see note | 15 / 16 | 8 / 9 |
 | `gpio/digital_output` | 14, 15, 2, 5 | 14, 15, 2, 5 | plenty | 1, 2, 3, 4 |
 
@@ -128,7 +128,7 @@ to pick chip-selects from the twelve pins above.
 
 ## Two gotchas worth the ink
 
-### `pin_rs485_a` is RX, `pin_rs485_b` is TX
+### `buses.rs485.pin_a` is RX, `pin_b` is TX
 
 Not obvious from the names. `setup_modbus_master()` logs it explicitly:
 

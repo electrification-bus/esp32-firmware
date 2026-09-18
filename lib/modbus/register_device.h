@@ -10,7 +10,7 @@
 //
 //   - component: modbus/register_device
 //     id: env1
-//     config: { address: 1, pin_rs485_a: 44, pin_rs485_b: 43 }
+//     config: { address: 1 }          # RS485 pins come from the buses.rs485 block
 //     registers:
 //       - { id: temperature,       reg: 1, scale: 0.1, signed: true, unit: "°C" }
 //       - { id: relative_humidity, reg: 2, scale: 0.1, unit: "%" }

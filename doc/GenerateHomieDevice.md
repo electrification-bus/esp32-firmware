@@ -63,18 +63,18 @@ mqtt:
   username: myuser
   password: mypass
 
+buses:                                  # board pins, declared once per physical bus
+  i2c:   { pin_sda: 13, pin_scl: 16 }   # every i2c/* node
+  rs485: { pin_a: 6, pin_b: 7 }         # every modbus/* node (pin_a -> module RXD, pin_b -> TXD)
+
 nodes:
   - component: i2c/bme280               # lib/i2c/bme280
     id: environment_bme280              # C++ object name + Homie node id
     config:
-      pin_sda: 13
-      pin_scl: 16
+      address: 0x76                     # per-device detail only; the bus comes from buses.i2c
 
   - component: modbus/sht20
     id: environment_sht20
-    config:
-      pin_rs485_a: 6                      # shared RS485 bus — same value on every modbus node
-      pin_rs485_b: 7
 
   - component: gpio/digital_output
     id: relay1
@@ -122,7 +122,20 @@ id: panel-main            # fixed literal — logs a warning (two units collide 
 |-------------|----------|-------------|
 | `component` | yes | Path to the component: `<bus>/<name>` (matches `lib/<bus>/<name>.yml`) |
 | `id`        | no  | Instance name used as C++ variable and Homie node id; defaults to the component's own node id |
-| `config`    | no  | Key-value pairs substituted into the component's constructor template |
+| `config`    | no  | Key-value pairs substituted into the component's constructor template — per-device details such as an address, never bus pins |
+
+### buses
+
+Bus pins are a fact about the board, shared by every node on that bus, so they are
+declared once at the top level instead of being repeated (and required to agree) in each
+node's `config:`. A component's constructor template reaches them as `{bus.<name>.<key>}`;
+the generator errors if a bus a component needs is missing. Reference values per board:
+[GPIOPins.md](GPIOPins.md).
+
+| Bus | Keys | Used by |
+|-----|------|---------|
+| `i2c`   | `pin_sda`, `pin_scl` | `i2c/*` — one `TwoWire`, started by the first node's `setup()` |
+| `rs485` | `pin_a`, `pin_b` | `modbus/*` — one UART; `pin_a` is the RS485 module's RXD pin, `pin_b` its TXD |
 
 ---
 
@@ -130,9 +143,10 @@ id: panel-main            # fixed literal — logs a warning (two units collide 
 
 | Component | Class | Constructor extras |
 |-----------|-------|--------------------|
-| `i2c/bme280` | `BME280` | `pin_sda`, `pin_scl` |
-| `modbus/sht20` | `Modbus_SHT20` | `pin_rs485_a`, `pin_rs485_b` (uses `get_serial1()`) |
-| `modbus/eletechsup32` | `Modbus_Eletechsup32` | `pin_rs485_a`, `pin_rs485_b` (uses `get_serial1()`) |
+| `i2c/bme280` | `BME280` | `buses.i2c`; `address` (0x76 or 0x77) |
+| `modbus/sht20` | `Modbus_SHT20` | `buses.rs485` (uses `get_serial1()`) |
+| `modbus/eletechsup32` | `Modbus_Eletechsup32` | `buses.rs485` (uses `get_serial1()`) |
+| `modbus/register_device` | `ModbusRegisterDevice` | `buses.rs485`; `address`; a `registers:` list (see the yml) |
 | `gpio/digital_output` | `DigitalOutput` | `pin`, `active_low`, `initial_state` |
 | `ble/gatt_device` | `GattDevice` | `address`, `name_filter`, `service_uuid`, `notify_uuid`, `write_uuid` |
 | `spi/atm90e32_energy_meter` | `EnergyMeter` | `pin_cs1`, `pin_cs2` |
@@ -291,12 +305,13 @@ generator:
 #### constructor template syntax
 
 The `constructor` value is the argument list that follows the class name in the
-generated declaration.  Two substitutions are available:
+generated declaration.  Three substitutions are available:
 
 | Placeholder | Substituted with |
 |-------------|-----------------|
 | `{id}` | The `id:` value from the `nodes:` entry in `device.yml` |
 | `{config.KEY}` | The value of `KEY` under that node's `config:` block |
+| `{bus.NAME.KEY}` | The value of `KEY` under `buses: NAME:` — for pins shared by every node on a bus |
 
 Examples:
 
@@ -305,6 +320,7 @@ constructor: '("{id}")'                          # MyDevice mydev("mydev");
 constructor: '("{id}", get_serial1())'           # SerialDev dev("dev", get_serial1());
 constructor: '("{id}", {config.cs_pin})'         # SpiDev dev("dev", 15);
 constructor: '("{id}", {config.addr}, true)'     # ModDev dev("dev", 0x01, true);
+constructor: '("{id}", {bus.i2c.pin_sda}, {bus.i2c.pin_scl}, {config.addr})'   # I2CDev dev("dev", 13, 16, 0x76);
 ```
 
 #### multi-node components

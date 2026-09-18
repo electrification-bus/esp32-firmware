@@ -4,17 +4,18 @@
 # build (they are gitignored); `./ebus-esp32 generate` regenerates them on their own.
 #
 # Available components (lib/<bus>/<name>.yml):
-#   i2c/bme280                  — BME280 temp/pressure/humidity (I2C); requires pin_sda, pin_scl
-#   modbus/sht20                — SHT20 temp/humidity (Modbus RTU); requires pin_rs485_a, pin_rs485_b
-#   modbus/eletechsup32         — 32-ch voltage/current detector (Modbus RTU); requires pin_rs485_a, pin_rs485_b
+#   i2c/bme280                  — BME280 temp/pressure/humidity (I2C); needs buses.i2c, config: address
+#   modbus/sht20                — SHT20 temp/humidity (Modbus RTU); needs buses.rs485
+#   modbus/eletechsup32         — 32-ch voltage detector (Modbus RTU); needs buses.rs485
+#   modbus/register_device      — any Modbus RTU device described by a registers: map; needs buses.rs485
 #   gpio/digital_output         — one GPIO as a settable boolean output (relay, SSR,
 #                                 contactor, LED, valve); requires pin, active_low, initial_state
 #   ble/gatt_device             — generic BLE GATT device (any service/notify/write UUIDs)
 #   (ble/serial_bms — JBD Smart BMS — is now a copy/paste example: examples/bms/)
 #   spi/atm90e32_energy_meter   — 6-CT energy meter (SPI); requires pin_cs1, pin_cs2
 #
-# All modbus/* nodes share one RS485 bus — give every modbus node instance the SAME
-# pin_rs485_a/pin_rs485_b; only the first one initialized actually configures the bus.
+# Bus pins are board facts shared by every node on that bus, so they are declared once
+# in the buses: block below; a node's config: holds only what is per device (an address).
 
 device:
   name: sht20
@@ -99,9 +100,13 @@ mqtt:
 log:
   tcp_port: 23
 
+# Shared bus pins, one block per physical bus. Reference values by board: doc/GPIOPins.md.
+#   rs485: pin_a -> the RS485 module's "RXD" pin, pin_b -> its "TXD" pin (all modbus/* nodes)
+#   i2c:   pin_sda / pin_scl (all i2c/* nodes; WROVER boards keep SCL off GPIO 16/17)
+buses:
+  rs485: { pin_a: 36, pin_b: 4 }
+  #i2c:   { pin_sda: 13, pin_scl: 16 }
+
 nodes:
-  - component: modbus/sht20 
+  - component: modbus/sht20
     id: environment_sht20
-    config:
-       pin_rs485_a: 36
-       pin_rs485_b: 4

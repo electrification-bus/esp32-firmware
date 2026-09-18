@@ -12,8 +12,7 @@
 // into device.yml) because the part is common and the name is the documentation:
 //
 //   - component: modbus/sht20
-//     id: environment
-//     config: { pin_rs485_a: 36, pin_rs485_b: 4 }
+//     id: environment                  # RS485 pins come from the buses.rs485 block
 //
 // Reach for register_device directly for a device with no profile here; write a real
 // driver when a map is not enough — values spanning two registers, non-linear decoding,

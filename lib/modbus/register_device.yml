@@ -17,12 +17,13 @@ implementation: homie-esp32-sdk
 # addresses and a /10 scale. This component takes that map from device.yml, so adding a
 # new sensor needs no code:
 #
+#   buses:
+#     rs485: { pin_a: 44, pin_b: 43 }
+#   nodes:
 #   - component: modbus/register_device
 #     id: env1
 #     config:
 #       address: 1
-#       pin_rs485_a: 44
-#       pin_rs485_b: 43
 #     registers:
 #       - id: temperature
 #         reg: 1                 # 0x0001 also works — YAML reads it as an int
@@ -53,8 +54,8 @@ implementation: homie-esp32-sdk
 # device.yml order does not matter; the map is sorted internally, and the emitted table
 # stays in the order you wrote it so it stays diffable against the datasheet.
 #
-# All modbus/* nodes share ONE physical RS485 bus, so give every modbus node the SAME
-# pin_rs485_a/pin_rs485_b — only the first one initialised configures the UART.
+# RS485 pins come from the top-level buses.rs485 block — all modbus/* nodes share ONE
+# physical bus, and only the first one initialised configures the UART.
 # Reference pins by board: doc/GPIOPins.md
 #
 # WHEN TO WRITE A REAL DRIVER INSTEAD: values spanning two registers, non-linear
@@ -68,5 +69,5 @@ generator:
   # `nodes:` block above. The generator synthesizes the Homie properties AND a static
   # ModbusRegisterDesc table, referenced below as {registers}/{registers_count}.
   properties_from: registers
-  constructor: '("{id}", get_serial1(), {config.pin_rs485_a}, {config.pin_rs485_b}, {config.address}, {registers}, {registers_count})'
+  constructor: '("{id}", get_serial1(), {bus.rs485.pin_a}, {bus.rs485.pin_b}, {config.address}, {registers}, {registers_count})'
   # No lib_deps: modbus deps come from lib/platform/library.json (see sht20.yml).
