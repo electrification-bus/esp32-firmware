@@ -1,18 +1,9 @@
-#include <Adafruit_BME280.h>
 #include <i2c/bme280.h>
+#include <i2c/i2c_bus.h>
 
-#define BME_ADDR 0x76
-
-BME280::BME280(const char* homie_node_id, int pin_sda, int pin_scl) : NodeEntity(homie_node_id), Adafruit_BME280() {
-  setPins(pin_sda, pin_scl);
-  _read_interval = 10000;
-  _since_last_read = 0;
-}
-
-void BME280::setPins(int8_t sda, int8_t scl) {
-    _sda = sda;
-    _scl = scl;
-}
+BME280::BME280(const char* homie_node_id, int pin_sda, int pin_scl, uint8_t address)
+    : NodeEntity(homie_node_id), Adafruit_BME280(),
+      _sda(pin_sda), _scl(pin_scl), _address(address) {}
 
 bool BME280::setup() {
   NodeEntity::setup();  // Base class first
@@ -22,15 +13,19 @@ bool BME280::setup() {
   air_pressure.setup(getNodeId(), "air_pressure");
 
   _since_last_read = millis();
-  _deviceWire.begin(_sda, _scl);
+  TwoWire& wire = ensure_i2c_bus(_sda, _scl);
 
-  bool ok = begin(BME_ADDR, &_deviceWire);
+  bool ok = begin(_address, &wire);
   if (ok) {
-    _bme_temp = getTemperatureSensor();
+    _bme_temp     = getTemperatureSensor();
     _bme_pressure = getPressureSensor();
     _bme_humidity = getHumiditySensor();
   } else {
-    Serial.println("BME280: not found — polling suspended");
+    // Retract rather than publish a sentinel; loop() stays idle until reboot.
+    Serial.printf("BME280: not found at 0x%02X — polling suspended\n", _address);
+    temperature.clearValue();
+    relative_humidity.clearValue();
+    air_pressure.clearValue();
   }
   return ok;
 }
@@ -44,39 +39,22 @@ bool BME280::pollIntervalTrigger() {
 }
 
 void BME280::loop() {
-  if (pollIntervalTrigger()) {
-  if (!_bme_temp) {
-    temperature.set(0.0f);
-    relative_humidity.set(0.0f);
-    air_pressure.set(0.0f);
-    temperature.publish();
-    relative_humidity.publish();
-    air_pressure.publish();
-    return;
-  }
+  if (!_bme_temp || !pollIntervalTrigger()) return;
 
-    sensors_event_t temp_event, pressure_event, humidity_event;
-    _bme_temp->getEvent(&temp_event);
-    _bme_pressure->getEvent(&pressure_event);
-    _bme_humidity->getEvent(&humidity_event);
+  sensors_event_t temp_event, pressure_event, humidity_event;
+  _bme_temp->getEvent(&temp_event);
+  _bme_pressure->getEvent(&pressure_event);
+  _bme_humidity->getEvent(&humidity_event);
 
-    temperature.set(temp_event.temperature * 9/5 + 32);
-    relative_humidity.set(humidity_event.relative_humidity);
-    float mb = pressure_event.pressure / 100;                 //convert Pascals to millibars where 100 Pascals = 1 hPa = 1 millibar
-    air_pressure.set(pressure_event.pressure*100 / 3386.39);  //convert Pascals to inches of mercury where 1 inch Hg = 3386.39 Pascal
+  // Units as declared in bme280.yml: °C, mb (Adafruit reports hPa, which is 1:1), %.
+  temperature.set(temp_event.temperature);
+  relative_humidity.set(humidity_event.relative_humidity);
+  air_pressure.set(pressure_event.pressure);
 
-    Serial.printf("Temp: %3.1fC, %sF Humid: %s%% AP: %.2f Pa %.2f mb, %s inHg\n", 
-      temp_event.temperature,
-      temperature.value(),  
-      relative_humidity.value(),
-      pressure_event.pressure,
-      mb,
-      air_pressure.value());
-   
-    Serial.printf("BME280: update node id: '%s'\n", _homie_node_id);
-    //call out to node manager to handle setting the values on the homie node
-    temperature.publish();
-    relative_humidity.publish(); 
-    air_pressure.publish(); 
-  }
+  Serial.printf("BME280 '%s': %s °C, %s %%, %s mb\n", _homie_node_id,
+                temperature.value(), relative_humidity.value(), air_pressure.value());
+
+  temperature.publish();
+  relative_humidity.publish();
+  air_pressure.publish();
 }

@@ -1,43 +1,31 @@
 #pragma once
 #include <Adafruit_BME280.h>
 #include <node/NodeEntity.h>
-#include <ArduinoJson.h>
-#include <Wire.h>
 
+// BME280 temperature / pressure / humidity over I2C. The bus is shared (see i2c_bus.h);
+// the only per-node detail is the sensor's address, 0x76 or 0x77 depending on SDO.
 class BME280 : public NodeEntity, public Adafruit_BME280 {
     public:
-        BME280(const char* homie_node_id, int pin_sda, int pin_scl);
+        BME280(const char* homie_node_id, int pin_sda, int pin_scl, uint8_t address);
         ~BME280(){};
-
-        void setPins(int8_t sda, int8_t scl);
-
-        float getTemperature() const;
-        float getPressure() const;
-        float getHumidity() const;  
 
         bool setup() override;
         void loop() override;
         bool pollIntervalTrigger() override;
-        //const char* getNodeId() const override { return "environment_bme280"; };
 
-        void setReadInterval(int interval) { _read_interval = interval; }
+        void setReadInterval(uint32_t interval_ms) { _read_interval = interval_ms; }
 
-        NodeProperty temperature ;
-        NodeProperty air_pressure ;
-        NodeProperty relative_humidity ;
+        NodeProperty temperature;        // °C
+        NodeProperty air_pressure;       // mb (== hPa)
+        NodeProperty relative_humidity;  // %
 
     private:
-        // Owned by value: one TwoWire per BME280 node, constructed with the object
-        // rather than `new`-ed and never freed. NOTE this mirrors the previous
-        // behaviour exactly, including that two BME280 nodes would each hold their own
-        // TwoWire for bus 0 — fine for the single-sensor case this component is used in.
-        TwoWire _deviceWire{0};
-        Adafruit_Sensor *_bme_temp = nullptr; //getTemperatureSensor();
-        Adafruit_Sensor *_bme_pressure = nullptr; //getPressureSensor();
-        Adafruit_Sensor *_bme_humidity = nullptr; //getHumiditySensor();
-        uint8_t _sda;
-        uint8_t _scl;
-        int _read_interval = 0; // interval for reading sensor data in milliseconds
-        int _since_last_read = 0;
+        Adafruit_Sensor* _bme_temp     = nullptr;
+        Adafruit_Sensor* _bme_pressure = nullptr;
+        Adafruit_Sensor* _bme_humidity = nullptr;
+        int      _sda;
+        int      _scl;
+        uint8_t  _address;
+        uint32_t _read_interval   = 10000;
+        uint32_t _since_last_read = 0;
 };
-
