@@ -14,5 +14,6 @@ class Modbus_Eletechsup32 : public ModbusRTUEntity {
 
     private:
         uint8_t _inputs[32];
-        NodeProperty voltage_detect;
+        NodeProperty voltage_detect;   // any input live
+        NodeProperty inputs;           // all 32, as a hex mask
 };

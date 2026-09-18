@@ -12,6 +12,7 @@ Modbus_Eletechsup32::Modbus_Eletechsup32(const char* homie_node_id, Stream& seri
 bool Modbus_Eletechsup32::setup() {
     ModbusRTUEntity::setup();  // Base class first
     voltage_detect.setup(getNodeId(), "V_detect");
+    inputs.setup(getNodeId(), "inputs");
     return true;
 }
 uint8_t Modbus_Eletechsup32::poll() {
@@ -20,23 +21,29 @@ uint8_t Modbus_Eletechsup32::poll() {
     uint8_t result = readHoldingRegisters(0x0080, 32);  // Read 32 inputs from addr 0
     //Serial.printf("MODBUS Electech32: Elapsed: %d ms\n", millis() - startTime);
     if (result != ku8MBSuccess) {
-        Serial.println("Modbus_Eletechsup32: Read failed");
-        return false;
+        Serial.printf("Modbus_Eletechsup32: Read failed (0x%02X)\n", result);
+        // Retract rather than leave a stale retained value on the broker.
+        voltage_detect.clearValue();
+        inputs.clearValue();
+        return result;
     }
 
-    bool found_inputs = false;
+    uint32_t mask = 0;
     for (int i = 0; i < 32; i++) {
-        _inputs[i] = getResponseBuffer(i);
+        _inputs[i] = getResponseBuffer(i) ? 1 : 0;
         Serial.printf("I%02d:%s ", i, _inputs[i] ? "ON" : "OFF");
-        if (_inputs[i]) {
-            found_inputs = true;
-        }  
+        if (_inputs[i]) mask |= (1u << i);
     }
     Serial.printf("\nModbus_Eletechsup32: update node id: '%s'\n", _homie_node_id);
 
-    voltage_detect.set_value_and_publish(found_inputs);
+    // One read, two views: the yes/no aggregate, and the per-input mask for anyone
+    // who needs to know which. Both are change-gated, so a steady state costs nothing.
+    voltage_detect.set_value_and_publish(mask != 0);
+    char hex[16];
+    snprintf(hex, sizeof(hex), "0x%08lX", (unsigned long)mask);
+    inputs.set_value_and_publish(hex);
 
-    return 32; //TODO return num registers polled
+    return result;
 }
 
 bool Modbus_Eletechsup32::getInputState(uint8_t index) {

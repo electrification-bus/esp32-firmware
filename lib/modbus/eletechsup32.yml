@@ -13,34 +13,27 @@ nodes:
         settable: false
         retained: true
         value: false
-      - id: I_detect
-        name: Current Detect
-        datatype: boolean
+      - id: inputs
+        name: Input States
+        datatype: string
         settable: false
         retained: true
-        value: false
+        value: ''
+        description: "32-bit hex mask of input states, bit n = input n (e.g. 0x00000042)"
 extensions: []
 implementation: homie-esp32-sdk
-# This component's entry in device.yml MUST include a config: block with
-# pin_rs485_a/pin_rs485_b (A -> RS485 module's "RXD" silk screen pin, B -> its
-# "TXD" pin) — the generator substitutes them straight into the C++ constructor
-# below, so missing/omitted keys break the generated build. Example:
+# RS485 pins come from device.yml's top-level buses: block, shared by every modbus/*
+# node (they are ONE physical bus — only the first node's setup() configures the UART).
+# pin_a -> the RS485 module's "RXD" silk-screen pin, pin_b -> its "TXD" pin. Reference
+# values by board are in doc/GPIOPins.md. Example:
 #
-#   - component: modbus/eletechsup32
-#     id: voltage_current_detector
-#     config:
-#       pin_rs485_a: 36
-#       pin_rs485_b: 4
-#
-# All modbus/* nodes share ONE physical RS485 bus, so every modbus node instance in
-# device.yml must be given the SAME pin_rs485_a/pin_rs485_b — only the first node's
-# setup() actually configures the UART; the rest are expected to match.
-#
-# Reference values by board:
-#   esp32-poe-iso (Olimex, Ethernet):   pin_rs485_a: 36, pin_rs485_b: 4
-#   esp32-s3-devkitc-1 / other boards:  pin_rs485_a: 6,  pin_rs485_b: 7
+#   buses:
+#     rs485: { pin_a: 36, pin_b: 4 }
+#   nodes:
+#     - component: modbus/eletechsup32
+#       id: voltage_current_detector
 generator:
   class: Modbus_Eletechsup32
   header: modbus/eletechsup32.h
-  constructor: '("{id}", get_serial1(), {config.pin_rs485_a}, {config.pin_rs485_b})'
+  constructor: '("{id}", get_serial1(), {bus.rs485.pin_a}, {bus.rs485.pin_b})'
   # No lib_deps: modbus deps come from lib/platform/library.json (see sht20.yml).
