@@ -995,6 +995,31 @@ def _upload(cfg, args, build: bool) -> None:
 
 OTA_CHUNK = 4096
 
+def _ota_unreachable(host: str, detail: str, unresolved: bool = False) -> None:
+    """Exit with something actionable instead of a socket traceback. Every OTA call
+    goes through _ota_request(), so this is the one place a network failure surfaces."""
+    print(f"\nERROR: cannot reach {host} — {detail}", file=sys.stderr)
+    if unresolved and host.split(":")[0].endswith(".local"):
+        # The usual cause, and not an obvious one: a .local name is advertised over
+        # mDNS by the firmware RUNNING on the board, so it reflects the device.name of
+        # the build that is on it — not the device.yml you just edited. Renaming a
+        # device therefore does not change its address until after the next flash, and
+        # the OLD name is still the one that answers.
+        print( "       A .local name comes from the firmware currently on the board, not from\n"
+               "       device.yml — after renaming a device it still answers to its OLD name\n"
+               "       until you flash it once (over USB, or OTA to the old name).\n"
+               "       It also needs mdns.enabled in device.yml, which is off by default.",
+              file=sys.stderr)
+    # Only worth saying when they did not already give one.
+    bare = host.split(":")[0]
+    if not re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}", bare):
+        print( "       Try an IP instead: ./ebus-esp32 push --ota --host <ip>", file=sys.stderr)
+    cached = _hosts_load()
+    if cached:
+        known = ", ".join(f"{env}={addr}" for env, addr in sorted(cached.items()))
+        print(f"       Addresses learned from earlier serial sessions: {known}", file=sys.stderr)
+    sys.exit(1)
+
 def _ota_request(host: str, path: str, passphrase: str, payload: bytes,
                  content_type: str, label: str, timeout: int = 120):
     """POST payload with pre-emptive Basic auth. Returns (status, body_text).
@@ -1027,6 +1052,21 @@ def _ota_request(host: str, path: str, passphrase: str, payload: bytes,
         print(f"\r  {label}: 100%  ({total}/{total} bytes)", flush=True)
         resp = conn.getresponse()
         return resp.status, resp.read().decode("utf-8", "replace").strip()
+    # Ordered most specific first — gaierror, ConnectionError and timeout are all
+    # OSError subclasses, so the catch-all has to come last.
+    except socket.gaierror:
+        _ota_unreachable(host, "that name does not resolve", unresolved=True)
+    except ConnectionRefusedError:
+        _ota_unreachable(host, "connection refused — something is at that address, but "
+                               "nothing is listening on the portal's port")
+    except (TimeoutError, socket.timeout):
+        _ota_unreachable(host, f"timed out after {timeout}s — wrong address, or the board "
+                               f"is not on the network")
+    except ConnectionResetError:
+        _ota_unreachable(host, "connection reset by the device mid-transfer — retry, and "
+                               "watch the console (./ebus-esp32 monitor --net)")
+    except OSError as e:
+        _ota_unreachable(host, f"{e.__class__.__name__}: {e}")
     finally:
         conn.close()
 
