@@ -1,6 +1,5 @@
 #pragma once
 #include <Arduino.h>
-#include <ArduinoYaml.h>
 #include <util/jsonUtils.h>
 #include <homie/homie.h>
 #include <homie/Device.h>
@@ -121,5 +120,5 @@ JsonDocument* get_homie_config();
 
 // theDevice and g_active_setup_device now live in homie/Device.h, next to the class they
 // are instances of. config.h includes it, so anything that got them from here still does
-// — but NodeEntity.h and NodeProperty can now reach them without pulling ArduinoYaml and
-// the rest of config.h into every driver translation unit.
+// — but NodeEntity.h and NodeProperty can now reach them without pulling the rest of
+// config.h into every driver translation unit.

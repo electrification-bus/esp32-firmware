@@ -1,10 +1,11 @@
 #pragma once
-// entity_settable_callback_t / settable_handler_t appear in the signatures below, and
-// this header also carries homie/Property.h, which the Property* member needs.
+// Included ONLY for the entity_settable_callback_t / settable_handler_t typedefs in the
+// signatures below. It forward-declares Property rather than including it, and that is
+// all the Property* member needs.
 //
 // Deliberately NOT <platform/config.h>: the bodies need theDevice and
-// g_active_setup_device, but config.h drags ArduinoYaml.h, util/jsonUtils.h and
-// homie/homie.h behind it, and NodeProperty.h reaches every driver through NodeEntity.h.
+// g_active_setup_device, but config.h drags util/jsonUtils.h and homie/homie.h behind
+// it, and NodeProperty.h reaches every driver through NodeEntity.h.
 // Those includes belong in NodeProperty.cpp, where they are actually used.
 #include <platform/mqtt_client.h>
 

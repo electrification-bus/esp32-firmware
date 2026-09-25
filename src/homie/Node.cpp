@@ -1,4 +1,3 @@
-#include <ArduinoYaml.h>
 #include <homie/homie.h>
 #include <homie/homie_id.h>
 #include <homie/Node.h>

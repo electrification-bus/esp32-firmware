@@ -1,9 +1,7 @@
 #include <Arduino.h>
-#include <ArduinoYaml.h>
 #include <homie/homie.h>
 #include <homie/Device.h>
 #include <homie/homie_json.h>   // property_from_dict / node_serialize_into
-#include <platform/config.h>
 #include <platform/mqtt_client.h>
 #include <util/jsonUtils.h>
 /*
