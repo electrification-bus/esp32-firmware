@@ -173,11 +173,28 @@ paths:
 
   /api/firmware:
     post:
-      summary: Save firmware URL
+      summary: Save firmware URL and pull the image
       security:
         - basicAuth: []
         - sessionAuth: []
-      description: Saves the OTA firmware update URL.
+      description: >
+        Saves the OTA firmware URL and queues a download of it. https is supported;
+        the device verifies the server only if a CA for it is present at
+        /certs/<Host>.ca, otherwise the transfer is encrypted but unverified.
+      parameters:
+        - in: query
+          name: start
+          required: false
+          schema: { type: string, enum: ["0"] }
+          description: >
+            start=0 stages the pull without beginning it, so a filesystem and a firmware
+            update can be queued and then run as one session with a single reboot. The
+            next request without this flag arms everything staged.
+        - in: query
+          name: persist
+          required: false
+          schema: { type: string, enum: ["0"] }
+          description: persist=0 uses the URL for this session only, without writing it to NVS.
       requestBody:
         required: true
         content:
@@ -191,6 +208,56 @@ paths:
                   type: string
                   description: Firmware binary URL for OTA update
                   example: "http://192.168.1.10/firmware.bin"
+      responses:
+        "200":
+          description: URL saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+              example:
+                status: ok
+        "400":
+          description: Invalid JSON body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/filesystem:
+    post:
+      summary: Save filesystem URL and pull the image
+      security:
+        - basicAuth: []
+        - sessionAuth: []
+      description: >
+        Saves the LittleFS image URL and queues a download of it. Same https and query-flag
+        behaviour as /api/firmware. ota_loop() always applies a staged filesystem before a
+        staged firmware, so stage this one first.
+      parameters:
+        - in: query
+          name: start
+          required: false
+          schema: { type: string, enum: ["0"] }
+          description: start=0 stages the pull without beginning it (see /api/firmware).
+        - in: query
+          name: persist
+          required: false
+          schema: { type: string, enum: ["0"] }
+          description: persist=0 uses the URL for this session only, without writing it to NVS.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+              properties:
+                url:
+                  type: string
+                  description: LittleFS image URL for OTA update
+                  example: "http://192.168.1.10/littlefs.bin"
       responses:
         "200":
           description: URL saved

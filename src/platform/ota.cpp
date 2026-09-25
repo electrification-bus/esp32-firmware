@@ -1,11 +1,19 @@
 #include <platform/ota.h>
 #include <platform/config.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include <LittleFS.h>
 #include <Update.h>
+
+// A PEM CA is ~2KB. Allocated only for the duration of an https pull and freed straight
+// after, rather than held as static: the static footprint is already near the level that
+// starves the FreeRTOS idle task at boot (see the note in Device.cpp).
+#define OTA_CA_MAX_SIZE 4096
 
 static bool      _ota_pending      = false;
 static bool      _fs_pending       = false;
+static bool      _armed            = false;
 static OtaStatus _ota_status       = OTA_STATUS_IDLE;
 static char      _last_url[256]    = {0};
 static char      _last_host[128]   = {0};
@@ -51,7 +59,11 @@ const char* ota_get_status_str() {
     }
 }
 
-void ota_start_update() {
+void ota_arm() {
+    if (_ota_pending || _fs_pending) _armed = true;
+}
+
+void ota_start_update(bool start_now) {
     if (!ota_is_enabled()) {
         Serial.println("OTA: Update rejected - OTA not enabled");
         return;
@@ -65,10 +77,11 @@ void ota_start_update() {
     parse_url(_last_url);
     _last_http_code = 0;
     _ota_pending = true;
-    Serial.printf("OTA: Update queued from %s\n", _last_url);
+    if (start_now) _armed = true;
+    Serial.printf("OTA: Update %s from %s\n", start_now ? "queued" : "staged", _last_url);
 }
 
-void ota_start_fs_update() {
+void ota_start_fs_update(bool start_now) {
     if (!ota_is_enabled()) {
         Serial.println("OTA: FS update rejected - OTA not enabled");
         return;
@@ -82,22 +95,86 @@ void ota_start_fs_update() {
     parse_url(_last_url);
     _last_http_code = 0;
     _fs_pending = true;
-    Serial.printf("OTA: FS update queued from %s\n", _last_url);
+    if (start_now) _armed = true;
+    Serial.printf("OTA: FS update %s from %s\n", start_now ? "queued" : "staged", _last_url);
+}
+
+static bool url_is_https(const char* url) {
+    return strncasecmp(url, "https://", 8) == 0;
+}
+
+// Read /certs/<Host>.ca for the OTA host into `buf`, using the same naming scheme as the
+// MQTT broker certs (mqtt_build_cert_path). Returns false when there is none — the caller
+// then decides whether to proceed unverified. Deliberately NOT mqtt_load_ca_cert(): that
+// resolves against mqtt_host and caches into the shared MQTT cert buffer, so reusing it
+// here would serve the wrong cert and evict the broker's.
+static bool load_ota_ca_cert(const char* host, char* buf, size_t buf_len) {
+    char cert_path[96];
+    mqtt_build_cert_path(host, cert_path, sizeof(cert_path));
+    if (!LittleFS.begin(false)) return false;
+    if (!LittleFS.exists(cert_path)) {
+        Serial.printf("OTA: No CA cert at '%s'\n", cert_path);
+        return false;
+    }
+    File f = LittleFS.open(cert_path, FILE_READ);
+    if (!f) return false;
+    size_t n = f.size();
+    if (n >= buf_len) {
+        Serial.printf("OTA: CA cert too large (%u bytes, max %u)\n",
+                      (unsigned)n, (unsigned)buf_len - 1);
+        f.close();
+        return false;
+    }
+    f.readBytes(buf, n);
+    buf[n] = '\0';
+    f.close();
+    Serial.printf("OTA: Using CA cert '%s'\n", cert_path);
+    return true;
 }
 
 static bool run_update(int update_type) {
     HTTPClient http;
-    WiFiClient client;
+    WiFiClient plain_client;
+    WiFiClientSecure secure_client;
+    char* ca_cert = nullptr;
+    bool  https   = url_is_https(_last_url);
 
     Serial.printf("OTA: Starting %s update from %s\n",
                   update_type == U_SPIFFS ? "filesystem" : "firmware", _last_url);
     _ota_status = OTA_STATUS_DOWNLOADING;
 
-    if (!http.begin(client, _last_url)) {
+    WiFiClient* client = &plain_client;
+    if (https) {
+        // TLS costs ~40KB of heap for the session, on top of whatever the MQTT transport
+        // is already holding. Log the headroom so a failure here is diagnosable.
+        Serial.printf("OTA: https — free heap before TLS: %u bytes\n", ESP.getFreeHeap());
+        ca_cert = new char[OTA_CA_MAX_SIZE];
+        if (ca_cert && load_ota_ca_cert(_last_host, ca_cert, OTA_CA_MAX_SIZE)) {
+            secure_client.setCACert(ca_cert);
+        } else {
+            // Encrypted but UNAUTHENTICATED: anything that can intercept the connection
+            // can serve its own image. Put a cert at /certs/<Host>.ca (data/certs/, then
+            // flash the filesystem) to verify the server.
+            Serial.println("OTA: WARNING - no CA cert for this host, not verifying the "
+                           "server. Place one in data/certs/ to fix.");
+            secure_client.setInsecure();
+        }
+        secure_client.setTimeout(15);
+        client = &secure_client;
+    }
+
+    if (!http.begin(*client, _last_url)) {
         Serial.println("OTA: Failed to connect to server");
         _ota_status = OTA_STATUS_HOST_NOT_FOUND;
+        delete[] ca_cert;
         return false;
     }
+
+    // Release hosting (GitHub, S3, most CDNs) answers a download URL with a 30x to a
+    // signed location. HTTPClient does not follow those unless told to; without this an
+    // ordinary release URL fails as http_error. STRICT = GET/HEAD only, which is all a
+    // pull does. NB a plain-http client still cannot follow a redirect TO https.
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
 
     int httpCode = http.GET();
     _last_http_code = httpCode;
@@ -106,12 +183,14 @@ static bool run_update(int update_type) {
         Serial.printf("OTA: File not found (404): %s\n", _last_url);
         _ota_status = OTA_STATUS_FILE_NOT_FOUND;
         http.end();
+        delete[] ca_cert;
         return false;
     }
     if (httpCode != HTTP_CODE_OK) {
         Serial.printf("OTA: HTTP error: %d\n", httpCode);
         _ota_status = OTA_STATUS_HTTP_ERROR;
         http.end();
+        delete[] ca_cert;
         return false;
     }
 
@@ -120,6 +199,7 @@ static bool run_update(int update_type) {
         Serial.println("OTA: Invalid content length");
         _ota_status = OTA_STATUS_HTTP_ERROR;
         http.end();
+        delete[] ca_cert;
         return false;
     }
 
@@ -129,6 +209,7 @@ static bool run_update(int update_type) {
         Serial.printf("OTA: Not enough space: %s\n", Update.errorString());
         _ota_status = OTA_STATUS_WRITE_ERROR;
         http.end();
+        delete[] ca_cert;
         return false;
     }
 
@@ -175,16 +256,21 @@ static bool run_update(int update_type) {
         Serial.printf("OTA: Update failed: %s\n", Update.errorString());
         _ota_status = OTA_STATUS_WRITE_ERROR;
         http.end();
+        delete[] ca_cert;
         return false;
     }
 
     http.end();
+    delete[] ca_cert;
     Serial.printf("OTA: %s update complete\n", update_type == U_SPIFFS ? "Filesystem" : "Firmware");
     return true;
 }
 
 void ota_loop() {
-    if (!_ota_pending && !_fs_pending) return;
+    // Staged-but-not-armed work waits here until ota_arm(), so both images can be queued
+    // before either download starts.
+    if (!_armed) return;
+    if (!_ota_pending && !_fs_pending) { _armed = false; return; }
 
     bool ok = true;
 
@@ -196,6 +282,8 @@ void ota_loop() {
         _ota_pending = false;
         ok = run_update(U_FLASH);
     }
+
+    _armed = false;
 
     if (ok) {
         _ota_status = OTA_STATUS_COMPLETE;

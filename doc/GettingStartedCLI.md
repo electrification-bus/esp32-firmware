@@ -53,8 +53,15 @@ The overlay is **merged** into the generated `data/config.yml` every time you `g
 ./ebus-esp32 monitor          watch the device — network if its address is known, else USB (see below)
 ./ebus-esp32 monitor --serial force the USB monitor — must be in a REAL terminal (see below)
 ./ebus-esp32 run --monitor    flash, then attach the network console
+./ebus-esp32 serve            serve the built images for a device-initiated (pull) OTA
 ./ebus-esp32 clean            clean build artifacts
 ```
+
+Two ways to flash without a cable: `push --ota` sends the images to the device, and
+`push --pull --url <base>` tells the device to download them from a server instead —
+which is what works when the device can reach a server but you cannot reach the device.
+`serve` publishes the current build for that, and for driving a pull by hand from the
+device's own portal. See [ESP32OTA.md](ESP32OTA.md).
 
 Edit `device.yml` to change which board, nodes, or settings the firmware uses — every build path regenerates from it automatically. See [GenerateHomieDevice.md](GenerateHomieDevice.md) for the `device.yml` format and the component catalog.
 

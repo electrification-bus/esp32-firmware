@@ -441,6 +441,18 @@ static void handleMqttSave(AsyncWebServerRequest *request) {
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
+// Query flags shared by the two pull-OTA endpoints.
+//   ?start=0    stage the pull without beginning it, so the filesystem and firmware can
+//               both be queued and run as ONE session with one reboot. The last request
+//               (without the flag) arms them. Counterpart of the push path's ?reboot=0.
+//   ?persist=0  do not write the URL to NVS. A throwaway URL — a workstation serving the
+//               image for one push — should not become the device's configured
+//               firmware_url for the rest of its life.
+static bool otaQueryFlag(AsyncWebServerRequest *request, const char* name) {
+    if (!request->hasParam(name)) return true;
+    return request->getParam(name)->value() != "0";
+}
+
 // Handle POST /api/firmware - save firmware URL from JSON body
 static void handleFirmwareSave(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
@@ -452,16 +464,21 @@ static void handleFirmwareSave(AsyncWebServerRequest *request) {
         return;
     }
 
+    bool start   = otaQueryFlag(request, "start");
+    bool persist = otaQueryFlag(request, "persist");
+
     if (doc["url"].is<const char*>()) {
         strncpy(firmware_url, doc["url"].as<const char*>(), sizeof(firmware_url) - 1);
         firmware_url[sizeof(firmware_url) - 1] = '\0';
         // Persist to NVS like the other portal settings (survives reboot)
-        portal_prefs_save_firmware_url(firmware_url);
+        if (persist) portal_prefs_save_firmware_url(firmware_url);
     }
 
-    Serial.printf("PORTAL: Firmware URL saved - '%s'\n", firmware_url);
+    Serial.printf("PORTAL: Firmware URL %s - '%s'\n",
+                  persist ? "saved" : "set for this session", firmware_url);
     ota_set_enabled(true);
-    ota_start_update();
+    ota_start_update(start);
+    if (start) ota_arm();   // also releases anything staged by an earlier ?start=0
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
@@ -476,16 +493,21 @@ static void handleFilesystemSave(AsyncWebServerRequest *request) {
         return;
     }
 
+    bool start   = otaQueryFlag(request, "start");
+    bool persist = otaQueryFlag(request, "persist");
+
     if (doc["url"].is<const char*>()) {
         strncpy(fs_url, doc["url"].as<const char*>(), sizeof(fs_url) - 1);
         fs_url[sizeof(fs_url) - 1] = '\0';
         // Persist to NVS like the other portal settings (survives reboot)
-        portal_prefs_save_fs_url(fs_url);
+        if (persist) portal_prefs_save_fs_url(fs_url);
     }
 
-    Serial.printf("PORTAL: Filesystem URL saved - '%s'\n", fs_url);
+    Serial.printf("PORTAL: Filesystem URL %s - '%s'\n",
+                  persist ? "saved" : "set for this session", fs_url);
     ota_set_enabled(true);
-    ota_start_fs_update();
+    ota_start_fs_update(start);
+    if (start) ota_arm();
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 

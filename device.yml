@@ -42,7 +42,12 @@ device:
   device_type: ebus
   firmware_name: ESP32-POE-ISO Firmware
   firmware_version: 1.0.0
+  # Pull-OTA sources: the device downloads these itself when told to (portal, or
+  # ./ebus-esp32 push --pull). Both are optional — `push --pull` supplies its own URLs.
+  # https works if a CA for the host is at data/certs/<Host>.ca; without one the
+  # transfer is encrypted but the server is not verified.
   firmware_url: http://example.com/firmware.bin
+  fs_url: 
   # mDNS device info
   manufacturer: NESL
   model: ESP32-POE-ISO

@@ -9,6 +9,8 @@ How firmware and filesystem images reach a device that has no reachable USB cabl
 | `POST /api/ota/firmware`, `/api/ota/filesystem` | push (host → device) | **implemented** |
 | `firmware_url` / `fs_url` download | pull (device → server) | **implemented** |
 | `ebus-esp32 push --ota` | push, both images, one command | **implemented** |
+| `ebus-esp32 push --pull --url …` | pull, device downloads from your server | **implemented** |
+| `ebus-esp32 serve` | serves the built images for a pull (dev convenience) | **implemented** |
 | ArduinoOTA / espota, port 3232 | push | **removed** — see [below](#why-arduinoota-espota-was-removed) |
 
 ---
@@ -147,28 +149,84 @@ and `build_src_flags` only reaches `src/`. A watchdog reset or a
 
 ## Pull from a URL (suited to fleet rollout)
 
-A device downloading a versioned artifact from a release server is the right shape for
-updating many boards at once. Implemented in
+The device downloads the images itself. This is the shape that works when the device can
+reach a server but you cannot reach the device — a fleet behind a NAT or gateway — and
+the natural fit for rolling a versioned artifact out to many boards. Implemented in
 [`src/platform/ota.cpp`](../src/platform/ota.cpp).
 
+### Serving the images
+
+The image server is yours to run and configure — a release server, an S3 bucket, an
+nginx on the LAN. For development, `serve` publishes the current build without setting
+anything up:
+
 ```sh
-curl -u admin:changeme -X POST -d '{"url":"http://10.0.0.2:8080/firmware.bin"}' \
-     http://192.168.1.42/api/firmware
-curl -u admin:changeme -X POST -d '{"url":"http://10.0.0.2:8080/littlefs.bin"}' \
-     http://192.168.1.42/api/filesystem
+./ebus-esp32 serve                 # http://<this machine>:8080
+./ebus-esp32 serve --port 8443 --cert server.pem --key server.key    # https
 ```
 
-`ota_start_update()` / `ota_start_fs_update()` queue the work; `ota_loop()` (called from
-`captive_portal_loop()`) performs it on the main loop and reboots when both complete. URLs
-persist across reboots via `portal_prefs`, and `GET /api/ota` reports progress through
+```
+--- serving .pio/cli/build/esp32-poe-iso (env esp32-poe-iso) ---
+  http://192.168.1.91:8080/firmware.bin    (1418896 bytes)
+  http://192.168.1.91:8080/littlefs.bin    (196608 bytes)
+```
+
+Paste either URL into the device's portal (Firmware URL / Filesystem URL) and the device
+pulls it. Each request is logged, so you can see the device fetch.
+
+It serves **exactly those two paths**, not the build directory — which also holds the
+ELF, the map and every object file. `--url-host` overrides the printed hostname for a
+device that reaches you by name; `--bind` narrows the interface.
+
+### Driving the pull from the CLI
+
+```sh
+./ebus-esp32 push --pull --url https://releases.example.com/ebus/v1.2 --host 192.168.1.42
+```
+
+`--url` is the base the **device** downloads from — it is required, since the server is
+separate from this tool. The CLI stages both images, arms them, then polls `GET /api/ota`
+and prints the device's progress until it completes or reboots. `--fs-only` sends just
+the filesystem; `--pull-wait` bounds the poll (default 300s).
+
+### With curl
+
+```sh
+# stage the filesystem without starting it, and keep the URL out of NVS
+curl -u admin:changeme -X POST -d '{"url":"http://10.0.0.2:8080/littlefs.bin"}' \
+     'http://192.168.1.42/api/filesystem?start=0&persist=0'
+# the firmware request arms both — one download session, one reboot
+curl -u admin:changeme -X POST -d '{"url":"http://10.0.0.2:8080/firmware.bin"}' \
+     'http://192.168.1.42/api/firmware?persist=0'
+```
+
+| Query flag | Effect |
+|---|---|
+| `start=0` | stage the pull without beginning it. The next request without the flag arms everything staged. This is what makes a two-image pull deterministic — otherwise the first download starts immediately and the second request races it |
+| `persist=0` | do not write the URL to NVS. A workstation serving one image should not become the device's configured `firmware_url` for the rest of its life |
+
+`ota_loop()` (called from `captive_portal_loop()`) performs the work on the main loop,
+always filesystem first, and reboots once when both complete. `GET /api/ota` reports
 `idle`, `downloading`, `host_not_found`, `file_not_found`, `http_error`, `write_error`,
 `complete`.
 
-Serving the images for a pull is a one-liner:
+### https and redirects
 
-```sh
-cd .pio/build/<env> && python -m http.server 8080 --bind 0.0.0.0
-```
+`https://` URLs work. The device looks for a CA at `/certs/<Host>.ca` — same naming as
+the MQTT broker certs, so put it in `data/certs/` and flash the filesystem. **Without a
+matching cert the transfer still proceeds, encrypted but unverified**, and the log says
+so: anything able to intercept the connection could serve its own image. Verify the
+server for anything that matters.
+
+TLS costs roughly 40 KB of heap for the session on top of whatever the MQTT transport
+holds; the device logs free heap before the handshake so a failure there is diagnosable.
+
+Redirects are followed for GET (`HTTPC_STRICT_FOLLOW_REDIRECTS`), which release hosting
+needs — a GitHub or S3 download URL answers with a 30x to a signed location. A plain-http
+URL still cannot follow a redirect *to* https.
+
+`firmware_url` and `fs_url` can also be baked in from `device.yml`, so a device knows
+where to look with no request at all.
 
 ### Why ArduinoOTA (espota) was removed
 

@@ -32,6 +32,7 @@ import argparse
 import subprocess
 import shutil
 import configparser
+import http.server
 from pathlib import Path
 import yaml
 
@@ -833,6 +834,7 @@ def cmd_generate(args) -> None:
             "firmware_name":     device.get("firmware_name")     or "",
             "firmware_version":  device.get("firmware_version")  or "",
             "firmware_url":      device.get("firmware_url")      or "",
+            "fs_url":            device.get("fs_url")            or "",
             "manufacturer":      device.get("manufacturer")      or "",
             "model":             device.get("model")             or "",
             "serial_number":     device.get("serial_number")     or "",
@@ -939,7 +941,10 @@ def _upload(cfg, args, build: bool) -> None:
             if rc != 0:
                 print(f"\nFilesystem build FAILED (exit {rc})", file=sys.stderr)
                 sys.exit(rc)
-        ota_push(cfg, args, *target)
+        if getattr(args, "pull", False):
+            ota_pull(cfg, args, *target)
+        else:
+            ota_push(cfg, args, *target)
         return
 
     # Pause a tmux serial monitor holding the port (no-op if none / outside tmux).
@@ -1042,14 +1047,20 @@ def _ota_request(host: str, path: str, passphrase: str, payload: bytes,
         total = len(payload)
         sent  = 0
         last  = -1
+        # A control request (enable OTA, a pull URL) is a few dozen bytes — a progress
+        # meter on it is noise. Only an actual image gets one.
+        show_progress = total > OTA_CHUNK
         for off in range(0, total, OTA_CHUNK):
             conn.send(payload[off:off + OTA_CHUNK])
             sent += len(payload[off:off + OTA_CHUNK])
+            if not show_progress:
+                continue
             pct = sent * 100 // total if total else 100
             if pct != last and pct % 5 == 0 and pct < 100:   # 100% printed once, below
                 last = pct
                 print(f"\r  {label}: {pct:3d}%  ({sent}/{total} bytes)", end="", flush=True)
-        print(f"\r  {label}: 100%  ({total}/{total} bytes)", flush=True)
+        if show_progress:
+            print(f"\r  {label}: 100%  ({total}/{total} bytes)", flush=True)
         resp = conn.getresponse()
         return resp.status, resp.read().decode("utf-8", "replace").strip()
     # Ordered most specific first — gaierror, ConnectionError and timeout are all
@@ -1083,21 +1094,107 @@ def _ota_push_image(host: str, path: str, passphrase: str, image: Path,
         sys.exit(1)
     print(f"  -> {body}")
 
-def ota_push(cfg: dict, args, host: str, source: str) -> None:
-    env_name  = get_environment(cfg)
+def _ota_get(host: str, path: str, passphrase: str, timeout: int = 10):
+    """GET with the same pre-emptive auth as _ota_request(). Returns (status, text)."""
+    auth = base64.b64encode(f"admin:{passphrase}".encode()).decode()
+    conn = http.client.HTTPConnection(host, timeout=timeout)
+    try:
+        conn.putrequest("GET", path, skip_accept_encoding=True)
+        conn.putheader("Authorization", "Basic " + auth)
+        conn.endheaders()
+        resp = conn.getresponse()
+        return resp.status, resp.read().decode("utf-8", "replace").strip()
+    except socket.gaierror:
+        _ota_unreachable(host, "that name does not resolve", unresolved=True)
+    except OSError as e:
+        _ota_unreachable(host, f"{e.__class__.__name__}: {e}")
+    finally:
+        conn.close()
+
+# ── pull OTA ───────────────────────────────────────────────────────────────────
+#
+# The push path streams the images INTO the device. Pull is the other direction: the
+# device downloads them itself from a URL, which is what works when the device is
+# reachable from a server but not from here (NAT, VPN, a fleet behind a gateway).
+#
+# The firmware already implements it — POST /api/firmware and /api/filesystem take
+# {"url": ...}, save it, and queue a download (src/platform/ota.cpp). Two query flags
+# make it usable for a one-shot dev push: ?start=0 stages without beginning, so both
+# images run as ONE session with a single reboot, and ?persist=0 keeps a throwaway URL
+# out of the device's NVS.
+#
+# --pull with no --url serves the images from THIS machine for the duration of the
+# transfer, which needs no infrastructure at all on a LAN.
+
+def _pull_request(host: str, path: str, passphrase: str, url: str,
+                  start: bool, persist: bool, label: str) -> None:
+    q = []
+    if not start:   q.append("start=0")
+    if not persist: q.append("persist=0")
+    full = path + ("?" + "&".join(q) if q else "")
+    body = json.dumps({"url": url}).encode()
+    status, text = _ota_request(host, full, passphrase, body, "application/json",
+                                label, timeout=15)
+    if status != 200:
+        print(f"\n{label} FAILED: HTTP {status} {text}", file=sys.stderr)
+        if status == 401:
+            print("  (check device_passphrase in device.yml)", file=sys.stderr)
+        sys.exit(1)
+    print(f"  -> {label}: {url}")
+
+# Terminal states from ota_get_status_str() in src/platform/ota.cpp.
+_PULL_ERRORS = {
+    "host_not_found": "the device could not reach the URL's host",
+    "file_not_found": "the server answered 404 — wrong path?",
+    "http_error":     "the server answered with an error",
+    "write_error":    "the device could not write the image (bad image, or no space)",
+}
+
+def _pull_watch(host: str, passphrase: str, timeout: int) -> int:
+    """Poll /api/ota until the device finishes, errors, or stops answering (which a
+    successful firmware update causes, since it reboots). Returns a process rc."""
+    deadline = time.time() + timeout
+    last = None
+    while time.time() < deadline:
+        try:
+            status, text = _ota_get(host, "/api/ota", passphrase, timeout=5)
+        except SystemExit:
+            # The device stopped answering. After a firmware pull that is the REBOOT,
+            # i.e. the success case — the status endpoint dies with the old image.
+            print("  device stopped answering — rebooting into the new image")
+            return 0
+        state = ""
+        try:
+            state = (json.loads(text) or {}).get("status", "")
+        except ValueError:
+            state = text
+        if state != last:
+            print(f"  device: {state}")
+            last = state
+        if state == "complete":
+            return 0
+        if state in _PULL_ERRORS:
+            print(f"\nOTA pull FAILED: {_PULL_ERRORS[state]}\n  device reported: {text}",
+                  file=sys.stderr)
+            return 1
+        time.sleep(1.0)
+    print(f"\nGave up after {timeout}s — the device never reported completion.\n"
+          f"  Watch it directly: ./ebus-esp32 monitor --host {host.split(':')[0]}",
+          file=sys.stderr)
+    return 1
+
+def _ota_passphrase(cfg: dict, args) -> str:
     passphrase = getattr(args, "passphrase", None) or \
                  (cfg.get("device") or {}).get("device_passphrase") or ""
     if not passphrase:
         print("ERROR: no device_passphrase in device.yml (and no --passphrase given).\n"
               "       The OTA endpoints require it.", file=sys.stderr)
         sys.exit(1)
+    return passphrase
 
-    build_dir = PIO_BUILD_DIR / env_name
-    fw, fs = build_dir / "firmware.bin", build_dir / "littlefs.bin"
-
-    # push transports what is already on disk, so check it is actually there before
-    # opening an OTA window on the device. Without this a push that was never preceded
-    # by a build died in _ota_push_image() with a FileNotFoundError traceback.
+def _require_images(args, fw: Path, fs: Path) -> None:
+    """Both OTA transports move images that are already on disk, so check they exist
+    before opening an OTA window on the device."""
     missing = [(label, path) for label, path in
                ((("firmware", fw),) if not args.fs_only else ()) + (("filesystem", fs),)
                if not path.exists()]
@@ -1108,6 +1205,166 @@ def ota_push(cfg: dict, args, host: str, source: str) -> None:
               "       (or use './ebus-esp32 run --ota', which builds then pushes).",
               file=sys.stderr)
         sys.exit(1)
+
+def ota_pull(cfg: dict, args, host: str, source: str) -> None:
+    """Point the device at an image server and watch it download. The server is yours —
+    `ebus-esp32 serve` runs one over the build directory for development."""
+    env_name   = get_environment(cfg)
+    passphrase = _ota_passphrase(cfg, args)
+
+    base = (getattr(args, "url", None) or "").rstrip("/")
+    if not base:
+        print("ERROR: --pull needs --url <base>, the server the DEVICE downloads from.\n"
+              "       e.g. --url https://releases.example.com/ebus/v1.2\n"
+              "       To serve this build for development: ./ebus-esp32 serve",
+              file=sys.stderr)
+        sys.exit(1)
+
+    print(f"\n--- OTA pull from {base} ---")
+    print(f"    device {host} (host {source}, env {env_name})")
+
+    # Filesystem staged first, firmware last and it arms both — so one download session,
+    # one reboot, and the firmware is what the device comes up on.
+    if not args.fs_only:
+        _pull_request(host, "/api/filesystem", passphrase, f"{base}/littlefs.bin",
+                      start=False, persist=False, label="stage filesystem")
+        _pull_request(host, "/api/firmware", passphrase, f"{base}/firmware.bin",
+                      start=True, persist=False, label="start firmware")
+    else:
+        _pull_request(host, "/api/filesystem", passphrase, f"{base}/littlefs.bin",
+                      start=True, persist=False, label="start filesystem")
+    rc = _pull_watch(host, passphrase, getattr(args, "pull_wait", 300))
+    if rc != 0:
+        sys.exit(rc)
+
+# ── serve ──────────────────────────────────────────────────────────────────────
+#
+# An image server over the build directory, for driving a pull from the device's own
+# captive portal: run this, open the portal, paste the printed URL into the firmware or
+# filesystem field. Also what `push --pull --url` points at during development.
+#
+# It serves exactly two paths — firmware.bin and littlefs.bin — rather than the build
+# directory as a whole, which also holds the ELF, the map and every object file. A
+# development convenience should not put the symbol table on the LAN.
+
+class _ImageRequestHandler(http.server.BaseHTTPRequestHandler):
+    images: dict = {}          # url path -> Path, set per-server below
+    server_version = "ebus-esp32"
+    sys_version = ""
+
+    def log_message(self, fmt, *a):
+        print(f"  {self.address_string()}  {fmt % a}", flush=True)
+
+    def _send(self, code: int, body: bytes = b"", ctype: str = "text/plain"):
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def do_HEAD(self):
+        self.do_GET()
+
+    def do_GET(self):
+        path = self.path.split("?")[0]
+        if path == "/":
+            listing = "".join(f"{n}  {p.stat().st_size} bytes\n"
+                              for n, p in sorted(self.images.items()))
+            self._send(200, listing.encode())
+            return
+        image = self.images.get(path.lstrip("/"))
+        if image is None or not image.exists():
+            self._send(404, "not found - this server offers only the images listed "
+                                 "at /\n".encode())
+            return
+        data = image.read_bytes()
+        # Content-Length is what the device sizes Update.begin() from, so it has to be
+        # exact and the body cannot be chunked or compressed.
+        self._send(200, data, "application/octet-stream")
+
+def _outbound_ip() -> str:
+    """This machine's address on the interface with the default route. Connecting a UDP
+    socket picks it from the routing table without sending anything — more reliable than
+    gethostbyname(gethostname()), which yields 127.0.0.1 as often as not on macOS."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        s.close()
+
+def cmd_serve(args) -> None:
+    cfg       = load_device_yml(Path(args.device_yml))
+    env_name  = get_environment(cfg)
+    build_dir = PIO_BUILD_DIR / env_name
+
+    images = {name: build_dir / name for name in ("firmware.bin", "littlefs.bin")}
+    present = {n: p for n, p in images.items() if p.exists()}
+    if not present:
+        print(f"ERROR: no images in {build_dir} — run './ebus-esp32 build' first",
+              file=sys.stderr)
+        sys.exit(1)
+    for name in images:
+        if name not in present:
+            print(f"WARNING: no {name} in {build_dir} — it will 404", file=sys.stderr)
+
+    # Same staleness check `push` makes: a littlefs.bin older than the config it was
+    # packed from flashes cleanly and leaves the device running yesterday's data/.
+    fs_image = present.get("littlefs.bin")
+    if fs_image:
+        fs_inputs  = [q for q in DATA_DIR.rglob("*") if q.is_file()]
+        fs_inputs += [q for q in (Path(args.device_yml), CONFIG_OVERLAY) if q.exists()]
+        if max((q.stat().st_mtime for q in fs_inputs), default=0) > fs_image.stat().st_mtime:
+            print("WARNING: littlefs.bin is older than the config it is packed from — "
+                  "run './ebus-esp32 build' to repack it", file=sys.stderr)
+
+    handler = type("_BoundImageHandler", (_ImageRequestHandler,), {"images": present})
+    try:
+        httpd = http.server.ThreadingHTTPServer((args.bind, args.port), handler)
+    except OSError as e:
+        print(f"ERROR: cannot listen on {args.bind}:{args.port} — {e}", file=sys.stderr)
+        sys.exit(1)
+
+    scheme = "http"
+    if args.cert:
+        # https needs the DEVICE to trust this server: put the same cert (or its CA) at
+        # data/certs/<Host>.ca and flash the filesystem, or the device downloads
+        # unverified and says so in its log. See doc/ESP32OTA.md.
+        import ssl
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        try:
+            ctx.load_cert_chain(certfile=args.cert, keyfile=args.key or args.cert)
+        except (OSError, ssl.SSLError) as e:
+            print(f"ERROR: could not load --cert/--key — {e}", file=sys.stderr)
+            sys.exit(1)
+        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+        scheme = "https"
+
+    host = args.url_host or _outbound_ip()
+    base = f"{scheme}://{host}:{httpd.server_address[1]}"
+    print(f"\n--- serving {build_dir.relative_to(ROOT)} (env {env_name}) ---")
+    for name, path in sorted(present.items()):
+        print(f"  {base}/{name}    ({path.stat().st_size} bytes)")
+    print("\nPaste those into the device's portal (Firmware / Filesystem URL), or:")
+    print(f"  ./ebus-esp32 push --pull --url {base} --host <device>")
+    print("\nCtrl-C to stop.\n")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nstopped")
+    finally:
+        httpd.server_close()
+
+def ota_push(cfg: dict, args, host: str, source: str) -> None:
+    env_name  = get_environment(cfg)
+    passphrase = _ota_passphrase(cfg, args)
+
+    build_dir = PIO_BUILD_DIR / env_name
+    fw, fs = build_dir / "firmware.bin", build_dir / "littlefs.bin"
+    _require_images(args, fw, fs)
 
     # Staleness matters more than absence here: a littlefs.bin older than the config it
     # was packed from flashes cleanly, reports success, and leaves the device running
@@ -1146,12 +1403,15 @@ def ota_push(cfg: dict, args, host: str, source: str) -> None:
     print("\ndone — device rebooting.")
 
 def _ota_target(cfg, args):
-    """(host, source) when this invocation should flash over the network, else None."""
-    if not getattr(args, "ota", False):
+    """(host, source) when this invocation should flash over the network, else None.
+    Covers both network transports: --ota pushes the images, --pull tells the device to
+    fetch them."""
+    if not (getattr(args, "ota", False) or getattr(args, "pull", False)):
         return None
     host, source = resolve_host(cfg, get_environment(cfg), getattr(args, "host", None))
     if not host:
-        print("ERROR: --ota given but no device address is known.", file=sys.stderr)
+        flag = "--pull" if getattr(args, "pull", False) else "--ota"
+        print(f"ERROR: {flag} given but no device address is known.", file=sys.stderr)
         print("       Pass --host <ip>, or learn it once over USB: ebus-esp32 monitor --serial",
               file=sys.stderr)
         sys.exit(1)
@@ -1572,6 +1832,9 @@ def main():
             "  ./ebus-esp32 push",
             "  ./ebus-esp32 push --fs-only",
             "  ./ebus-esp32 push --ota --host 192.168.1.42     (flash fw+fs over TCP, no cable)",
+            "  ./ebus-esp32 push --pull --url http://10.0.0.5:8080 --host 192.168.1.42",
+            "                                                 (device downloads the images instead)",
+            "  ./ebus-esp32 serve                             (serve the images for a portal-driven pull)",
             "  ./ebus-esp32 run",
             "  ./ebus-esp32 run --monitor                      (flash, then watch over the network)",
             "  ./ebus-esp32 run --ota --monitor                (build, flash over TCP, then watch)",
@@ -1601,6 +1864,16 @@ def main():
         p.add_argument("--ota", action="store_true",
                        help="flash over the network (POST the images to the device's OTA "
                             "endpoints) instead of over USB")
+        p.add_argument("--pull", action="store_true",
+                       help="flash over the network the other way round: the device "
+                            "downloads the images itself from --url")
+        p.add_argument("--url", default=None, metavar="BASE",
+                       help="with --pull, the base URL the DEVICE fetches firmware.bin "
+                            "and littlefs.bin from (e.g. https://releases.example.com/v1.2). "
+                            "'ebus-esp32 serve' runs one over this build")
+        p.add_argument("--pull-wait", type=int, default=300, metavar="SECONDS",
+                       help="with --pull, how long to wait for the device to finish "
+                            "(default: 300)")
         p.add_argument("--passphrase", default=None, metavar="PASS",
                        help="device passphrase for the OTA endpoints "
                             "(default: device.device_passphrase from device.yml)")
@@ -1665,6 +1938,22 @@ def main():
     add_ota_flags(p)
     add_monitor_flags(p, 90)   # board reboots and must re-associate with WiFi first
 
+    p = sub.add_parser("serve", help="Serve the built firmware/filesystem images over HTTP(S) "
+                                     "for a device-initiated (pull) OTA")
+    p.add_argument("device_yml", **dev_yml_arg)
+    p.add_argument("--port", type=int, default=8080, metavar="PORT",
+                   help="port to listen on (default: 8080)")
+    p.add_argument("--bind", default="0.0.0.0", metavar="ADDR",
+                   help="address to listen on (default: 0.0.0.0, every interface)")
+    p.add_argument("--cert", default=None, metavar="FILE",
+                   help="PEM certificate — serve https instead of http. The device needs "
+                        "the matching CA at data/certs/<Host>.ca or it cannot verify it")
+    p.add_argument("--key", default=None, metavar="FILE",
+                   help="private key for --cert (default: the --cert file itself)")
+    p.add_argument("--url-host", default=None, metavar="HOST",
+                   help="hostname to print in the URLs (default: this machine's address "
+                        "on the default route) — use it when the device reaches you by name")
+
     args = parser.parse_args()
 
     dispatch = {                       # same alphabetical order as the parsers above
@@ -1680,6 +1969,7 @@ def main():
         "monitors":      cmd_monitors,
         "push":          cmd_push,
         "run":           cmd_run,
+        "serve":         cmd_serve,
     }
     dispatch[args.command](args)
 

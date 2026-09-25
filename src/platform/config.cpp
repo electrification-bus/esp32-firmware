@@ -351,6 +351,7 @@ bool loadPlatformConfiguration() {
   cfg_copy_str("device", "firmware_name",    "firmware_name",    firmware_name,    sizeof(firmware_name));
   cfg_copy_str("device", "firmware_version", "firmware_version", firmware_version, sizeof(firmware_version));
   cfg_copy_str("device", "firmware_url",     "firmware_url",     firmware_url,     sizeof(firmware_url));
+  cfg_copy_str("device", "fs_url",            "fs_url",           fs_url,           sizeof(fs_url));
 
   cfg_copy_str("device", "homie_role",        "homie_role",        homie_role,        sizeof(homie_role));
   cfg_copy_str("device", "device_passphrase", "device_passphrase", device_passphrase, sizeof(device_passphrase));
