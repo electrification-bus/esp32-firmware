@@ -118,13 +118,17 @@ chip-selects and output pins are per node:
 |---|---|---|---|---|
 | `buses.rs485` (`pin_a`/`pin_b`) — all `modbus/*` | 36 / 4 | 36 / 4 | 6 / 7 | **44 / 43** |
 | `buses.i2c` (`pin_sda`/`pin_scl`) — all `i2c/*` | 13 / 16 | 13 / **14** | 13 / 16 | 5 / 6 |
-| `spi/atm90e32_energy_meter` (`pin_cs1`/`pin_cs2`) | see note | see note | 15 / 16 | 8 / 9 |
+| `buses.spi` (`pin_sck`/`pin_miso`/`pin_mosi`) — all `spi/*` | see note | see note | 12 / 13 / 11 | 7 / 8 / 9 |
+| `spi/atm90e32_energy_meter` (`pin_cs1`/`pin_cs2`) | see note | see note | 15 / 16 | 1 / 2 |
 | `gpio/digital_output` | 14, 15, 2, 5 | 14, 15, 2, 5 | plenty | 1, 2, 3, 4 |
 
-**ATM90E32 note:** `lib/spi/atm90e32_energy_meter.yml` gives 27 / 26 for "other ESP32
-boards". Those are **RMII pins on the PoE boards** and are not broken out there — the
-27 / 26 values are for a plain (non-Ethernet) classic ESP32. On a PoE-ISO you would need
-to pick chip-selects from the twelve pins above.
+**SPI on the PoE-ISO:** neither ESP32 default set fits. VSPI (18/19/23) is the Ethernet
+PHY's SMI, and HSPI's default MISO is GPIO 12, the PHY power strap. The bus has to be
+placed by hand from the free list — SCK 14, MISO 34 (input-only is fine for MISO), MOSI 15,
+chip-selects from 2/4/5 — and that eats most of the board, alongside any I2C or Modbus.
+This is why `buses.spi` is required rather than defaulted: a silent default would be
+wrong on exactly this board. The 27 / 26 chip-selects the ATM90E32 upstream docs give for
+"other ESP32 boards" are RMII pins here too.
 
 ## Two gotchas worth the ink
 

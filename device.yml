@@ -12,7 +12,7 @@
 #                                 contactor, LED, valve); requires pin, active_low, initial_state
 #   ble/gatt_device             — generic BLE GATT device (any service/notify/write UUIDs)
 #   (ble/serial_bms — JBD Smart BMS — is now a copy/paste example: examples/bms/)
-#   spi/atm90e32_energy_meter   — 6-CT energy meter (SPI); requires pin_cs1, pin_cs2
+#   spi/atm90e32_energy_meter   — 6-CT energy meter (SPI); needs buses.spi, config: pin_cs1, pin_cs2
 #
 # Bus pins are board facts shared by every node on that bus, so they are declared once
 # in the buses: block below; a node's config: holds only what is per device (an address).
@@ -103,9 +103,11 @@ log:
 # Shared bus pins, one block per physical bus. Reference values by board: doc/GPIOPins.md.
 #   rs485: pin_a -> the RS485 module's "RXD" pin, pin_b -> its "TXD" pin (all modbus/* nodes)
 #   i2c:   pin_sda / pin_scl (all i2c/* nodes; WROVER boards keep SCL off GPIO 16/17)
+#   spi:   pin_sck / pin_miso / pin_mosi (all spi/* nodes; chip-selects stay per node)
 buses:
   rs485: { pin_a: 36, pin_b: 4 }
   #i2c:   { pin_sda: 13, pin_scl: 16 }
+  #spi:   { pin_sck: 14, pin_miso: 34, pin_mosi: 15 }
 
 nodes:
   - component: modbus/sht20

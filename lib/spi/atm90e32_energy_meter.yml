@@ -58,26 +58,25 @@ nodes:
         value: 0.0
 extensions: []
 implementation: homie-esp32-sdk
-# This component's entry in device.yml MUST include a config: block with
-# pin_cs1/pin_cs2 (SPI chip-select for each of the board's two ATM90E32 ICs:
-# CS1 -> IC1/CTs 1-3, CS2 -> IC2/CTs 4-6) — the generator substitutes them
-# straight into the C++ constructor below, so missing/omitted keys break the
-# generated build. Example:
+# SPI bus pins come from device.yml's top-level buses: block, shared by every spi/*
+# node. The per-node config: holds the two chip-selects (one per ATM90E32 IC:
+# CS1 -> IC1/CTs 1-3, CS2 -> IC2/CTs 4-6; board silkscreen "CS"/"CS2"). Example:
 #
-#   - component: spi/atm90e32_energy_meter
-#     id: energy_meter
-#     config:
-#       pin_cs1: 15
-#       pin_cs2: 16
+#   buses:
+#     spi: { pin_sck: 14, pin_miso: 12, pin_mosi: 13 }
+#   nodes:
+#     - component: spi/atm90e32_energy_meter
+#       id: energy_meter
+#       config:
+#         pin_cs1: 15
+#         pin_cs2: 16
 #
-# Reference values by board (CircuitSetup.us 6-CT board silkscreen "CS"/"CS2"):
-#   esp32-s3-devkitc-1: pin_cs1: 15, pin_cs2: 16
-#   other ESP32 boards: pin_cs1: 27, pin_cs2: 26
-# For multi-board (stacked) setups, additional boards need their own pin_cs1/pin_cs2
-# node instances — see doc/GenerateHomieDevice.md for multi-instance components.
+# Reference pins by board are in doc/GPIOPins.md. For multi-board (stacked) setups,
+# additional boards need their own pin_cs1/pin_cs2 node instances — see
+# doc/GenerateHomieDevice.md for multi-instance components.
 generator:
   class: EnergyMeter
   header: spi/atm90e32_energy_meter.h
-  constructor: '("{id}", {config.pin_cs1}, {config.pin_cs2})'
+  constructor: '("{id}", {bus.spi.pin_sck}, {bus.spi.pin_miso}, {bus.spi.pin_mosi}, {config.pin_cs1}, {config.pin_cs2})'
   lib_deps:
     - https://github.com/CircuitSetup/ATM90E32.git

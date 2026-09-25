@@ -14,7 +14,8 @@
 
    For multi-board setups (up to 3 boards / 18 CTs), see commented example code below.
 
-   SPI: Uses default ESP32 SPI bus (VSPI/FSPI depending on chip variant)
+   SPI: the shared bus from SPIEntity (device.yml buses.spi); the two chip-selects
+   are per device and come from the node's config: block.
 
    -------------------------------------------------------------------
    License: GNU General Public License v3
@@ -24,9 +25,8 @@
 
 #pragma once
 
-#include <node/NodeEntity.h>
+#include <spi/spi_entity.h>
 #include <ATM90E32.h>
-#include <SPI.h>
 
 // Number of CT inputs per board (fixed - each board has 2 ATM90E32 ICs with 3 CTs each)
 #define ENERGY_METER_CTS_PER_BOARD 6
@@ -136,29 +136,29 @@ public:
    EnergyMeter NodeEntity
    -------------------------------------------------------------------
 */
-class EnergyMeter : public NodeEntity {
+class EnergyMeter : public SPIEntity {
 public:
     /*
        Constructor with default calibration values.
 
        @param homie_node_id  Unique node identifier for Homie MQTT
+       @param pin_sck/miso/mosi  Shared SPI bus pins (device.yml buses.spi)
        @param pin_cs1        Chip select pin for IC1 (CTs 1-3)
        @param pin_cs2        Chip select pin for IC2 (CTs 4-6)
     */
-    EnergyMeter(const char* homie_node_id, int pin_cs1, int pin_cs2);
+    EnergyMeter(const char* homie_node_id, int pin_sck, int pin_miso, int pin_mosi,
+                int pin_cs1, int pin_cs2);
 
     /*
        Constructor with custom calibration values.
 
-       @param homie_node_id  Unique node identifier for Homie MQTT
-       @param pin_cs1        Chip select pin for IC1 (CTs 1-3)
-       @param pin_cs2        Chip select pin for IC2 (CTs 4-6)
        @param lineFreq       Line frequency calibration (4231=60Hz, 135=50Hz)
        @param pgaGain        PGA gain (0=1x, 21=2x, 42=4x)
        @param voltageGain    Voltage RMS gain calibration
        @param currentGain    Current RMS gain calibration (same for all CTs)
     */
-    EnergyMeter(const char* homie_node_id, int pin_cs1, int pin_cs2,
+    EnergyMeter(const char* homie_node_id, int pin_sck, int pin_miso, int pin_mosi,
+                int pin_cs1, int pin_cs2,
                 unsigned short lineFreq, unsigned short pgaGain,
                 unsigned short voltageGain, unsigned short currentGain);
 

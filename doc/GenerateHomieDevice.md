@@ -66,6 +66,7 @@ mqtt:
 buses:                                  # board pins, declared once per physical bus
   i2c:   { pin_sda: 13, pin_scl: 16 }   # every i2c/* node
   rs485: { pin_a: 6, pin_b: 7 }         # every modbus/* node (pin_a -> module RXD, pin_b -> TXD)
+  spi:   { pin_sck: 12, pin_miso: 13, pin_mosi: 11 }   # every spi/* node; chip-selects stay per node
 
 nodes:
   - component: i2c/bme280               # lib/i2c/bme280
@@ -136,6 +137,7 @@ the generator errors if a bus a component needs is missing. Reference values per
 |-----|------|---------|
 | `i2c`   | `pin_sda`, `pin_scl` | `i2c/*` — one `TwoWire`, started by the first node's `setup()` |
 | `rs485` | `pin_a`, `pin_b` | `modbus/*` — one UART; `pin_a` is the RS485 module's RXD pin, `pin_b` its TXD |
+| `spi`   | `pin_sck`, `pin_miso`, `pin_mosi` | `spi/*` — one `SPIClass`; chip-selects stay per node |
 
 ---
 
@@ -149,7 +151,7 @@ the generator errors if a bus a component needs is missing. Reference values per
 | `modbus/register_device` | `ModbusRegisterDevice` | `buses.rs485`; `address`; a `registers:` list (see the yml) |
 | `gpio/digital_output` | `DigitalOutput` | `pin`, `active_low`, `initial_state` |
 | `ble/gatt_device` | `GattDevice` | `address`, `name_filter`, `service_uuid`, `notify_uuid`, `write_uuid` |
-| `spi/atm90e32_energy_meter` | `EnergyMeter` | `pin_cs1`, `pin_cs2` |
+| `spi/atm90e32_energy_meter` | `EnergyMeter` | `buses.spi`; `pin_cs1`, `pin_cs2` |
 
 Multiple instances of the same component are allowed; give each a unique `id`.
 

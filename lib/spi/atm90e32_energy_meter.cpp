@@ -14,7 +14,6 @@
 */
 
 #include <spi/atm90e32_energy_meter.h>
-#include <SPI.h>
 
 /*
    -------------------------------------------------------------------
@@ -73,18 +72,20 @@ void EnergyModel::init(unsigned short lineFreq, unsigned short pgagain, unsigned
    -------------------------------------------------------------------
 */
 
-EnergyMeter::EnergyMeter(const char* homie_node_id, int pin_cs1, int pin_cs2)
-    : NodeEntity(homie_node_id) {
+EnergyMeter::EnergyMeter(const char* homie_node_id, int pin_sck, int pin_miso, int pin_mosi,
+                         int pin_cs1, int pin_cs2)
+    : SPIEntity(homie_node_id, pin_sck, pin_miso, pin_mosi) {
     _cs1[0] = pin_cs1;
     _cs2[0] = pin_cs2;
     initCalibration(LINE_FREQ_DEFAULT, PGA_GAIN_DEFAULT,
                     VOLTAGE_GAIN_DEFAULT, CURRENT_GAIN_DEFAULT);
 }
 
-EnergyMeter::EnergyMeter(const char* homie_node_id, int pin_cs1, int pin_cs2,
+EnergyMeter::EnergyMeter(const char* homie_node_id, int pin_sck, int pin_miso, int pin_mosi,
+                         int pin_cs1, int pin_cs2,
                          unsigned short lineFreq, unsigned short pgaGain,
                          unsigned short voltageGain, unsigned short currentGain)
-    : NodeEntity(homie_node_id) {
+    : SPIEntity(homie_node_id, pin_sck, pin_miso, pin_mosi) {
     _cs1[0] = pin_cs1;
     _cs2[0] = pin_cs2;
     initCalibration(lineFreq, pgaGain, voltageGain, currentGain);
@@ -136,7 +137,7 @@ void EnergyMeter::setupProperties() {
 }
 
 bool EnergyMeter::setup() {
-    NodeEntity::setup();  // Base class first
+    SPIEntity::setup();  // Base class first: NodeEntity, then the shared bus
     setupProperties();
 
     Serial.printf("EnergyMeter::setup() lineFreq=%d, pgaGain=%d, voltageGain=%d, currentGain=%d\n",
