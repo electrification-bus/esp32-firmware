@@ -21,7 +21,7 @@ All 7 node classes are exercised across the 4 device boards.
 | Device     | Env                  | Active Nodes in `homie.cpp`                   | Hardware bus / notes          |
 |------------|----------------------|-----------------------------------------------|-------------------------------|
 | controller | esp32-s3-devkitc-1   | *(controller only)*                           | WiFi; no sensor nodes         |
-| poe16-a    | esp32-poe-iso-16mb   | `Modbus_SHT20`, `Modbus_Eletechsup32`         | RS485 shared on UART1         |
+| poe16-a    | esp32-poe-iso-16mb   | `SHT20`, `Eletechsup32`         | RS485 shared on UART1         |
 | poe16-b    | esp32-poe-iso-16mb   | `EnergyMeter` (ATM90E32), `OTANode`           | SPI                           |
 | poe4-a     | esp32-poe-iso        | `BME280`, `SerialBMS`                         | I2C + BLE                     |
 | poe4-b     | esp32-poe-iso        | `DigitalOutput`                               | GPIO                          |
@@ -71,8 +71,8 @@ build_flags =
 
 **homie.cpp**:
 ```cpp
-Modbus_SHT20 sht20("environment_sht20", get_serial1());
-Modbus_Eletechsup32 iv_detector("voltage_current_detector", get_serial1());
+SHT20 sht20("environment_sht20", get_serial1());
+Eletechsup32 iv_detector("voltage_current_detector", get_serial1());
 
 void setup_homie() {
     sht20.setup();
@@ -172,8 +172,8 @@ pio run -e esp32-poe-iso      -t upload --upload-port COMx
 
 | Node class            | Device  | Interface | Tested |
 |-----------------------|---------|-----------|--------|
-| `Modbus_SHT20`        | poe16-a | RS485     | yes    |
-| `Modbus_Eletechsup32` | poe16-a | RS485     | yes    |
+| `SHT20`        | poe16-a | RS485     | yes    |
+| `Eletechsup32` | poe16-a | RS485     | yes    |
 | `EnergyMeter`         | poe16-b | SPI       | yes    |
 | `OTANode`             | poe16-b | —         | yes    |
 | `BME280`              | poe4-a  | I2C       | yes    |

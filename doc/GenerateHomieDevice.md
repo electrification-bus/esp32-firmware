@@ -144,8 +144,8 @@ the generator errors if a bus a component needs is missing. Reference values per
 | Component | Class | Constructor extras |
 |-----------|-------|--------------------|
 | `i2c/bme280` | `BME280` | `buses.i2c`; `address` (0x76 or 0x77) |
-| `modbus/sht20` | `Modbus_SHT20` | `buses.rs485` (uses `get_serial1()`) |
-| `modbus/eletechsup32` | `Modbus_Eletechsup32` | `buses.rs485` (uses `get_serial1()`) |
+| `modbus/sht20` | `SHT20` | `buses.rs485` (uses `get_serial1()`) |
+| `modbus/eletechsup32` | `Eletechsup32` | `buses.rs485` (uses `get_serial1()`) |
 | `modbus/register_device` | `ModbusRegisterDevice` | `buses.rs485`; `address`; a `registers:` list (see the yml) |
 | `gpio/digital_output` | `DigitalOutput` | `pin`, `active_low`, `initial_state` |
 | `ble/gatt_device` | `GattDevice` | `address`, `name_filter`, `service_uuid`, `notify_uuid`, `write_uuid` |
@@ -225,7 +225,7 @@ Example output for the quickstart config above:
 #include <spi/atm90e32_energy_meter.h>
 
 BME280 environment_bme280("environment_bme280", 13, 16);
-Modbus_SHT20 environment_sht20("environment_sht20", get_serial1(), 6, 7);
+SHT20 environment_sht20("environment_sht20", get_serial1(), 6, 7);
 DigitalOutput relay1("relay1", 4, true, false);
 EnergyMeter energy_meter("energy_meter", 15, 16);
 

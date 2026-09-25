@@ -128,7 +128,7 @@ while a large image streams in. On a board with Modbus nodes this shows up as ti
 ```
 PORTAL: OTA push started (firmware, 1353856 bytes) ...
 Modbus: Cmd 7 failed - RESPONSE_TIMEOUT (0xE2) addr=1 reg=1
-Modbus_SHT20: Async read failed, error=226
+SHT20: Async read failed, error=226
 ```
 
 Harmless for a firmware push — the device reboots immediately afterward. For a *staged*

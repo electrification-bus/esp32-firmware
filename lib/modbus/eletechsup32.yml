@@ -33,7 +33,7 @@ implementation: homie-esp32-sdk
 #     - component: modbus/eletechsup32
 #       id: voltage_current_detector
 generator:
-  class: Modbus_Eletechsup32
+  class: Eletechsup32
   header: modbus/eletechsup32.h
   constructor: '("{id}", get_serial1(), {bus.rs485.pin_a}, {bus.rs485.pin_b})'
   # No lib_deps: modbus deps come from lib/platform/library.json (see sht20.yml).

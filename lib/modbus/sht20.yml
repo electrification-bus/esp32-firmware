@@ -34,7 +34,7 @@ implementation: homie-esp32-sdk
 #     - component: modbus/sht20
 #       id: environment_sht20
 generator:
-  class: Modbus_SHT20
+  class: SHT20
   header: modbus/sht20.h
   constructor: '("{id}", get_serial1(), {bus.rs485.pin_a}, {bus.rs485.pin_b})'
   # No lib_deps here: modbus library dependencies (ModbusMaster, EspSoftwareSerial)

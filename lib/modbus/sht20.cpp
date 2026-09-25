@@ -11,7 +11,7 @@ static const ModbusRegisterDesc SHT20_REGS[] = {
     { "relative_humidity", 2, false, false, 0.1f, REGDEV_FLOAT },
 };
 
-Modbus_SHT20::Modbus_SHT20(const char* homie_node_id, Stream& serial,
+SHT20::SHT20(const char* homie_node_id, Stream& serial,
                            int pin_rs485_a, int pin_rs485_b,
                            uint8_t addr, bool useAsyncQueue)
     : ModbusRegisterDevice(homie_node_id, serial, pin_rs485_a, pin_rs485_b, addr,

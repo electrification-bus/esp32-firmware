@@ -18,10 +18,10 @@
 // driver when a map is not enough — values spanning two registers, non-linear decoding,
 // writes, or a command sequence.
 
-class Modbus_SHT20 : public ModbusRegisterDevice {
+class SHT20 : public ModbusRegisterDevice {
     public:
-        Modbus_SHT20(const char* homie_node_id, Stream& serial,
+        SHT20(const char* homie_node_id, Stream& serial,
                      int pin_rs485_a, int pin_rs485_b,
                      uint8_t addr = SHT20_ADDR, bool useAsyncQueue = true);
-        ~Modbus_SHT20() {};
+        ~SHT20() {};
 };

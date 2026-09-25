@@ -241,7 +241,7 @@ the device-specific part is two register addresses, a `/10` scale, and publishin
 There is also no way to express it. A `component:` resolves to one yml, one class, one
 node; the transport arrives through the C++ include chain, not a declaration. "Use the
 sht20 example with the modbus driver" has no syntax, and needs none —
-`Modbus_SHT20 : public ModbusRTUEntity` already is that composition.
+`SHT20 : public ModbusRTUEntity` already is that composition.
 
 `modbus/register_device` is the real parallel to `ble/gatt_device`: not moving a working
 driver out of `lib/`, but adding a generic one beside it that needs no code at all. The
