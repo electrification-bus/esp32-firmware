@@ -1,28 +1,22 @@
 #include <i2c/bme280.h>
-#include <i2c/i2c_bus.h>
-
-BME280::BME280(const char* homie_node_id, int pin_sda, int pin_scl, uint8_t address)
-    : NodeEntity(homie_node_id), Adafruit_BME280(),
-      _sda(pin_sda), _scl(pin_scl), _address(address) {}
 
 bool BME280::setup() {
-  NodeEntity::setup();  // Base class first
+  I2CEntity::setup();  // Base class first: NodeEntity, then the shared bus
 
   temperature.setup(getNodeId(), "temperature");
   relative_humidity.setup(getNodeId(), "relative_humidity");
   air_pressure.setup(getNodeId(), "air_pressure");
 
   _since_last_read = millis();
-  TwoWire& wire = ensure_i2c_bus(_sda, _scl);
 
-  bool ok = begin(_address, &wire);
+  bool ok = begin(address(), &wire());
   if (ok) {
     _bme_temp     = getTemperatureSensor();
     _bme_pressure = getPressureSensor();
     _bme_humidity = getHumiditySensor();
   } else {
     // Retract rather than publish a sentinel; loop() stays idle until reboot.
-    Serial.printf("BME280: not found at 0x%02X — polling suspended\n", _address);
+    Serial.printf("BME280: not found at 0x%02X — polling suspended\n", address());
     temperature.clearValue();
     relative_humidity.clearValue();
     air_pressure.clearValue();
