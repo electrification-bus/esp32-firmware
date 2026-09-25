@@ -43,7 +43,16 @@ SRC_DIR      = ROOT / "src"
 DATA_DIR     = ROOT / "data"
 INCLUDE_DIR  = ROOT / "include"
 BUILD_DIR    = ROOT / "build"   # gitignored — generator scratch space, e.g. platformio.ini
-PLATFORMIO_INI = ROOT / "platformio.ini"
+PLATFORMIO_INI = ROOT / "platformio" / "platformio.ini"
+
+# The CLI builds into .pio/cli, never the .pio/build + .pio/libdeps the VSCode
+# PlatformIO extension uses. Moving platformio.ini out of the repo root was not enough
+# on its own: the extension remembers the folder as its project and writes a stub
+# platformio.ini back at the root within a minute, so it can revive at any time and
+# prune libraries the CLI installed. Separate trees make that harmless. Set as
+# [platformio] build_dir/libdeps_dir in the generated ini (write_lean_platformio_ini).
+PIO_BUILD_DIR   = ROOT / ".pio" / "cli" / "build"
+PIO_LIBDEPS_DIR = ROOT / ".pio" / "cli" / "libdeps"
 GENERATED_INI  = BUILD_DIR / "platformio.ini"
 # Per-developer config overlay: gitignored, repo-root, merged into the generated
 # data/config.yml on every generate. No template and no init step — the file either
@@ -407,7 +416,7 @@ def write_lean_platformio_ini(env_name: str, used_lib_deps: list) -> None:
         if prev.has_section("common"):
             previous_deps = sorted(l.strip() for l in prev.get("common", "lib_deps").splitlines() if l.strip())
     if previous_deps is not None and previous_deps != sorted(kept_deps):
-        env_build_dir = ROOT / ".pio" / "build" / env_name
+        env_build_dir = PIO_BUILD_DIR / env_name
         if env_build_dir.exists():
             shutil.rmtree(env_build_dir)
             print(f"  lib_deps changed for env:{env_name} — removed stale {env_build_dir.relative_to(ROOT)} "
@@ -419,6 +428,12 @@ def write_lean_platformio_ini(env_name: str, used_lib_deps: list) -> None:
             out.add_section(section)
             for key, val in src.items(section):
                 out.set(section, key, val)
+    # Build into the CLI's own tree (see PIO_BUILD_DIR) so the IDE extension and this
+    # CLI never share object files or an installed-library set.
+    if not out.has_section("platformio"):
+        out.add_section("platformio")
+    out.set("platformio", "build_dir", str(PIO_BUILD_DIR))
+    out.set("platformio", "libdeps_dir", str(PIO_LIBDEPS_DIR))
     out.set("common", "lib_deps", "\n" + "\n".join(kept_deps))
     out.add_section(env_section)
     for key, val in src.items(env_section):
@@ -889,7 +904,7 @@ def cmd_build(args) -> None:
         print(f"\nFILESYSTEM BUILD FAILED (exit {rc})", file=sys.stderr)
         sys.exit(rc)
 
-    build_dir = ROOT / ".pio" / "build" / env_name
+    build_dir = PIO_BUILD_DIR / env_name
     for label, path in (("firmware", build_dir / "firmware.bin"),
                         ("filesystem", build_dir / "littlefs.bin")):
         if path.exists():
@@ -955,7 +970,7 @@ def _upload(cfg, args, build: bool) -> None:
             if rc != 0:
                 print(f"\nFirmware upload FAILED (exit {rc})", file=sys.stderr)
                 sys.exit(rc)
-            bin_path = ROOT / ".pio" / "build" / env_name / "firmware.bin"
+            bin_path = PIO_BUILD_DIR / env_name / "firmware.bin"
             if bin_path.exists():
                 print(f"flashed: {bin_path}  ({bin_path.stat().st_size / 1024:.1f} KB)")
 
@@ -1037,7 +1052,7 @@ def ota_push(cfg: dict, args, host: str, source: str) -> None:
               "       The OTA endpoints require it.", file=sys.stderr)
         sys.exit(1)
 
-    build_dir = ROOT / ".pio" / "build" / env_name
+    build_dir = PIO_BUILD_DIR / env_name
     fw, fs = build_dir / "firmware.bin", build_dir / "littlefs.bin"
 
     # push transports what is already on disk, so check it is actually there before
@@ -1183,11 +1198,12 @@ def resolve_host(cfg: dict, env_name: str, explicit: str = None):
     return None, None
 
 def _pio_monitor_cmd(env_name: str) -> list:
-    # NB: no `-c build/platformio.ini` here, unlike pio_run(). `pio device monitor`
-    # has no --project-conf option (only -d/--project-dir and -e/--environment), so
-    # passing -c is a hard "No such option" error. `-e` reads the tracked
-    # platformio.ini, which is where monitor_speed lives anyway.
-    return [find_pio(), "device", "monitor", "-e", env_name]
+    # `pio device monitor` has neither -c nor any other way to be pointed at a config
+    # file (only -d/--project-dir and -e/--environment), and -e needs a platformio.ini
+    # in the project dir — which this repo deliberately does not have (see
+    # PLATFORMIO_INI). monitor_speed is the only setting the monitor needs from it, so
+    # read it here and pass --baud instead of asking pio to resolve the config at all.
+    return [find_pio(), "device", "monitor", "--baud", str(get_monitor_speed(env_name))]
 
 def _wait_for_log_port(host: str, port: int, timeout: int) -> bool:
     """Poll until the device's log listener accepts a connection. After a flash the
@@ -1322,7 +1338,7 @@ def cmd_clean(args) -> None:
     # remove the env build dir outright for a guaranteed-clean rebuild.
     cfg     = load_device_yml(Path(args.device_yml))
     env_name   = get_environment(cfg)
-    builddir = ROOT / ".pio" / "build" / env_name
+    builddir = PIO_BUILD_DIR / env_name
     if builddir.exists():
         shutil.rmtree(builddir)
         print(f"removed {builddir.relative_to(ROOT)}")
@@ -1336,20 +1352,33 @@ def cmd_devices(args) -> None:
     subprocess.run([pio, "device", "list", "--serial"], cwd=ROOT, env=pio_env())
 
 # ── envs ───────────────────────────────────────────────────────────────────────
+#
+# Read from PLATFORMIO_INI directly rather than via `pio project config`: that command
+# takes only -d/--project-dir, so it would demand a platformio.ini in the project dir,
+# which is exactly what this repo does not have. platformio_local.ini is merged in the
+# same order PlatformIO would (extra_configs last, so it wins).
+
+def read_pio_config() -> configparser.RawConfigParser:
+    """The tracked platformio.ini plus any platformio_local.ini overlay."""
+    cfg = configparser.RawConfigParser()
+    cfg.read([str(PLATFORMIO_INI), str(ROOT / "platformio_local.ini")], encoding="utf-8")
+    return cfg
+
+def get_monitor_speed(env_name: str, default: int = 115200) -> int:
+    """monitor_speed for one env, falling back to [env] and then to `default`."""
+    cfg = read_pio_config()
+    for section in (f"env:{env_name}", "env"):
+        if cfg.has_option(section, "monitor_speed"):
+            try:
+                return int(cfg.get(section, "monitor_speed").strip())
+            except ValueError:
+                break
+    return default
 
 def cmd_envs(args) -> None:
-    pio = find_pio()
-    result = subprocess.run(
-        [pio, "project", "config", "--json-output"],
-        cwd=ROOT, capture_output=True, text=True
-    )
-    if result.returncode != 0:
-        print(result.stderr, file=sys.stderr)
-        sys.exit(result.returncode)
-    import json
-    for section in json.loads(result.stdout):
-        if section[0].startswith("env:"):
-            print(section[0][4:])
+    for section in read_pio_config().sections():
+        if section.startswith("env:"):
+            print(section[4:])
 
 # ── compiledb / check ──────────────────────────────────────────────────────────
 

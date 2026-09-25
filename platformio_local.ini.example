@@ -4,8 +4,10 @@
 ; documented template. To use it, copy to platformio_local.ini and edit.
 ; platformio_local.ini is GITIGNORED — your tweaks never leak upstream.
 ;
-; PlatformIO merges this into platformio.ini at config-read time. Values
-; here override the same keys in platformio.ini. Add ONLY the keys you
+; This file stays at the REPO ROOT even though the tracked config lives in
+; platformio/platformio.ini — extra_configs resolves against the project directory.
+; PlatformIO merges it into platformio/platformio.ini at config-read time. Values
+; here override the same keys in platformio/platformio.ini. Add ONLY the keys you
 ; want to override; everything else inherits from the tracked base.
 ;
 ; Common things to override:

@@ -127,7 +127,7 @@ WiFi and Bluetooth share a single RF transceiver on classic ESP32. They time-mul
 ### Partition tables
 Every flash size needs a matching partition CSV. OTA requires a layout with two app partitions. Mismatched partition tables silently corrupt the filesystem or make OTA impossible.
 
-A partition table CSV defines each region of flash: its name, type, subtype, offset, and size. PlatformIO picks up the CSV via `board_build.partitions` in `platformio.ini`.
+A partition table CSV defines each region of flash: its name, type, subtype, offset, and size. PlatformIO picks up the CSV via `board_build.partitions` in `platformio/platformio.ini`.
 
 **CSV column meanings:**
 

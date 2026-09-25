@@ -53,7 +53,7 @@ doc/                          Documentation
 .dir-locals.el                Emacs project-local settings — compile-command,
                               indent style (counterpart to .vscode/)
 bin/pio                       Repo-local shim to PlatformIO Core (~/.platformio/penv/bin/pio)
-platformio.ini                Shared build config (tracked)
+platformio/platformio.ini                Shared build config (tracked)
 platformio_local.ini.example  Per-developer PIO overrides template (tracked)
 platformio_local.ini          Your local PIO overrides (gitignored, optional)
 config-overlay.yml            Your per-developer config overlay (gitignored, optional).
@@ -116,7 +116,7 @@ VSCode users: use the PlatformIO IDE's project-tasks pane for build/upload/monit
 
 ## Hardware Targets
 
-Defined in [`platformio.ini`](platformio.ini). Run `./ebus-esp32 envs` to list, or `./ebus-esp32 devices` to see what's currently attached via USB.
+Defined in [`platformio/platformio.ini`](platformio/platformio.ini). Run `./ebus-esp32 envs` to list, or `./ebus-esp32 devices` to see what's currently attached via USB.
 
 | Env | Board | Notes |
 |---|---|---|
@@ -124,7 +124,7 @@ Defined in [`platformio.ini`](platformio.ini). Run `./ebus-esp32 envs` to list, 
 | `esp32-poe-iso-wrover` | Same Olimex board with WROVER-E module (8 MB PSRAM) | NimBLE tuned for memory |
 | `esp32-poe-iso-16mb` | Same Olimex board, 16 MB flash variant | Larger partition table |
 | `esp32-s3-devkitc-1` | Espressif ESP32-S3-DevKitC | Native USB CDC |
-| `wesp32-poe`, `spiffs` | Silicognition wESP32; filesystem-only helper | See `platformio.ini` |
+| `wesp32-poe`, `spiffs` | Silicognition wESP32; filesystem-only helper | See `platformio/platformio.ini` |
 | `*-arduino2` | Same boards on the legacy platform | arduino-esp32 2.0.17 / ESP-IDF 4.4.7, pinned. Kept for A/B until the 3.x port is verified on every board |
 
 Envs are named after the **arduino-esp32 core** they build against, because that is what the firmware branches on (`ESP_ARDUINO_VERSION_MAJOR`). Unsuffixed = 3.x (the default); `-arduino2` = the 2.0.x line.

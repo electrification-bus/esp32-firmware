@@ -158,7 +158,7 @@ picks in this order:
 #else                                                                   // Serial1
 ```
 
-`USE_SOFTWARE_SERIAL` is set per-env in `platformio.ini` and **wins over
+`USE_SOFTWARE_SERIAL` is set per-env in `platformio/platformio.ini` and **wins over
 `BOARD_HAS_PSRAM`**. Where SoftwareSerial is active, any GPIO works — you are not limited
 to UART-capable pins.
 

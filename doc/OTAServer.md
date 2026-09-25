@@ -82,7 +82,7 @@ For ESP32 N16R8 variants with 16MB flash and 8MB PSRAM:
 | app1 | ~4MB | OTA target (ota_1) |
 | spiffs | ~8MB | File system |
 
-To use the N16R8 partition table, update `platformio.ini`:
+To use the N16R8 partition table, update `platformio/platformio.ini`:
 ```ini
 board_build.partitions = partitions_ota_n16r8.csv
 ```

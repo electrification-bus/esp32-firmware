@@ -2,18 +2,26 @@
 
 Raw `pio` CLI cheatsheet — for when you need to invoke `pio` directly.
 
+> **Every `pio` command below needs `-c`.** The tracked config is at
+> [`platformio/platformio.ini`](../platformio/platformio.ini), not the repo root (the header
+> there explains why), so a bare `pio run` exits with *"Not a PlatformIO project"*.
+> Add `-c platformio/platformio.ini`, or `-c build/platformio.ini` to use the lean generated
+> one that carries the component `lib_deps` — which is what `./ebus-esp32` does.
+> `pio device monitor` and `pio project config` accept no `-c` at all; use
+> `./ebus-esp32 monitor` and `./ebus-esp32 envs`, which read the config themselves.
+
 For ordinary day-to-day work, use `./ebus-esp32` (see [`GettingStartedCLI.md`](GettingStartedCLI.md)) — it's shorter and auto-regenerates `data/config.yml` from `device.yml`, merging the per-developer config overlay. This file documents the underlying `pio` invocations.
 
 ## Selecting an environment
 
-`<target>` is one of the `[env:*]` blocks in [`../platformio.ini`](../platformio.ini). The primary day-to-day envs:
+`<target>` is one of the `[env:*]` blocks in [`platformio/platformio.ini`](../platformio/platformio.ini). The primary day-to-day envs:
 
 - `esp32-poe-iso` — Olimex ESP32-POE-ISO (WROOM-32E, 4 MB flash)
 - `esp32-poe-iso-wrover` — Olimex POE-ISO with WROVER-E module (4 MB + 8 MB PSRAM)
 - `esp32-poe-iso-16mb` — Olimex POE-ISO with 16 MB flash variant
 - `esp32-s3-devkitc-1` — Espressif ESP32-S3-DevKitC
 
-Run `./ebus-esp32 envs` (or `pio project config --json-output`) for the complete list defined in `platformio.ini`.
+Run `./ebus-esp32 envs` for the complete list defined in `platformio/platformio.ini`.
 
 ## Commands
 

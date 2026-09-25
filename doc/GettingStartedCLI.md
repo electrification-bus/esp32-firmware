@@ -35,7 +35,7 @@ cd esp32-sdk
 $EDITOR config-overlay.yml
 
 # Sanity-check the toolchain and hardware
-./ebus-esp32 envs        # list board environments from platformio.ini
+./ebus-esp32 envs        # list board environments from platformio/platformio.ini
 ./ebus-esp32 devices     # list attached USB-serial devices
 ```
 
@@ -65,7 +65,7 @@ Override the serial port when auto-detection picks the wrong one:
 ./ebus-esp32 monitor --port COM3
 ```
 
-`./ebus-esp32 envs` lists every `[env:*]` defined in `platformio.ini`.
+`./ebus-esp32 envs` lists every `[env:*]` defined in `platformio/platformio.ini`.
 
 ## Network console — no USB cable
 

@@ -51,7 +51,7 @@ device:
   name: Energy Bus Monitor      # human-readable name (published as Homie $name)
   id: ${chip_id}                # device-id template, resolved on-device (see "The id template" below)
   type: energy                  # device type string (published as Homie $type)
-  environment: esp32-poe-iso    # must match an [env:…] in platformio.ini
+  environment: esp32-poe-iso    # must match an [env:…] in platformio/platformio.ini
 
 wifi:
   ssid: ""                      # leave blank to use Ethernet only
@@ -96,7 +96,7 @@ nodes:
 | `name`  | yes | Human-readable device name |
 | `id`    | no  | Device-id **template** (see below); defaults to `${chip_id}` |
 | `type`  | yes | Homie device `$type` string — how consumers identify the device |
-| `environment` | yes | PlatformIO environment name (`[env:…]`) from `platformio.ini` — **not** a PlatformIO `board` id; an env pins platform, board, PSRAM, flash size, partitions and build flags together |
+| `environment` | yes | PlatformIO environment name (`[env:…]`) from `platformio/platformio.ini` — **not** a PlatformIO `board` id; an env pins platform, board, PSRAM, flash size, partitions and build flags together |
 
 #### The `id` template
 
@@ -348,7 +348,7 @@ Run `./ebus-esp32 generate` (or just build — the pre-build hook regenerates) a
 
 ## Board targets
 
-Available boards (defined in `platformio.ini`):
+Available boards (defined in `platformio/platformio.ini`):
 
 | `environment:` value | Module | Flash | PSRAM |
 |----------------|--------|-------|-------|

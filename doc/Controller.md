@@ -6,9 +6,9 @@ The firmware supports **dual-role operation**: your device always acts as a **Ho
 
 Controller features are gated behind the `-DENABLE_CONTROLLER` build flag. Without it the device runs in default Device mode (~61KB RAM, ~968KB Flash); with it, the controller code is compiled in.
 
-### Method 1: platformio.ini (Recommended)
+### Method 1: platformio/platformio.ini (Recommended)
 
-Edit `platformio.ini` and uncomment the controller flag in the `[common]` section:
+Edit `platformio/platformio.ini` and uncomment the controller flag in the `[common]` section:
 
 ```ini
 build_flags =

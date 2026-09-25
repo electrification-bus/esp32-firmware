@@ -91,7 +91,7 @@ Response:
 OTA auto-disables after `OTA_ENABLED_TIMEOUT` minutes (default 10). Override at build time:
 
 ```ini
-# platformio.ini
+# platformio/platformio.ini
 build_flags = -DOTA_ENABLED_TIMEOUT=30   ; 0 = no timeout
 ```
 

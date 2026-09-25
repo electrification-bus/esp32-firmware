@@ -5,7 +5,26 @@ This is the VSCode-centric onboarding. If you'd rather work from a terminal (`./
 > **Configuration overlays**: both onboarding paths use per-developer overlay files for MQTT credentials, PlatformIO build tweaks, etc. After the setup steps below, read [`Configuration.md`](Configuration.md) once to understand where your personal `config.yml` and `platformio_local.ini` live and how they're merged with the repo's tracked defaults.
 
 ## Overview
-This walks you from a fresh machine to building and flashing the firmware using **VSCode + the PlatformIO IDE extension**. PlatformIO drives the actual build/upload/monitor; the project's `./ebus-esp32 generate` step runs automatically as a PlatformIO pre-build hook, so editing `device.yml` and pressing **Build** is enough — the IDE picks up your changes. (Everything here also works from the terminal — see [`GettingStartedCLI.md`](GettingStartedCLI.md).)
+This walks you from a fresh machine to building and flashing the firmware in VSCode.
+
+> **Builds run through `./ebus-esp32` in VSCode's integrated terminal, not the extension's
+> Build button.** The tracked PlatformIO config lives at
+> [`platformio/platformio.ini`](../platformio/platformio.ini) rather than the repo root, so the
+> PlatformIO extension does not adopt this folder as one of its projects — deliberately:
+> when it did, its background `pio` runs used the root config, which never lists a
+> component's `generator.lib_deps`, so it pruned the libraries a CLI build had just
+> installed and wiped `.pio` mid-build. The header in `platformio/platformio.ini` has the
+> detail.
+>
+> Practical effect: the env switcher, Project Tasks tree and Build/Upload buttons are not
+> available here, and PlatformIO's IntelliSense index is not populated — run
+> `./ebus-esp32 compiledb` and use clangd for code navigation. If you would rather have
+> the IDE workflow, copy `platformio/platformio.ini` to the repo root (`.gitignore` keeps it
+> out of git) and accept the occasional wiped build tree.
+
+The project's `./ebus-esp32 generate` step runs automatically as a PlatformIO pre-build
+hook, so editing `device.yml` and building is enough. (Everything here also works from any
+terminal — see [`GettingStartedCLI.md`](GettingStartedCLI.md).)
 
 ## Dev Environment Installation Guide
 ### Prerequisites
@@ -44,8 +63,8 @@ This walks you from a fresh machine to building and flashing the firmware using 
 
 ### Step 5: Select the board environment
 1. Wait for PlatformIO to download all required dependencies (libraries) — the first load can take several minutes.
-2. Pick the PlatformIO **project environment** matching your board, via the env switcher in the VSCode status bar (or the "Project Tasks" tree, which is grouped by env). The default is **`esp32-poe-iso`** (Olimex ESP32-POE-ISO); the other `[env:*]` sections in [`platformio.ini`](../platformio.ini) cover the S3 DevKitC, the WROVER/16 MB Olimex variants, etc. — see the README's *Hardware Targets* table.
-3. You normally don't edit `platformio.ini` to switch boards — just select the env. For per-developer build/upload tweaks, use `platformio_local.ini` (see [`Configuration.md`](Configuration.md)).
+2. Pick the PlatformIO **project environment** matching your board, via the env switcher in the VSCode status bar (or the "Project Tasks" tree, which is grouped by env). The default is **`esp32-poe-iso`** (Olimex ESP32-POE-ISO); the other `[env:*]` sections in [`platformio/platformio.ini`](../platformio/platformio.ini) cover the S3 DevKitC, the WROVER/16 MB Olimex variants, etc. — see the README's *Hardware Targets* table.
+3. You normally don't edit `platformio/platformio.ini` to switch boards — just select the env. For per-developer build/upload tweaks, use `platformio_local.ini` (see [`Configuration.md`](Configuration.md)).
 
 ### Step 6: Build and Flash the Firmware
 1. Connect your ESP32 to your computer via USB
@@ -85,7 +104,7 @@ See [`Configuration.md`](Configuration.md) for the full per-developer overlay mo
 ### Troubleshooting
 
 - If you encounter upload errors, ensure that:
-  - The correct USB port is selected (can be changed in platformio.ini)
+  - The correct USB port is selected (can be changed in platformio/platformio.ini)
   - You have proper USB drivers installed for your development board
   - Your board is in bootloader mode (if required)
 - Check the PlatformIO documentation for additional help: https://docs.platformio.org/

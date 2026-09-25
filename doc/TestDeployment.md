@@ -32,7 +32,7 @@ All 7 node classes are exercised across the 4 device boards.
 
 ### 1. controller — `esp32-s3-devkitc-1`
 
-**platformio.ini** — uncomment `ENABLE_CONTROLLER`:
+**platformio/platformio.ini** — uncomment `ENABLE_CONTROLLER`:
 ```ini
 [env:esp32-s3-devkitc-1]
 build_flags = ${common.build_flags}
@@ -60,7 +60,7 @@ device:
 Both devices share RS485 bus on UART1 at different Modbus addresses
 (SHT20 default `0x01`, Eletechsup32 default `0x01` — set one to a different address on hardware).
 
-**platformio.ini** — no changes from default `esp32-poe-iso-16mb`:
+**platformio/platformio.ini** — no changes from default `esp32-poe-iso-16mb`:
 ```ini
 build_flags =
     -D__AVR__
@@ -90,7 +90,7 @@ void loop_homie() {
 
 ### 3. poe16-b — `esp32-poe-iso-16mb` — EnergyMeter + OTANode
 
-**platformio.ini** — same default flags as poe16-a.
+**platformio/platformio.ini** — same default flags as poe16-a.
 
 **homie.cpp**:
 ```cpp
@@ -116,7 +116,7 @@ void loop_homie() {
 
 ### 4. poe4-a — `esp32-poe-iso` — BME280 + SerialBMS
 
-**platformio.ini** — default `esp32-poe-iso` flags (no changes).
+**platformio/platformio.ini** — default `esp32-poe-iso` flags (no changes).
 
 **homie.cpp**:
 ```cpp
@@ -137,7 +137,7 @@ void loop_homie() {
 
 ### 5. poe4-b — `esp32-poe-iso` — DigitalOutput
 
-**platformio.ini** — default `esp32-poe-iso` flags (no changes).
+**platformio/platformio.ini** — default `esp32-poe-iso` flags (no changes).
 
 **homie.cpp**:
 ```cpp

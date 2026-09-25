@@ -59,6 +59,14 @@ data/config.yml.bak
 # tracked device.yml. No template and no init step — create it only if you need it.
 config-overlay.yml
 
+# The tracked PlatformIO config lives in platformio/platformio.ini, NOT here. A root
+# platformio.ini is what makes the VSCode PlatformIO extension adopt this folder as its
+# own project; the extension writes a stub one back here on its own within a minute of
+# the file going missing, so this entry keeps that stub — and any copy you make for
+# IDE-driven builds — out of git. CLI builds are insulated either way: they use
+# .pio/cli, not the .pio/build + .pio/libdeps the extension manages.
+/platformio.ini
+
 # Per-developer PlatformIO overrides (merged in via [platformio] extra_configs).
 # platformio_local.ini.example holds a documented template.
 platformio_local.ini

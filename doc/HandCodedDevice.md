@@ -44,7 +44,7 @@ pio run -e <board> -t uploadfs     # flash the filesystem
 pio device monitor -e <board>      # serial monitor
 ```
 
-where `<board>` is an `[env:*]` from `platformio.ini`. The `./ebus-esp32` CLI is the **generator** front-end — it reads `device.yml` to resolve the board and regenerates `src/homie.cpp` on every build, which would clobber your hand-written one — so a hand-coded project (no `device.yml`) uses `pio` directly. (You also forgo `ebus-esp32`'s tmux serial-port handoff; Ctrl-C the monitor before flashing.)
+where `<board>` is an `[env:*]` from `platformio/platformio.ini`. The `./ebus-esp32` CLI is the **generator** front-end — it reads `device.yml` to resolve the board and regenerates `src/homie.cpp` on every build, which would clobber your hand-written one — so a hand-coded project (no `device.yml`) uses `pio` directly. (You also forgo `ebus-esp32`'s tmux serial-port handoff; Ctrl-C the monitor before flashing.)
 
 **Easiest way to start:** run `./ebus-esp32 generate` *once* with a `device.yml` close to what you want, then opt out as above. You inherit a working `src/homie.cpp` + `data/homie.yml` + `data/config.yml` to edit, instead of writing them from a blank page.
 

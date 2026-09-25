@@ -5,7 +5,7 @@ This project uses **two overlay files** so that each developer (or each deployed
 | What it controls | Real file (gitignored) | Tracked template | Used by |
 |---|---|---|---|
 | Firmware runtime config (MQTT, WiFi, Homie, device id) | `config-overlay.yml` (repo root) | *none — create it only if you need it* | `./ebus-esp32 generate` merges it into the generated `data/config.yml` (built from `device.yml`), then it's baked into the LittleFS image alongside firmware |
-| PlatformIO build / upload settings | `platformio_local.ini` (repo root) | `platformio_local.ini.example` | `pio` reads automatically via `extra_configs` in `platformio.ini` |
+| PlatformIO build / upload settings | `platformio_local.ini` (repo root) | `platformio_local.ini.example` | `pio` reads automatically via `extra_configs` in `platformio/platformio.ini` |
 
 ## 1. Firmware config — `config-overlay.yml`
 
@@ -71,12 +71,12 @@ Right now the firmware dumps the full parsed config to the serial console at boo
 
 ## 2. PlatformIO build/upload — `platformio_local.ini`
 
-`platformio.ini` is the tracked, shared base — `lib_deps`, env definitions, `build_flags`, partition tables — everything that should propagate to every developer. `platformio_local.ini` (gitignored) lets you override **per-key** without modifying the shared file. PlatformIO merges the two automatically via the `extra_configs` directive in `platformio.ini`'s `[platformio]` section.
+`platformio/platformio.ini` is the tracked, shared base — `lib_deps`, env definitions, `build_flags`, partition tables — everything that should propagate to every developer. `platformio_local.ini` (gitignored) lets you override **per-key** without modifying the shared file. PlatformIO merges the two automatically via the `extra_configs` directive in `platformio/platformio.ini`'s `[platformio]` section.
 
 ### Flow
 
 ```
-platformio.ini                ←  shared base (tracked) — lib_deps, envs, build_flags
+platformio/platformio.ini                ←  shared base (tracked) — lib_deps, envs, build_flags
         │
         │  PIO reads, then merges in:
         ▼
@@ -111,7 +111,7 @@ See [`platformio_local.ini.example`](../platformio_local.ini.example) for fully-
 
 ### What does NOT belong in `platformio_local.ini`
 
-- New library dependencies — if a library needs to be added, it belongs in the shared base so everyone gets it: base platform libraries go in `platformio.ini`'s `[common] lib_deps`; libraries needed by one component go in that component's `lib/<bus>/<name>.yml` under `generator.lib_deps` (the generator adds them to `build/platformio.ini` only when `device.yml` uses the component).
+- New library dependencies — if a library needs to be added, it belongs in the shared base so everyone gets it: base platform libraries go in `platformio/platformio.ini`'s `[common] lib_deps`; libraries needed by one component go in that component's `lib/<bus>/<name>.yml` under `generator.lib_deps` (the generator adds them to `build/platformio.ini` only when `device.yml` uses the component).
 - New `[env:*]` blocks for new boards — same; they belong in the shared base.
 - Configuration that other developers will also need — that defeats the purpose. Use `platformio_local.ini` strictly for **per-developer / per-machine** preferences.
 
