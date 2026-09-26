@@ -77,7 +77,7 @@ When `ENABLE_CONTROLLER` is defined, everything from Device mode continues to wo
 - **Description Parsing**: Receives and parses each device's `$description` JSON to build full Device/Node/Property structures
 - **Property Monitoring**: Subscribes to all properties of discovered devices, caches their current values, and tracks state changes
 - **Command Sending**: Sends commands to settable properties (non-retained, per Homie spec)
-- **State Tracking**: Monitors device states (init, ready, disconnected, sleeping, lost, alert)
+- **State Tracking**: Monitors device states (the Homie 5 set: init, ready, disconnected, sleeping, lost)
 - **Health Monitoring**: Tracks which devices are online/offline
 - **Timeout Detection**: Automatically marks a device as "lost" if not seen for 60 seconds
 - **Object-Oriented Data**: Uses actual `Device`, `Node`, and `Property` objects internally — no duplicate data structures
