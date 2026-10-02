@@ -60,7 +60,7 @@ nodes:
   #    notify_uuid:  "0000ff01-0000-1000-8000-00805f9b34fb"
   #    write_uuid:   "0000ff02-0000-1000-8000-00805f9b34fb"
 
-  # ── Optional: AC contactor mirrored from charge_control ─────────────────────
+  # ── Optional: AC contactor mirrored from charge-control ─────────────────────
   # NOTE serial_bms reaches the relay through a raw DigitalOutput* set by setContactor(),
   # which the
   # generator cannot wire — adding this node is NOT enough on its own; it needs a

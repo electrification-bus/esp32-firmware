@@ -70,29 +70,29 @@ bool SerialBMS::setup() {
     _np_voltage.setup(getNodeId(), "voltage");
     _np_current.setup(getNodeId(), "current");
     _np_soc.setup(getNodeId(), "soc");
-    _np_remain_cap.setup(getNodeId(), "remain_capacity");
-    _np_nominal_cap.setup(getNodeId(), "nominal_capacity");
+    _np_remain_cap.setup(getNodeId(), "remain-capacity");
+    _np_nominal_cap.setup(getNodeId(), "nominal-capacity");
     _np_cycles.setup(getNodeId(), "cycles");
-    _np_mosfet_charge.setup(getNodeId(), "mosfet_charge",
+    _np_mosfet_charge.setup(getNodeId(), "mosfet-charge",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
-    _np_mosfet_discharge.setup(getNodeId(), "mosfet_discharge");
+    _np_mosfet_discharge.setup(getNodeId(), "mosfet-discharge");
     _np_temperature.setup(getNodeId(), "temperature");
-    _np_cell_voltages.setup(getNodeId(), "cell_voltages");
+    _np_cell_voltages.setup(getNodeId(), "cell-voltages");
 
     // settables
-    _np_charge_control.setup(getNodeId(), "charge_control",
+    _np_charge_control.setup(getNodeId(), "charge-control",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
     _np_rescan.setup(getNodeId(), "rescan",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
-    _np_charge_threshold_low.setup(getNodeId(), "charge_threshold_low",
+    _np_charge_threshold_low.setup(getNodeId(), "charge-threshold-low",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
-    _np_charge_threshold_high.setup(getNodeId(), "charge_threshold_high",
+    _np_charge_threshold_high.setup(getNodeId(), "charge-threshold-high",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
-    _np_peak_begin_min.setup(getNodeId(), "peak_begin_min",
+    _np_peak_begin_min.setup(getNodeId(), "peak-begin-min",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
-    _np_peak_end_min.setup(getNodeId(), "peak_end_min",
+    _np_peak_end_min.setup(getNodeId(), "peak-end-min",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
-    _np_threshold_discharge_daily.setup(getNodeId(), "threshold_discharge_daily",
+    _np_threshold_discharge_daily.setup(getNodeId(), "threshold-discharge-daily",
         &NodeEntity::entity_settable_callback, (NodeEntity*)this);
 
     // Publish initial values of settable properties so the broker has retained state
@@ -544,7 +544,7 @@ void SerialBMS::entity_settable_callback(const char* property_id, const char* va
             _link.forgetAddress();
             _np_rescan.set_value_and_publish(false);  // reset — it's a trigger, not state
         }
-    } else if (strcmp(property_id, "mosfet_charge") == 0) {
+    } else if (strcmp(property_id, "mosfet-charge") == 0) {
         if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0) {
             Serial.println("BMS: mosfet_charge SET true");
             setMosfetAllOn();
@@ -557,7 +557,7 @@ void SerialBMS::entity_settable_callback(const char* property_id, const char* va
         } else {
             Serial.printf("BMS: invalid value '%s' for mosfet_charge (expected true/false)\n", value);
         }
-    } else if (strcmp(property_id, "charge_control") == 0) {
+    } else if (strcmp(property_id, "charge-control") == 0) {
         if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0 ||
             strcmp(value, "on") == 0 || strcmp(value, "yes") == 0) {
             set(true);
@@ -567,7 +567,7 @@ void SerialBMS::entity_settable_callback(const char* property_id, const char* va
         } else {
             Serial.printf("BMS: invalid value '%s' for charge_control\n", value);
         }
-    } else if (strcmp(property_id, "charge_threshold_low") == 0) {
+    } else if (strcmp(property_id, "charge-threshold-low") == 0) {
         int threshold = atoi(value);
         if (threshold > 0 && threshold < 100) {
             Serial.printf("BMS: Setting charge low-threshold to %d%%\n", threshold);
@@ -575,7 +575,7 @@ void SerialBMS::entity_settable_callback(const char* property_id, const char* va
         } else {
             Serial.printf("BMS: Invalid charge_threshold_low value '%s'\n", value);
         }
-    } else if (strcmp(property_id, "charge_threshold_high") == 0) {
+    } else if (strcmp(property_id, "charge-threshold-high") == 0) {
         int threshold = atoi(value);
         if (threshold > 0 && threshold < 100) {
             Serial.printf("BMS: Setting charge high-threshold to %d%%\n", threshold);
@@ -583,7 +583,7 @@ void SerialBMS::entity_settable_callback(const char* property_id, const char* va
         } else {
             Serial.printf("BMS: Invalid charge_threshold_high value '%s'\n", value);
         }
-    } else if (strcmp(property_id, "peak_begin_min") == 0) {
+    } else if (strcmp(property_id, "peak-begin-min") == 0) {
         int minutes = atoi(value);
         if (minutes > 0 && minutes < 1440) {
             Serial.printf("BMS: Setting peak start to %d min (%02d:%02d)\n",
@@ -592,7 +592,7 @@ void SerialBMS::entity_settable_callback(const char* property_id, const char* va
         } else {
             Serial.printf("BMS: Invalid peak_begin_min value '%s'\n", value);
         }
-    } else if (strcmp(property_id, "peak_end_min") == 0) {
+    } else if (strcmp(property_id, "peak-end-min") == 0) {
         int minutes = atoi(value);
         if (minutes > 0 && minutes < 1440) {
             Serial.printf("BMS: Setting peak end to %d min (%02d:%02d)\n",
@@ -601,7 +601,7 @@ void SerialBMS::entity_settable_callback(const char* property_id, const char* va
         } else {
             Serial.printf("BMS: Invalid peak_end_min value '%s'\n", value);
         }
-    } else if (strcmp(property_id, "threshold_discharge_daily") == 0) {
+    } else if (strcmp(property_id, "threshold-discharge-daily") == 0) {
         bool enable = (strcmp(value, "true") == 0);
         Serial.printf("BMS: threshold_discharge_daily -> %s\n", enable ? "true" : "false");
         _np_threshold_discharge_daily.set_value_and_publish(enable ? "true" : "false");

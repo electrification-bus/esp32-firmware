@@ -11,7 +11,7 @@ Eletechsup32::Eletechsup32(const char* homie_node_id, Stream& serial, int pin_rs
 
 bool Eletechsup32::setup() {
     ModbusRTUEntity::setup();  // Base class first
-    voltage_detect.setup(getNodeId(), "V_detect");
+    voltage_detect.setup(getNodeId(), "v-detect");
     inputs.setup(getNodeId(), "inputs");
     return true;
 }

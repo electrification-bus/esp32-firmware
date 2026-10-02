@@ -175,7 +175,7 @@ void example_monitor_sensor() {
     const char* device_id = "esp32poe3A3D78";
 
     // Access temperature property
-    Property* temp_prop = controller_get_property(device_id, "environment_bme280", "temperature");
+    Property* temp_prop = controller_get_property(device_id, "environment-bme280", "temperature");
 
     if (temp_prop) {
         float temp = temp_prop->getFloatValue();
@@ -183,7 +183,7 @@ void example_monitor_sensor() {
     }
 
     // Access humidity property
-    Property* humid_prop = controller_get_property(device_id, "environment_bme280", "relative_humidity");
+    Property* humid_prop = controller_get_property(device_id, "environment-bme280", "relative-humidity");
 
     if (humid_prop) {
         float humidity = humid_prop->getFloatValue();

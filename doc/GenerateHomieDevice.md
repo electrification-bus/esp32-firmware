@@ -70,12 +70,12 @@ buses:                                  # board pins, declared once per physical
 
 nodes:
   - component: i2c/bme280               # lib/i2c/bme280
-    id: environment_bme280              # C++ object name + Homie node id
+    id: environment-bme280              # Homie node id; C++ object is environment_bme280
     config:
       address: 0x76                     # per-device detail only; the bus comes from buses.i2c
 
   - component: modbus/sht20
-    id: environment_sht20
+    id: environment-sht20
 
   - component: gpio/digital_output
     id: relay1
@@ -83,7 +83,7 @@ nodes:
       pin: 4
 
   - component: spi/atm90e32_energy_meter
-    id: energy_meter
+    id: energy-meter
     config:                             # component-specific parameters
       pin_cs1: 15
       pin_cs2: 16
@@ -226,10 +226,10 @@ Example output for the quickstart config above:
 #include <gpio/digital_output.h>
 #include <spi/atm90e32_energy_meter.h>
 
-BME280 environment_bme280("environment_bme280", 13, 16);
-SHT20 environment_sht20("environment_sht20", get_serial1(), 6, 7);
+BME280 environment_bme280("environment-bme280", 13, 16);
+SHT20 environment_sht20("environment-sht20", get_serial1(), 6, 7);
 DigitalOutput relay1("relay1", 4, true, false);
-EnergyMeter energy_meter("energy_meter", 15, 16);
+EnergyMeter energy_meter("energy-meter", 15, 16);
 
 void setup_homie() {
     environment_bme280.setup();

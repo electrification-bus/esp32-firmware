@@ -116,4 +116,4 @@ buses:
 
 nodes:
   - component: modbus/sht20
-    id: environment_sht20
+    id: environment-sht20

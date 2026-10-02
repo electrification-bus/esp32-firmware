@@ -117,16 +117,16 @@ void EnergyMeter::setupProperties() {
     // Setup per-CT properties
     char prop_id[32];
     for (int i = 0; i < ENERGY_METER_CTS_PER_BOARD; i++) {
-        snprintf(prop_id, sizeof(prop_id), "current_ct%d", i + 1);
+        snprintf(prop_id, sizeof(prop_id), "current-ct%d", i + 1);
         current[i].setup(getNodeId(), prop_id);
 
-        snprintf(prop_id, sizeof(prop_id), "power_ct%d", i + 1);
+        snprintf(prop_id, sizeof(prop_id), "power-ct%d", i + 1);
         realPower[i].setup(getNodeId(), prop_id);
 
-        snprintf(prop_id, sizeof(prop_id), "va_ct%d", i + 1);
+        snprintf(prop_id, sizeof(prop_id), "va-ct%d", i + 1);
         apparentPower[i].setup(getNodeId(), prop_id);
 
-        snprintf(prop_id, sizeof(prop_id), "pf_ct%d", i + 1);
+        snprintf(prop_id, sizeof(prop_id), "pf-ct%d", i + 1);
         powerFactor[i].setup(getNodeId(), prop_id);
     }
 

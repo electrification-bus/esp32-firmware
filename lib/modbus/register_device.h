@@ -13,7 +13,7 @@
 //     config: { address: 1 }          # RS485 pins come from the buses.rs485 block
 //     registers:
 //       - { id: temperature,       reg: 1, scale: 0.1, signed: true, unit: "°C" }
-//       - { id: relative_humidity, reg: 2, scale: 0.1, unit: "%" }
+//       - { id: relative-humidity, reg: 2, scale: 0.1, unit: "%" }
 //
 // `ebus-esp32 generate` turns that list into BOTH the Homie properties and the static
 // ModbusRegisterDesc table below, so there is no runtime parsing and no heap.

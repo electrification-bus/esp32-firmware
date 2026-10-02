@@ -13,7 +13,7 @@ name: EBUS
 type: ebus
 state: init
 nodes:
-  - id: battery_bms
+  - id: battery-bms
     name: JBD Smart BMS
     type: battery
     properties:
@@ -39,14 +39,14 @@ nodes:
         settable: false
         retained: true
         value: 0
-      - id: remain_capacity
+      - id: remain-capacity
         name: Remaining Capacity
         datatype: float
         unit: Ah
         settable: false
         retained: true
         value: 0.0
-      - id: nominal_capacity
+      - id: nominal-capacity
         name: Nominal Capacity
         datatype: float
         unit: Ah
@@ -60,13 +60,13 @@ nodes:
         settable: false
         retained: true
         value: 0
-      - id: mosfet_charge
+      - id: mosfet-charge
         name: Charge MOSFET
         datatype: boolean
         settable: true
         retained: true
         value: false
-      - id: mosfet_discharge
+      - id: mosfet-discharge
         name: Discharge MOSFET
         datatype: boolean
         settable: false
@@ -79,14 +79,14 @@ nodes:
         settable: false
         retained: true
         value: 0.0
-      - id: cell_voltages
+      - id: cell-voltages
         name: Cell Voltages
         datatype: string
         settable: false
         retained: true
         value: ''
         description: "Comma-separated cell voltages in V"
-      - id: charge_control
+      - id: charge-control
         name: Charge Control
         datatype: boolean
         settable: true
@@ -99,7 +99,7 @@ nodes:
         retained: false
         value: false
         description: "Set true to clear saved BMS address and scan for a new device"
-      - id: charge_threshold_low
+      - id: charge-threshold-low
         name: Low SOC Threshold
         datatype: integer
         unit: "%"
@@ -107,7 +107,7 @@ nodes:
         settable: true
         retained: true
         description: "SOC percentage below which charging will be enabled"
-      - id: charge_threshold_high
+      - id: charge-threshold-high
         name: High SOC Threshold
         datatype: integer
         unit: "%"
@@ -115,7 +115,7 @@ nodes:
         settable: true
         retained: true
         description: "SOC percentage above which charging will be disabled"
-      - id: peak_begin_min
+      - id: peak-begin-min
         name: Peak Window Start (minutes-of-day)
         datatype: integer
         unit: min          # value is minutes-of-day (rrj.3)
@@ -123,7 +123,7 @@ nodes:
         settable: true
         retained: true
         description: "Peak window start in minutes-of-day (e.g. 955 = 15:55)"
-      - id: peak_end_min
+      - id: peak-end-min
         name: Peak Window End (minutes-of-day)
         datatype: integer
         unit: min          # value is minutes-of-day (rrj.3)
@@ -131,7 +131,7 @@ nodes:
         settable: true
         retained: true
         description: "Peak window end in minutes-of-day (e.g. 1265 = 21:05)"
-      - id: threshold_discharge_daily
+      - id: threshold-discharge-daily
         name: Threshold Discharge Daily
         datatype: boolean
         value: false

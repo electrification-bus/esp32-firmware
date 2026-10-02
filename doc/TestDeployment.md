@@ -71,8 +71,8 @@ build_flags =
 
 **homie.cpp**:
 ```cpp
-SHT20 sht20("environment_sht20", get_serial1());
-Eletechsup32 iv_detector("voltage_current_detector", get_serial1());
+SHT20 sht20("environment-sht20", get_serial1());
+Eletechsup32 iv_detector("voltage-current-detector", get_serial1());
 
 void setup_homie() {
     sht20.setup();
@@ -120,8 +120,8 @@ void loop_homie() {
 
 **homie.cpp**:
 ```cpp
-BME280 bme280("environment_bme280");
-SerialBMS bms("battery_bms");
+BME280 bme280("environment-bme280");
+SerialBMS bms("battery-bms");
 
 void setup_homie() {
     bme280.setup();

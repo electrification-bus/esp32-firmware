@@ -3,7 +3,7 @@ name: EBUS
 type: ebus
 state: init
 nodes:
-  - id: energy_meter
+  - id: energy-meter
     name: 6-CT Energy Meter
     type: energy
     properties:
@@ -28,28 +28,28 @@ nodes:
         settable: false
         retained: true
         value: 0.0
-      - id: current_ct1
+      - id: current-ct1
         name: Current CT1
         datatype: float
         unit: A
         settable: false
         retained: true
         value: 0.0
-      - id: power_ct1
+      - id: power-ct1
         name: Real Power CT1
         datatype: float
         unit: W
         settable: false
         retained: true
         value: 0.0
-      - id: va_ct1
+      - id: va-ct1
         name: Apparent Power CT1
         datatype: float
         unit: VA
         settable: false
         retained: true
         value: 0.0
-      - id: pf_ct1
+      - id: pf-ct1
         name: Power Factor CT1
         datatype: float
         unit: ''
@@ -66,7 +66,7 @@ implementation: homie-esp32-sdk
 #     spi: { pin_sck: 14, pin_miso: 12, pin_mosi: 13 }
 #   nodes:
 #     - component: spi/atm90e32_energy_meter
-#       id: energy_meter
+#       id: energy-meter
 #       config:
 #         pin_cs1: 15
 #         pin_cs2: 16

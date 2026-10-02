@@ -152,8 +152,8 @@ reference for `doc/WritingADriver.md`'s BLE section, which currently has to poin
 
 Removed: `charge_manager()`, `isPeakTime()`, `_peak_state_known`, `_last_peak_state`,
 `_in_discharge_phase`, the `DigitalOutput*` contactor pointer, `setContactor()`, and the five policy properties
-(`charge_threshold_low`/`_high`, `peak_begin_min`, `peak_end_min`,
-`threshold_discharge_daily`). Estimated ~300 lines, in line with the other drivers.
+(`charge-threshold-low`/`-high`, `peak-begin-min`, `peak-end-min`,
+`threshold-discharge-daily`). Estimated ~300 lines, in line with the other drivers.
 
 ## Sequencing — one hard dependency
 
@@ -177,7 +177,7 @@ Steps 2 and 4 are separately verifiable; do not combine them.
 
 ## Migration cost
 
-Step 4 renames retained MQTT topics — `bms/peak_begin_min` becomes
+Step 4 renames retained MQTT topics — `bms/peak-begin-min` becomes
 `charge-manager/peak-begin-min` and so on. That breaks dashboards and automations pointing
 at the old paths, and leaves stale retained topics on the broker that need clearing
 explicitly. Worth a short migration note when it happens.
@@ -212,7 +212,7 @@ and its device.yml entry carries the list:
   config: { address: 1 }          # RS485 pins come from the top-level buses.rs485 block
   registers:
     - { id: temperature,       reg: 1, scale: 0.1, signed: true, unit: "°C" }
-    - { id: relative_humidity, reg: 2, scale: 0.1, unit: "%" }
+    - { id: relative-humidity, reg: 2, scale: 0.1, unit: "%" }
 ```
 
 The synthesized properties are injected into the component's node *before* the existing

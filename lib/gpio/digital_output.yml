@@ -3,7 +3,7 @@ name: EBUS
 type: ebus
 state: init
 nodes:
-  - id: digital_output
+  - id: digital-output
     name: Digital Output
     type: gpio
     properties:

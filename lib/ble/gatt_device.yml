@@ -3,7 +3,7 @@ name: EBUS
 type: ebus
 state: init
 nodes:
-  - id: gatt_device
+  - id: gatt-device
     name: BLE GATT Device
     type: ble
     properties:

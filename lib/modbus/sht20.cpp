@@ -8,7 +8,7 @@
 // driver has always issued.
 static const ModbusRegisterDesc SHT20_REGS[] = {
     { "temperature",       1, false, true,  0.1f, REGDEV_FLOAT },
-    { "relative_humidity", 2, false, false, 0.1f, REGDEV_FLOAT },
+    { "relative-humidity", 2, false, false, 0.1f, REGDEV_FLOAT },
 };
 
 SHT20::SHT20(const char* homie_node_id, Stream& serial,

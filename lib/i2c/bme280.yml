@@ -3,7 +3,7 @@ name: EBUS
 type: ebus
 state: init
 nodes:
-  - id: environment_bme280
+  - id: environment-bme280
     name: BME280 Temp/Pressure/Humidity Sensor
     type: sensor
     properties:
@@ -14,14 +14,14 @@ nodes:
         settable: false
         retained: true
         value: 0.0
-      - id: air_pressure
+      - id: air-pressure
         name: Air Pressure
         datatype: float
         unit: mb
         settable: false
         retained: true
         value: 0.0
-      - id: relative_humidity
+      - id: relative-humidity
         name: Humidity
         datatype: float
         unit: percent
@@ -38,7 +38,7 @@ implementation: homie-esp32-sdk
 #     i2c: { pin_sda: 13, pin_scl: 16 }
 #   nodes:
 #     - component: i2c/bme280
-#       id: environment_bme280
+#       id: environment-bme280
 #       config:
 #         address: 0x76
 #

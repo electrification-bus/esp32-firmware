@@ -81,15 +81,15 @@ properties.
 
 | property | settable | meaning |
 |---|---|---|
-| `voltage`, `current`, `soc`, `remain_capacity`, `nominal_capacity`, `cycles` | — | pack telemetry |
-| `temperature`, `cell_voltages` | — | per-sensor and per-cell detail |
-| `mosfet_charge` | yes | CHG MOSFET on/off |
-| `mosfet_discharge` | — | DSG MOSFET state |
-| `charge_control` | yes | policy on/off; also drives the AC contactor |
+| `voltage`, `current`, `soc`, `remain-capacity`, `nominal-capacity`, `cycles` | — | pack telemetry |
+| `temperature`, `cell-voltages` | — | per-sensor and per-cell detail |
+| `mosfet-charge` | yes | CHG MOSFET on/off |
+| `mosfet-discharge` | — | DSG MOSFET state |
+| `charge-control` | yes | policy on/off; also drives the AC contactor |
 | `rescan` | yes | drop the cached BLE address and scan again |
-| `charge_threshold_low` / `_high` | yes | SOC band the policy charges between |
-| `peak_begin_min` / `peak_end_min` | yes | peak window, minutes since midnight |
-| `threshold_discharge_daily` | yes | discharge to the low threshold before charging at off-peak start |
+| `charge-threshold-low` / `-high` | yes | SOC band the policy charges between |
+| `peak-begin-min` / `peak-end-min` | yes | peak window, minutes since midnight |
+| `threshold-discharge-daily` | yes | discharge to the low threshold before charging at off-peak start |
 
 ## Known rough edges
 

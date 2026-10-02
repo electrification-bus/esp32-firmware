@@ -4,8 +4,8 @@ bool BME280::setup() {
   I2CEntity::setup();  // Base class first: NodeEntity, then the shared bus
 
   temperature.setup(getNodeId(), "temperature");
-  relative_humidity.setup(getNodeId(), "relative_humidity");
-  air_pressure.setup(getNodeId(), "air_pressure");
+  relative_humidity.setup(getNodeId(), "relative-humidity");
+  air_pressure.setup(getNodeId(), "air-pressure");
 
   _since_last_read = millis();
 

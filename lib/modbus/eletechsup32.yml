@@ -3,11 +3,11 @@ name: EBUS
 type: ebus
 state: init
 nodes:
-  - id: voltage_current_detector
+  - id: voltage-current-detector
     name: Modbus Eletechsup32
     type: modbus
     properties:
-      - id: V_detect
+      - id: v-detect
         name: Voltage Detect
         datatype: boolean
         settable: false
@@ -31,7 +31,7 @@ implementation: homie-esp32-sdk
 #     rs485: { pin_a: 36, pin_b: 4 }
 #   nodes:
 #     - component: modbus/eletechsup32
-#       id: voltage_current_detector
+#       id: voltage-current-detector
 generator:
   class: Eletechsup32
   header: modbus/eletechsup32.h

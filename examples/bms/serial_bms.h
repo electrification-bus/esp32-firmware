@@ -84,7 +84,7 @@ public:
     void entity_settable_callback(const char* property_id, const char* value) override;
     void set(bool onOff) override;
 
-    // Mirror charge_control onto an AC contactor. NOTE: the generator cannot wire a
+    // Mirror charge-control onto an AC contactor. NOTE: the generator cannot wire a
     // pointer between two nodes, so this only works from a hand-coded src/homie.cpp
     // (doc/HandCodedDevice.md). deliver_local_set() is the cleaner route — address the
     // relay as <node>/<property> and drop the pointer entirely. See README.md.
@@ -105,7 +105,7 @@ private:
     // Policy
     bool isPeakTime();
 
-    DigitalOutput* _ssr;  // optional AC contactor mirrored from charge_control
+    DigitalOutput* _ssr;  // optional AC contactor mirrored from charge-control
 
     // Peak/off-peak scheduling state
     bool _peak_state_known;

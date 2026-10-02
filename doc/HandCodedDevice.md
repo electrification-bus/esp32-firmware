@@ -70,7 +70,7 @@ A complete `src/homie.cpp` for an SHT20 sensor + a relay on a GPIO — identical
 
 // 1. Node objects — statically allocated; constructors run before setup().
 //    The constructor arg is the Homie node id (also the C++ object's identity).
-SHT20 environment_sht20("environment_sht20", get_serial1(), 6, 7);
+SHT20 environment_sht20("environment-sht20", get_serial1(), 6, 7);
 DigitalOutput relay1("relay1", 4, true, false);   // pin, active_low, initial_state
 
 // 2. One static Property per published property — these define the topology.
@@ -88,7 +88,7 @@ void register_homie_properties(Device* device) {
                            "SHT20 Modbus Temp/Humidity Sensor", "sensor");
     if (node) {
         node->addProperty(&_prop_sht20_temperature, "temperature", "Temperature", "float", "°C");
-        node->addProperty(&_prop_sht20_humidity,    "relative_humidity", "Humidity", "float", "percent");
+        node->addProperty(&_prop_sht20_humidity,    "relative-humidity", "Humidity", "float", "percent");
     }
 
     node = device->addNode(relay1.getNodeId(), "Solid State Relay", "gpio");

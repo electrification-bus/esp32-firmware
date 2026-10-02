@@ -107,7 +107,7 @@ The test produces real-time logging followed by a summary report:
 [14:32:07] PASS  Device 'esp32poeiso' validated
 [14:32:08] INFO  SET TEST: relay1/state <- true
 [14:32:08] PASS  SET TEST PASS: relay1/state = true
-[14:32:09] ERROR environment_sht20/temperature: Float 999.9 out of range [0:100]
+[14:32:09] ERROR environment-sht20/temperature: Float 999.9 out of range [0:100]
 
 ======================================================================
 HOMIE DEVICE TEST REPORT

@@ -5,7 +5,7 @@ state: init
 nodes:
   # No properties here on purpose: they come from the device.yml entry's `registers:`
   # list, because a register map is per-instance. See generator.properties_from below.
-  - id: modbus_device
+  - id: modbus-device
     name: Modbus Device
     type: modbus
 extensions: []
@@ -30,7 +30,7 @@ implementation: homie-esp32-sdk
 #         scale: 0.1
 #         signed: true           # needed for anything that can go below zero
 #         unit: "°C"
-#       - id: relative_humidity
+#       - id: relative-humidity
 #         reg: 2
 #         scale: 0.1
 #         unit: "%"
