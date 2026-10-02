@@ -5,6 +5,7 @@
 #
 # Available components (lib/<bus>/<name>.yml):
 #   i2c/bme280                  — BME280 temp/pressure/humidity (I2C); needs buses.i2c, config: address
+#   i2c/gme12864                — 0.96" 128x64 SSD1306 OLED (I2C); needs buses.i2c, config: address (0x3C)
 #   modbus/sht20                — SHT20 temp/humidity (Modbus RTU); needs buses.rs485
 #   modbus/eletechsup32         — 32-ch voltage detector (Modbus RTU); needs buses.rs485
 #   modbus/register_device      — any Modbus RTU device described by a registers: map; needs buses.rs485

@@ -1,0 +1,51 @@
+homie: 5.0.1
+name: EBUS
+type: ebus
+state: init
+nodes:
+  - id: display-gme12864
+    name: GME12864 OLED Display
+    type: display
+    properties:
+      - id: one-line
+        name: One Line
+        datatype: string
+        settable: true
+        retained: true
+        description: "Fill the screen with this text on one large line (~6 chars). Empty when another layout, or nothing, is showing."
+      - id: two-line
+        name: Two Lines
+        datatype: string
+        settable: true
+        retained: true
+        description: "Show this text on two lines (~9 chars each). Break with '|' or a newline, otherwise it word-wraps. Empty when not showing."
+      - id: three-line
+        name: Three Lines
+        datatype: string
+        settable: true
+        retained: true
+        description: "Show this text on three lines (12 chars each). Break with '|' or a newline, otherwise it word-wraps. Empty when not showing."
+extensions: []
+implementation: homie-esp32-sdk
+# 0.96" 128x64 SSD1306 OLED. I2C pins come from device.yml's top-level buses: block,
+# shared by every i2c/* node; the only per-node config is the address — 0x3C on these
+# modules (0x3D if the address jumper is moved). Example:
+#
+#   buses:
+#     i2c: { pin_sda: 13, pin_scl: 16 }
+#   nodes:
+#     - component: i2c/gme12864
+#       id: display-gme12864
+#       config:
+#         address: 0x3C
+#
+# Driving it: publish text to <node>/one-line/set, two-line/set or three-line/set — or call
+# deliver_local_set() on the same <node>/<property> from another component. Firmware code
+# can also write single lines with text(text, line_num, font_size); see gme12864.h.
+# It shows the "Rick" graphic until the first write.
+generator:
+  class: GME12864
+  header: i2c/gme12864.h
+  constructor: '("{id}", {bus.i2c.pin_sda}, {bus.i2c.pin_scl}, {config.address})'
+  lib_deps:
+    - olikraus/U8g2 @ ^2.35.0
