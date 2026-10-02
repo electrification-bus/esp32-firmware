@@ -656,11 +656,15 @@ def cmd_generate(args) -> None:
         includes.append(f"#include <{header}>")
         if registers is not None:
             decls.extend(registers_to_desc_table(registers, node_id))
-        decls.append(f"{cls} {node_id}{fmt_ctor(ctor_tmpl, node_id, node_cfg, registers, buses_cfg)};")
-        setups.append(f"    {node_id}.setup();")
-        loops.append(f"    {node_id}.loop();")
+        # The C++ object is named after the node id, but Homie ids allow hyphens and C++
+        # names don't — same mapping as the property variables below. {id} in the
+        # constructor still gets the real id string.
+        node_var = _cvar(node_id)
+        decls.append(f"{cls} {node_var}{fmt_ctor(ctor_tmpl, node_id, node_cfg, registers, buses_cfg)};")
+        setups.append(f"    {node_var}.setup();")
+        loops.append(f"    {node_var}.loop();")
         if setdev_addr:
-            prop_reg_body.append(f"    {node_id}.setDevice({setdev_addr});")  # entity -> child device (A2)
+            prop_reg_body.append(f"    {node_var}.setDevice({setdev_addr});")  # entity -> child device (A2)
         single = len(comp_nodes) == 1
         for n in comp_nodes:
             nc = dict(n)
@@ -678,7 +682,7 @@ def cmd_generate(args) -> None:
             node_type  = n.get("type", "generic")
             if properties:
                 prop_reg_body.append("")
-                id_expr = f'{node_id}.getNodeId()' if single else f'"{effective_node_id}"'
+                id_expr = f'{node_var}.getNodeId()' if single else f'"{effective_node_id}"'
                 prop_reg_body.append(f'    _node = {dev_access}addNode({id_expr}, "{node_name}", "{node_type}");')
                 prop_reg_body.append('    if (_node) {')
                 for prop in properties:
