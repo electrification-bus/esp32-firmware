@@ -122,8 +122,30 @@ id: panel-main            # fixed literal — logs a warning (two units collide 
 | Field       | Required | Description |
 |-------------|----------|-------------|
 | `component` | yes | Path to the component: `<bus>/<name>` (matches `lib/<bus>/<name>.yml`) |
-| `id`        | no  | Instance name used as C++ variable and Homie node id; defaults to the component's own node id |
+| `id`        | no  | The instance's Homie node id — `a-z`, `0-9` and `-` only. Defaults to the component's own node id. The generated C++ object is named after it with `-` mapped to `_` (`display-gme12864` → `display_gme12864`) |
 | `config`    | no  | Key-value pairs substituted into the component's constructor template — per-device details such as an address, never bus pins |
+
+### Components are types; `nodes:` entries are instances
+
+A component yml (`lib/<bus>/<name>.yml`) describes a driver **type**: what is true of
+every BME280 — its Homie node and properties, and the `generator:` block (class, header,
+constructor template, `lib_deps`). `device.yml` lists the **instances** this board
+actually has. `component:` is the link between the two, which is why it lives in
+`device.yml` and not in the component yml: the generator resolves `component: i2c/bme280`
+to `lib/i2c/bme280.yml`, so until it reads that line it does not know which yml to open,
+and a component yml is already identified by its own path.
+
+Information flows one way — the generator reads each instance's component yml and merges
+in the instance's `id:`, `config:` and the bus pins; the result is `src/homie.cpp` and
+`data/homie.yml`. Three things follow:
+
+- **Only what you list is built.** A component not named in `device.yml` is not compiled
+  in, and its `lib_deps` are not added to the generated `build/platformio.ini`.
+- **One type, many instances.** Two relays are two `nodes:` entries with the same
+  `component: gpio/digital_output` and different `id:` and `pin:` — a component cannot
+  know how many of itself a board has.
+- **The component yml supplies defaults; the instance overrides them.** Its node `id` is
+  only used when the `nodes:` entry gives none.
 
 ### buses
 
@@ -152,6 +174,7 @@ the generator errors if a bus a component needs is missing. Reference values per
 | `gpio/digital_output` | `DigitalOutput` | `pin`, `active_low`, `initial_state` |
 | `ble/gatt_device` | `GattDevice` | `address`, `name_filter`, `service_uuid`, `notify_uuid`, `write_uuid` |
 | `spi/atm90e32_energy_meter` | `EnergyMeter` | `buses.spi`; `pin_cs1`, `pin_cs2` |
+| `i2c/gme12864` | `GME12864` | `buses.i2c`; `address` (0x3C) — 0.96" SSD1306 OLED, settable `one-line`/`two-line`/`three-line` text |
 
 Multiple instances of the same component are allowed; give each a unique `id`.
 
@@ -172,7 +195,7 @@ device:
 
 nodes:                          # the root device's own nodes
   - component: spi/atm90e32_energy_meter
-    id: site_meter
+    id: site-meter
 
 children:
   - id: battery1                # child device-id suffix → runtime id <root-id>-battery1
@@ -180,7 +203,7 @@ children:
     type: energy.ebus.device.battery
     nodes:
       - component: i2c/bme280
-        id: battery1_env
+        id: battery1-env
     children:                   # children may nest arbitrarily deep
       - id: mid
         name: Microgrid Interconnect
@@ -285,7 +308,7 @@ name: EBUS
 type: ebus
 state: init
 nodes:
-  - id: my_device                   # default node id (overridden by device.yml `id:`)
+  - id: my-device                   # default node id (overridden by device.yml `id:`)
     name: My I2C Device
     type: sensor
     properties:
@@ -337,7 +360,7 @@ the `id:` in `device.yml`.
 ```yaml
 nodes:
   - component: i2c/mydevice
-    id: my_sensor_1
+    id: my-sensor-1
     config:
       addr: 0x76
 ```

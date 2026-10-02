@@ -273,7 +273,7 @@ This implementation follows the [Homie 5.0 specification](https://homieiot.githu
 ### Multi-room temperature monitoring
 ```cpp
 // In your main.cpp loop (when ENABLE_CONTROLLER is defined)
-Property* living_temp = controller_get_property("living_room", "bme280", "temperature");
+Property* living_temp = controller_get_property("living-room", "bme280", "temperature");
 Property* bedroom_temp = controller_get_property("bedroom", "bme280", "temperature");
 
 if (living_temp && bedroom_temp) {
@@ -285,7 +285,7 @@ if (living_temp && bedroom_temp) {
 ### Coordinated relay control
 ```cpp
 // If garage door opens, turn on garage light
-Property* door = controller_get_property("garage", "door_sensor", "state");
+Property* door = controller_get_property("garage", "door-sensor", "state");
 if (door && door->getBoolValue() == true) {
     controller_set_property("garage", "light", "state", "true");
 }

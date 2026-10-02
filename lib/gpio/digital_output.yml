@@ -35,7 +35,7 @@ implementation: homie-esp32-sdk
 #                  repeatedly.
 #
 #   - component: gpio/digital_output
-#     id: pump_contactor
+#     id: pump-contactor
 #     config:
 #       pin: 15
 #       active_low: true

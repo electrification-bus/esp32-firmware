@@ -116,7 +116,7 @@ publish what arrives, and write bytes back:
 
 ```yaml
 - component: ble/gatt_device
-  id: sensor_tag
+  id: sensor-tag
   config:
     address: "a4:c1:38:00:11:22"   # or "" to scan by name
     name_filter: "SensorTag"        # used when address is empty

@@ -72,7 +72,7 @@ implementation: homie-esp32-sdk
 #   write_uuid     characteristic to write to, or "" for a notify-only device
 #
 #   - component: ble/gatt_device
-#     id: sensor_tag
+#     id: sensor-tag
 #     config:
 #       address: ""
 #       name_filter: "SensorTag"
