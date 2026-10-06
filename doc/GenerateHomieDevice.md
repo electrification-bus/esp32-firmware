@@ -111,8 +111,8 @@ nodes:
 | `${name}` | the sanitized device name |
 
 ```yaml
-id: ${chip_id}            # -> b0b21c90f570        (the default if id is omitted)
-id: bess-${chip_id}       # -> bess-b0b21c90f570
+id: ${chip_id}            # -> a1b2c3d4e5f6        (the default if id is omitted)
+id: bess-${chip_id}       # -> bess-a1b2c3d4e5f6
 id: ${name}-${chip_id_short}
 id: panel-main            # fixed literal — logs a warning (two units collide on the broker)
 ```

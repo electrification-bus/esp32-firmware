@@ -29,8 +29,8 @@
 ; Example: pin a specific serial port (skip pio's auto-detection).
 ; ----------------------------------------------------------------------
 ; [env:esp32-poe-iso]
-; upload_port  = /dev/cu.usbserial-21130
-; monitor_port = /dev/cu.usbserial-21130
+; upload_port  = /dev/cu.usbserial-XXXX
+; monitor_port = /dev/cu.usbserial-XXXX
 
 ; ----------------------------------------------------------------------
 ; Example: add a debug build flag without modifying the shared base.
