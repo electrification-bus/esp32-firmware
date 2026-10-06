@@ -101,7 +101,7 @@ A development kit, so most pins are broken out. What to avoid:
 - **GPIO 0, 3, 45, 46** — strapping.
 - **GPIO 38 or 48** — the on-board RGB LED, depending on revision.
 
-SDK reference values put Modbus on 6/7 and the ATM90E32 chip-selects on 15/16.
+SDK reference values put Modbus on 6/7, I2C on 8/9 (the core's default SDA/SCL for this board, clear of the SPI bus on 11/12/13), and the ATM90E32 chip-selects on 15/16.
 
 ## wESP32 (`wesp32-poe`)
 
@@ -117,7 +117,7 @@ chip-selects and output pins are per node:
 | device.yml key | esp32-poe-iso | esp32-poe-iso-wrover | esp32-s3-devkitc-1 | seeed_xiao_esp32s3 |
 |---|---|---|---|---|
 | `buses.rs485` (`pin_a`/`pin_b`) — all `modbus/*` | 36 / 4 | 36 / 4 | 6 / 7 | **44 / 43** |
-| `buses.i2c` (`pin_sda`/`pin_scl`) — all `i2c/*` | 13 / 16 | 13 / **14** | 13 / 16 | 5 / 6 |
+| `buses.i2c` (`pin_sda`/`pin_scl`) — all `i2c/*` | 13 / 16 | 13 / **14** | **8 / 9** | 5 / 6 |
 | `buses.spi` (`pin_sck`/`pin_miso`/`pin_mosi`) — all `spi/*` | see note | see note | 12 / 13 / 11 | 7 / 8 / 9 |
 | `spi/atm90e32_energy_meter` (`pin_cs1`/`pin_cs2`) | see note | see note | 15 / 16 | 1 / 2 |
 | `gpio/digital_output` | 14, 15, 2, 5 | 14, 15, 2, 5 | plenty | 1, 2, 3, 4 |

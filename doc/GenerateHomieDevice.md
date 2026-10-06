@@ -51,11 +51,11 @@ device:
   name: Energy Bus Monitor      # human-readable name (published as Homie $name)
   id: ${chip_id}                # device-id template, resolved on-device (see "The id template" below)
   type: energy                  # device type string (published as Homie $type)
-  environment: esp32-poe-iso    # must match an [env:…] in platformio/platformio.ini
+  environment: esp32-s3-devkitc-1   # must match an [env:…] in platformio/platformio.ini
 
 wifi:
-  ssid: ""                      # leave blank to use Ethernet only
-  password: ""
+  ssid: mynetwork               # the S3 has no Ethernet; leave blank only on an Ethernet board
+  password: mywifipass
 
 mqtt:
   host: 192.168.1.100
@@ -64,7 +64,7 @@ mqtt:
   password: mypass
 
 buses:                                  # board pins, declared once per physical bus
-  i2c:   { pin_sda: 13, pin_scl: 16 }   # every i2c/* node
+  i2c:   { pin_sda: 8, pin_scl: 9 }     # every i2c/* node
   rs485: { pin_a: 6, pin_b: 7 }         # every modbus/* node (pin_a -> module RXD, pin_b -> TXD)
   spi:   { pin_sck: 12, pin_miso: 13, pin_mosi: 11 }   # every spi/* node; chip-selects stay per node
 
@@ -152,7 +152,8 @@ in the instance's `id:`, `config:` and the bus pins; the result is `src/homie.cp
 Bus pins are a fact about the board, shared by every node on that bus, so they are
 declared once at the top level instead of being repeated (and required to agree) in each
 node's `config:`. A component's constructor template reaches them as `{bus.<name>.<key>}`;
-the generator errors if a bus a component needs is missing. Reference values per board:
+the generator errors if a bus a component needs is missing, or if one GPIO is used twice
+across the buses and nodes' `pin`/`pin_*` keys. Reference values per board:
 [GPIOPins.md](GPIOPins.md).
 
 | Bus | Keys | Used by |

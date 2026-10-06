@@ -361,6 +361,29 @@ def check_config_keys(node_id: str, component: str, comp_path: Path,
               f"— see {comp_path}", file=sys.stderr)
         sys.exit(1)
 
+def _is_pin_key(key: str) -> bool:
+    return key == "pin" or key.startswith("pin_")
+
+def check_gpio_conflicts(pin_uses: dict) -> None:
+    """Fail when one GPIO is claimed twice: by two buses, by a bus and a node, or by
+    two nodes (or two pins of one node). pin_uses maps a label such as
+    'buses.i2c.pin_sda' or "node 'relay1' config.pin" to its GPIO number. Two nodes on
+    one bus share its pins legitimately, so each bus pin appears once however many
+    nodes use it. Negative numbers are skipped."""
+    by_gpio = {}
+    for label, gpio in pin_uses.items():
+        if isinstance(gpio, bool) or not isinstance(gpio, int) or gpio < 0:
+            continue
+        by_gpio.setdefault(gpio, []).append(label)
+    clashes = [(g, labels) for g, labels in sorted(by_gpio.items()) if len(labels) > 1]
+    if clashes:
+        print("ERROR: device.yml assigns the same GPIO more than once:", file=sys.stderr)
+        for gpio, labels in clashes:
+            print(f"  GPIO {gpio}: {', '.join(labels)}", file=sys.stderr)
+        print("Give each a different pin (see doc/GPIOPins.md for the free pins per board).",
+              file=sys.stderr)
+        sys.exit(1)
+
 # ── lean, per-build platformio.ini ──────────────────────────────────────────────
 #
 # Every lib/<bus>/<name>.yml component can declare generator.lib_deps: [...] — the
@@ -581,6 +604,7 @@ def cmd_generate(args) -> None:
     homie_nodes       = []   # ROOT device's nodes only (data/homie.yml)
     seen_node_ids     = {}   # node_id -> component that first used it (duplicate-id check)
     used_lib_deps     = []   # lib_deps strings from every used component's generator block (dedup, ordered)
+    pin_uses          = {}   # label -> GPIO, for every bus and node pin in use (conflict check)
 
     def _cvar(s):
         return "".join(c if (c.isalnum() or c == "_") else "_" for c in str(s))
@@ -662,6 +686,12 @@ def cmd_generate(args) -> None:
         seen_node_ids[node_id] = component
         check_config_keys(node_id, component, comp_path, ctor_tmpl, node_cfg)
         check_bus_keys(node_id, component, comp_path, ctor_tmpl, buses_cfg)
+        for bus, key in required_bus_keys(ctor_tmpl):
+            if _is_pin_key(key):
+                pin_uses[f"buses.{bus}.{key}"] = buses_cfg[bus][key]
+        for key in required_config_keys(ctor_tmpl):
+            if _is_pin_key(key):
+                pin_uses[f"node '{node_id}' config.{key}"] = node_cfg[key]
         for dep in gen.get("lib_deps") or []:
             if dep not in used_lib_deps:
                 used_lib_deps.append(dep)
@@ -766,6 +796,7 @@ def cmd_generate(args) -> None:
             prop_reg_body.append(f"    {cvar}.setState(DeviceState::DEVICE_STATE_READY);")
 
     emit_device(cfg, "device->", "device", "device->getId()", is_root=True)
+    check_gpio_conflicts(pin_uses)
 
     # src/homie.cpp
     lines = [_HOMIE_CPP_HEADER]
