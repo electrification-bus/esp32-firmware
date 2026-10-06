@@ -431,6 +431,17 @@ void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_
 }
 
 boolean mqtt_connect() {
+  // MQTTClient::connect() resolves the host through lwIP. With no interface up the
+  // stack may never have been started (null core-lock mutex: assert, reboot loop), and
+  // with no host there is nothing to resolve.
+  if (!client_connected()) {
+    Serial.println("MQTT: no network interface up, not connecting");
+    return false;
+  }
+  if (mqtt_host[0] == '\0') {
+    Serial.println("MQTT: no broker host, not connecting");
+    return false;
+  }
   Serial.printf("MQTT Connecting: '%s:%d'%s\r\n", mqtt_host, mqtt_port,
                 mqtt_using_secure ? " (TLS)" : "");
 

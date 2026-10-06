@@ -18,6 +18,8 @@
 #include <platform/mqtt_client.h>
 #include <ESPmDNS.h>
 #include <platform/captive_portal.h>
+#include <platform/portal_prefs.h>
+#include <LittleFS.h>
 #include <homie.h>
 
 // Web server is always started (captive portal on WiFi AP boards, HTTP API on ethernet boards)
@@ -34,6 +36,74 @@ void memstats() {
     Serial.printf("PSRAM size: %d bytes\n", ESP.getPsramSize());
     Serial.printf("Free PSRAM: %d bytes\n", ESP.getFreePsram());
 }
+// ============================================================================
+// RECOVERY MODE - no usable configuration
+// ============================================================================
+// Entered when loadConfiguration() fails: LittleFS will not mount (e.g. a filesystem
+// push interrupted mid-write), or config.yml / homie.yml is missing, unparsable or
+// incomplete. Nothing Homie or MQTT runs. The board brings up only what it needs to be
+// reached and re-flashed over the network: Ethernet DHCP on Ethernet builds, the WiFi
+// AP portal (192.168.4.1) on AP builds, STA if NVS holds credentials, the HTTP API and
+// the TCP log. Recover with `./ebus-esp32 push --ota --fs-only`, which enables OTA and
+// streams the image to POST /api/ota/filesystem; the device reboots into it.
+static bool _recovery_mode = false;
+static bool _recovery_ip_announced = false;
+
+static void setup_recovery() {
+    _recovery_mode = true;
+    Serial.println("RECOVERY: no usable configuration - starting network-only recovery mode");
+
+    // An unmountable filesystem is formatted empty here, so the portal can serve and
+    // the next boot mounts cleanly (and lands here again until an image is pushed).
+    // The image push rewrites the whole partition either way.
+    if (!LittleFS.begin(false)) {
+        Serial.println("RECOVERY: LittleFS unmountable - formatting it empty");
+        if (!LittleFS.begin(true)) Serial.println("RECOVERY: LittleFS format failed");
+    }
+
+    // NVS survives a filesystem loss: WiFi STA credentials and the passphrase saved
+    // from the portal, else the last passphrase a good config carried.
+    portal_prefs_load_fallbacks();
+    if (device_passphrase[0] == '\0' && portal_prefs_load_recovery_passphrase()) {
+        Serial.println("RECOVERY: using the passphrase from the last good config");
+    }
+    if (device_passphrase[0] == '\0') {
+        Serial.println("RECOVERY: WARNING no passphrase in NVS - admin and OTA endpoints "
+                       "will refuse; USB flashing is the only way back");
+    }
+
+    // device.yml defaults: id = chip id. The id doubles as the AP SSID and DHCP hostname.
+    generateDeviceID();
+    Serial.printf("Device ID: %s\n", getDeviceID());   // with the IP line, for ebus-esp32
+    if (device_name[0] == '\0') {
+        strncpy(device_name, getDeviceID(), sizeof(device_name) - 1);
+        device_name[sizeof(device_name) - 1] = '\0';
+    }
+
+    setup_ethernet();        // starts lwIP; Ethernet DHCP on Ethernet builds
+    captive_portal_start();  // WiFi AP portal on AP builds, HTTP API otherwise
+    setup_wifi_sta();        // no-op without NVS credentials
+    log_tcp_begin(log_tcp_port);
+}
+
+static void loop_recovery() {
+    log_tcp_loop();
+    captive_portal_loop();   // HTTP API, OTA enable timeout, post-push reboot
+
+    if (!_recovery_ip_announced && client_connected()) {
+        _recovery_ip_announced = true;
+        const char* ip = get_eth_ip();
+        if (ip[0] != '\0') {
+            Serial.printf("Network: Ethernet IP=%s\n", ip);   // ebus-esp32 caches this form
+        } else {
+            ip = get_wifi_ip();
+            Serial.printf("Network: WiFi STA IP=%s\n", ip);
+        }
+        Serial.printf("RECOVERY: reachable at http://%s/ - push the filesystem image "
+                      "with ./ebus-esp32 push --ota --fs-only --host %s\n", ip, ip);
+    }
+}
+
 #ifdef ENABLE_CONTROLLER
 // ============================================================================
 // CONTROLLER MODE - discovers and monitors other Homie devices
@@ -84,6 +154,7 @@ void setup() {
 
     if (!loadConfiguration()) {
         Serial.println("CONFIG: **ERROR -- failed to load configuration");
+        setup_recovery();
         return;
     }
 
@@ -176,6 +247,7 @@ void setup() {
 }
 
 void loop() {
+    if (_recovery_mode) { loop_recovery(); return; }
     log_tcp_loop();     // accept monitors, push buffered log; never blocks
     captive_portal_loop();
     loop_ntp();
@@ -317,6 +389,7 @@ void setup() {
 
     if (!loadConfiguration()) {
         Serial.println("CONFIG: **ERROR -- failed to load configuration");
+        setup_recovery();
         return;
     }
 
@@ -444,6 +517,7 @@ void loop_housekeeping() {
 }
 
 void loop() {
+    if (_recovery_mode) { loop_recovery(); return; }
     loop_housekeeping();
     loop_homie();
 }

@@ -28,6 +28,13 @@ bool portal_prefs_has_fs_url();
 // Call after loadPlatformConfiguration().
 void portal_prefs_load_fallbacks();
 
+// Recovery copy of the device passphrase: the last one a successfully loaded config
+// carried. Read only when no config can be loaded, so the admin endpoints (and with
+// them POST /api/ota/filesystem) still accept the passphrase the filesystem had.
+// Save writes NVS only when the value changed. Load returns false if none is stored.
+void portal_prefs_save_recovery_passphrase(const char* passphrase);
+bool portal_prefs_load_recovery_passphrase();
+
 // Clear all portal-saved settings (WiFi + MQTT + OTA URLs + passphrase) so next boot uses config.yml only.
 void portal_prefs_clear();
 

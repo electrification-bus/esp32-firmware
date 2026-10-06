@@ -12,6 +12,7 @@
 #define PREFS_KEY_PASSPHRASE  "passphrase"
 #define PREFS_KEY_FW_URL      "fw_url"
 #define PREFS_KEY_FS_URL      "fs_url"
+#define PREFS_KEY_RECOVERY_PASSPHRASE "rec_pass"
 
 static Preferences prefs;
 
@@ -63,6 +64,29 @@ void portal_prefs_save_fs_url(const char* url) {
     prefs.end();
     _fs_url_from_portal = true;
     Serial.printf("PREFS: Saved filesystem URL='%s'\n", url);
+}
+
+void portal_prefs_save_recovery_passphrase(const char* passphrase) {
+    if (passphrase == NULL || passphrase[0] == '\0') return;
+    char saved[64];
+    prefs.begin(PREFS_NAMESPACE, false);
+    size_t len = prefs.getString(PREFS_KEY_RECOVERY_PASSPHRASE, saved, sizeof(saved));
+    if (len == 0 || strcmp(saved, passphrase) != 0) {   // write only on change (flash wear)
+        prefs.putString(PREFS_KEY_RECOVERY_PASSPHRASE, passphrase);
+        Serial.println("PREFS: Saved recovery passphrase");
+    }
+    prefs.end();
+}
+
+bool portal_prefs_load_recovery_passphrase() {
+    prefs.begin(PREFS_NAMESPACE, true);  // read-only
+    char buf[64];
+    size_t len = prefs.getString(PREFS_KEY_RECOVERY_PASSPHRASE, buf, sizeof(buf));
+    prefs.end();
+    if (len == 0) return false;
+    strncpy(device_passphrase, buf, sizeof(device_passphrase) - 1);
+    device_passphrase[sizeof(device_passphrase) - 1] = '\0';
+    return true;
 }
 
 void portal_prefs_load_fallbacks() {

@@ -210,6 +210,9 @@ bool loadConfiguration() {
     return false;
   }
   config_loaded = true;
+  // Keep the passphrase this config produced, so a later boot with no readable config
+  // can still authorize a filesystem re-push (see setup_recovery() in main.cpp).
+  portal_prefs_save_recovery_passphrase(device_passphrase);
 
   // Emit MAC addresses for debugging/identification
   Serial.printf("CONFIG: Ethernet MAC: %s\n", get_eth_mac());
