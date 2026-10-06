@@ -496,6 +496,19 @@ def write_lean_platformio_ini(env_name: str, used_lib_deps: list) -> None:
 # Homie datatypes a register can reasonably decode to.
 _REGISTER_DATATYPES = ("float", "integer", "boolean")
 
+# The firmware's per-node register table is a fixed array of REGDEV_MAX_REGISTERS, and the
+# driver ignores entries past it. Read the cap from the header so the two cannot drift.
+_REGDEV_HEADER = ROOT / "lib" / "modbus" / "register_device.h"
+
+def _regdev_max_registers():
+    m = re.search(r"^#define\s+REGDEV_MAX_REGISTERS\s+(\d+)",
+                  _REGDEV_HEADER.read_text(encoding="utf-8"), re.MULTILINE)
+    if not m:
+        print(f"ERROR: REGDEV_MAX_REGISTERS not found in "
+              f"{_REGDEV_HEADER.relative_to(ROOT)}", file=sys.stderr)
+        sys.exit(1)
+    return int(m.group(1))
+
 def registers_to_properties(regs, node_id, comp_path):
     """device.yml `registers:` -> the same property dicts a component yml would declare.
     Returns the list; exits with a specific message on anything malformed, because a
@@ -503,6 +516,13 @@ def registers_to_properties(regs, node_id, comp_path):
     if not isinstance(regs, list) or not regs:
         print(f"ERROR: node '{node_id}' uses component {comp_path.name}, which requires a "
               f"non-empty 'registers:' list in its device.yml entry", file=sys.stderr)
+        sys.exit(1)
+    cap = _regdev_max_registers()
+    if len(regs) > cap:
+        print(f"ERROR: node '{node_id}' lists {len(regs)} registers; the firmware holds at "
+              f"most {cap} per node (REGDEV_MAX_REGISTERS in "
+              f"{_REGDEV_HEADER.relative_to(ROOT)}). Split the map across two nodes at the "
+              f"same address, or raise the cap.", file=sys.stderr)
         sys.exit(1)
 
     props, seen = [], set()
