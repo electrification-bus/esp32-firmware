@@ -34,7 +34,11 @@ import shutil
 import configparser
 import http.server
 from pathlib import Path
-import yaml
+try:
+    import yaml
+except ModuleNotFoundError:
+    sys.exit(f"ERROR: PyYAML is not installed for {sys.executable}; "
+             "run ./ebus-esp32 from the project venv or `pip install pyyaml`")
 
 # ── paths ──────────────────────────────────────────────────────────────────────
 
@@ -1596,10 +1600,11 @@ def monitor_serial(cfg: dict, env_name: str, port: str, learn: bool = True) -> i
             if proc.poll() is None:
                 proc.terminate()
             try:
-                return proc.wait(timeout=5)
+                rc = proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 proc.kill()
-                return proc.wait()
+                rc = proc.wait()
+        return rc
     finally:
         _coord("_monitor-release", port or "")
 

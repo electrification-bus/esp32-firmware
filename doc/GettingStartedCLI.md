@@ -177,7 +177,7 @@ Two overlay files keep per-developer settings out of the shared repo: `config-ov
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `ModuleNotFoundError: No module named 'yaml'` | PyYAML not installed | `pip install pyyaml` |
+| `ERROR: PyYAML is not installed for ...` | PyYAML not installed for the `python3` that ran the CLI | `pip install pyyaml` |
 | PlatformIO not found | `~/.platformio/penv/...pio` doesn't exist | Install via VSCode PlatformIO extension or `pipx install platformio` |
 | `run` / `push` finds no port / hangs at "Connecting…" | No board attached, wrong port, or board not in bootloader state | `./ebus-esp32 devices` to list ports; some boards need BOOT held during reset for first flash |
 | `monitor` → `termios.error` | Running through a non-PTY context | Run in a real terminal window |
