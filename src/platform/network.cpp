@@ -41,7 +41,9 @@ bool client_connected() {
 
 // Static buffers for IP address strings
 static char wifi_ip_str[16] = {0};
+#ifndef CONFIG_WIFI_AP
 static char eth_ip_str[16] = {0};
+#endif
 
 // Function to get the WiFi IP address as a string
 const char* get_wifi_ip() {
