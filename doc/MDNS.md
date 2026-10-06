@@ -1,183 +1,123 @@
 # mDNS
 
-This document covers how the firmware uses mDNS/DNS-SD: the use cases it serves, the two distinct mechanisms involved, and the services it advertises.
+The firmware uses mDNS/DNS-SD for two separate jobs, each behind its own gate:
 
-> **Default: build-conditional.** Both gates default **ON** for Ethernet-only builds on arduino-esp32 3.x (the default, unsuffixed envs) and **OFF** everywhere else — WiFi-AP builds and every `-arduino2` env. See [`config.cpp`](../src/platform/config.cpp#L41) for the test and `device.yml` for the reasoning. The bundled ESP-IDF mDNS **responder** can crash on certain incoming packets (a null-deref in the precompiled `libmdns.a` on 2.0.x, triggered by inbound mDNS traffic, not by our code); 3.x carries the upstream rewrite. Homie device discovery runs over MQTT and does not need mDNS, so builds that have a captive portal to fall back on leave it off. Override per-device with an `mdns:` section in `device.yml` (or `config-overlay.yml`) — omit the section entirely to keep the build default. See the *Crash status* note below.
+- **Discovery** (querier, `mdns.discovery`): browse the LAN for an MQTT broker. Outbound queries only.
+- **Advertising** (responder, `mdns.advertise`): claim `<hostname>.local` and advertise the `_ebus._tcp`, `_http._tcp`, `_telnet._tcp` and `_device-info._tcp` services.
 
-## Use cases & two mechanisms
+Homie device discovery itself runs over MQTT and needs neither.
 
-mDNS does two unrelated jobs here, and the distinction matters because the crash lives in only one of them:
+## Defaults and configuration
 
-- **Querier (client)** — the ESP32 *browses* for services and *resolves* `.local` names. Outbound queries; the safe side.
-- **Responder (server)** — the ESP32 *claims* a `.local` hostname and *answers* queries about itself and the services it advertises. The inbound-packet path where the crash occurs.
+Both gates default **on** for Ethernet-only builds on arduino-esp32 3.x (the default, unsuffixed envs) and **off** for WiFi-AP builds and every `-arduino2` env. The test is the `#if` above `mdns_discovery` in [`src/platform/config.cpp`](../src/platform/config.cpp). An Ethernet board has no captive portal and takes an unpredictable DHCP lease, so `<hostname>.local` is the practical way to reach it. A WiFi-AP board is reachable at 192.168.4.1 through its portal.
 
-Three use cases, in priority order:
+Override the build default in the `mdns:` section of `device.yml` or `config-overlay.yml`; omit the section to keep it:
 
-| # | Use case | Mechanism | Priority |
-|---|---|---|---|
-| **UC2** | **Discover the eBus MQTT broker, then auth + connect.** Browse `_secure-mqtt._tcp` / `_mqtt._tcp`, get host/port, connect. Also lets the ESP32 reach the broker and REST API by `.local` name. | **querier** | **highest** |
-| **UC3** | **Claim & defend the device's own `<name>.local`** so other hosts can reach the ESP32 (web UI / REST / OTA) by name. | responder (hostname + `_http`) | medium |
-| **UC1** | **Advertise device metadata** (`_device-info`, `_ebus`/`_homie` TXT records). | responder (services + TXT) | least |
+```yaml
+mdns:
+  enabled: true      # sets both gates
+  discovery: true    # querier; overrides `enabled`
+  advertise: false   # responder; overrides `enabled`
+```
 
-Two consequences fall out of this:
+`mqtt.mode` decides whether discovery is used to find the broker: `configured-only` (the default) never queries, `discovery-with-fallback` tries mDNS first and then the configured `mqtt.host`, and `discovery-only` ignores the configured host. A discovery mode turns `mdns.discovery` on even when the configuration turns it off.
 
-1. **UC2 is the high-value, crash-safe path; UC1 is the low-value, crash-prone one.** So the cheap, valuable capability (find the broker) does not require the risky responder at all.
-2. **Discovery is transient.** Once the ESP32 has found and connected to the broker, it does not need to keep listening — UC2's browse is a one-shot at boot (a few attempts, then stop). The querier only re-engages as a reconnect fallback (below).
+### Responder crash on arduino-esp32 2.0.x
 
-### The split gate (implemented)
+The precompiled ESP-IDF mDNS component in arduino-esp32 2.0.x can crash on certain inbound mDNS packets (backtrace: `_mdns_remove_scheduled_answer` from `mdns_parse_packet`). The crash is in the responder path and cannot be fixed from application code; arduino-esp32 3.x carries the upstream rewrite. This is why `-arduino2` envs default both gates off. The Arduino `MDNS.begin()` call also starts the responder stack, so a discovery-only build still initializes it, but registers no services.
 
-A single flag used to gate *both* mechanisms, which left UC2 hostage to the crash-prone responder. There are now two independent gates, so discovery can run with the responder off:
+## Broker discovery
 
-- `mdns.discovery` — the querier (UC2): browse for the broker, resolve `.local` names.
-- `mdns.advertise` — the responder (UC1/UC3): claim the hostname, register services.
+`setup_mdns()` in [`src/platform/network.cpp`](../src/platform/network.cpp) browses `_secure-mqtt._tcp` first and then `_mqtt._tcp`, up to three attempts 3 seconds apart. The first result with a resolved address is used, by IP address, on the advertised port (8883 or 1883 if the SRV record has none). Until a broker is found, `loop_mdns()` repeats the browse every 30 seconds; it stops once a broker is found, or in `discovery-with-fallback` mode once the configured broker is connected.
 
-`setup_mdns()` in [`src/platform/network.cpp`](../src/platform/network.cpp) honours them separately: it returns early only when *both* are off, calls `mdns_register_services()` solely under `mdns_advertise`, and calls `mdns_query_mqtt_broker()` solely under `mdns_discovery`. The periodic re-query in `loop_mdns()` is likewise the querier's job: it returns immediately unless `mdns_discovery` is set.
-
-`mdns.enabled` remains as a legacy convenience that sets both at once; the granular keys override it. Note the Arduino `MDNS.begin()` API couples `mdns_init()` with a hostname claim, so a discovery-only build still initialises the responder stack even though it registers no services.
-
-## UC2 detail: broker discovery and (re)connection
-
-The querier browses for the broker service and obtains its address. **Connection policy: connect by the discovered IP**, which keeps the querier idle after boot. The broker's `.local` hostname is **persisted as a fallback**: if a later reconnect-by-IP fails (e.g. the broker's DHCP lease moved it), the firmware re-resolves the cached `.local` name. Discovery stays transient; only the resolver remains available.
-
-Broker certs are expected to carry SANs for **both** the `.local` hostname and the IP address(es), so either connection form validates cleanly under TLS — connecting by IP is *not* a TLS-correctness compromise. (This is an eBus-ecosystem expectation, captured as guidance in the specification repo.)
-
-The `MqttMode` config selects how the broker is located: `DISCOVERY_ONLY`, `DISCOVERY_WITH_FALLBACK` (mDNS first, then configured `mqtt_host`), or `CONFIGURED_ONLY` (no mDNS).
-
-### Trust: mDNS gives you an address, not an identity
-
-mDNS is unauthenticated LAN multicast — a rogue host can advertise a fake `_mqtt._tcp`. Discovery only bootstraps *where* the broker is; *who* it is comes entirely from TLS certificate/CA validation (and, where configured, mTLS). Treat a discovered broker as untrusted until the TLS handshake validates it.
-
-## Crash status
-
-The responder crash is an upstream bug in the precompiled ESP-IDF mDNS component shipped with arduino-esp32 2.0.x (backtrace: `_mdns_remove_scheduled_answer` ← `mdns_parse_packet`). It is not fixable with an app-level change. Mitigation today is the default-OFF gate. The gate split (above) makes UC2 usable without touching the crashy path; arduino-esp32 3.x (where mDNS is rewritten upstream) is the longer-term fix. All tracked in beads.
-
----
-
-The remainder of this document describes the **responder** side — the hostname claim and the services advertised (UC1/UC3).
+mDNS is unauthenticated LAN multicast, and any host can advertise an MQTT service. Discovery supplies the broker's address; the broker's identity comes from TLS certificate validation.
 
 ## Hostname
 
-The device advertises as `{device-name}.local` where `{device-name}` is derived from `device_name` in `config.yml`, sanitized for mDNS compatibility:
+The hostname is `device.name` from `device.yml`, lowercased, with spaces and underscores turned into hyphens and other non-alphanumeric characters dropped. Without a name it is the device ID. When advertising, the firmware checks whether another host already answers for the name and, if so, tries `<name>-2` through `<name>-99`. Ethernet boards send the same sanitized name, without a suffix, as their DHCP hostname.
 
-- Uppercase converted to lowercase
-- Spaces and underscores converted to hyphens
-- Non-alphanumeric characters removed
+## Advertised services
 
-Falls back to `{device_id}.local` if no device name is configured.
+All four are registered once by `setup_mdns()` when `mdns.advertise` is on.
 
-## Services
+### `_ebus._tcp`
 
-### 1. `_homie._tcp` - Homie Protocol Discovery
+Device discovery. The port is the configured `mqtt.port`.
 
-Primary service for Homie-compliant device/controller discovery. Port: MQTT port (default 1883).
+| TXT key | Value |
+|---|---|
+| `homie` | `5.0` |
+| `version` | `1` |
+| `id` | Device ID |
+| `name` | `device.name` |
+| `role` | `device.homie_role` (`device` or `controller`) |
+| `type` | `device.device_type`, or `device.type` when that is empty; omitted when both are empty |
+| `base` | The device's base topic, for example `ebus/5/<device-id>/` (`homie/5/` without `-DUSE_EBUS_TOPIC`) |
+| `state` | `init` (the state at registration; not updated afterward) |
+| `implementation` | `homie-esp32-sdk` |
+| `ca_cert_path` | `/api/broker-cert`, the REST path for the broker CA certificate |
 
-| TXT Record | Example Value | Description |
-|------------|---------------|-------------|
-| `homie` | `5.0` | Homie convention version (without patch) |
-| `version` | `1` | Description document version |
-| `id` | `NESL123456` | Unique device ID (MAC-based) |
-| `name` | `ESP32 POE ISO Homie` | Friendly device name |
-| `role` | `device` or `controller` | Homie role |
-| `type` | `sensor` | Device type |
-| `base` | `homie/5/NESL123456/` | MQTT base topic for this device |
-| `mqtt_host` | `mqtt.example.com` | MQTT broker hostname |
-| `mqtt_port` | `1883` | MQTT broker port |
-| `mqtt_tls` | `true` or `false` | TLS/SSL enabled |
-| `state` | `init`, `ready`, etc. | Current device state |
-| `implementation` | `homie-esp32-sdk` | Implementation identifier |
-| `ca_cert_path` | `/api/broker-cert` | REST path to download/upload broker CA cert |
+### `_http._tcp`
 
-### 2. `_mqtt._tcp` - MQTT Broker Discovery
+The web UI and REST API on port 80.
 
-Standard DNS-SD service type for MQTT broker discovery (RFC 6763). Port: MQTT port.
+| TXT key | Value |
+|---|---|
+| `path` | `/api/openapi.yml` |
+| `api` | `openapi` |
 
-| TXT Record | Example Value | Description |
-|------------|---------------|-------------|
-| `host` | `mqtt.example.com` | MQTT broker hostname |
-| `port` | `1883` | MQTT broker port |
-| `tls` | `true` or `false` | TLS/SSL enabled |
-| `auth` | `true` or `false` | Authentication required |
+### `_telnet._tcp`
 
-### 3. `_device-info._tcp` - Hardware/Firmware Information
+The read-only serial log stream on `log.tcp_port` (default 23). Registered only when the listener is running, so `log.tcp_port: 0` omits it.
 
-Device information service for management and discovery tools. Port: 80.
+| TXT key | Value |
+|---|---|
+| `kind` | `serial-log` |
 
-| TXT Record | Example Value | Description |
-|------------|---------------|-------------|
-| `manufacturer` | `NESL` | Device manufacturer |
-| `model` | `ESP32-POE-ISO` | Device model |
-| `serial_number` | `NESL123456` | Serial number (or device ID) |
-| `eth_mac` | `AA:BB:CC:DD:EE:FF` | Ethernet MAC address |
-| `wlan_mac` | `AA:BB:CC:DD:EE:00` | WiFi MAC address |
-| `eth_ip` | `192.168.1.100` | Ethernet IP (if connected) |
-| `wlan_ip` | `192.168.1.101` | WiFi IP (if connected) |
-| `fw_name` | `ESP32POEISO Firmware` | Firmware name |
-| `fw_version` | `1.0.0` | Firmware version |
-| `platform` | `ESP32` | Hardware platform |
-| `sdk_version` | `v4.4.x` | ESP-IDF SDK version |
+### `_device-info._tcp`
 
-## Discovery Examples
+Hardware and firmware details, on port 80.
 
-### Using avahi-browse (Linux)
+| TXT key | Value |
+|---|---|
+| `manufacturer` | `device.manufacturer` |
+| `model` | `device.model` |
+| `serial_number` | `device.serial_number`, or the device ID when that is empty |
+| `eth_mac` | Ethernet MAC address |
+| `wlan_mac` | WiFi MAC address |
+| `fw_name` | `device.firmware_name`; omitted when empty |
+| `fw_version` | `device.firmware_version` |
+| `platform` | `ESP32` |
+| `sdk_version` | ESP-IDF version (`ESP.getSdkVersion()`) |
+| `eth_ip` | Ethernet IP; omitted when Ethernet has no address |
+| `wlan_ip` | WiFi station IP; omitted when WiFi has no address |
+
+## Browsing from a host
 
 ```bash
-# Discover all Homie devices
-avahi-browse -rt _homie._tcp
+# Linux
+avahi-browse -rt _ebus._tcp
+avahi-browse -rt _telnet._tcp
 
-# Discover MQTT brokers
-avahi-browse -rt _mqtt._tcp
-
-# Discover device info
-avahi-browse -rt _device-info._tcp
+# macOS
+dns-sd -B _ebus._tcp
+dns-sd -L "<instance-name>" _ebus._tcp local
 ```
-
-### Using dns-sd (macOS)
-
-```bash
-# Discover all Homie devices
-dns-sd -B _homie._tcp
-
-# Get TXT records for a specific service
-dns-sd -L "esp32-poe-iso-homie" _homie._tcp local
-```
-
-### Using Python (zeroconf)
 
 ```python
 from zeroconf import ServiceBrowser, Zeroconf
 
-class MyListener:
+class Listener:
     def add_service(self, zc, type_, name):
         info = zc.get_service_info(type_, name)
-        print(f"Service {name}: {info.properties}")
+        print(name, info.properties)
 
-zeroconf = Zeroconf()
-browser = ServiceBrowser(zeroconf, "_homie._tcp.local.", MyListener())
+    def update_service(self, zc, type_, name):
+        pass
+
+    def remove_service(self, zc, type_, name):
+        pass
+
+zc = Zeroconf()
+browser = ServiceBrowser(zc, "_ebus._tcp.local.", Listener())
 ```
-
-## Configuration
-
-mDNS advertisement is configured via `data/config.yml`:
-
-```yaml
-device:
-  name: ESP32 POE ISO Homie        # Used for .local hostname
-  device_type: sensor
-  manufacturer: NESL
-  model: ESP32-POE-ISO
-  serial_number:                   # Leave empty to use device id
-  firmware_name: ESP32POEISO Firmware
-  firmware_version: 1.0.0
-  homie_role: device               # "device" or "controller"
-mqtt:
-  host: mqtt.example.com
-  port: 1883
-```
-
-## Implementation Notes
-
-- The Homie convention does not specify mDNS requirements; this implementation follows standard DNS-SD practices
-- Service types follow RFC 6763 naming conventions
-- TXT records are limited to 255 bytes per key-value pair
-- The `state` TXT record reflects the device state at mDNS initialization time (typically "init")
-- Both Ethernet and WiFi hostnames are synchronized to match the mDNS hostname
