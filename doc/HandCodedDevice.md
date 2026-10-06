@@ -38,13 +38,13 @@ git add -f src/homie.cpp data/homie.yml
 Build and flash with **raw `pio`** from here on, naming the board env explicitly:
 
 ```sh
-pio run -e <board>                 # compile
-pio run -e <board> -t upload       # flash firmware
-pio run -e <board> -t uploadfs     # flash the filesystem
-pio device monitor -e <board>      # serial monitor
+pio run -c platformio/platformio.ini -e <board>                # compile
+pio run -c platformio/platformio.ini -e <board> -t upload      # flash firmware
+pio run -c platformio/platformio.ini -e <board> -t uploadfs    # flash the filesystem (a separate run)
+pio device monitor -p <port> -b 115200                         # serial monitor
 ```
 
-where `<board>` is an `[env:*]` from `platformio/platformio.ini`. The `./ebus-esp32` CLI is the **generator** front-end — it reads `device.yml` to resolve the board and regenerates `src/homie.cpp` on every build, which would clobber your hand-written one — so a hand-coded project (no `device.yml`) uses `pio` directly. (You also forgo `ebus-esp32`'s tmux serial-port handoff; Ctrl-C the monitor before flashing.)
+where `<board>` is an `[env:*]` from `platformio/platformio.ini`; the `-c` is required because that file is not at the repo root. Keep firmware and filesystem uploads in separate `pio run` invocations (see [GettingStartedCLI.md](GettingStartedCLI.md#troubleshooting)). The `./ebus-esp32` CLI is the **generator** front-end — it reads `device.yml` to resolve the board and regenerates `src/homie.cpp` on every build, which would clobber your hand-written one — so a hand-coded project (no `device.yml`) uses `pio` directly. (You also forgo `ebus-esp32`'s tmux serial-port handoff; Ctrl-C the monitor before flashing.)
 
 **Easiest way to start:** run `./ebus-esp32 generate` *once* with a `device.yml` close to what you want, then opt out as above. You inherit a working `src/homie.cpp` + `data/homie.yml` + `data/config.yml` to edit, instead of writing them from a blank page.
 
@@ -162,7 +162,7 @@ The firmware reads both from the LittleFS image at boot:
 - **`data/homie.yml`** supplies the device-level header (`homie:` version, `name:`, `type:`). The published node topology comes from `register_homie_properties()`, so the simplest reliable starting point is a generated `homie.yml` — keep its header and trim or adjust the `nodes:` to match. See the format in [GenerateHomieDevice.md](GenerateHomieDevice.md#datahomieyml).
 - **`data/config.yml`** is the runtime config (wifi / mqtt / device identity). It uses the same `device:`/`wifi:`/`mqtt:`/`log:`/`mdns:` sections as `device.yml` — run `./ebus-esp32 generate` once and keep the result as your starting point; [Configuration.md](Configuration.md#variables-youll-commonly-set) documents every key. You can still keep your secrets in the `config-overlay.yml` overlay — but note the overlay is *merged by the generator*, so in a hand-coded project either edit `data/config.yml` directly or run `./ebus-esp32 generate` once to fold the overlay in before you opt out. The firmware also still accepts the older flat form (`mqtt_host:` rather than `mqtt: host:`) **at the top level**, so a hand-maintained file mid-conversion keeps working — but the single-element `config:` list that older files wrapped everything in is no longer parsed. If your file starts with `config:`, unwrap it (promote the sections one level) or regenerate.
 
-Re-flash the filesystem after editing either file: `pio run -e <board> -t uploadfs` (or add `-t upload` for firmware + filesystem).
+Re-flash the filesystem after editing either file: `pio run -c platformio/platformio.ini -e <board> -t uploadfs`.
 
 ---
 
