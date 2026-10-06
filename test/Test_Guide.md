@@ -82,6 +82,12 @@ python test/device_test.py -v --timeout 45
 
 # With custom config paths
 python test/device_test.py --config data/config.yml --homie data/homie.yml
+
+# Firmware built without -DUSE_EBUS_TOPIC publishes homie/5 instead of ebus/5
+python test/device_test.py --domain homie
+
+# TLS broker (port defaults to 8883 unless config.yml or --port sets it)
+python test/device_test.py --tls --cafile ca.crt --username U --password P
 ```
 
 ### 3. Observe Output

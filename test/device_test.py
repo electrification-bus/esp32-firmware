@@ -12,6 +12,8 @@ This test:
 
 Usage:
     python device_test.py [--config config.yml] [--homie homie.yml] [--timeout 30]
+                          [--domain ebus|homie] [--host H] [--port N]
+                          [--username U] [--password P] [--tls [--cafile F] [--insecure]]
 """
 
 import argparse
@@ -97,10 +99,13 @@ class DeviceState:
 class HomieDeviceTest:
     """Main test class for Homie device validation"""
 
-    def __init__(self, config_path: str, homie_path: str, timeout: int = 30):
+    def __init__(self, config_path: str, homie_path: str, timeout: int = 30,
+                 domain: str = "ebus", overrides: Optional[Dict[str, Any]] = None):
         self.config_path = config_path
         self.homie_path = homie_path
         self.timeout = timeout
+        self.domain = domain  # topic root: "ebus" with -DUSE_EBUS_TOPIC (default build), else "homie"
+        self.overrides = overrides or {}  # command-line mqtt_* values that win over config.yml
         self.start_time = 0
 
         # MQTT client
@@ -112,8 +117,11 @@ class HomieDeviceTest:
         self.mqtt_port = 1883
         self.mqtt_user = ""
         self.mqtt_pass = ""
+        self.mqtt_tls = False
+        self.mqtt_cafile = None   # None: system CA store
+        self.mqtt_insecure = False
         self.device_id = ""
-        self.base_topic = "homie/5"  # Homie 5.x topic format: homie/5/<device>
+        self.base_topic = f"{domain}/5"  # Homie 5.x topic format: <domain>/5/<device>
 
         # Device state
         self.device = DeviceState(device_id="")
@@ -173,10 +181,24 @@ class HomieDeviceTest:
                 return default if value is None else value
 
             self.mqtt_host = get('mqtt', 'host', 'mqtt_host', 'localhost')
-            self.mqtt_port = int(get('mqtt', 'port', 'mqtt_port', 1883))
+            port = get('mqtt', 'port', 'mqtt_port', None)
             self.mqtt_user = get('mqtt', 'username', 'mqtt_username', '')
             self.mqtt_pass = get('mqtt', 'password', 'mqtt_password', '')
             self.device_id = get('device', 'id', 'device_id', '')
+
+            ov = self.overrides
+            if ov.get('host') is not None:
+                self.mqtt_host = ov['host']
+            if ov.get('port') is not None:
+                port = ov['port']
+            if ov.get('username') is not None:
+                self.mqtt_user = ov['username']
+            if ov.get('password') is not None:
+                self.mqtt_pass = ov['password']
+            if port is not None:
+                self.mqtt_port = int(port)
+            else:
+                self.mqtt_port = 8883 if self.mqtt_tls else 1883
 
             self.log(LogLevel.INFO, f"Config loaded: {self.mqtt_host}:{self.mqtt_port} device={self.device_id}")
             return True
@@ -195,9 +217,9 @@ class HomieDeviceTest:
             self.device.homie_version = str(homie.get('homie', '4.0'))
             self.device.name = homie.get('name', '')
 
-            # Set base topic based on Homie version (homie/5 for 5.x, homie/4 for 4.x, etc.)
+            # Set base topic based on Homie version (<domain>/5 for 5.x, <domain>/4 for 4.x, etc.)
             major_version = self.device.homie_version.split('.')[0]
-            self.base_topic = f"homie/{major_version}"
+            self.base_topic = f"{self.domain}/{major_version}"
             self.log(LogLevel.INFO, f"Homie version {self.device.homie_version} -> base topic: {self.base_topic}")
 
             nodes = homie.get('nodes', [])
@@ -466,6 +488,11 @@ class HomieDeviceTest:
             if self.mqtt_user:
                 self.client.username_pw_set(self.mqtt_user, self.mqtt_pass)
 
+            if self.mqtt_tls:
+                self.client.tls_set(ca_certs=self.mqtt_cafile)
+                if self.mqtt_insecure:
+                    self.client.tls_insecure_set(True)
+
             self.log(LogLevel.INFO, f"Connecting to {self.mqtt_host}:{self.mqtt_port}...")
             self.client.connect(self.mqtt_host, self.mqtt_port, 60)
             self.client.loop_start()
@@ -729,10 +756,29 @@ def main():
     parser.add_argument('--homie', default='data/homie.yml', help='Path to homie.yml')
     parser.add_argument('--timeout', type=int, default=30, help='Test timeout in seconds')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
+    parser.add_argument('--domain', default='ebus', choices=['ebus', 'homie'],
+                        help='Topic domain: "ebus" (default; firmware built with -DUSE_EBUS_TOPIC) '
+                             'or "homie" (firmware built without it)')
+    parser.add_argument('--host', help='MQTT broker host (overrides config.yml)')
+    parser.add_argument('--port', type=int,
+                        help='MQTT broker port (overrides config.yml; else 8883 with --tls, 1883 without)')
+    parser.add_argument('--username', help='MQTT username (overrides config.yml)')
+    parser.add_argument('--password', help='MQTT password (overrides config.yml)')
+    parser.add_argument('--tls', action='store_true', help='Connect to the broker over TLS')
+    parser.add_argument('--cafile', help='CA certificate for --tls (default: system CA store)')
+    parser.add_argument('--insecure', action='store_true',
+                        help='With --tls, skip broker hostname verification')
 
     args = parser.parse_args()
+    if (args.cafile or args.insecure) and not args.tls:
+        parser.error('--cafile and --insecure require --tls')
 
-    test = HomieDeviceTest(args.config, args.homie, args.timeout)
+    overrides = {'host': args.host, 'port': args.port,
+                 'username': args.username, 'password': args.password}
+    test = HomieDeviceTest(args.config, args.homie, args.timeout, args.domain, overrides)
+    test.mqtt_tls = args.tls
+    test.mqtt_cafile = args.cafile
+    test.mqtt_insecure = args.insecure
 
     if args.verbose:
         test.log_level = LogLevel.DEBUG
