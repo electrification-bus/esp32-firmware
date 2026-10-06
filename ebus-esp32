@@ -1151,15 +1151,9 @@ def _ota_unreachable(host: str, detail: str, unresolved: bool = False) -> None:
     goes through _ota_request(), so this is the one place a network failure surfaces."""
     print(f"\nERROR: cannot reach {host} — {detail}", file=sys.stderr)
     if unresolved and host.split(":")[0].endswith(".local"):
-        # The usual cause, and not an obvious one: a .local name is advertised over
-        # mDNS by the firmware RUNNING on the board, so it reflects the device.name of
-        # the build that is on it — not the device.yml you just edited. Renaming a
-        # device therefore does not change its address until after the next flash, and
-        # the OLD name is still the one that answers.
-        print( "       A .local name comes from the firmware currently on the board, not from\n"
-               "       device.yml — after renaming a device it still answers to its OLD name\n"
-               "       until you flash it once (over USB, or OTA to the old name).\n"
-               "       It also needs mdns.enabled in device.yml, which is off by default.",
+        print( "       A device's .local name is its Device ID (printed at boot), e.g.\n"
+               "       b0b21c90f570.local, not device.name. -arduino2 builds claim it only\n"
+               "       when device.yml turns on an mdns gate.",
               file=sys.stderr)
     # Only worth saying when they did not already give one.
     bare = host.split(":")[0]
@@ -1705,10 +1699,10 @@ def cmd_push(args) -> None:
 #            the boot log survives connecting late.
 #
 # Host resolution, in order: --host, then the address learned from a previous serial
-# session (cached per device.yml and device.name in build/monitor-hosts.json), then
-# <device.name>.local.
-# There is no mDNS browse — the firmware advertises _telnet._tcp, but mdns is opt-in
-# and off by default, so the cache is what makes `--net` work with no arguments.
+# session (cached per device.yml and device.name in build/monitor-hosts.json).
+# There is no mDNS browse, and the firmware's hostname is its Device ID, which is not
+# known before the first session, so the cache is what makes `--net` work with no
+# arguments. `--host <Device ID>.local` names a board directly.
 #
 # The cache is per board. The serial monitor learns each board's Device ID (printed at
 # boot) together with its IP, and stores the address under that id, with the
@@ -1902,19 +1896,6 @@ def resolve_host(cfg: dict, env_name: str, key: str, explicit: str = None,
     if isinstance(legacy, str) and legacy:
         return legacy, (f"learned per environment {env_name} by an older CLI, {cache}; "
                         f"any board on this environment could own it")
-    name = (cfg.get("device") or {}).get("name")
-    if name:
-        # Best-effort guess, and only usable if mdns.enabled is true in device.yml AND
-        # this host has working mDNS. Resolve it *now* rather than handing back a name
-        # that would burn the whole --monitor-wait timing out: on a first run there is
-        # no cache, and falling straight through to the USB monitor (which is what
-        # populates the cache) is the useful behavior.
-        guess = f"{name}.local"
-        try:
-            socket.getaddrinfo(guess, None)
-            return guess, "guess from device.name"
-        except OSError:
-            pass
     return None, None
 
 def _pio_monitor_cmd(env_name: str) -> list:
