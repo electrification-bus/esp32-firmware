@@ -105,6 +105,10 @@ A body over the limit gets `413`; any other content type gets `415`, and so does
 
 Bodies up to 2047 bytes share one buffer. A request that finds it in use by another request gets `409`, a request whose body takes longer than 5 seconds to arrive gets `408`, and a request with no body gets `400`. Retry after a `408` or `409`. For protected endpoints the credentials are checked on the first chunk, so an unauthenticated body never occupies the buffer.
 
+## Bundled CA certificate
+
+`data/certs/publicCloudShiftrIo.ca` holds ISRG Root X1, the Let's Encrypt root (valid until 2035-06-04), and ships in every filesystem image. The device looks up a CA for a host at `/certs/<Host>.ca`, where `<Host>` is the hostname with each dot removed and the letter after it capitalized, so this file is the CA for the host `public.cloud.shiftr.io` and its name has to stay as it is. To verify another MQTT broker or HTTPS OTA host, add its CA as `data/certs/<Host>.ca` and flash the filesystem with `./ebus-esp32 push --fs-only`; for the MQTT broker, `POST /api/broker-cert` also works.
+
 ## Security notes
 
 - **Plain HTTP**: the server has no TLS, so session tokens, and the passphrase itself under Basic auth, cross the network in cleartext. Administer the device from a trusted LAN.
