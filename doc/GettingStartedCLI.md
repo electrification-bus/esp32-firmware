@@ -130,8 +130,8 @@ If `monitor` errors out with `termios.error: Operation not supported on socket` 
 For *read-only* serial capture that works anywhere — e.g. for piping into a log file — use raw `cat` after `stty` setup:
 
 ```sh
-stty -f /dev/cu.usbserial-21130 115200 cs8 -cstopb -parenb raw -echo
-cat /dev/cu.usbserial-21130 | tee /tmp/serial.log
+stty -f /dev/cu.usbserial-XXXX 115200 cs8 -cstopb -parenb raw -echo
+cat /dev/cu.usbserial-XXXX | tee /tmp/serial.log
 ```
 
 ## Monitor ↔ flash port handoff (when monitor runs in tmux)
@@ -159,7 +159,7 @@ Multiple boards — one tmux session per device, pinning the port:
 ```sh
 # Terminal 1
 tmux new -s ebus-poe
-./ebus-esp32 monitor --port /dev/cu.usbserial-21130
+./ebus-esp32 monitor --port /dev/cu.usbserial-XXXX
 
 # Terminal 2
 tmux new -s ebus-s3
@@ -169,7 +169,7 @@ tmux new -s ebus-s3
 Flash from any other shell, passing the same port — the monitor pane pauses and resumes on its own:
 
 ```sh
-./ebus-esp32 run --port /dev/cu.usbserial-21130
+./ebus-esp32 run --port /dev/cu.usbserial-XXXX
 ```
 
 ## Config overlays — see Configuration.md

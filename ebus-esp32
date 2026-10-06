@@ -958,7 +958,7 @@ def _generate(args) -> None:
         "device": {
             "id":                device_id_tmpl                  or "",   # template (see above)
             # Optional deployment-scoped segment prepended to the resolved id at boot
-            # ("lab1" -> lab1-ebus-b0b21c90f570). Empty = no prefix. Typically set from
+            # ("lab1" -> lab1-ebus-a1b2c3d4e5f6). Empty = no prefix. Typically set from
             # config-overlay.yml so a site can namespace a fleet without editing device.yml.
             "id_prefix":         device.get("id_prefix")         or "",
             "name":              device.get("name")              or "",
