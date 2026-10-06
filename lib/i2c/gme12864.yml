@@ -42,7 +42,7 @@ implementation: homie-esp32-sdk
 # Driving it: publish text to <node>/one-line/set, two-line/set or three-line/set — or call
 # deliver_local_set() on the same <node>/<property> from another component. Firmware code
 # can also write single lines with text(text, line_num, font_size); see gme12864.h.
-# It shows the "Rick" graphic until the first write.
+# It shows a splash ("eBus" over the node id) until the first write.
 generator:
   class: GME12864
   header: i2c/gme12864.h

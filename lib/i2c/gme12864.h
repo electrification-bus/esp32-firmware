@@ -18,7 +18,7 @@
 //    word-wrapped; anything past the last line is dropped. Each line is centred.
 //    The properties are retained and always say what is on screen: the layout showing
 //    holds its text, the other two hold the empty string. All three start empty at boot
-//    (the screen is on Rick), which also overwrites whatever a previous run left on the
+//    (the splash is showing), which also overwrites whatever a previous run left on the
 //    broker. Empty is a real value here — "this layout is not showing" — not a sentinel
 //    for a failed reading; it goes out as Homie's single 0x00 byte, not a retraction.
 //
@@ -35,7 +35,8 @@
 //    band. Because the screen then no longer shows any layout, text() — like clear()
 //    and showDefault() — sets all three layout properties back to empty.
 //
-// Until the first write the display shows the default screen, the Rick graphic.
+// Until the first write the display shows the default screen: a splash of "eBus" over
+// the node id.
 //
 // U8g2's full-frame buffer (1 KB) is a static array inside the library, not heap.
 class GME12864 : public I2CEntity {
@@ -65,7 +66,7 @@ class GME12864 : public I2CEntity {
         bool showLines(const char* text, uint8_t num_lines);
 
         void clear();          // blank the whole screen
-        void showDefault();    // back to the Rick screen
+        void showDefault();    // back to the splash screen
 
         bool present() const { return _present; }
 
@@ -76,6 +77,7 @@ class GME12864 : public I2CEntity {
 
     private:
         void blankLayouts(NodeProperty* keep);
+        void drawCentered(const char* text, const uint8_t* font, uint8_t y);
 
         U8G2_SSD1306_128X64_NONAME_F_HW_I2C _u8g2;
         bool _present         = false;

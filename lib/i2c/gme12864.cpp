@@ -1,5 +1,4 @@
 #include <i2c/gme12864.h>
-#include <i2c/gme12864_rick.h>
 #include <homie/Property.h>   // entity_settable_callback(Property*) dereferences it
 
 static const uint8_t DISPLAY_WIDTH  = 128;
@@ -74,12 +73,18 @@ void GME12864::clear() {
 void GME12864::showDefault() {
     if (!_present) return;
     _u8g2.clearBuffer();
-    _u8g2.drawXBM((DISPLAY_WIDTH  - GME12864_RICK_WIDTH)  / 2,
-                  (DISPLAY_HEIGHT - GME12864_RICK_HEIGHT) / 2,
-                  GME12864_RICK_WIDTH, GME12864_RICK_HEIGHT, gme12864_rick_xbm);
+    drawCentered("eBus", u8g2_font_logisoso24_tf, 10);
+    drawCentered(getNodeId(), u8g2_font_5x7_tf, 46);
     _u8g2.sendBuffer();
     _showing_default = true;
     blankLayouts(nullptr);
+}
+
+// One line of the splash, centered across the screen (left-aligned and clipped if wider).
+void GME12864::drawCentered(const char* text, const uint8_t* font, uint8_t y) {
+    _u8g2.setFont(font);
+    int w = _u8g2.getStrWidth(text);
+    _u8g2.drawStr(w < DISPLAY_WIDTH ? (DISPLAY_WIDTH - w) / 2 : 0, y, text);
 }
 
 bool GME12864::text(const char* text, uint8_t line_num, uint8_t font_size) {
