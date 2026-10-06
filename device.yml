@@ -95,7 +95,7 @@ mqtt:
 # packets, and that risk is not worth re-taking there.
 #
 # COMMENT THIS BLOCK OUT to accept the build default. Setting it — true or false —
-# pins the behaviour for every build of this device.
+# pins the behavior for every build of this device.
 #mdns:
 #  enabled: false
 
