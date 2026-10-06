@@ -19,11 +19,11 @@ device:
   firmware_name: BESS BMS Monitor
   firmware_version: 1.0.0
   firmware_url: http://example.com/firmware.bin
-  manufacturer: NESL
+  manufacturer: Example Manufacturer
   model: ESP32-S3
   serial_number:
   homie_role: device
-  device_passphrase: changeme
+  device_passphrase: ""  # set it in config-overlay.yml; generate refuses an empty or "changeme" value
 
 wifi:
   ssid: ''

@@ -138,7 +138,7 @@ void generateDeviceID() {
   resolve_device_id(device_id_template, chip_id, device_name, resolved, sizeof(resolved));
 
   // device.id_prefix (optional) is a DEPLOYMENT-scoped segment prepended to the resolved
-  // id: "lab1" + "ebus-b0b21c90f570" -> "lab1-ebus-b0b21c90f570". It exists so a site or
+  // id: "lab1" + "ebus-a1b2c3d4e5f6" -> "lab1-ebus-a1b2c3d4e5f6". It exists so a site or
   // developer can namespace a fleet from config-overlay.yml without editing the tracked
   // `id:` template in device.yml. Each segment is sanitized INDEPENDENTLY and then joined
   // with a hyphen — sanitizing after joining is not equivalent, since a run of hyphens

@@ -22,7 +22,7 @@ device:
   model: ESP32-POE-ISO
   serial_number:
   homie_role: device
-  device_passphrase: changeme
+  device_passphrase: ""  # set it in config-overlay.yml; generate refuses an empty or "changeme" value
 
 wifi:
   ssid: ''

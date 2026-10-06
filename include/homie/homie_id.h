@@ -50,8 +50,8 @@ void resolve_device_id(const char* templ, const uint8_t* mac6, const char* name,
 
 // Compose a child device-id by appending a sanitized suffix to an (already-legal)
 // parent/root id: `parent_id` + "-" + sanitize_homie_id(suffix). For nested devices
-// that share the parent's chip-id, e.g. ("ebus-b0b21c90f570", "phase a") ->
-// "ebus-b0b21c90f570-phase-a". Each segment is sanitized independently (joining first
+// that share the parent's chip-id, e.g. ("ebus-a1b2c3d4e5f6", "phase a") ->
+// "ebus-a1b2c3d4e5f6-phase-a". Each segment is sanitized independently (joining first
 // then sanitizing is NOT equivalent — a hyphen joiner can be collapsed). `parent_id`
 // is assumed already Homie-legal and is copied verbatim.
 void make_homie_child_id(const char* parent_id, const char* suffix,

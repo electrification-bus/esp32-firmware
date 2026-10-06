@@ -26,7 +26,7 @@ device:
   firmware_name: ESP32POEISO Bridge
   firmware_version: 1.0.0
   firmware_url: http://example.com/firmware.bin
-  manufacturer: NESL
+  manufacturer: Example Manufacturer
   model: ESP32-POE-ISO
   serial_number:
   homie_role: device

@@ -86,7 +86,7 @@ With the firmware running and the MCP server registered, an LLM session like thi
 
 > **You:** Which Homie devices are live on the broker?
 >
-> **LLM (calls `homie_get_devices`):** I see one device: `b0b21c90f570` (eBus device, state: ready).
+> **LLM (calls `homie_get_devices`):** I see one device: `a1b2c3d4e5f6` (eBus device, state: ready).
 >
 > **You:** Show me everything that device exposes.
 >
