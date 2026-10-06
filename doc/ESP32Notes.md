@@ -48,15 +48,15 @@ The POE-ISO is a single board design; what varies is the **ESP32 module** solder
 
 ### Why separate build environments are required
 - **Flash size** → different partition table CSV; wrong table causes boot crash or wastes flash
-- **PSRAM presence** → requires `-DBOARD_HAS_PSRAM`, `-mfix-esp32-psram-cache-issue`, and SPIRAM heap routing flags; enabling PSRAM flags on a no-PSRAM module crashes at boot
+- **PSRAM presence** → requires `-DBOARD_HAS_PSRAM`. The 2.0.x `esp32-poe-iso-wrover-arduino2` env also carries `-mfix-esp32-psram-cache-issue`; the 3.x `esp32-poe-iso-wrover` env leaves it out, and the comment there explains why
 
 ### POE-ISO board characteristics (all module variants)
 - Classic ESP32 chip (Xtensa LX6, dual-core 240MHz)
 - Ethernet via RMII (LAN8720A) — uses ~10 GPIO pins, enabled with `CONFIG_ETH_ENABLED`
 - Power over Ethernet with isolated DC-DC converter
-- Classic ESP32 has a **shared WiFi/BT radio** — WiFi STA and BLE cannot both be active simultaneously
+- Classic ESP32 has a **shared WiFi/BT radio**; WiFi and BLE time-share it (see "Shared radio" below)
   - With Ethernet providing MQTT transport, WiFi STA can be left off and the radio is free for BLE
-  - See `NODE_REQUIRES_BLUETOOTH` in `homie.h`
+  - BLE is compiled in only when `device.yml` uses a `ble/*` component (`lib/ble/`)
 
 ---
 
@@ -66,7 +66,7 @@ Used in this project as a development/test target (`esp32-s3-devkitc-1` env).
 
 - **ESP32-S3** chip (Xtensa LX7, dual-core 240MHz, improved instruction set)
 - No onboard Ethernet — WiFi only for network transport
-- **Native USB** (USB OTG) — requires `-DARDUINO_USB_CDC_ON_BOOT=1` for Serial over USB
+- **Two USB ports**: "UART" (a USB-UART bridge to UART0 on GPIO 43/44) and "USB" (native USB on GPIO 19/20). The 3.x `esp32-s3-devkitc-1` env leaves `ARDUINO_USB_CDC_ON_BOOT` unset, so `Serial` stays on UART0 and the console is the UART port. The 2.0.x `esp32-s3-devkitc-1-arduino2` env sets `-DARDUINO_USB_CDC_ON_BOOT=1`, which moves `Serial` to native USB CDC on the USB port
 - BLE 5.0 (improved range and throughput vs classic ESP32 BLE 4.2)
 - More GPIO than classic ESP32; supports more peripheral remapping
 - No `-mfix-esp32-psram-cache-issue` needed (S3 does not have the PSRAM cache errata)

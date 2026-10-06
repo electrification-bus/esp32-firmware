@@ -13,7 +13,7 @@ Before the per-board tables, four constraints that are properties of the *chip*,
 - **Flash pins are never yours.** On classic ESP32, GPIO 6-11 are wired to the SPI flash die. Using one hangs or bricks the boot. On ESP32-S3 the equivalent range is GPIO 26-32, plus **33-37 when the module has octal PSRAM** (see the XIAO below — this is exactly why its pads stop at GPIO 9 and resume at 43).
 - **Input-only pins exist on classic ESP32.** GPIO 34-39 have no output driver and no internal pull-up/pull-down. They are perfectly good for an RX line, a button, or an ADC input, and useless for anything you need to drive. The S3 has no input-only pins.
 - **Strapping pins are read at reset.** Holding one at the wrong level while the board boots changes boot mode, flash voltage, or JTAG source. They are usable *after* boot; the danger is a peripheral that idles them at the wrong level. Classic ESP32: GPIO 0, 2, 12, 15. ESP32-S3: GPIO 0, 3, 45, 46.
-- **The console owns a UART.** Which pins depends on whether the board has a USB-UART bridge (classic ESP32 boards: GPIO 1/3) or native USB (S3 boards: the console is USB CDC, which *frees* GPIO 43/44 for other use).
+- **The console owns a UART unless it runs over native USB.** Classic ESP32 boards put it on UART0, GPIO 1/3, behind a USB-UART bridge. On the S3 it depends on `ARDUINO_USB_CDC_ON_BOOT`: the 3.x `esp32-s3-devkitc-1` env leaves it unset, so the console stays on UART0 (GPIO 43/44) behind the DevKitC-1's UART port; the `esp32-s3-devkitc-1-arduino2` env and the XIAO's board JSON set it, which moves the console to native USB CDC and *frees* GPIO 43/44.
 
 ## Seeed XIAO ESP32S3 (`seeed_xiao_esp32s3`)
 
@@ -67,6 +67,7 @@ A development kit, so most pins are broken out. What to avoid:
 - **GPIO 26-32** — SPI flash. Never.
 - **GPIO 33-37** — octal PSRAM, *if* you have an `-N8R8` (octal PSRAM) module. The board JSON in this repo sets neither `BOARD_HAS_PSRAM` nor `memory_type`, so a plain `-N8` module leaves these free. Check which module you actually have before using them.
 - **GPIO 19/20** — native USB (D-/D+). Free only if you are not using USB.
+- **GPIO 43/44**: UART0, the console on the 3.x `esp32-s3-devkitc-1` env.
 - **GPIO 0, 3, 45, 46** — strapping.
 - **GPIO 38 or 48** — the on-board RGB LED, depending on revision.
 
@@ -118,7 +119,7 @@ Modbus does not necessarily use a hardware UART. `lib/platform/modbus/modbus_mas
 
 The WROVER envs deliberately comment `USE_SOFTWARE_SERIAL` out, with the note "SoftwareSerial crashes with PSRAM". Note that **the XIAO ESP32S3 hits both conditions at once**: its env sets `USE_SOFTWARE_SERIAL` while its board JSON sets `BOARD_HAS_PSRAM`, so it takes the SoftwareSerial path with PSRAM enabled.
 
-That may well be fine — the WROVER problem is most likely the classic-ESP32 PSRAM cache erratum (the reason those envs also carry `-mfix-esp32-psram-cache-issue`), which does not apply to the S3 at all. But it is the one combination this SDK elsewhere warns against, so treat a XIAO + Modbus bring-up as unproven until you have watched it run. If it does misbehave, the fix is to invert that `#if` ordering so `BOARD_HAS_PSRAM` wins.
+That may well be fine — the WROVER problem is most likely the classic-ESP32 PSRAM cache erratum (the reason the 2.0.x `esp32-poe-iso-wrover-arduino2` env carries `-mfix-esp32-psram-cache-issue`; the 3.x env leaves it out), which does not apply to the S3 at all. But it is the one combination this SDK elsewhere warns against, so treat a XIAO + Modbus bring-up as unproven until you have watched it run. If it does misbehave, the fix is to invert that `#if` ordering so `BOARD_HAS_PSRAM` wins.
 
 ## See also
 
