@@ -615,6 +615,12 @@ static void handleOtaStatus(AsyncWebServerRequest *request) {
 // Flash writes happen on the AsyncTCP task, which is why CONFIG_ASYNC_TCP_STACK_SIZE
 // is raised in platformio.ini. The reboot is deferred to captive_portal_loop() so the
 // response is actually flushed to the client first.
+//
+// One push at a time: the request that passes auth on its first chunk owns the push
+// state below until its handler replies or its client disconnects. Every other request
+// leaves that state alone, so a second client (authenticated or not) cannot reset or
+// abort a push in progress. Body callbacks, the request handler and the disconnect
+// callback all run on the AsyncTCP task, so the state needs no locking.
 
 static bool     ota_push_active   = false;   // Update.begin() succeeded, writes in flight
 static bool     ota_push_failed   = false;
@@ -624,6 +630,7 @@ static size_t   ota_push_written  = 0;
 static char     ota_push_error[96] = {0};
 static bool     ota_push_reboot_pending = false;
 static uint32_t ota_push_reboot_at      = 0;
+static AsyncWebServerRequest* ota_push_owner = NULL;
 
 static void ota_push_fail(const char* msg) {
     ota_push_failed = true;
@@ -653,24 +660,43 @@ static bool portalAuthorized(AsyncWebServerRequest *request) {
     return request->authenticate("admin", device_passphrase);
 }
 
+// Drop ownership of the push state, undoing anything a half-finished push left behind.
+static void ota_push_release() {
+    if (ota_push_active) {
+        ota_push_fail("push abandoned before the image was complete");
+    } else if (ota_push_done && ota_push_target == U_SPIFFS) {
+        LittleFS.begin(true);   // written but never answered: remount what the write unmounted
+    }
+    ota_push_owner   = NULL;
+    ota_push_done    = false;
+    ota_push_failed  = false;
+}
+
+// onDisconnect for the owning request while the push is in flight.
+static void otaPushOwnerDisconnected() {
+    Serial.println("PORTAL: OTA push client disconnected");
+    ota_push_release();
+}
+
 static void otaPushBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
                         size_t index, size_t total, int update_type) {
     if (index == 0) {
+        // Authorize on the FIRST CHUNK, before touching any push state. Body callbacks
+        // run before the request handler, so checking only there would let an
+        // unauthenticated client on the LAN stream an entire image into the flash, and
+        // resetting state first would let it abort someone else's push.
+        if (!portalAuthorized(request)) return;   // requireAuth() replies 401 later
+        if (ota_push_owner) return;               // handleOtaPushDone() replies 409
+
+        ota_push_owner   = request;
+        request->onDisconnect(otaPushOwnerDisconnected);
         ota_push_failed  = false;
         ota_push_done    = false;
         ota_push_written = 0;
         ota_push_error[0] = '\0';
         ota_push_target  = update_type;
 
-        // Authorize on the FIRST CHUNK. Body callbacks run before the request
-        // handler, so checking only there would let an unauthenticated client on the
-        // LAN stream an entire image into the flash before being refused.
-        if (!portalAuthorized(request)) {
-            ota_push_failed = true;   // stay silent; requireAuth() replies 401 later
-            return;
-        }
         if (!ota_is_enabled()) { ota_push_fail("OTA not enabled"); return; }
-        if (ota_push_active)   { ota_push_fail("another push in progress"); return; }
         if (total == 0)        { ota_push_fail("missing or zero Content-Length"); return; }
 
         // App images begin with the ESP image magic byte. Refuse anything else up
@@ -702,7 +728,7 @@ static void otaPushBody(AsyncWebServerRequest *request, uint8_t *data, size_t le
                       (unsigned)CONFIG_ASYNC_TCP_STACK_SIZE);
     }
 
-    if (ota_push_failed || !ota_push_active) return;
+    if (request != ota_push_owner || ota_push_failed || !ota_push_active) return;
 
     if (len && Update.write(data, len) != len) {
         ota_push_fail(Update.errorString());
@@ -744,17 +770,31 @@ static void otaPushFilesystemBody(AsyncWebServerRequest *request, uint8_t *data,
 }
 
 // Final handler — runs after the whole body has been streamed above.
-static void handleOtaPushDone(AsyncWebServerRequest *request) {
-    if (!requireAuth(request)) return;   // sends 401/429 and records the failure
+static void handleOtaPushDone(AsyncWebServerRequest *request, int update_type) {
+    bool owner = (request == ota_push_owner);
+    if (owner) request->onDisconnect(nullptr);   // this handler now settles the push
+    if (!requireAuth(request)) {              // sends 401/429 and records the failure
+        if (owner) ota_push_release();
+        return;
+    }
 
     static char resp[192];
-    const char* target = ota_push_target == U_SPIFFS ? "filesystem" : "firmware";
+    const char* target = update_type == U_SPIFFS ? "filesystem" : "firmware";
+
+    if (!owner) {
+        // Refused at the first chunk without touching the push state.
+        bool busy = ota_push_owner != NULL;
+        snprintf(resp, sizeof(resp), "{\"status\":\"error\",\"target\":\"%s\",\"message\":\"%s\"}",
+                 target, busy ? "another push in progress" : "no image received");
+        request->send(busy ? 409 : 400, "application/json", resp);
+        return;
+    }
 
     if (!ota_push_done) {
         snprintf(resp, sizeof(resp), "{\"status\":\"error\",\"target\":\"%s\",\"message\":\"%s\"}",
                  target, ota_push_error[0] ? ota_push_error : "no image received");
         request->send(400, "application/json", resp);
-        ota_push_failed = false;
+        ota_push_release();
         return;
     }
 
@@ -778,13 +818,22 @@ static void handleOtaPushDone(AsyncWebServerRequest *request) {
              reboot ? "rebooting" : "staged, awaiting reboot");
     request->send(200, "application/json", resp);
 
-    ota_push_done = false;
+    ota_push_owner = NULL;
+    ota_push_done  = false;
     if (reboot) {
         // Reboot from the main loop, not here: this runs on the AsyncTCP task and the
         // response above has not gone out on the wire yet.
         ota_push_reboot_pending = true;
         ota_push_reboot_at      = millis() + 500;
     }
+}
+
+static void handleOtaPushFirmwareDone(AsyncWebServerRequest *request) {
+    handleOtaPushDone(request, U_FLASH);
+}
+
+static void handleOtaPushFilesystemDone(AsyncWebServerRequest *request) {
+    handleOtaPushDone(request, U_SPIFFS);
 }
 
 // Handle POST /api/ota - enable or disable OTA (requires Basic Auth)
@@ -940,8 +989,8 @@ void captive_portal_start() {
     server.on(AsyncURIMatcher::exact("/api/ota"), HTTP_GET, handleOtaStatus);
     server.on(AsyncURIMatcher::exact("/api/ota"), HTTP_POST, handleOtaToggle, NULL, accumulateBody);
     // Image push — distinct paths; /api/ota itself is the enable/disable toggle.
-    server.on(AsyncURIMatcher::exact("/api/ota/firmware"),   HTTP_POST, handleOtaPushDone, NULL, otaPushFirmwareBody);
-    server.on(AsyncURIMatcher::exact("/api/ota/filesystem"), HTTP_POST, handleOtaPushDone, NULL, otaPushFilesystemBody);
+    server.on(AsyncURIMatcher::exact("/api/ota/firmware"),   HTTP_POST, handleOtaPushFirmwareDone, NULL, otaPushFirmwareBody);
+    server.on(AsyncURIMatcher::exact("/api/ota/filesystem"), HTTP_POST, handleOtaPushFilesystemDone, NULL, otaPushFilesystemBody);
     server.on("/api/openapi.yml", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(LittleFS, "/openapi.yml", "text/yaml");
     });
