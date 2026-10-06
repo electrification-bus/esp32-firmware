@@ -200,6 +200,7 @@ static bool mqtt_fetch_and_save_root_cert() {
   secureClient.setTimeout(15);
 
   // Connect on the MQTTS port directly - same cert chain, guaranteed open
+  ntp_lookup_wait();   // connect() resolves mqtt_host; see network.cpp
   Serial.printf("TLS: Connecting insecurely to %s:%u...\n", mqtt_host, mqtt_port);
   if (!secureClient.connect(mqtt_host, mqtt_port)) {
     Serial.printf("TLS: ERROR - Failed to connect to %s:%u\n", mqtt_host, mqtt_port);
@@ -470,6 +471,7 @@ boolean mqtt_connect() {
   // Configure MQTT client BEFORE connecting
   // begin() sets up the network client and host — also resets the message callback,
   // so re-register it here on every connect (including reconnects).
+  ntp_lookup_wait();   // connect() below resolves mqtt_host; see network.cpp
   mqtt_client.begin(mqtt_host, mqtt_port, *transportClient);
   mqtt_client.onMessageAdvanced(subscriber_callback);
 

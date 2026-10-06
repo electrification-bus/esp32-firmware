@@ -178,6 +178,7 @@ void setup() {
 void loop() {
     log_tcp_loop();     // accept monitors, push buffered log; never blocks
     captive_portal_loop();
+    loop_ntp();
 
     // Deferred out of on_state_observed() — see the note there.
     if (_state_reassert_pending) {
@@ -437,6 +438,7 @@ void loop_housekeeping() {
         mqtt_restart();
         setup_mqtt();
     }
+    loop_ntp();
     loop_mdns();
     loop_mqtt();
 }

@@ -13,6 +13,12 @@ void setup_ethernet();
 // from a URL still works via ota_start_update() in platform/ota.h.
 void loop_mdns();
 
+// Start SNTP once an interface has a lease (main task only; see network.cpp).
+void loop_ntp();
+// Call on the main task before any hostByName() (MQTT connect, OTA pull): waits until
+// loop_ntp()'s NTP server lookup is no longer pending. Returns at once when none is.
+void ntp_lookup_wait();
+
 bool client_connected();
 
 // Get IP addresses as strings (dot-separated format)

@@ -4,6 +4,8 @@
 #include <WiFiUdp.h>
 #include <esp_mac.h>
 #include <lwip/netif.h>
+#include <lwip/dns.h>
+#include <lwip/tcpip.h>
 #ifndef CONFIG_WIFI_AP
 #include <ETH.h>
 #endif
@@ -366,6 +368,188 @@ bool setup_wifi() {
 #include "FS.h"
 //#include "SD_MMC.h"
 
+// ── SNTP start ────────────────────────────────────────────────────────────────
+//
+// SNTP gets server ADDRESSES, never names, so it never has a DNS lookup in flight.
+// On arduino-esp32 3.x, the first NetworkManager::hostByName() after an interface
+// gains or loses an address calls dns_clear_cache() without the lwIP core lock. The
+// clear runs each pending lookup's callback and closes its UDP pcb on the caller's
+// task, and both assert "Required to lock TCPIP core functionality!" (SNTP's callback
+// in udp_new_ip_type, the pcb close in udp_remove). lwIP's dns_gethostbyname() returns
+// a literal address synchronously with no pending entry. 2.0.x (no cache clear) runs
+// the same code.
+//
+// The names are looked up asynchronously: dns_gethostbyname() runs on the tcpip thread
+// (tcpip_callback) and its callback stores the result, which loop_ntp() collects on a
+// later pass, so a lookup never blocks the main loop. Our own lookup must not be
+// pending at a cache clear either, so every main-task hostByName() caller (MQTT
+// connect, the TLS root-cert fetch, OTA pull) calls ntp_lookup_wait() first.
+//
+// A new lease starts a lookup round of every name. A name that fails keeps its last
+// address, if it has one, and SNTP runs on whatever addresses exist. While any name
+// fails, only the failed names are looked up again, with exponential backoff. Once all
+// names resolve, they are looked up again every NTP_REFRESH_MS, since pool.ntp.org
+// members rotate. SNTP is restarted only when the address set changed.
+#define NTP_RETRY_MIN_MS        30000UL
+#define NTP_RETRY_MAX_MS        (30UL * 60 * 1000)
+#define NTP_REFRESH_MS          (12UL * 60 * 60 * 1000)
+#define NTP_LOOKUP_WAIT_MAX_MS  40000UL   // above lwIP's own give-up time for a query
+static const char* const NTP_SERVER_NAMES[] = { "pool.ntp.org", "time.nist.gov" };
+#define NTP_SERVER_COUNT (sizeof(NTP_SERVER_NAMES) / sizeof(NTP_SERVER_NAMES[0]))
+
+enum { NTP_DNS_IDLE, NTP_DNS_PENDING, NTP_DNS_OK, NTP_DNS_FAIL };   // IDLE: not looked up this round
+// Written by the tcpip thread, read by the main task, both under _ntp_dns_mux.
+static portMUX_TYPE _ntp_dns_mux = portMUX_INITIALIZER_UNLOCKED;
+static uint8_t _ntp_dns_state[NTP_SERVER_COUNT];
+static uint32_t _ntp_dns_addr[NTP_SERVER_COUNT];   // IPv4, network byte order
+
+static volatile bool _ntp_start_pending = false;   // set on every GOT_IP
+static bool _ntp_round_active = false;
+static bool _ntp_next_armed = false;
+static bool _ntp_next_all = false;      // next round looks up every name, not just failed ones
+static unsigned long _ntp_next_at = 0;
+static unsigned long _ntp_retry_ms = NTP_RETRY_MIN_MS;
+static bool _ntp_started = false;
+// sntp_setservername() keeps the pointers, and SNTP's tcpip-thread requests read them
+// while it runs. Two sets: a round writes the set SNTP is not using, and configTime()
+// switches SNTP to it under the core lock. Indexed by NTP_SERVER_NAMES; "" is no address.
+static char _ntp_server_ip[2][NTP_SERVER_COUNT][16];
+static uint8_t _ntp_ip_set = 0;   // the set SNTP holds pointers into
+
+// tcpip thread (or a synchronous result from it).
+static void ntp_dns_store(size_t i, const ip_addr_t* addr) {
+  bool ok = addr != nullptr && IP_IS_V4(addr);
+  portENTER_CRITICAL(&_ntp_dns_mux);
+  _ntp_dns_addr[i] = ok ? ip4_addr_get_u32(ip_2_ip4(addr)) : 0;
+  _ntp_dns_state[i] = ok ? NTP_DNS_OK : NTP_DNS_FAIL;
+  portEXIT_CRITICAL(&_ntp_dns_mux);
+}
+
+static void ntp_dns_found(const char* name, const ip_addr_t* addr, void* arg) {
+  (void)name;
+  ntp_dns_store((size_t)arg, addr);
+}
+
+static void ntp_dns_start(void* arg) {
+  size_t i = (size_t)arg;
+  ip_addr_t addr;
+#if LWIP_IPV4 && LWIP_IPV6
+  err_t err = dns_gethostbyname_addrtype(NTP_SERVER_NAMES[i], &addr, ntp_dns_found, arg,
+                                         LWIP_DNS_ADDRTYPE_IPV4);
+#else
+  err_t err = dns_gethostbyname(NTP_SERVER_NAMES[i], &addr, ntp_dns_found, arg);
+#endif
+  if (err == ERR_OK) ntp_dns_store(i, &addr);           // cached: no callback follows
+  else if (err != ERR_INPROGRESS) ntp_dns_store(i, nullptr);
+}
+
+static bool ntp_lookups_pending() {
+  bool pending = false;
+  portENTER_CRITICAL(&_ntp_dns_mux);
+  for (size_t i = 0; i < NTP_SERVER_COUNT; i++) {
+    if (_ntp_dns_state[i] == NTP_DNS_PENDING) pending = true;
+  }
+  portEXIT_CRITICAL(&_ntp_dns_mux);
+  return pending;
+}
+
+void ntp_lookup_wait() {
+  if (!_ntp_round_active || !ntp_lookups_pending()) return;
+  Serial.println("NTP: waiting for the NTP server lookup to finish before resolving");
+  unsigned long start = millis();
+  while (ntp_lookups_pending()) {
+    if (millis() - start > NTP_LOOKUP_WAIT_MAX_MS) {
+      Serial.println("NTP: WARNING server lookup still pending, continuing");
+      return;
+    }
+    delay(10);
+  }
+}
+
+// all: look up every name; otherwise only the names that failed last round.
+static void ntp_round_start(bool all) {
+  for (size_t i = 0; i < NTP_SERVER_COUNT; i++) {
+    portENTER_CRITICAL(&_ntp_dns_mux);
+    bool lookup = all || _ntp_dns_state[i] == NTP_DNS_FAIL;
+    _ntp_dns_state[i] = lookup ? NTP_DNS_PENDING : NTP_DNS_IDLE;
+    portEXIT_CRITICAL(&_ntp_dns_mux);
+    if (lookup && tcpip_callback(ntp_dns_start, (void*)i) != ERR_OK) ntp_dns_store(i, nullptr);
+  }
+  _ntp_round_active = true;
+}
+
+static void ntp_round_finish() {
+  uint8_t set = _ntp_ip_set ^ 1;
+  size_t failed = 0;
+  bool changed = !_ntp_started;
+  for (size_t i = 0; i < NTP_SERVER_COUNT; i++) {
+    portENTER_CRITICAL(&_ntp_dns_mux);
+    uint8_t state = _ntp_dns_state[i];
+    uint32_t a = _ntp_dns_addr[i];
+    portEXIT_CRITICAL(&_ntp_dns_mux);
+    if (state == NTP_DNS_OK) {
+      const uint8_t* b = (const uint8_t*)&a;
+      snprintf(_ntp_server_ip[set][i], sizeof(_ntp_server_ip[set][i]), "%u.%u.%u.%u",
+               b[0], b[1], b[2], b[3]);
+      Serial.printf("NTP: %s -> %s\n", NTP_SERVER_NAMES[i], _ntp_server_ip[set][i]);
+    } else {
+      // Not looked up, or failed: keep the previous address (possibly none).
+      strcpy(_ntp_server_ip[set][i], _ntp_server_ip[_ntp_ip_set][i]);
+      if (state == NTP_DNS_FAIL) {
+        failed++;
+        Serial.printf("NTP: %s did not resolve%s\n", NTP_SERVER_NAMES[i],
+                      _ntp_server_ip[set][i][0] ? ", keeping its previous address" : "");
+      }
+    }
+    if (strcmp(_ntp_server_ip[set][i], _ntp_server_ip[_ntp_ip_set][i]) != 0) changed = true;
+  }
+
+  _ntp_next_armed = true;
+  _ntp_next_all = failed == 0;
+  if (failed > 0) {
+    Serial.printf("NTP: retrying %u unresolved name(s) in %lu s\n", (unsigned)failed,
+                  _ntp_retry_ms / 1000);
+    _ntp_next_at = millis() + _ntp_retry_ms;
+    _ntp_retry_ms = _ntp_retry_ms * 2 > NTP_RETRY_MAX_MS ? NTP_RETRY_MAX_MS : _ntp_retry_ms * 2;
+  } else {
+    _ntp_retry_ms = NTP_RETRY_MIN_MS;
+    _ntp_next_at = millis() + NTP_REFRESH_MS;
+  }
+
+  const char* servers[NTP_SERVER_COUNT] = {};
+  size_t n = 0;
+  for (size_t i = 0; i < NTP_SERVER_COUNT; i++) {
+    if (_ntp_server_ip[set][i][0]) servers[n++] = _ntp_server_ip[set][i];
+  }
+  if (n == 0 || !changed) return;
+
+  _ntp_ip_set = set;
+  configTime(0, 0, servers[0], n > 1 ? servers[1] : nullptr);
+  setenv("TZ", NTP_TIMEZONE, 1);
+  tzset();
+  _ntp_started = true;
+  Serial.printf("NTP: sync started with %u server(s), TZ=%s\n", (unsigned)n, NTP_TIMEZONE);
+}
+
+void loop_ntp() {
+  if (_ntp_round_active) {
+    if (ntp_lookups_pending()) return;
+    _ntp_round_active = false;
+    ntp_round_finish();
+    return;
+  }
+  if (!client_connected()) return;
+  if (_ntp_start_pending) {
+    _ntp_start_pending = false;           // a new lease skips any backoff wait
+    _ntp_retry_ms = NTP_RETRY_MIN_MS;
+    _ntp_next_all = true;
+  } else if (!_ntp_next_armed || (long)(millis() - _ntp_next_at) < 0) {
+    return;
+  }
+  _ntp_next_armed = false;
+  ntp_round_start(_ntp_next_all);
+}
+
 void WiFiEvent(WiFiEvent_t event)
 {
   switch (event) {
@@ -426,10 +610,7 @@ void WiFiEvent(WiFiEvent_t event)
         }
       }
 #endif
-      configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-      setenv("TZ", NTP_TIMEZONE, 1);
-      tzset();
-      Serial.printf("NTP: sync started, TZ=%s\n", NTP_TIMEZONE);
+      _ntp_start_pending = true;   // started from the main task by loop_ntp()
       break;
     case ARDUINO_EVENT_ETH_DISCONNECTED:
       Serial.println("ETH Disconnected");
@@ -442,10 +623,7 @@ void WiFiEvent(WiFiEvent_t event)
 #endif // !CONFIG_WIFI_AP
     case ARDUINO_EVENT_WIFI_STA_GOT_IP:
       Serial.printf("WiFi STA: Got IP %s\n", WiFi.localIP().toString().c_str());
-      configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-      setenv("TZ", NTP_TIMEZONE, 1);
-      tzset();
-      Serial.printf("NTP: sync started, TZ=%s\n", NTP_TIMEZONE);
+      _ntp_start_pending = true;   // started from the main task by loop_ntp()
       break;
     default:
       break;

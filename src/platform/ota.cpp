@@ -1,5 +1,6 @@
 #include <platform/ota.h>
 #include <platform/config.h>
+#include <platform/network.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -180,6 +181,7 @@ static bool run_update(int update_type, const char* url) {
         client = &secure_client;
     }
 
+    ntp_lookup_wait();   // the GET below resolves the URL's host; see network.cpp
     if (!http.begin(*client, _last_url)) {
         Serial.println("OTA: Failed to connect to server");
         _ota_status = OTA_STATUS_HOST_NOT_FOUND;
