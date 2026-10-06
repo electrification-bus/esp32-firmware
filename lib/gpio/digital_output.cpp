@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <driver/gpio.h>
 #include <gpio/digital_output.h>
 #include <homie/Property.h>   // entity_settable_callback(Property*) dereferences it
 
@@ -19,8 +20,10 @@ bool DigitalOutput::setup() {
 
     // Drive the pin to the requested level BEFORE switching it to an output, so a
     // hardware pull-up on an active-low board cannot glitch the load on for the
-    // microseconds between pinMode() and the first digitalWrite().
-    digitalWrite(_pin, (_initial_state != _active_low) ? HIGH : LOW);
+    // microseconds between pinMode() and the first digitalWrite(). This uses the IDF call
+    // because arduino-esp32 3.x digitalWrite() refuses a pin pinMode() has not claimed;
+    // gpio_set_level() only writes the output latch, which pinMode() leaves alone.
+    gpio_set_level((gpio_num_t)_pin, (_initial_state != _active_low) ? 1 : 0);
     pinMode(_pin, OUTPUT);
     applyState(_initial_state);
 
