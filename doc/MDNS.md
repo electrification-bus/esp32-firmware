@@ -46,59 +46,64 @@ The hostname is the device ID as resolved at boot from the `device.id` template 
 
 ## Advertised services
 
-All four are registered once by `setup_mdns()` when `mdns.advertise` is on.
+All four are registered once by `setup_mdns()` when `mdns.advertise` is on. Each service's instance name is the hostname. The TXT keys follow "Detail: mDNS Discovery" in the eBus specification, [framework.md](https://github.com/electrification-bus/specification/blob/main/framework.md) version 0.9 (`EBUS_SPEC_VERSION` in [`include/platform/mdns_strings.h`](../include/platform/mdns_strings.h)). Requirement 6 makes `_ebus._tcp` and `_device-info._tcp` mandatory, and requirement 8 makes `_http._tcp` mandatory for an entity with a REST API. The Spec column gives each key's level in that section's tables; "compatibility" marks a key for compatibility with existing eBus devices (SPAN panels), not in framework.md 0.9. A recommended key whose value is empty is omitted.
 
 ### `_ebus._tcp`
 
-Device discovery. The port is the configured `mqtt.port`.
+Entity discovery (requirement 6). The port is the configured `mqtt.port`.
 
-| TXT key | Value |
-|---|---|
-| `homie` | `5.0` |
-| `version` | `1` |
-| `id` | Device ID |
-| `name` | `device.name` |
-| `role` | `device.homie_role` (`device` or `controller`) |
-| `type` | `device.device_type`, or `device.type` when that is empty; omitted when both are empty |
-| `base` | The device's base topic, for example `ebus/5/<device-id>/` (`homie/5/` without `-DUSE_EBUS_TOPIC`) |
-| `state` | `init` (the state at registration; not updated afterward) |
-| `implementation` | `homie-esp32-sdk` |
-| `ca_cert_path` | `/api/broker-cert`, the REST path for the broker CA certificate |
-
-### `_http._tcp`
-
-The web UI and REST API on port 80.
-
-| TXT key | Value |
-|---|---|
-| `path` | `/api/openapi.yml` |
-| `api` | `openapi` |
-
-### `_telnet._tcp`
-
-The read-only serial log stream on `log.tcp_port` (default 23). Registered only when the listener is running, so `log.tcp_port: 0` omits it.
-
-| TXT key | Value |
-|---|---|
-| `kind` | `serial-log` |
+| TXT key | Spec | Value |
+|---|---|---|
+| `txtvers` | required | `1` |
+| `ebus_version` | required | `0.9` |
+| `roles` | required | `controller` when `device.homie_role` is `controller`, otherwise `device` |
+| `device_id` | required | Device ID |
+| `device_type` | recommended | `device.device_type`, or `device.type` when that is empty |
+| `name` | recommended | `device.name` |
+| `manufacturer` | recommended | `device.manufacturer`, or `unknown` when that is empty |
+| `model` | recommended | `device.model`, or `ESP32` when that is empty |
+| `fw_version` | recommended | `device.firmware_version` |
+| `auth_methods` | recommended | `preconfigured`: the REST passphrase (`device.device_passphrase`) is set out of band, in the configuration |
+| `homie_domain` | compatibility | The Homie topic domain: `ebus` with `-DUSE_EBUS_TOPIC`, otherwise `homie` |
+| `homie_version` | compatibility | `5` |
+| `homie_roles` | compatibility | Same value as `roles` |
 
 ### `_device-info._tcp`
 
-Hardware and firmware details, on port 80.
+Hardware and firmware details (requirement 6), on port 80.
+
+| TXT key | Spec | Value |
+|---|---|---|
+| `txtvers` | required | `1` |
+| `manufacturer` | required | `device.manufacturer`, or `unknown` when that is empty |
+| `model` | required | `device.model`, or `ESP32` when that is empty |
+| `serial_number` | required | `device.serial_number`, or the device ID when that is empty |
+| `fw_version` | recommended | `device.firmware_version` |
+| `os_version` | recommended | Framework versions from their build macros, for example `arduino-esp32 3.3.11 / ESP-IDF 5.5.5` |
+| `mac` | recommended | Primary MAC in lowercase hex without colons: the Ethernet MAC on Ethernet builds, the WiFi MAC on `CONFIG_WIFI_AP` builds |
+
+### `_http._tcp`
+
+The web UI and REST API (requirement 8), on port 80.
+
+| TXT key | Spec | Value |
+|---|---|---|
+| `txtvers` | required | `1` |
+| `path` | required | `/api` |
+| `version` | required | `1.2.0`, the `info.version` of [`data/openapi.yml`](../data/openapi.yml) |
+| `device_id` | required | Device ID |
+| `device_type` | required | `device.device_type`, or `device.type` when that is empty; omitted when both are empty |
+| `openapi` | recommended | `/api/openapi.yml` |
+
+### `_telnet._tcp`
+
+The read-only serial log stream on `log.tcp_port` (default 23). Registered only when the listener is running, so `log.tcp_port: 0` omits it. framework.md does not define this service; it is proposed upstream as [electrification-bus/specification issue 25](https://github.com/electrification-bus/specification/issues/25).
 
 | TXT key | Value |
 |---|---|
-| `manufacturer` | `device.manufacturer`; omitted when empty |
-| `model` | `device.model` |
-| `serial_number` | `device.serial_number`, or the device ID when that is empty |
-| `eth_mac` | Ethernet MAC address |
-| `wlan_mac` | WiFi MAC address |
-| `fw_name` | `device.firmware_name`; omitted when empty |
-| `fw_version` | `device.firmware_version` |
-| `platform` | `ESP32` |
-| `sdk_version` | ESP-IDF version (`ESP.getSdkVersion()`) |
-| `eth_ip` | Ethernet IP; omitted when Ethernet has no address |
-| `wlan_ip` | WiFi station IP; omitted when WiFi has no address |
+| `txtvers` | `1` |
+| `device_id` | Device ID |
+| `kind` | `serial-log` |
 
 ## Browsing from a host
 
@@ -110,7 +115,7 @@ avahi-browse -rt _telnet._tcp
 # macOS
 dns-sd -G v4 <device-id>.local
 dns-sd -B _ebus._tcp
-dns-sd -L "<instance-name>" _ebus._tcp local
+dns-sd -L <device-id> _ebus._tcp local
 ```
 
 ```python

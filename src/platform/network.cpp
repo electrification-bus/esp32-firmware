@@ -3,6 +3,7 @@
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <esp_mac.h>
+#include <esp_idf_version.h>
 #include <lwip/netif.h>
 #include <lwip/dns.h>
 #include <lwip/tcpip.h>
@@ -280,46 +281,69 @@ bool setup_mdns() {
   return true;
 }
 
-// Register all mDNS services - called from setup_mdns() and after WiFi STA connects
+// Primary MAC as lowercase hex without colons: Ethernet on Ethernet builds, WiFi otherwise.
+static const char* get_primary_mac() {
+  static char mac_str[13] = {0};
+  if (mac_str[0] == '\0') {
+    uint8_t mac[6];
+#ifndef CONFIG_WIFI_AP
+    esp_read_mac(mac, ESP_MAC_ETH);
+#else
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+#endif
+    snprintf(mac_str, sizeof(mac_str), "%02x%02x%02x%02x%02x%02x",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  }
+  return mac_str;
+}
+
+// Framework versions from their build-time macros, e.g. "arduino-esp32 3.3.11 / ESP-IDF 5.5.5".
+static const char* get_os_version() {
+  static char os_str[48] = {0};
+  if (os_str[0] == '\0') {
+    snprintf(os_str, sizeof(os_str), "arduino-esp32 %d.%d.%d / ESP-IDF %d.%d.%d",
+             ESP_ARDUINO_VERSION_MAJOR, ESP_ARDUINO_VERSION_MINOR, ESP_ARDUINO_VERSION_PATCH,
+             ESP_IDF_VERSION_MAJOR, ESP_IDF_VERSION_MINOR, ESP_IDF_VERSION_PATCH);
+  }
+  return os_str;
+}
+
+// Add a recommended TXT key only when its value is non-empty.
+static void mdns_add_txt_if_set(const char* service, const char* key, const char* value) {
+  if (value[0] != '\0') {
+    mdns_add_txt(service, MDNS_PROTO_TCP, key, value);
+  }
+}
+
+// Register all mDNS services - called from setup_mdns() and after WiFi STA connects.
+// TXT keys follow framework.md "Detail: mDNS Discovery", plus the homie_* compatibility
+// keys on _ebus._tcp; doc/MDNS.md maps each one.
 void mdns_register_services() {
+  const char* serial = device_serial[0] != '\0' ? (const char*)device_serial : getDeviceID();
+
   // ============================================================
   // _device-info._tcp service - Hardware/firmware information
   // ============================================================
   MDNS.addService(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, 80);
-  if (strlen(device_manufacturer) > 0) {
-    mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_MANUFACTURER, device_manufacturer);
-  }
+  mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_TXTVERS, MDNS_VAL_TXTVERS);
+  mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_MANUFACTURER, device_manufacturer);
   mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_MODEL, device_model);
-  if (strlen(device_serial) > 0) {
-    mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_SERIAL_NUMBER, device_serial);
-  } else {
-    mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_SERIAL_NUMBER, getDeviceID());
-  }
-  mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_ETH_MAC, get_eth_mac());
-  mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_WLAN_MAC, get_wlan_mac());
-  if (strlen(firmware_name) > 0) {
-    mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_FW_NAME, firmware_name);
-  }
-  mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_FW_VERSION, firmware_version);
-  mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_PLATFORM, MDNS_VAL_PLATFORM);
-  mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_SDK_VERSION, ESP.getSdkVersion());
-
-  const char* eth_ip = get_eth_ip();
-  if (strlen(eth_ip) > 0) {
-    mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_ETH_IP, eth_ip);
-  }
-  const char* wifi_ip = get_wifi_ip();
-  if (strlen(wifi_ip) > 0) {
-    mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_WLAN_IP, wifi_ip);
-  }
+  mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_SERIAL_NUMBER, serial);
+  mdns_add_txt_if_set(MDNS_SVC_DEVICE_INFO, MDNS_TXT_FW_VERSION, firmware_version);
+  mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_OS_VERSION, get_os_version());
+  mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_MAC, get_primary_mac());
   Serial.printf("mDNS: Added _device-info._tcp service\n");
 
   // ============================================================
-  // _http._tcp service - HTTP API with OpenAPI specification
+  // _http._tcp service - HTTP REST API with OpenAPI specification
   // ============================================================
   MDNS.addService(MDNS_SVC_HTTP, MDNS_PROTO_TCP, 80);
+  mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_TXTVERS, MDNS_VAL_TXTVERS);
   mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_HTTP_PATH, MDNS_VAL_HTTP_PATH);
-  mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_HTTP_API, MDNS_VAL_HTTP_API);
+  mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_HTTP_VERSION, MDNS_VAL_HTTP_VERSION);
+  mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_DEVICE_ID, getDeviceID());
+  mdns_add_txt_if_set(MDNS_SVC_HTTP, MDNS_TXT_DEVICE_TYPE, device_type);
+  mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_HTTP_OPENAPI, MDNS_VAL_HTTP_OPENAPI);
   Serial.printf("mDNS: Added _http._tcp service (path=%s)\n", MDNS_VAL_HTTP_PATH);
 
   // ============================================================
@@ -328,29 +352,32 @@ void mdns_register_services() {
   // ============================================================
   if (log_tcp_running()) {
     MDNS.addService(MDNS_SVC_LOG, MDNS_PROTO_TCP, log_tcp_get_port());
+    mdns_add_txt(MDNS_SVC_LOG, MDNS_PROTO_TCP, MDNS_TXT_TXTVERS, MDNS_VAL_TXTVERS);
+    mdns_add_txt(MDNS_SVC_LOG, MDNS_PROTO_TCP, MDNS_TXT_DEVICE_ID, getDeviceID());
     mdns_add_txt(MDNS_SVC_LOG, MDNS_PROTO_TCP, MDNS_TXT_LOG_KIND, MDNS_VAL_LOG_KIND);
     Serial.printf("mDNS: Added _telnet._tcp service (serial log, port %u)\n", log_tcp_get_port());
   }
 
   // ============================================================
-  // _homie._tcp service - Homie protocol device/controller discovery
+  // _ebus._tcp service - eBus entity discovery
   // ============================================================
-  MDNS.addService(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, mqtt_port);
-  MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_VERSION, MDNS_VAL_HOMIE_VERSION);
-  MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_DOC_VER, MDNS_VAL_HOMIE_DOC_VER);
-  MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_ID, getDeviceID());
-  MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_NAME, (const char*)device_name);
-  MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_ROLE, (const char*)homie_role);
-  if (strlen(device_type) > 0) {
-    MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_TYPE, (const char*)device_type);
-  }
-  char base_topic[96] = {0};
-  snprintf(base_topic, sizeof(base_topic), "%s/%s/", HOMIE_TOPIC_PREFIX, getDeviceID());
-  MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_BASE, (const char*)base_topic);
-  MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_STATE, HOMIE_STATE_INIT);
-  MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_IMPL, MDNS_VAL_HOMIE_IMPL);
-  MDNS.addServiceTxt(MDNS_SVC_HOMIE, MDNS_PROTO_TCP, MDNS_TXT_CA_CERT_PATH, MDNS_VAL_CA_CERT_PATH);
-  Serial.printf("mDNS: Added _ebus._tcp service (role=%s, base=%s, ca_cert_path=%s)\n", homie_role, base_topic, MDNS_VAL_CA_CERT_PATH);
+  const char* role = strcmp(homie_role, MDNS_VAL_ROLE_CONTROLLER) == 0
+                         ? MDNS_VAL_ROLE_CONTROLLER : MDNS_VAL_ROLE_DEVICE;
+  MDNS.addService(MDNS_SVC_EBUS, MDNS_PROTO_TCP, mqtt_port);
+  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_TXTVERS, MDNS_VAL_TXTVERS);
+  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_EBUS_VERSION, EBUS_SPEC_VERSION);
+  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_ROLES, role);
+  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_DEVICE_ID, getDeviceID());
+  mdns_add_txt_if_set(MDNS_SVC_EBUS, MDNS_TXT_DEVICE_TYPE, device_type);
+  mdns_add_txt_if_set(MDNS_SVC_EBUS, MDNS_TXT_NAME, device_name);
+  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_MANUFACTURER, device_manufacturer);
+  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_MODEL, device_model);
+  mdns_add_txt_if_set(MDNS_SVC_EBUS, MDNS_TXT_FW_VERSION, firmware_version);
+  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_AUTH_METHODS, MDNS_VAL_AUTH_METHODS);
+  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_DOMAIN, HOMIE_TOPIC_DOMAIN);
+  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_VERSION, HOMIE_VERSION_NUM);
+  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_ROLES, role);
+  Serial.printf("mDNS: Added _ebus._tcp service (roles=%s)\n", role);
 }
 
 bool setup_wifi() {
