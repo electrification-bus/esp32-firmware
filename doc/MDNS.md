@@ -30,7 +30,7 @@ The precompiled ESP-IDF mDNS component in arduino-esp32 2.0.x can crash on certa
 
 `setup_mdns()` in [`src/platform/network.cpp`](../src/platform/network.cpp) browses `_secure-mqtt._tcp` first and then `_mqtt._tcp`, up to three attempts 3 seconds apart. The first result with a resolved address is used, by IP address, on the advertised port (8883 or 1883 if the SRV record has none). Until a broker is found, `loop_mdns()` repeats the browse every 30 seconds; it stops once a broker is found, or in `discovery-with-fallback` mode once the configured broker is connected.
 
-mDNS is unauthenticated LAN multicast, and any host can advertise an MQTT service. Discovery supplies the broker's address; the broker's identity comes from TLS certificate validation.
+mDNS is unauthenticated LAN multicast, and any host can advertise an MQTT service. A discovered broker is verified only when a CA certificate for it is already on the device: `/certs/<Host>.ca` named from the broker's IP address, or `/certs/uploaded-cert.ca` (see [Configuration.md](Configuration.md#broker-ca-certificate-tls)). Otherwise envs built without `-DESP32_POE_ISO` trust whatever root certificate the broker presents (or skip verification if fetching it fails), and `-DESP32_POE_ISO` envs connect in plaintext on port 1883. A broker on any port other than 8883, normally a `_mqtt._tcp` result, gets plain MQTT with no TLS.
 
 ## Hostname
 
