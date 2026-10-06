@@ -397,4 +397,4 @@ if state.spec.property_id in ('firmware-url', 'checksum', 'dangerous-prop'):
 
 - [Homie Convention](https://homieiot.github.io/) - Official Homie MQTT convention
 - [homie-esp32-sdk](../README.md) - Main project documentation
-- [CLAUDE.md](../CLAUDE.md) - Coding standards for this project
+- [CONTRIBUTING.md](../CONTRIBUTING.md) - Coding standards for this project

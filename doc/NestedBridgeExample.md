@@ -58,13 +58,13 @@ Note the things the SDK does for you:
 
 ## Proxy publishing (the bridge role)
 
-A bridge *proxies* a device — it publishes the eBus representation of something that isn't eBus-native yet (a BLE battery, a cloud-polled inverter), per [`proxy.md`](../../specification/data-models/proxy.md). The example shows the full pattern:
+A bridge *proxies* a device — it publishes the eBus representation of something that isn't eBus-native yet (a BLE battery, a cloud-polled inverter), per [`proxy.md`](https://github.com/electrification-bus/specification/blob/main/devices/proxy.md). The example shows the full pattern:
 
 - **Same type as native.** The proxied child is typed `energy.ebus.device.bess` — exactly what the BESS would publish itself. Vendor identity lives in `info/vendor-name`, not the type. Consumers treat proxied and native representations the same.
 - **Disambiguation (implicit, primary).** A consumer tells proxied from native by the child's **root type**: here the root is `energy.ebus.device.bridge` ≠ the child's `bess`, so the child is proxied. (A natively-published BESS would be its own root, type `bess`.)
 - **Disambiguation (explicit, secondary).** The `info` capability node (`lib/sim/proxy_info`) publishes `proxied = true` plus `serial-number` — the optional direct signal, and the serial lets a consumer correlate this proxy with a future native publication.
 - **Proxy state management.** The proxier reflects its *link health to the source* onto the proxied child's state via `Device::setSourceConnected(up)` — `up=false` → child `$state = lost`, `up=true` → `ready`. In the example the simulated source link drops every ~40s; watch `…-bms/$state` flip `ready`↔`lost` while the **bridge root stays `ready`** — the proxied device goes unreachable without the bridge disappearing.
-- **Proxy-side knowledge stays on the proxier.** Facts only the proxier knows — the wiring to the proxied device, the proxier's view of link health — belong on the proxier's own capabilities, not on the proxied child ([proxy.md §"Proxy-side knowledge"](../../specification/data-models/proxy.md)).
+- **Proxy-side knowledge stays on the proxier.** Facts only the proxier knows — the wiring to the proxied device, the proxier's view of link health — belong on the proxier's own capabilities, not on the proxied child ([proxy.md §"Proxy-side knowledge"](https://github.com/electrification-bus/specification/blob/main/devices/proxy.md#proxy-side-knowledge-stays-on-the-proxy)).
 
 When the device becomes eBus-native, the proxy should stop publishing it; consumers prefer the native representation, correlating the two by `info/serial-number` (the proxied id `<root>-bms` and the native id differ by design).
 
