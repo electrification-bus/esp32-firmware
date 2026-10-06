@@ -12,7 +12,7 @@ That is the test for whether something earns its own driver. [`examples/bms/`](.
 - component: gpio/digital_output
   id: relay1
   config:
-    pin: 15
+    pin: 14
     active_low: true
     initial_state: false
 ```
