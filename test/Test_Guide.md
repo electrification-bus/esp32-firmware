@@ -58,7 +58,7 @@ pip install paho-mqtt pyyaml
 
 ### 1. Ensure Device is Running
 
-Power on your ESP32 device and verify it connects to MQTT. The 'name' property of the device is in the topic, for example 'esp32poeiso' in the folliwing example:
+Power on your ESP32 device and verify it connects to MQTT. The topic carries the device id, for example 'esp32poeiso' in the following example:
 
 ```bash
 # Monitor MQTT topics (optional - requires mosquitto-clients)
@@ -151,6 +151,14 @@ Total: 1/2 devices passed
 | `--homie` | `data/homie.yml` | Path to Homie device specification |
 | `--timeout` | `30` | Test duration in seconds |
 | `-v, --verbose` | off | Enable debug-level logging |
+| `--domain` | `ebus` | Topic domain: `ebus` (firmware built with `-DUSE_EBUS_TOPIC`) or `homie` |
+| `--host` | from `config.yml` | MQTT broker host |
+| `--port` | from `config.yml`, else 8883 with `--tls` and 1883 without | MQTT broker port |
+| `--username` | from `config.yml` | MQTT username |
+| `--password` | from `config.yml` | MQTT password |
+| `--tls` | off | Connect to the broker over TLS (also turned on by port 8883) |
+| `--cafile` | system CA store | CA certificate for `--tls` |
+| `--insecure` | off | With `--tls`, skip broker hostname verification |
 
 ## Understanding the Output
 
@@ -221,15 +229,18 @@ This may indicate:
 MQTT broker connection settings:
 
 ```yaml
-config:
-  - mqtt_host: public.cloud.shiftr.io
-    mqtt_port: 1883
-    mqtt_username: public
-    mqtt_password: public
-    device_id: esp32poeiso  # For reference only - test discovers all devices via wildcard
+mqtt:
+  host: public.cloud.shiftr.io
+  port: 1883
+  username: public
+  password: public
+device:
+  id: esp32poeiso  # For reference only - test discovers all devices via wildcard
 ```
 
-Note: The `device_id` field is used for reference/logging but the test discovers and tests **all** Homie devices found on the broker via wildcard subscription.
+This is the section layout `./ebus-esp32 generate` writes. The test also reads the older flat keys (`mqtt_host:`, `device_id:`) at the top level. A file still wrapped in the removed `config:` list matches neither, and the test falls back to `localhost`.
+
+Note: `device.id` is used only for logging; the test discovers and tests **all** Homie devices found on the broker via wildcard subscription.
 
 ### homie.yml
 
@@ -314,7 +325,6 @@ Properties received: 0
 ```
 
 - Device may not be running
-- Device ID mismatch between `config.yml` and actual device
 - Device using different MQTT broker
 - Topic prefix mismatch (Homie 5.x uses `ebus/5/`, Homie 4.x uses `ebus/4/`)
 
