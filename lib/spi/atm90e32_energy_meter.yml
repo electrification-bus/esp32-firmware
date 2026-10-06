@@ -13,51 +13,163 @@ nodes:
         unit: V
         settable: false
         retained: true
-        value: 0.0
       - id: frequency
         name: Frequency
         datatype: float
         unit: Hz
         settable: false
         retained: true
-        value: 0.0
       - id: temperature
         name: Board Temperature
         datatype: float
         unit: °C
         settable: false
         retained: true
-        value: 0.0
       - id: current-ct1
         name: Current CT1
         datatype: float
         unit: A
         settable: false
         retained: true
-        value: 0.0
       - id: power-ct1
         name: Real Power CT1
         datatype: float
         unit: W
         settable: false
         retained: true
-        value: 0.0
       - id: va-ct1
         name: Apparent Power CT1
         datatype: float
         unit: VA
         settable: false
         retained: true
-        value: 0.0
       - id: pf-ct1
         name: Power Factor CT1
         datatype: float
         unit: ''
         settable: false
         retained: true
-        value: 0.0
+      - id: current-ct2
+        name: Current CT2
+        datatype: float
+        unit: A
+        settable: false
+        retained: true
+      - id: power-ct2
+        name: Real Power CT2
+        datatype: float
+        unit: W
+        settable: false
+        retained: true
+      - id: va-ct2
+        name: Apparent Power CT2
+        datatype: float
+        unit: VA
+        settable: false
+        retained: true
+      - id: pf-ct2
+        name: Power Factor CT2
+        datatype: float
+        unit: ''
+        settable: false
+        retained: true
+      - id: current-ct3
+        name: Current CT3
+        datatype: float
+        unit: A
+        settable: false
+        retained: true
+      - id: power-ct3
+        name: Real Power CT3
+        datatype: float
+        unit: W
+        settable: false
+        retained: true
+      - id: va-ct3
+        name: Apparent Power CT3
+        datatype: float
+        unit: VA
+        settable: false
+        retained: true
+      - id: pf-ct3
+        name: Power Factor CT3
+        datatype: float
+        unit: ''
+        settable: false
+        retained: true
+      - id: current-ct4
+        name: Current CT4
+        datatype: float
+        unit: A
+        settable: false
+        retained: true
+      - id: power-ct4
+        name: Real Power CT4
+        datatype: float
+        unit: W
+        settable: false
+        retained: true
+      - id: va-ct4
+        name: Apparent Power CT4
+        datatype: float
+        unit: VA
+        settable: false
+        retained: true
+      - id: pf-ct4
+        name: Power Factor CT4
+        datatype: float
+        unit: ''
+        settable: false
+        retained: true
+      - id: current-ct5
+        name: Current CT5
+        datatype: float
+        unit: A
+        settable: false
+        retained: true
+      - id: power-ct5
+        name: Real Power CT5
+        datatype: float
+        unit: W
+        settable: false
+        retained: true
+      - id: va-ct5
+        name: Apparent Power CT5
+        datatype: float
+        unit: VA
+        settable: false
+        retained: true
+      - id: pf-ct5
+        name: Power Factor CT5
+        datatype: float
+        unit: ''
+        settable: false
+        retained: true
+      - id: current-ct6
+        name: Current CT6
+        datatype: float
+        unit: A
+        settable: false
+        retained: true
+      - id: power-ct6
+        name: Real Power CT6
+        datatype: float
+        unit: W
+        settable: false
+        retained: true
+      - id: va-ct6
+        name: Apparent Power CT6
+        datatype: float
+        unit: VA
+        settable: false
+        retained: true
+      - id: pf-ct6
+        name: Power Factor CT6
+        datatype: float
+        unit: ''
+        settable: false
+        retained: true
 extensions: []
-implementation: homie-esp32-sdk
 # SPI bus pins come from device.yml's top-level buses: block, shared by every spi/*
 # node. The per-node config: holds the two chip-selects (one per ATM90E32 IC:
 # CS1 -> IC1/CTs 1-3, CS2 -> IC2/CTs 4-6; board silkscreen "CS"/"CS2"). Example:
@@ -74,9 +186,15 @@ implementation: homie-esp32-sdk
 # Reference pins by board are in doc/GPIOPins.md. For multi-board (stacked) setups,
 # additional boards need their own pin_cs1/pin_cs2 node instances — see
 # doc/GenerateHomieDevice.md for multi-instance components.
+#
+# Calibration (line frequency, PGA gain, voltage and current gains) is not a config:
+# key. Generated devices use EnergyMeter::DEFAULT_CALIBRATION (60 Hz, 1x); a hand-coded
+# device passes an EnergyMeter::Calibration as a seventh constructor argument. The
+# values in effect are logged at setup.
 generator:
   class: EnergyMeter
   header: spi/atm90e32_energy_meter.h
   constructor: '("{id}", {bus.spi.pin_sck}, {bus.spi.pin_miso}, {bus.spi.pin_mosi}, {config.pin_cs1}, {config.pin_cs2})'
   lib_deps:
-    - https://github.com/CircuitSetup/ATM90E32.git
+    # Pinned: upstream master is a V2 that adds a Preferences (NVS) dependency.
+    - https://github.com/CircuitSetup/ATM90E32.git#467858f48b1ef5610f489218bdb153b2df8556d6
