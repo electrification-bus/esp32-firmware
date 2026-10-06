@@ -3,6 +3,10 @@
 #include <homie/Property.h>   // entity_settable_callback(Property*) dereferences it
 #include <platform/mqtt_client.h>
 
+// A full GATT_HEX_MAX notification must survive Property's value buffer as hex.
+static_assert(2 * GATT_HEX_MAX <= Property::VALUE_MAX,
+              "GATT_HEX_MAX notification does not fit in a Property value as hex");
+
 static int hex_nibble(char c) {
     if (c >= '0' && c <= '9') return c - '0';
     if (c >= 'a' && c <= 'f') return c - 'a' + 10;
@@ -79,9 +83,7 @@ void GattDevice::loop() {
 
     if (_rx_ready) {
         _rx_ready = false;
-        // Two hex chars per byte; NodeProperty's value buffer is 32 bytes, so long
-        // payloads are published truncated rather than silently dropped.
-        char hex[2 * GATT_HEX_MAX + 1];
+        char hex[2 * GATT_HEX_MAX + 1];   // two hex chars per byte
         size_t n = _rx_len;
         for (size_t i = 0; i < n; i++) snprintf(&hex[i * 2], 3, "%02X", _rx[i]);
         hex[n * 2] = '\0';

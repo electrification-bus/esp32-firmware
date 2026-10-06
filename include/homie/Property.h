@@ -6,6 +6,10 @@ class Node;
 
 class Property {
 public:
+    // Longest value, in chars, a property holds and publishes. Matches MQTT_PAYLOAD_MAX in
+    // mqtt_client.cpp, so the property model and the publish queue carry the same payloads.
+    static const int VALUE_MAX = 256;
+
     Property();
     Property(Node* parent_node);
     ~Property(){};
@@ -104,7 +108,7 @@ private:
     bool _has_value = false;   // C3: false until setValue() — guards phantom retained-empty topics
     char _id[32] = {0};
     char _name[32] = {0};
-    char _value[256] = {0};
+    char _value[VALUE_MAX + 1] = {0};
     char _datatype[16] = {0};
     char _topic[64] = {0};
     char _format[64] = {0};   // enum/color formats (comma lists) need room (C1)
