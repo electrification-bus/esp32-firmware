@@ -72,8 +72,8 @@ See [doc/GPIOPins.md](../../doc/GPIOPins.md) for what is free on your board. Two
 Over MQTT:
 
 ```bash
-mosquitto_sub -t 'homie/5/<device-id>/relay1/#' -v
-mosquitto_pub -t 'homie/5/<device-id>/relay1/state/set' -m true
+mosquitto_sub -t 'ebus/5/<device-id>/relay1/#' -v
+mosquitto_pub -t 'ebus/5/<device-id>/relay1/state/set' -m true
 ```
 
 Or from another component that targets `relay1/state` — the property is settable, so anything that can address `<node>/<property>` can drive it without knowing it is a relay.
