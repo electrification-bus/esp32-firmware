@@ -28,13 +28,14 @@ void memstats() {
     multi_heap_info_t heap_info;
     heap_caps_get_info(&heap_info, MALLOC_CAP_8BIT);
     Serial.printf("Memory: Total=%u bytes, Free=%u bytes, Largest Free Block=%u bytes\n",
-                  heap_info.total_free_bytes, heap_info.total_free_bytes, heap_info.largest_free_block);
+                  heap_info.total_free_bytes + heap_info.total_allocated_bytes,
+                  heap_info.total_free_bytes, heap_info.largest_free_block);
 
-    Serial.printf("Free heap: %u bytes\n", ESP.getFreeHeap());
-    Serial.printf("Total heap: %u bytes\n", ESP.getHeapSize());
-    Serial.printf("Min free heap: %u bytes\n", ESP.getMinFreeHeap());
-    Serial.printf("PSRAM size: %d bytes\n", ESP.getPsramSize());
-    Serial.printf("Free PSRAM: %d bytes\n", ESP.getFreePsram());
+    Serial.printf("Free heap: %u bytes\n", (unsigned)ESP.getFreeHeap());
+    Serial.printf("Total heap: %u bytes\n", (unsigned)ESP.getHeapSize());
+    Serial.printf("Min free heap: %u bytes\n", (unsigned)ESP.getMinFreeHeap());
+    Serial.printf("PSRAM size: %u bytes\n", (unsigned)ESP.getPsramSize());
+    Serial.printf("Free PSRAM: %u bytes\n", (unsigned)ESP.getFreePsram());
 }
 // ============================================================================
 // RECOVERY MODE - no usable configuration
@@ -378,9 +379,9 @@ void setup() {
     uint32_t flash_size = ESP.getFlashChipSize();
     bool psram_available = psramFound();
     Serial.printf("BOARD: Flash=%uMB  PSRAM=%s  Heap=%u\n",
-        flash_size / (1024 * 1024),
+        (unsigned)(flash_size / (1024 * 1024)),
         psram_available ? "yes" : "no",
-        ESP.getFreeHeap());
+        (unsigned)ESP.getFreeHeap());
 #ifdef BOARD_HAS_PSRAM
     if (!psram_available) Serial.println("BOARD: WARNING — built for PSRAM but none detected! Wrong firmware?");
 #else

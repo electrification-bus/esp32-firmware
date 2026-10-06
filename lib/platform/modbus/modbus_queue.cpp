@@ -177,7 +177,7 @@ static void modbus_worker_task(void* parameter) {
             if (!resp.success) {
                 queue_stats.commands_failed++;
                 Serial.printf("Modbus: Cmd %u failed - %s (0x%02X) addr=%d reg=%d\n",
-                              cmd.id, get_modbus_error_string(resp.error_code),
+                              (unsigned)cmd.id, get_modbus_error_string(resp.error_code),
                               resp.error_code, cmd.slave_address, cmd.reg_address);
             }
 
@@ -249,7 +249,7 @@ void modbus_task_start(uint8_t core_id) {
 
     // Detect number of cores at runtime
     uint32_t num_cores = ESP.getChipCores();
-    Serial.printf("Modbus: Detected %d core(s)\n", num_cores);
+    Serial.printf("Modbus: Detected %u core(s)\n", (unsigned)num_cores);
 
     BaseType_t result;
 

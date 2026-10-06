@@ -165,7 +165,7 @@ static bool run_update(int update_type, const char* url) {
     if (https) {
         // TLS costs ~40KB of heap for the session, on top of whatever the MQTT transport
         // is already holding. Log the headroom so a failure here is diagnosable.
-        Serial.printf("OTA: https — free heap before TLS: %u bytes\n", ESP.getFreeHeap());
+        Serial.printf("OTA: https — free heap before TLS: %u bytes\n", (unsigned)ESP.getFreeHeap());
         ca_cert = new char[OTA_CA_MAX_SIZE];
         if (ca_cert && load_ota_ca_cert(_last_host, ca_cert, OTA_CA_MAX_SIZE)) {
             secure_client.setCACert(ca_cert);

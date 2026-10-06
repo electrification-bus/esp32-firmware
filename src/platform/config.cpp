@@ -147,16 +147,16 @@ void generateDeviceID() {
     char prefix_id[sizeof(device_id_prefix)] = {0};
     sanitize_homie_id(device_id_prefix, prefix_id, sizeof(prefix_id));
     if (prefix_id[0] != '\0') {
-      snprintf(device_id, sizeof(device_id), "%s-%s", prefix_id, resolved);
+      int n = snprintf(device_id, sizeof(device_id), "%s-%s", prefix_id, resolved);
+      if (n >= (int)sizeof(device_id)) {
+        Serial.printf("CONFIG: WARNING device id truncated to '%s' (prefix + template "
+                      "exceeds %u chars)\n", device_id, (unsigned)(sizeof(device_id) - 1));
+      }
     } else {
       // Every character was illegal (e.g. "!!!"); a silent drop would be worse than a note.
       Serial.printf("CONFIG: WARNING device.id_prefix '%s' has no Homie-legal characters "
                     "— ignoring it\n", device_id_prefix);
       snprintf(device_id, sizeof(device_id), "%s", resolved);
-    }
-    if (strlen(prefix_id) + 1 + strlen(resolved) >= sizeof(device_id)) {
-      Serial.printf("CONFIG: WARNING device id truncated to '%s' (prefix + template exceeds "
-                    "%u chars)\n", device_id, (unsigned)(sizeof(device_id) - 1));
     }
   } else {
     snprintf(device_id, sizeof(device_id), "%s", resolved);
