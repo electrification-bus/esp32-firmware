@@ -61,6 +61,15 @@ Only non-empty fields override; anything you leave blank falls back to the value
 | `device.id_prefix` | Optional deployment-scoped segment prepended to the resolved id with a hyphen (`lab1` + `ebus-${chip_id}` → `lab1-ebus-b0b21c90f570`). Sanitized independently, so `Lab 1` also yields `lab1`. Empty = no prefix. Adds **no** per-unit uniqueness — every board on a site shares it, so keep a `${chip_id}` in `device.id`. This is the key to set per-site from an overlay rather than editing the tracked template |
 | `device.device_passphrase` | Password for the admin and OTA endpoints (see [Authentication.md](Authentication.md)). `generate` refuses to run when it is empty or `changeme` after the overlay is merged, so set it here rather than in the tracked `device.yml` |
 
+### Broker CA certificate (TLS)
+
+Setting `mqtt.port` to `8883` makes the firmware connect with TLS. It verifies the broker against a PEM CA certificate on the device's LittleFS filesystem, looked up in this order:
+
+1. `/certs/<Host>.ca`, where `<Host>` is `mqtt.host` with the dots removed and the letter after each dot capitalized (`public.cloud.shiftr.io` becomes `publicCloudShiftrIo.ca`). Put the file in `data/certs/` and flash the filesystem image (`./ebus-esp32 push --fs-only`).
+2. `/certs/uploaded-cert.ca`, written by `POST /api/broker-cert` (see [Authentication.md](Authentication.md)).
+
+The certificate must be smaller than 4096 bytes. Store only CA certificates there, never private keys. When neither file exists, envs built with `-DESP32_POE_ISO` fall back to plain MQTT on port 1883; other envs fetch the broker's root certificate, save it under the first name, and connect with it, or connect without verification if the fetch fails. The serial log reports which path was taken.
+
 ### Legacy flat keys
 
 Earlier versions generated `data/config.yml` as one flat block (`wifi_ssid:`, `mqtt_host:`, `device_passphrase:` …) nested under a single-element `config:` list. **Neither is supported any more**: sections must be at the top level. The firmware still accepts a flat *key* at the top level as a fallback (`mqtt_host:` beside `mqtt:`), which covers a hand-maintained file mid-conversion, but the `config:` wrapper is gone. A board carrying an old filesystem image needs its filesystem re-flashed, which any `./ebus-esp32 run` or `push` does anyway. `generate` rejects flat keys in an overlay and tells you the section equivalent.
