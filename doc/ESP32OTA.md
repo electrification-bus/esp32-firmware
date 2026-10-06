@@ -25,7 +25,7 @@ filesystem partition. Implemented in the "OTA image push" block of
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET`  | `/api/ota` | status of the *pull* updater (idle/downloading/error detail) |
+| `GET`  | `/api/ota` | status of the *pull* updater (idle/downloading/error detail), and `uptime_s`, which `push --ota` uses to confirm a restart when a push reply is lost |
 | `POST` | `/api/ota` | enable/disable the OTA window — `{"enabled":true}` |
 | `POST` | `/api/ota/firmware` | push an app image (`U_FLASH`) |
 | `POST` | `/api/ota/filesystem` | push a LittleFS image (`U_SPIFFS`) |

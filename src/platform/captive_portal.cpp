@@ -6,6 +6,7 @@
 #include <LittleFS.h>
 #include <Update.h>          // Update / U_FLASH / U_SPIFFS for the OTA push endpoints
 #include <ArduinoJson.h>
+#include <esp_timer.h>       // esp_timer_get_time() for the uptime in GET /api/ota
 #include <homie/homie.h>
 #include <platform/portal_prefs.h>
 #include <platform/mqtt_client.h>
@@ -580,25 +581,34 @@ static void handleBrokerCertUpload(AsyncWebServerRequest *request) {
 // --- OTA enable/disable with Basic Auth and rate limiting ---
 
 // Handle GET /api/ota - return OTA status (no auth)
+//
+// uptime_s lets a client whose push reply was lost tell whether the board restarted
+// after the upload began (see _ota_push_image in ebus-esp32). It comes from the 64-bit
+// esp_timer rather than millis(), which wraps after 49.7 days and would then look like
+// a fresh boot.
 static void handleOtaStatus(AsyncWebServerRequest *request) {
-    static char json_buf[512];
+    static char json_buf[576];
     OtaStatus status = ota_get_status();
     const char* status_str = ota_get_status_str();
     const char* url  = ota_get_last_url();
     const char* host = ota_get_last_host();
     const char* file = ota_get_last_file();
     int http_code    = ota_get_last_http_code();
+    int64_t up_ms    = esp_timer_get_time() / 1000;
+    unsigned long up_s    = (unsigned long)(up_ms / 1000);
+    unsigned long up_frac = (unsigned long)(up_ms % 1000);
 
     if (status == OTA_STATUS_IDLE) {
-        snprintf(json_buf, sizeof(json_buf), "{\"status\":\"idle\"}");
+        snprintf(json_buf, sizeof(json_buf), "{\"status\":\"idle\",\"uptime_s\":%lu.%03lu}",
+            up_s, up_frac);
     } else if (status == OTA_STATUS_HTTP_ERROR) {
         snprintf(json_buf, sizeof(json_buf),
-            "{\"status\":\"%s\",\"http_code\":%d,\"host\":\"%s\",\"file\":\"%s\",\"url\":\"%s\"}",
-            status_str, http_code, host, file, url);
+            "{\"status\":\"%s\",\"http_code\":%d,\"host\":\"%s\",\"file\":\"%s\",\"url\":\"%s\",\"uptime_s\":%lu.%03lu}",
+            status_str, http_code, host, file, url, up_s, up_frac);
     } else {
         snprintf(json_buf, sizeof(json_buf),
-            "{\"status\":\"%s\",\"host\":\"%s\",\"file\":\"%s\",\"url\":\"%s\"}",
-            status_str, host, file, url);
+            "{\"status\":\"%s\",\"host\":\"%s\",\"file\":\"%s\",\"url\":\"%s\",\"uptime_s\":%lu.%03lu}",
+            status_str, host, file, url, up_s, up_frac);
     }
     request->send(200, "application/json", json_buf);
 }

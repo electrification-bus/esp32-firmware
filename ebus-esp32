@@ -1014,6 +1014,9 @@ OTA_REPLY_TIMEOUT = 20
 # How long a board gets to reboot and rejoin the network (DHCP alone takes ~30 s on
 # some LANs).
 OTA_COMEBACK_TIMEOUT = 120
+# After a lost reply, how long the device may keep answering without proving a restart
+# before _ota_wait_reboot() stops waiting for one.
+OTA_STAYED_UP_LIMIT = 15
 
 def _ota_unreachable(host: str, detail: str, unresolved: bool = False) -> None:
     """Exit with something actionable instead of a socket traceback. Every OTA call
@@ -1130,6 +1133,41 @@ def _ota_wait_back(host: str, timeout: int):
         time.sleep(2.0)
     return None
 
+def _ota_uptime(reply_text: str):
+    """uptime_s from a GET /api/ota reply, or None when the firmware does not report it."""
+    try:
+        up = (json.loads(reply_text) or {}).get("uptime_s")
+    except (ValueError, AttributeError):
+        return None
+    return float(up) if isinstance(up, (int, float)) else None
+
+def _ota_wait_reboot(host: str, timeout: int, since: float):
+    """After a lost reply, wait for the device to report an uptime shorter than the time
+    since `since` (taken before the upload began), which proves it restarted after the
+    push started. The device was up before then, so without a restart its uptime is
+    always longer. This holds however fast it came back, and a dropped probe proves
+    nothing either way.
+
+    Returns ("rebooted", reply), ("stayed_up", reply) when it kept answering for
+    OTA_STAYED_UP_LIMIT seconds without proving a restart (a refusal whose reply was
+    lost, or firmware that does not report uptime_s), or (None, None) when it did not
+    answer within timeout seconds."""
+    deadline = time.time() + timeout
+    unproven_since = None
+    while time.time() < deadline:
+        asked = time.time()
+        reply = _ota_get(host, "/api/ota", "", timeout=3)
+        if reply is not None:
+            up = _ota_uptime(reply[1])
+            if up is not None and up < asked - since:
+                return "rebooted", reply[1]
+            if unproven_since is None:
+                unproven_since = asked
+            elif asked - unproven_since >= OTA_STAYED_UP_LIMIT:
+                return "stayed_up", reply[1]
+        time.sleep(2.0)
+    return None, None
+
 def _ota_push_image(host: str, path: str, passphrase: str, image: Path,
                     label: str, reboot: bool) -> None:
     if not image.exists():
@@ -1138,6 +1176,7 @@ def _ota_push_image(host: str, path: str, passphrase: str, image: Path,
     url = path if reboot else path + "?reboot=0"
     # A lost reply only has a checkable outcome when the push reboots the board: a
     # staged (?reboot=0) image leaves nothing visible to confirm it by.
+    started = time.time()
     status, body = _ota_request(host, url, passphrase, image.read_bytes(),
                                 "application/octet-stream", label, reply_lost_ok=reboot)
     if status is None:
@@ -1147,11 +1186,20 @@ def _ota_push_image(host: str, path: str, passphrase: str, image: Path,
         # The device reboots at most 5 s after replying (captive_portal.cpp); probing
         # sooner could reach the old image before it restarts.
         time.sleep(6)
-        if _ota_wait_back(host, OTA_COMEBACK_TIMEOUT) is not None:
-            print(f"  -> reply lost, device came back. It does not report which image it\n"
-                  f"     booted; check the version in its Homie $description, or watch the\n"
-                  f"     console: ./ebus-esp32 monitor --host {host.split(':')[0]}")
+        outcome, back = _ota_wait_reboot(host, OTA_COMEBACK_TIMEOUT, started)
+        console = f"./ebus-esp32 monitor --host {host.split(':')[0]}"
+        if outcome == "rebooted":
+            print(f"  -> reply lost, but the device restarted after the upload began (it\n"
+                  f"     reports {back}). It does not report which image it booted; check the\n"
+                  f"     version in its Homie $description, or watch the console: {console}")
             return
+        if outcome == "stayed_up":
+            print(f"\n{label} UNCONFIRMED: the reply was lost and the device keeps answering\n"
+                  f"  without reporting an uptime that proves a restart (it reports {back}).\n"
+                  f"  It may have refused the image, or be running firmware that does not\n"
+                  f"  report uptime_s; check the version in its Homie $description, or watch\n"
+                  f"  the console: {console}", file=sys.stderr)
+            sys.exit(1)
         print(f"\n{label} FAILED: the reply was lost and the device did not answer again "
               f"within {OTA_COMEBACK_TIMEOUT}s", file=sys.stderr)
         sys.exit(1)
