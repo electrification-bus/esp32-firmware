@@ -127,33 +127,17 @@ id: panel-main            # fixed literal — logs a warning (two units collide 
 
 ### Components are types; `nodes:` entries are instances
 
-A component yml (`lib/<bus>/<name>.yml`) describes a driver **type**: what is true of
-every BME280 — its Homie node and properties, and the `generator:` block (class, header,
-constructor template, `lib_deps`). `device.yml` lists the **instances** this board
-actually has. `component:` is the link between the two, which is why it lives in
-`device.yml` and not in the component yml: the generator resolves `component: i2c/bme280`
-to `lib/i2c/bme280.yml`, so until it reads that line it does not know which yml to open,
-and a component yml is already identified by its own path.
+A component yml (`lib/<bus>/<name>.yml`) describes a driver **type**: what is true of every BME280 — its Homie node and properties, and the `generator:` block (class, header, constructor template, `lib_deps`). `device.yml` lists the **instances** this board actually has. `component:` is the link between the two, which is why it lives in `device.yml` and not in the component yml: the generator resolves `component: i2c/bme280` to `lib/i2c/bme280.yml`, so until it reads that line it does not know which yml to open, and a component yml is already identified by its own path.
 
-Information flows one way — the generator reads each instance's component yml and merges
-in the instance's `id:`, `config:` and the bus pins; the result is `src/homie.cpp` and
-`data/homie.yml`. Three things follow:
+Information flows one way — the generator reads each instance's component yml and merges in the instance's `id:`, `config:` and the bus pins; the result is `src/homie.cpp` and `data/homie.yml`. Three things follow:
 
 - **Only what you list is built.** A component not named in `device.yml` is not compiled in, and its `lib_deps` are not added to the generated `build/platformio.ini`. Each `lib/<bus>/` folder is one PlatformIO library, so `generate` writes the components in use to `build/platformio.ini` as `custom_ebus_components`, and `scripts/lib_src_filter.py` (the folder's `library.json` `extraScript`) leaves every other component's `<name>.cpp` out of that library. A component whose header another one includes (`modbus/register_device`, under `modbus/sht20`) is kept, and files that belong to no component (`i2c_bus.cpp`) always build. A build from the tracked `platformio/platformio.ini` compiles every source in the folder.
-- **One type, many instances.** Two relays are two `nodes:` entries with the same
-  `component: gpio/digital_output` and different `id:` and `pin:` — a component cannot
-  know how many of itself a board has.
-- **The component yml supplies defaults; the instance overrides them.** Its node `id` is
-  only used when the `nodes:` entry gives none.
+- **One type, many instances.** Two relays are two `nodes:` entries with the same `component: gpio/digital_output` and different `id:` and `pin:` — a component cannot know how many of itself a board has.
+- **The component yml supplies defaults; the instance overrides them.** Its node `id` is only used when the `nodes:` entry gives none.
 
 ### buses
 
-Bus pins are a fact about the board, shared by every node on that bus, so they are
-declared once at the top level instead of being repeated (and required to agree) in each
-node's `config:`. A component's constructor template reaches them as `{bus.<name>.<key>}`;
-the generator errors if a bus a component needs is missing, or if one GPIO is used twice
-across the buses and nodes' `pin`/`pin_*` keys. Reference values per board:
-[GPIOPins.md](GPIOPins.md).
+Bus pins are a fact about the board, shared by every node on that bus, so they are declared once at the top level instead of being repeated (and required to agree) in each node's `config:`. A component's constructor template reaches them as `{bus.<name>.<key>}`; the generator errors if a bus a component needs is missing, or if one GPIO is used twice across the buses and nodes' `pin`/`pin_*` keys. Reference values per board: [GPIOPins.md](GPIOPins.md).
 
 | Bus | Keys | Used by |
 |-----|------|---------|
@@ -233,10 +217,7 @@ The whole tree shares one MQTT connection, so there is exactly one **Last Will**
 
 ### src/homie.cpp
 
-Static C++ object declarations, `setup_homie()`, and `loop_homie()`.  `main.cpp`
-calls both functions at the appropriate points in the Arduino lifecycle.  All objects
-are statically allocated — no heap allocations, no null-pointer risk, constructors
-fire before `setup()`.
+Static C++ object declarations, `setup_homie()`, and `loop_homie()`.  `main.cpp` calls both functions at the appropriate points in the Arduino lifecycle.  All objects are statically allocated — no heap allocations, no null-pointer risk, constructors fire before `setup()`.
 
 Example output for the quickstart config above:
 
@@ -271,9 +252,7 @@ void loop_homie() {
 
 ### data/homie.yml
 
-Merged Homie 5 topology assembled from each selected component's node and property
-definitions.  This file is uploaded to the device filesystem (LittleFS) and read at
-boot to publish the device's Homie `$nodes` advertisement.
+Merged Homie 5 topology assembled from each selected component's node and property definitions.  This file is uploaded to the device filesystem (LittleFS) and read at boot to publish the device's Homie `$nodes` advertisement.
 
 ### data/config.yml
 
@@ -299,8 +278,7 @@ The driver is a `NodeEntity` subclass — the `.h`/`.cpp` pair that talks to you
 
 ### 2. Write the component YAML
 
-The YAML has two sections: the standard Homie node description followed by a
-`generator:` block that tells the code generator how to instantiate the class.
+The YAML has two sections: the standard Homie node description followed by a `generator:` block that tells the code generator how to instantiate the class.
 
 ```yaml
 homie: 5.0.1
@@ -329,8 +307,7 @@ generator:
 
 #### constructor template syntax
 
-The `constructor` value is the argument list that follows the class name in the
-generated declaration.  Three substitutions are available:
+The `constructor` value is the argument list that follows the class name in the generated declaration.  Three substitutions are available:
 
 | Placeholder | Substituted with |
 |-------------|-----------------|
@@ -350,10 +327,7 @@ constructor: '("{id}", {bus.i2c.pin_sda}, {bus.i2c.pin_scl}, {config.addr})'   #
 
 #### multi-node components
 
-A component whose YAML lists more than one node (e.g., the energy meter, which
-exposes separate `meter_volts`, `meter_current`, `meter_watts`, `meter_kwh` nodes)
-preserves each node's own `id` in `homie.yml`; only the C++ object is named after
-the `id:` in `device.yml`.
+A component whose YAML lists more than one node (e.g., the energy meter, which exposes separate `meter_volts`, `meter_current`, `meter_watts`, `meter_kwh` nodes) preserves each node's own `id` in `homie.yml`; only the C++ object is named after the `id:` in `device.yml`.
 
 ### 3. Reference it in device.yml
 
