@@ -1142,7 +1142,8 @@ def _pull_request(host: str, path: str, passphrase: str, url: str,
     if status != 200:
         print(f"\n{label} FAILED: HTTP {status} {text}", file=sys.stderr)
         if status == 401:
-            print("  (check device_passphrase in device.yml)", file=sys.stderr)
+            print("  (check device.device_passphrase in config-overlay.yml or device.yml, "
+                  "or pass --passphrase)", file=sys.stderr)
         sys.exit(1)
     print(f"  -> {label}: {url}")
 
@@ -1188,10 +1189,20 @@ def _pull_watch(host: str, passphrase: str, timeout: int) -> int:
     return 1
 
 def _ota_passphrase(cfg: dict, args) -> str:
+    # Same precedence the firmware sees: config-overlay.yml's device.device_passphrase is
+    # merged over device.yml's by _apply_overlay, so the CLI must authenticate with it too.
+    overlay = {}
+    if CONFIG_OVERLAY.exists():
+        overlay = load_yaml_file(CONFIG_OVERLAY, require_mapping=False) or {}
+    overlay_device = overlay.get("device") if isinstance(overlay, dict) else None
+    if not isinstance(overlay_device, dict):
+        overlay_device = {}
     passphrase = getattr(args, "passphrase", None) or \
+                 overlay_device.get("device_passphrase") or \
                  (cfg.get("device") or {}).get("device_passphrase") or ""
     if not passphrase:
-        print("ERROR: no device_passphrase in device.yml (and no --passphrase given).\n"
+        print("ERROR: no device_passphrase in config-overlay.yml or device.yml "
+              "(and no --passphrase given).\n"
               "       The OTA endpoints require it.", file=sys.stderr)
         sys.exit(1)
     return passphrase
@@ -1393,7 +1404,8 @@ def ota_push(cfg: dict, args, host: str, source: str) -> None:
     if status != 200:
         print(f"\nCould not enable OTA: HTTP {status} {body}", file=sys.stderr)
         if status == 401:
-            print("  (check device_passphrase in device.yml)", file=sys.stderr)
+            print("  (check device.device_passphrase in config-overlay.yml or device.yml, "
+                  "or pass --passphrase)", file=sys.stderr)
         sys.exit(1)
 
     # Filesystem first, staged; firmware last and it carries the reboot. With
@@ -1880,7 +1892,8 @@ def main():
                             "(default: 300)")
         p.add_argument("--passphrase", default=None, metavar="PASS",
                        help="device passphrase for the OTA endpoints "
-                            "(default: device.device_passphrase from device.yml)")
+                            "(default: device.device_passphrase from config-overlay.yml, "
+                            "then device.yml)")
 
     # Subcommands are registered in ALPHABETICAL order: argparse lists them in the order
     # they are added, both in the usage line and the help body, so this ordering IS the

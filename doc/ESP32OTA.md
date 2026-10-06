@@ -53,8 +53,8 @@ ebus-esp32 push --ota --host 10.0.0.5:8080  # non-default port
 ```
 
 The CLI opens the OTA window, pushes the filesystem staged, then the firmware carrying
-the reboot. The passphrase comes from `device.device_passphrase` in `device.yml` unless
-`--passphrase` overrides it. See [GettingStartedCLI.md](GettingStartedCLI.md).
+the reboot. The passphrase is `--passphrase` if given, else `device.device_passphrase`
+from `config-overlay.yml`, else from `device.yml`. See [GettingStartedCLI.md](GettingStartedCLI.md).
 
 ### With curl
 
