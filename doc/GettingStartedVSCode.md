@@ -2,35 +2,23 @@
 
 This is the VSCode-centric onboarding. If you'd rather work from a terminal (`./ebus-esp32`, `pio` CLI, Emacs/vim), see [`GettingStartedCLI.md`](GettingStartedCLI.md) instead — same project, different editor surface.
 
-> **Configuration overlays**: both onboarding paths use per-developer overlay files for MQTT credentials, PlatformIO build tweaks, etc. After the setup steps below, read [`Configuration.md`](Configuration.md) once to understand where your personal `config.yml` and `platformio_local.ini` live and how they're merged with the repo's tracked defaults.
+> **Configuration overlays**: both onboarding paths use per-developer overlay files for MQTT credentials, PlatformIO build tweaks, etc. After the setup steps below, read [`Configuration.md`](Configuration.md) once to understand where your personal `config-overlay.yml` and `platformio_local.ini` live and how they're merged with the repo's tracked defaults.
 
 ## Overview
 This walks you from a fresh machine to building and flashing the firmware in VSCode.
 
-> **Builds run through `./ebus-esp32` in VSCode's integrated terminal, not the extension's
-> Build button.** The tracked PlatformIO config lives at
-> [`platformio/platformio.ini`](../platformio/platformio.ini) rather than the repo root, so the
-> PlatformIO extension does not adopt this folder as one of its projects — deliberately:
-> when it did, its background `pio` runs used the root config, which never lists a
-> component's `generator.lib_deps`, so it pruned the libraries a CLI build had just
-> installed and wiped `.pio` mid-build. The header in `platformio/platformio.ini` has the
-> detail.
+> **Builds run through `./ebus-esp32` in VSCode's integrated terminal, not the extension's Build button.** The tracked PlatformIO config lives at [`platformio/platformio.ini`](../platformio/platformio.ini) rather than the repo root, so the PlatformIO extension does not adopt this folder as one of its projects — deliberately: when it did, its background `pio` runs used the root config, which never lists a component's `generator.lib_deps`, so it pruned the libraries a CLI build had just installed and wiped `.pio` mid-build. The header in `platformio/platformio.ini` has the detail.
 >
-> Practical effect: the env switcher, Project Tasks tree and Build/Upload buttons are not
-> available here, and PlatformIO's IntelliSense index is not populated — run
-> `./ebus-esp32 compiledb` and use clangd for code navigation. If you would rather have
-> the IDE workflow, copy `platformio/platformio.ini` to the repo root (`.gitignore` keeps it
-> out of git) and accept the occasional wiped build tree.
+> Practical effect: the env switcher, Project Tasks tree and Build/Upload buttons are not available here, and PlatformIO's IntelliSense index is not populated — run `./ebus-esp32 compiledb` and use clangd for code navigation. If you would rather have the IDE workflow, copy `platformio/platformio.ini` to the repo root (`.gitignore` keeps it out of git) and accept the occasional wiped build tree.
 
-The project's `./ebus-esp32 generate` step runs automatically as a PlatformIO pre-build
-hook, so editing `device.yml` and building is enough. (Everything here also works from any
-terminal — see [`GettingStartedCLI.md`](GettingStartedCLI.md).)
+The project's `./ebus-esp32 generate` step runs automatically as a PlatformIO pre-build hook, so editing `device.yml` and building is enough. (Everything here also works from any terminal — see [`GettingStartedCLI.md`](GettingStartedCLI.md).)
 
 ## Dev Environment Installation Guide
 ### Prerequisites
 - A computer with internet connection
 - An ESP32 board — the default target is the **Olimex ESP32-POE-ISO**; the full list of supported boards/envs is in the README's *Hardware Targets* table
 - USB cable for connecting the development board to your computer
+- An MQTT broker the board can reach (see the README's [Quick start](../README.md#quick-start)); its address goes in `config-overlay.yml`, described under [Custom tasks](#custom-tasks)
 
 ### Step 1: Install Visual Studio Code
 1. Download Visual Studio Code from https://code.visualstudio.com/
@@ -46,7 +34,7 @@ terminal — see [`GettingStartedCLI.md`](GettingStartedCLI.md).)
 4. Click "Install" on the PlatformIO IDE extension
 5. Wait for the installation to complete (this may take a few minutes)
 6. Search for "Serial Monitor" and select the one from Microsoft (if there are multiple)
-7. Click "Install" on the PlatformIO IDE extension, wait for installation to compleete.
+7. Click "Install" on the Serial Monitor extension and wait for the installation to complete.
 8. Restart VSCode when prompted
 
 ### Step 3: Clone the Repository
