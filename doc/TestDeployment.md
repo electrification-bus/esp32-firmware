@@ -1,6 +1,6 @@
 # Test Deployment Topology
 
-Exercises every node type across a 6-device network with one controller.
+Exercises the sensor and actuator components across five boards: one controller and four devices.
 
 ## Hardware Roster
 
@@ -16,166 +16,98 @@ Exercises every node type across a 6-device network with one controller.
 
 ## Node-to-Device Assignment
 
-All 7 node classes are exercised across the 4 device boards.
+Six components are exercised across the four device boards.
 
-| Device     | Env                  | Active Nodes in `homie.cpp`                   | Hardware bus / notes          |
+| Device     | Env                  | `nodes:` in its `device.yml`                  | Hardware bus / notes          |
 |------------|----------------------|-----------------------------------------------|-------------------------------|
 | controller | esp32-s3-devkitc-1   | *(controller only)*                           | WiFi; no sensor nodes         |
-| poe16-a    | esp32-poe-iso-16mb   | `SHT20`, `Eletechsup32`         | RS485 shared on UART1         |
-| poe16-b    | esp32-poe-iso-16mb   | `EnergyMeter` (ATM90E32), `OTANode`           | SPI                           |
-| poe4-a     | esp32-poe-iso        | `BME280`, `SerialBMS`                         | I2C + BLE                     |
-| poe4-b     | esp32-poe-iso        | `DigitalOutput`                               | GPIO                          |
+| poe16-a    | esp32-poe-iso-16mb   | `modbus/sht20`, `modbus/eletechsup32`         | RS485, shared bus             |
+| poe16-b    | esp32-poe-iso-16mb   | `spi/atm90e32_energy_meter`                   | SPI                           |
+| poe4-a     | esp32-poe-iso        | `i2c/bme280`, `ble/serial_bms`                | I2C + BLE                     |
+| poe4-b     | esp32-poe-iso        | `gpio/digital_output`                         | GPIO                          |
+
+OTA needs no node: every build carries the OTA endpoints described in [ESP32OTA.md](ESP32OTA.md), so any of these boards can be reflashed with `./ebus-esp32 push --ota`.
+
+`ble/serial_bms` is an example, not a shipped component: copy it in first with `cp examples/bms/serial_bms.{h,cpp,yml} lib/ble/` (see [examples/bms/README.md](../examples/bms/README.md)). Its YAML notes that NimBLE can overflow DRAM on the non-PSRAM `esp32-poe-iso`; check the link before relying on poe4-a.
 
 ---
 
 ## Per-Device Configuration
 
+Each board gets its own `device.yml` (for example `poe16-a.yml`), with `device.environment` set to the env above and a `buses:` block for the board's pins ([GPIOPins.md](GPIOPins.md)). Only the `nodes:` section differs between them; the keys each component needs are documented at the top of its `lib/<bus>/<name>.yml`.
+
 ### 1. controller — `esp32-s3-devkitc-1`
 
-**platformio/platformio.ini** — uncomment `ENABLE_CONTROLLER`:
-```ini
-[env:esp32-s3-devkitc-1]
-build_flags = ${common.build_flags}
-    -DCONFIG_WIFI_AP
-    -DENABLE_CONTROLLER        ; <-- uncomment
-```
-
-**homie.cpp** — no sensor nodes:
-```cpp
-// All NodeEntity lines commented out
-void setup_homie() {}
-void loop_homie() {}
-```
-
-**data/config.yml**:
-```yaml
-device:
-  homie_role: controller
-```
-
----
+Add `-DENABLE_CONTROLLER` to the env's `build_flags` (see [Controller.md](Controller.md#enabling-it)), set `homie_role: controller` in the `device:` section, and declare no nodes.
 
 ### 2. poe16-a — `esp32-poe-iso-16mb` — Modbus SHT20 + Eletechsup32
 
-Both devices share RS485 bus on UART1 at different Modbus addresses
-(SHT20 default `0x01`, Eletechsup32 default `0x01` — set one to a different address on hardware).
+Both devices share the RS485 bus at different Modbus addresses (SHT20 default `0x01`, Eletechsup32 default `0x01`: set one to a different address on hardware).
 
-**platformio/platformio.ini** — no changes from default `esp32-poe-iso-16mb`:
-```ini
-build_flags =
-    -D__AVR__
-    -DUSE_SOFTWARE_SERIAL
-    -DCONFIG_ETH_ENABLED
-    -DESP32_POE_ISO
+```yaml
+nodes:
+  - component: modbus/sht20
+    id: environment-sht20
+  - component: modbus/eletechsup32
+    id: voltage-current-detector
 ```
 
-**homie.cpp**:
-```cpp
-SHT20 sht20("environment-sht20", get_serial1());
-Eletechsup32 iv_detector("voltage-current-detector", get_serial1());
+### 3. poe16-b — `esp32-poe-iso-16mb` — EnergyMeter
 
-void setup_homie() {
-    sht20.setup();
-    iv_detector.setup();
-}
-void loop_homie() {
-    sht20.loop();
-    iv_detector.loop();
-}
+```yaml
+nodes:
+  - component: spi/atm90e32_energy_meter
+    id: energy-meter
+    config:
+      pin_cs1: 15
+      pin_cs2: 16
 ```
-
-**data/homie.yml** — enable both nodes, comment everything else.
-
----
-
-### 3. poe16-b — `esp32-poe-iso-16mb` — EnergyMeter + OTANode
-
-**platformio/platformio.ini** — same default flags as poe16-a.
-
-**homie.cpp**:
-```cpp
-#include <node/spi/atm90e32_energy_meter.h>
-#include <node/ota_node.h>
-
-EnergyMeter energyMeter("meter", CS1_PIN, CS2_PIN);
-OTANode otaNode("ota");
-
-void setup_homie() {
-    energyMeter.setup();
-    otaNode.setup();
-}
-void loop_homie() {
-    energyMeter.loop();
-    otaNode.loop();
-}
-```
-
-> CS1/CS2 pins — see pin map in `atm90e32_energy_meter.h` for POE-ISO SPI.
-
----
 
 ### 4. poe4-a — `esp32-poe-iso` — BME280 + SerialBMS
 
-**platformio/platformio.ini** — default `esp32-poe-iso` flags (no changes).
-
-**homie.cpp**:
-```cpp
-BME280 bme280("environment-bme280");
-SerialBMS bms("battery-bms");
-
-void setup_homie() {
-    bme280.setup();
-    bms.setup();
-}
-void loop_homie() {
-    bme280.loop();
-    bms.loop();
-}
+```yaml
+nodes:
+  - component: i2c/bme280
+    id: environment-bme280
+    config:
+      address: 0x76
+  - component: ble/serial_bms
+    id: battery-bms
 ```
-
----
 
 ### 5. poe4-b — `esp32-poe-iso` — DigitalOutput
 
-**platformio/platformio.ini** — default `esp32-poe-iso` flags (no changes).
-
-**homie.cpp**:
-```cpp
-DigitalOutput relay1("relay1", 4, true, false);
-
-void setup_homie() { ssr.setup(); }
-void loop_homie()  { ssr.loop();  }
+```yaml
+nodes:
+  - component: gpio/digital_output
+    id: relay1
+    config:
+      pin: 4
+      active_low: true
+      initial_state: false
 ```
 
 ---
 
-## Build Commands
+## Build and Flash
 
 ```bash
-# Build each target
-pio run -e esp32-s3-devkitc-1     # controller
-pio run -e esp32-poe-iso-16mb     # poe16-a, poe16-b (same binary, different homie.cpp)
-pio run -e esp32-poe-iso          # poe4-a, poe4-b
-
-# Upload (specify port)
-pio run -e esp32-s3-devkitc-1 -t upload --upload-port COMx
-pio run -e esp32-poe-iso-16mb -t upload --upload-port COMx
-pio run -e esp32-poe-iso      -t upload --upload-port COMx
+./ebus-esp32 run controller.yml --port <port>
+./ebus-esp32 run poe16-a.yml --port <port>
+./ebus-esp32 run poe16-b.yml --port <port>
+./ebus-esp32 run poe4-a.yml --port <port>
+./ebus-esp32 run poe4-b.yml --port <port>
 ```
-
-> poe16-a and poe16-b share the same env but different `homie.cpp` configurations —
-> build separately from different branch/worktree or use build flags (see below).
 
 ---
 
 ## Node Coverage Matrix
 
-| Node class            | Device  | Interface | Tested |
-|-----------------------|---------|-----------|--------|
-| `SHT20`        | poe16-a | RS485     | yes    |
-| `Eletechsup32` | poe16-a | RS485     | yes    |
-| `EnergyMeter`         | poe16-b | SPI       | yes    |
-| `OTANode`             | poe16-b | —         | yes    |
-| `BME280`              | poe4-a  | I2C       | yes    |
-| `SerialBMS`           | poe4-a  | BLE       | yes    |
-| `DigitalOutput`       | poe4-b  | GPIO      | yes    |
+| Component                   | Device  | Interface |
+|-----------------------------|---------|-----------|
+| `modbus/sht20`              | poe16-a | RS485     |
+| `modbus/eletechsup32`       | poe16-a | RS485     |
+| `spi/atm90e32_energy_meter` | poe16-b | SPI       |
+| `i2c/bme280`                | poe4-a  | I2C       |
+| `ble/serial_bms`            | poe4-a  | BLE       |
+| `gpio/digital_output`       | poe4-b  | GPIO      |
