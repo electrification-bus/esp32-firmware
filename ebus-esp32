@@ -31,6 +31,7 @@ import http.client
 import argparse
 import subprocess
 import shutil
+import contextlib
 import configparser
 import http.server
 from pathlib import Path
@@ -647,7 +648,21 @@ def registers_to_desc_table(regs, node_id):
 def _cvar_global(s):
     return "".join(c if (c.isalnum() or c == "_") else "_" for c in str(s))
 
+# Set once this process has generated, and inherited by every `pio run` it starts. The
+# pre-build hook (scripts/generate_homie.py) re-runs generate inside each of those runs;
+# with this set, that run's stdout is discarded so a build prints the generator output
+# once. Errors go to stderr and still show.
+_GENERATED_ENV = "EBUS_GENERATED"
+
 def cmd_generate(args) -> None:
+    if os.environ.get(_GENERATED_ENV) == "1":
+        with open(os.devnull, "w") as devnull, contextlib.redirect_stdout(devnull):
+            _generate(args)
+        return
+    _generate(args)
+    os.environ[_GENERATED_ENV] = "1"
+
+def _generate(args) -> None:
     device_yml = Path(args.device_yml)
     cfg        = load_device_yml(device_yml)
     device     = cfg.get("device", {})
