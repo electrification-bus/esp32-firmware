@@ -68,7 +68,7 @@ GENERATED_INI  = BUILD_DIR / "platformio.ini"
 # still lying around so it isn't silently ignored.
 CONFIG_OVERLAY        = ROOT / "config-overlay.yml"
 CONFIG_OVERLAY_LEGACY = Path.home() / ".config" / "eBus" / "config.yml"
-MONITOR_HOSTS  = BUILD_DIR / "monitor-hosts.json"  # learned env -> last-known device IP
+MONITOR_HOSTS  = BUILD_DIR / "monitor-hosts.json"  # learned device.yml#name -> last-known IP
 
 # ── pio helper ─────────────────────────────────────────────────────────────────
 
@@ -1585,7 +1585,8 @@ def _ota_target(cfg, args):
     fetch them."""
     if not (getattr(args, "ota", False) or getattr(args, "pull", False)):
         return None
-    host, source = resolve_host(cfg, get_environment(cfg), getattr(args, "host", None))
+    host, source = resolve_host(cfg, get_environment(cfg), _host_key(cfg, args.device_yml),
+                                getattr(args, "host", None))
     if not host:
         flag = "--pull" if getattr(args, "pull", False) else "--ota"
         print(f"ERROR: {flag} given but no device address is known.", file=sys.stderr)
@@ -1621,44 +1622,82 @@ def cmd_push(args) -> None:
 #            the boot log survives connecting late.
 #
 # Host resolution, in order: --host, then the address learned from a previous serial
-# session (cached per environment in build/monitor-hosts.json), then <device.name>.local.
+# session (cached per device.yml and device.name in build/monitor-hosts.json), then
+# <device.name>.local.
 # There is no mDNS browse — the firmware advertises _telnet._tcp, but mdns is opt-in
 # and off by default, so the cache is what makes `--net` work with no arguments.
+#
+# The cache is keyed by device.yml path plus device.name, so devices with different
+# device.yml files no longer share an entry the way they did under an environment
+# key. Boards flashed from one device.yml (e.g. with `id: ${chip_id}`) still share
+# one, and `push --ota` targets whichever of them last talked over USB.
+# Each entry also records the Device ID the firmware printed, so a cached address is
+# reported with the device it belongs to. Older caches mapped environment -> IP
+# string; those entries are still read (and said to be per-environment) until the
+# same environment learns an address under the new key, which replaces them.
 
 # main.cpp prints exactly these once an interface has an IP. Scraping them while a
 # serial monitor is already running is how the cache gets populated, at zero cost to
 # the user: flash over USB once, and every later `--net` monitor knows the address.
 _IP_LEARN_RE = re.compile(r"Network:\s+(?:WiFi STA|Ethernet)\s+IP=(\d{1,3}(?:\.\d{1,3}){3})")
+# config.cpp prints the resolved id once at boot, before the network comes up.
+_ID_LEARN_RE = re.compile(r"Device ID:\s+(\S+)")
+
+def _host_key(cfg: dict, device_yml) -> str:
+    """Cache key for one device: its device.yml (relative to the repo when inside it)
+    plus device.name, e.g. 'examples/ssr/device.yml#ssr'."""
+    path = Path(device_yml).resolve()
+    try:
+        path = path.relative_to(ROOT)
+    except ValueError:
+        pass
+    return f"{path.as_posix()}#{(cfg.get('device') or {}).get('name') or ''}"
 
 def _hosts_load() -> dict:
-    """Learned environment -> host map. A corrupt/missing cache is not an error: the
-    monitor still works with an explicit --host."""
+    """Learned key -> entry map (see above for both entry formats). A corrupt/missing
+    cache is not an error: the monitor still works with an explicit --host."""
     try:
         data = json.loads(MONITOR_HOSTS.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
 
-def _host_learn(env_name: str, host: str) -> None:
+def _host_learn(key: str, env_name: str, host: str, device_id: str = None) -> None:
     hosts = _hosts_load()
-    if hosts.get(env_name) == host:
+    prev = hosts.get(key)
+    if device_id is None and isinstance(prev, dict) and prev.get("host") == host:
+        device_id = prev.get("device_id")   # this session missed the Device ID line
+    entry = {"host": host, "device_id": device_id, "environment": env_name}
+    legacy = isinstance(hosts.get(env_name), str)
+    if hosts.get(key) == entry and not legacy:
         return
-    hosts[env_name] = host
+    hosts[key] = entry
+    if legacy:
+        del hosts[env_name]
     try:
         BUILD_DIR.mkdir(parents=True, exist_ok=True)
         MONITOR_HOSTS.write_text(json.dumps(hosts, indent=2) + "\n", encoding="utf-8")
-        print(f"\n[ebus] learned device address {host} for {env_name}"
+        who = f"device {device_id} ({key})" if device_id else key
+        print(f"\n[ebus] learned address {host} for {who}"
               f"  ->  ebus-esp32 monitor --net\n", flush=True)
     except OSError as e:
         print(f"[ebus] WARNING: could not cache device address: {e}", file=sys.stderr)
 
-def resolve_host(cfg: dict, env_name: str, explicit: str = None):
-    """(host, source) for the network monitor, or (None, None) if nothing is known."""
+def resolve_host(cfg: dict, env_name: str, key: str, explicit: str = None):
+    """(host, source) for the network monitor, or (None, None) if nothing is known.
+    source names where the address came from and, for a cached one, which device."""
     if explicit:
         return explicit, "--host"
-    cached = _hosts_load().get(env_name)
-    if cached:
-        return cached, f"learned, {MONITOR_HOSTS.relative_to(ROOT)}"
+    hosts = _hosts_load()
+    cache = MONITOR_HOSTS.relative_to(ROOT)
+    entry = hosts.get(key)
+    if isinstance(entry, dict) and entry.get("host"):
+        who = f"device {entry['device_id']}" if entry.get("device_id") else "device id not seen"
+        return entry["host"], f"learned for {key}, {who}, {cache}"
+    legacy = hosts.get(env_name)
+    if isinstance(legacy, str) and legacy:
+        return legacy, (f"learned per environment {env_name} by an older CLI, {cache}; "
+                        f"any board on this environment could own it")
     name = (cfg.get("device") or {}).get("name")
     if name:
         # Best-effort guess, and only usable if mdns.enabled is true in device.yml AND
@@ -1724,7 +1763,7 @@ def monitor_net(cfg: dict, env_name: str, host: str, source: str, wait: int) -> 
     except KeyboardInterrupt:
         return 0
 
-def monitor_serial(cfg: dict, env_name: str, port: str, learn: bool = True) -> int:
+def monitor_serial(cfg: dict, env_name: str, port: str, key: str, learn: bool = True) -> int:
     """USB monitor. With learn=True the stream is relayed through this process so the
     device's IP can be scraped for the --net cache; that relay costs interactivity
     (keystrokes are no longer forwarded to the device), so --no-learn keeps pio
@@ -1744,13 +1783,17 @@ def monitor_serial(cfg: dict, env_name: str, port: str, learn: bool = True) -> i
         proc = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True,
                                 errors="replace", bufsize=1)
+        device_id = None   # from this boot's "Device ID:" line, printed before the IP
         try:
             for line in proc.stdout:
                 sys.stdout.write(line)
                 sys.stdout.flush()
+                m = _ID_LEARN_RE.search(line)
+                if m:
+                    device_id = m.group(1)
                 m = _IP_LEARN_RE.search(line)
                 if m:
-                    _host_learn(env_name, m.group(1))
+                    _host_learn(key, env_name, m.group(1), device_id)
         except KeyboardInterrupt:
             pass
         finally:
@@ -1768,6 +1811,7 @@ def monitor_serial(cfg: dict, env_name: str, port: str, learn: bool = True) -> i
 def cmd_monitor(args) -> None:
     cfg   = load_device_yml(Path(args.device_yml))
     env_name = get_environment(cfg)
+    key   = _host_key(cfg, args.device_yml)
 
     if args.serial and (args.net or args.host):
         print("ERROR: --serial cannot be combined with --net/--host", file=sys.stderr)
@@ -1777,9 +1821,9 @@ def cmd_monitor(args) -> None:
     # explicitly. Everything else prefers the network, which is the point of the
     # feature — an installed board has no cable to plug into.
     if args.serial or args.port:
-        sys.exit(monitor_serial(cfg, env_name, args.port, learn=not args.no_learn))
+        sys.exit(monitor_serial(cfg, env_name, args.port, key, learn=not args.no_learn))
 
-    host, source = resolve_host(cfg, env_name, args.host)
+    host, source = resolve_host(cfg, env_name, key, args.host)
     if not host:
         if args.net:
             print("ERROR: --net given but no device address is known.", file=sys.stderr)
@@ -1789,7 +1833,7 @@ def cmd_monitor(args) -> None:
             sys.exit(1)
         print("No device address known yet — falling back to the USB monitor.")
         print("Its IP will be learned from the boot log and used by later --net runs.\n")
-        sys.exit(monitor_serial(cfg, env_name, args.port, learn=not args.no_learn))
+        sys.exit(monitor_serial(cfg, env_name, args.port, key, learn=not args.no_learn))
     sys.exit(monitor_net(cfg, env_name, host, source, args.monitor_wait))
 
 def post_monitor(cfg: dict, args) -> None:
@@ -1799,7 +1843,8 @@ def post_monitor(cfg: dict, args) -> None:
     if not getattr(args, "monitor", False):
         return
     env_name = get_environment(cfg)
-    host, source = resolve_host(cfg, env_name, getattr(args, "host", None))
+    host, source = resolve_host(cfg, env_name, _host_key(cfg, args.device_yml),
+                                getattr(args, "host", None))
     if not host:
         print("\n--monitor: no device address known yet.")
         print("  Watch over USB once and the address is cached automatically:")
