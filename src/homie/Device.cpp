@@ -7,9 +7,8 @@
 /*
   homie/5/device123/$state → ready
   homie/5/device123/$description → {
-    "id": "device123",
     "homie": "5.0",
-    "version": "12",
+    "version": 3735928559,
     "name": "My device",
     "nodes": {
       "mythermostat": {
@@ -359,9 +358,29 @@ char* Device::getId() {
     return _id;
 }
 
+// Print sink that FNV-1a hashes whatever serializeJson() writes to it, so the
+// $description `version` can be derived without a second buffer or truncation.
+class Fnv1aPrint : public Print {
+ public:
+  size_t write(uint8_t c) override {
+    _hash ^= c;
+    _hash *= 16777619u;
+    return 1;
+  }
+  size_t write(const uint8_t* data, size_t len) override {
+    for (size_t i = 0; i < len; i++) write(data[i]);
+    return len;
+  }
+  uint32_t hash() { return _hash; }
+ private:
+  uint32_t _hash = 2166136261u;
+};
+
 // JSON serialization — single document to avoid cross-doc copy issues
 size_t Device::serialize(char* buffer, size_t bufferSize) {
   JsonDocument json;
+  json[HOMIE_HOMIE]   = HOMIE_SPEC_VERSION;
+  json[HOMIE_VERSION] = 0;   // placeholder; set to the content hash below
   json[HOMIE_NAME] = _name;
   json[HOMIE_TYPE] = _type;
   // Homie 5 nested-device hierarchy. `children` is always present (empty for a
@@ -380,6 +399,12 @@ size_t Device::serialize(char* buffer, size_t bufferSize) {
     JsonObject node_obj = nodes_obj[_nodes[i]->id()].to<JsonObject>();
     node_serialize_into(*_nodes[i], node_obj);
   }
+  // Homie 5 requires `version` to change whenever the description does. Hash the
+  // document with the placeholder version: deterministic, so an unchanged
+  // description keeps its version (and A9 still sees identical bytes).
+  Fnv1aPrint content_hash;
+  serializeJson(json, content_hash);
+  json[HOMIE_VERSION] = content_hash.hash();
   // Surface silent truncation: serializeJson() caps output at bufferSize-1.
   // Per-device buffer sizing for large/nested trees is tracked in Epic A.
   size_t needed = measureJson(json);
@@ -434,8 +459,8 @@ static uint32_t fnv1a_32(const char* data, size_t len) {
 }
 
 // Serialize $description into the shared static buffer and return its hash. The C++
-// $description is deterministic (no always-fresh `version` timestamp like the python
-// SDK), so the whole serialized buffer is hashed directly — nothing to strip.
+// $description is deterministic (`version` is a hash of the content, not a fresh
+// timestamp like the python SDK), so the whole serialized buffer is hashed directly.
 uint32_t Device::buildDescription(size_t* out_len) {
   char* buf = description_json_buf();
   size_t len = toJson(buf, MAX_DATA_LEN);

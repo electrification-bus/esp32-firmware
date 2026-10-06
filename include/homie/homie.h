@@ -1,6 +1,7 @@
 #pragma once
 
 #define HOMIE_VERSION_NUM       "5"
+#define HOMIE_SPEC_VERSION      "5.0"   // $description "homie" field: "5.x", no patch level
 #define HOMIE_HOMIE_DOMAIN      "homie"
 #define EBUS_HOMIE_DOMAIN       "ebus"
 
