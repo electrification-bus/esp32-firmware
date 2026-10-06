@@ -244,6 +244,27 @@ static void cfg_copy_str(const char* section, const char* key, const char* flat_
   }
 }
 
+// True when a config key names a secret ("password" or "passphrase", any case).
+static bool is_secret_key(const char* key) {
+  char lower[64];
+  size_t i = 0;
+  for (; key[i] != '\0' && i < sizeof(lower) - 1; i++) lower[i] = tolower((unsigned char)key[i]);
+  lower[i] = '\0';
+  return strstr(lower, "password") != nullptr || strstr(lower, "passphrase") != nullptr;
+}
+
+// Replace every secret value, at any nesting level, with "***".
+static void redact_secrets(JsonVariant v) {
+  if (v.is<JsonObject>()) {
+    for (JsonPair kv : v.as<JsonObject>()) {
+      if (is_secret_key(kv.key().c_str())) kv.value().set("***");
+      else redact_secrets(kv.value());
+    }
+  } else if (v.is<JsonArray>()) {
+    for (JsonVariant e : v.as<JsonArray>()) redact_secrets(e);
+  }
+}
+
 bool loadPlatformConfiguration() {
   File file;
 
@@ -277,8 +298,13 @@ bool loadPlatformConfiguration() {
     return false;
   }
   Serial.println(F("CONFIG: DESERIALIZE OK"));
-  serializeJsonPretty(yml_config, Serial);
-  Serial.println();
+  {
+    // Serial is teed to the unauthenticated TCP log console, so dump a redacted copy.
+    JsonDocument redacted = yml_config;
+    redact_secrets(redacted.as<JsonVariant>());
+    serializeJsonPretty(redacted, Serial);
+    Serial.println();
+  }
 
   //TODO keys to #define header
   // Sections live at the TOP LEVEL, like data/homie.yml.
