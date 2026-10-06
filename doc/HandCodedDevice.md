@@ -88,7 +88,7 @@ void register_homie_properties(Device* device) {
                            "SHT20 Modbus Temp/Humidity Sensor", "sensor");
     if (node) {
         node->addProperty(&_prop_sht20_temperature, "temperature", "Temperature", "float", "°C");
-        node->addProperty(&_prop_sht20_humidity,    "relative-humidity", "Humidity", "float", "percent");
+        node->addProperty(&_prop_sht20_humidity,    "relative-humidity", "Humidity", "float", "%");
     }
 
     node = device->addNode(relay1.getNodeId(), "Solid State Relay", "gpio");

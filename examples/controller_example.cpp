@@ -334,7 +334,7 @@ void loop() {
  *
  * Stats: 1 devices, 1 properties, 15 messages, 0 commands sent
  * Temperature: 72.4 °C
- * Humidity: 67.7 percent
+ * Humidity: 67.7 %
  * Found relay device, toggling state...
  * Relay command sent: true (was false)
  * CONTROLLER: Sent command to homie/5/esp32poe3A3D78/relay1/state/set: true

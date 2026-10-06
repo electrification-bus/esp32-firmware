@@ -24,7 +24,7 @@ nodes:
       - id: relative-humidity
         name: Humidity
         datatype: float
-        unit: percent
+        unit: "%"
         settable: false
         retained: true
         value: 0.0
