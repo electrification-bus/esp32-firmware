@@ -181,31 +181,80 @@ static void handleWifiScan(AsyncWebServerRequest *request) {
 // ESPAsyncWebServer delivers body in chunks via onBody callback.
 // We accumulate into a static buffer, then parse JSON in the request handler.
 //
-// The buffer is shared by every route that uses accumulateBody, so it belongs to one
-// request at a time: the request whose first chunk arrives while it is free owns it
-// until its handler calls claimPostBody() or its client disconnects. A request with
-// no body (Content-Length 0) never reaches accumulateBody, and a second request whose
-// body starts while another request owns the buffer is not stored, so neither can make
-// a handler parse bytes left by, or still arriving for, a different request. Body
-// callbacks, request handlers and the disconnect callback all run on the AsyncTCP
-// task, so the ownership state needs no locking.
+// The buffer is shared by every route that uses a body callback below, so it belongs
+// to one request at a time: the request whose first chunk arrives while it is free
+// owns it until its handler calls claimPostBody(), its client disconnects, or it has
+// held the buffer for POST_BODY_HOLD_MS. On an authenticated route the first chunk
+// claims the buffer only from an authorized request, so an unauthenticated client
+// cannot hold it at all, and the hold limit keeps an authorized but slow client from
+// holding it indefinitely. A request with no body (Content-Length 0) never reaches a
+// body callback, and a second request whose body starts while another request owns
+// the buffer is not stored, so neither can make a handler parse bytes left by, or
+// still arriving for, a different request. Body callbacks, request handlers and the
+// disconnect callback all run on the AsyncTCP task, so the ownership state needs no
+// locking.
 // ============================================================================
+// The guard below caps a body at 2047 bytes, which a LAN client delivers in well under
+// a second, so a request still sending after this long is evicted. The library's own
+// 3 s idle timeout resets on every byte and so does not bound it.
+#define POST_BODY_HOLD_MS 5000
+
 char post_body_buf[2048];
 static size_t post_body_len = 0;
 static AsyncWebServerRequest* post_body_owner = NULL;
+static uint32_t post_body_owned_since = 0;
+// The last request evicted by the hold limit, compared by address only (it may have
+// been freed since), so its handler can answer 408 instead of 409.
+static AsyncWebServerRequest* post_body_evicted = NULL;
 
 // onDisconnect for the owning request whose handler has not claimed the body.
 static void postBodyOwnerDisconnected() {
     post_body_owner = NULL;
 }
 
-static void accumulateBody(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-    Serial.printf("PORTAL: accumulateBody url=%s len=%d index=%d total=%d\n",
+// Frees the buffer when this request owns it.
+static void releasePostBody(AsyncWebServerRequest *request) {
+    if (request != post_body_owner) return;
+    post_body_owner = NULL;
+    request->onDisconnect(nullptr);
+}
+
+// Evicts the owner once it has held the buffer for POST_BODY_HOLD_MS.
+static void expirePostBodyOwner() {
+    if (post_body_owner == NULL) return;
+    if (millis() - post_body_owned_since < POST_BODY_HOLD_MS) return;
+    Serial.printf("PORTAL: evicting %s, body incomplete after %u ms\n",
+                  post_body_owner->url().c_str(), (unsigned)POST_BODY_HOLD_MS);
+    post_body_evicted = post_body_owner;
+    releasePostBody(post_body_owner);
+}
+
+// Side-effect-free authorization check. requireAuth() sends its own 401/429 and
+// records a failed attempt toward the lockout, neither of which may happen from a body
+// callback (the request handler would then send a second response, and the attempt
+// would be counted twice). Body callbacks only need a yes/no; the request handler
+// still calls requireAuth() to produce the real response.
+static bool portalAuthorized(AsyncWebServerRequest *request) {
+    if (request->hasHeader("X-Session-Token") &&
+        portal_session_valid(request->getHeader("X-Session-Token")->value().c_str())) {
+        return true;
+    }
+    if (portal_auth_is_locked()) return false;
+    if (device_passphrase[0] == '\0') return false;
+    return request->authenticate("admin", device_passphrase);
+}
+
+static void storeBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
+                      size_t index, size_t total, bool need_auth) {
+    Serial.printf("PORTAL: body url=%s len=%d index=%d total=%d\n",
                    request->url().c_str(), len, index, total);
     (void)total;
+    expirePostBodyOwner();
     if (index == 0) {
-        if (post_body_owner) return;   // claimPostBody() answers 409
+        if (need_auth && !portalAuthorized(request)) return;   // requireAuth() answers 401
+        if (post_body_owner) return;                           // claimPostBody() answers 409
         post_body_owner = request;
+        post_body_owned_since = millis();
         request->onDisconnect(postBodyOwnerDisconnected);
         post_body_len = 0;
     }
@@ -217,20 +266,38 @@ static void accumulateBody(AsyncWebServerRequest *request, uint8_t *data, size_t
     post_body_buf[post_body_len] = '\0';
 }
 
-// Called by every accumulateBody route's handler before it reads post_body_buf.
+// Body callback for routes whose handler calls requireAuth().
+static void accumulateAuthBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
+                               size_t index, size_t total) {
+    storeBody(request, data, len, index, total, true);
+}
+
+#ifdef CONFIG_WIFI_AP
+// Body callback for POST /api/wifi, the one unauthenticated body route.
+static void accumulateOpenBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
+                               size_t index, size_t total) {
+    storeBody(request, data, len, index, total, false);
+}
+#endif
+
+// Called by every body route's handler before it reads post_body_buf.
 // Returns true, and frees the buffer for the next request, when post_body_buf holds
 // this request's complete body; the handler then parses it before returning, which no
-// other request can interrupt. Otherwise sends 409 when the request had a body (the
-// guard admits only types the library hands to the body callback, so a body that
-// missed the buffer found it owned by another request) or 400 when it had none, and
-// returns false.
+// other request can interrupt. Otherwise sends 408 when the hold limit evicted this
+// request, 409 when the request had a body (the guard admits only types the library
+// hands to the body callback, so a body that missed the buffer found it owned by
+// another request) or 400 when it had none, and returns false.
 static bool claimPostBody(AsyncWebServerRequest *request) {
+    expirePostBodyOwner();
     if (request == post_body_owner) {
-        post_body_owner = NULL;
-        request->onDisconnect(nullptr);
+        releasePostBody(request);
         return true;
     }
-    if (request->contentLength() > 0) {
+    if (request->contentLength() > 0 && request == post_body_evicted) {
+        post_body_evicted = NULL;
+        request->send(408, "application/json",
+            "{\"status\":\"error\",\"message\":\"Request body took too long, retry\"}");
+    } else if (request->contentLength() > 0) {
         request->send(409, "application/json",
             "{\"status\":\"error\",\"message\":\"Another request is in progress, retry\"}");
     } else {
@@ -261,7 +328,7 @@ static bool claimPostBody(AsyncWebServerRequest *request) {
 // Returns the HTTP status that refuses this request's body, or 0 to let it through.
 //   image push routes: application/octet-stream only, streamed, no size cap here
 //                      (Update.begin() refuses an image larger than the partition)
-//   everything else:   must fit post_body_buf, which is all accumulateBody() keeps;
+//   everything else:   must fit post_body_buf, which is all storeBody() keeps;
 //                      application/json only, except POST /api/broker-cert, which
 //                      takes only application/x-pem-file or application/octet-stream
 // The library parses a text/plain body into parameters when its first chunk holds an
@@ -495,7 +562,7 @@ static void serveConfigPage(AsyncWebServerRequest *request) {
 // Accepts either a session token from POST /api/login (X-Session-Token header)
 // or Basic auth with the device passphrase. Returns true if authorized, sends
 // error response and returns false otherwise.
-static bool requireAuth(AsyncWebServerRequest *request) {
+static bool checkAuthOrReply(AsyncWebServerRequest *request) {
     // Session token first — checked before the lockout so an attacker hammering
     // the passphrase can't lock out an already-authenticated admin.
     if (request->hasHeader("X-Session-Token") &&
@@ -524,6 +591,14 @@ static bool requireAuth(AsyncWebServerRequest *request) {
     }
     portal_auth_reset();
     return true;
+}
+
+// checkAuthOrReply(), also freeing post_body_buf when a refused request owns it (its
+// authorization can lapse between the first chunk and the handler).
+static bool requireAuth(AsyncWebServerRequest *request) {
+    if (checkAuthOrReply(request)) return true;
+    releasePostBody(request);
+    return false;
 }
 
 // Handle POST /api/login - exchange the device passphrase (Basic auth) for a
@@ -759,7 +834,7 @@ static void handleOtaStatus(AsyncWebServerRequest *request) {
 // --- OTA image push: POST /api/ota/firmware, POST /api/ota/filesystem ---
 //
 // Streams the raw request body straight into Update.write(). Deliberately does NOT
-// use accumulateBody: a firmware image is >1MB and post_body_buf is 2KB.
+// use post_body_buf: a firmware image is >1MB and post_body_buf is 2KB.
 //
 //   curl -u admin:<passphrase> -H 'Content-Type: application/octet-stream'
 //        --data-binary @firmware.bin http://<device-ip>/api/ota/firmware
@@ -803,20 +878,6 @@ static void ota_push_fail(const char* msg) {
     // A failed filesystem write leaves LittleFS unmounted (see below) — remount so
     // the device stays serviceable instead of needing a power cycle.
     if (ota_push_target == U_SPIFFS) LittleFS.begin(true);
-}
-
-// Side-effect-free authorization check. requireAuth() sends its own 401/429, which
-// must not happen from a body callback (the request handler would then send a second
-// response). The body callback only needs a yes/no to decide whether to touch flash;
-// the request handler below still calls requireAuth() to produce the real response.
-static bool portalAuthorized(AsyncWebServerRequest *request) {
-    if (request->hasHeader("X-Session-Token") &&
-        portal_session_valid(request->getHeader("X-Session-Token")->value().c_str())) {
-        return true;
-    }
-    if (portal_auth_is_locked()) return false;
-    if (device_passphrase[0] == '\0') return false;
-    return request->authenticate("admin", device_passphrase);
 }
 
 // Drop ownership of the push state, undoing anything a half-finished push left behind.
@@ -1144,24 +1205,24 @@ void captive_portal_start() {
     server.on("/", HTTP_GET, serveConfigPage);
     server.on("/api/device-info", HTTP_GET, handleDeviceInfo);
     server.on("/api/mqtt-status", HTTP_GET, handleMqttStatus);
-    server.on("/api/mqtt", HTTP_POST, handleMqttSave, NULL, accumulateBody);
-    server.on("/api/firmware", HTTP_POST, handleFirmwareSave, NULL, accumulateBody);
-    server.on("/api/filesystem", HTTP_POST, handleFilesystemSave, NULL, accumulateBody);
+    server.on("/api/mqtt", HTTP_POST, handleMqttSave, NULL, accumulateAuthBody);
+    server.on("/api/firmware", HTTP_POST, handleFirmwareSave, NULL, accumulateAuthBody);
+    server.on("/api/filesystem", HTTP_POST, handleFilesystemSave, NULL, accumulateAuthBody);
     server.on("/api/login", HTTP_POST, handleLogin);
-    server.on("/api/passphrase", HTTP_POST, handlePassphraseSave, NULL, accumulateBody);
+    server.on("/api/passphrase", HTTP_POST, handlePassphraseSave, NULL, accumulateAuthBody);
     server.on("/api/reset-prefs", HTTP_POST, handleResetPrefs);
     server.on("/api/reboot", HTTP_POST, handleReboot);
     server.on(PORTAL_URI_BROKER_CERT, HTTP_GET, handleBrokerCert);
-    server.addHandler(new PortalRawPostHandler(PORTAL_URI_BROKER_CERT, handleBrokerCertUpload, accumulateBody));
+    server.addHandler(new PortalRawPostHandler(PORTAL_URI_BROKER_CERT, handleBrokerCertUpload, accumulateAuthBody));
     // AsyncURIMatcher::exact() is REQUIRED on these two, not cosmetic. A bare
     // server.on("/api/ota", ...) uses the library's BackwardCompatible matcher,
     // which is ^{uri}(/.*)?$ — so "/api/ota" also matches "/api/ota/filesystem",
     // and _attachHandler() takes the FIRST handler that matches. Registered plain
     // and first, the toggle below swallowed every image push: the body went to
-    // accumulateBody (2KB static, image discarded) and handleOtaToggle tried to
+    // the 2KB post_body_buf (image discarded) and handleOtaToggle tried to
     // parse a firmware binary as JSON. exact() confines each route to its own URI.
     server.on(AsyncURIMatcher::exact("/api/ota"), HTTP_GET, handleOtaStatus);
-    server.on(AsyncURIMatcher::exact("/api/ota"), HTTP_POST, handleOtaToggle, NULL, accumulateBody);
+    server.on(AsyncURIMatcher::exact("/api/ota"), HTTP_POST, handleOtaToggle, NULL, accumulateAuthBody);
     // Image push — distinct paths; /api/ota itself is the enable/disable toggle.
     server.on(AsyncURIMatcher::exact(PORTAL_URI_OTA_PUSH_FIRMWARE),   HTTP_POST, handleOtaPushFirmwareDone, NULL, otaPushFirmwareBody);
     server.on(AsyncURIMatcher::exact(PORTAL_URI_OTA_PUSH_FILESYSTEM), HTTP_POST, handleOtaPushFilesystemDone, NULL, otaPushFilesystemBody);
@@ -1180,7 +1241,7 @@ void captive_portal_start() {
 
     // WiFi scan, join, and status endpoints
     server.on("/api/wifi-scan", HTTP_GET, handleWifiScan);
-    server.on("/api/wifi", HTTP_POST, handleWifiSave, NULL, accumulateBody);
+    server.on("/api/wifi", HTTP_POST, handleWifiSave, NULL, accumulateOpenBody);
     server.on("/api/wifi-status", HTTP_GET, handleWifiStatus);
 
     // Catch-all: redirect any unknown URL to config page (improves Android captive portal detection)
