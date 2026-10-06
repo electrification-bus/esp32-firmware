@@ -563,6 +563,14 @@ def cmd_generate(args) -> None:
     nodes_cfg  = cfg.get("nodes", [])
     buses_cfg  = cfg.get("buses") or {}
 
+    # device.board was renamed device.environment. Nothing reads board any more, so an
+    # old device.yml would generate cleanly and fail later at build with no hint why.
+    if isinstance(device, dict) and "board" in device:
+        print(f"ERROR: {device_yml} sets device.board, which is no longer read. Rename it "
+              f"to device.environment (a PlatformIO env name; list them with "
+              f"'./ebus-esp32 envs').", file=sys.stderr)
+        sys.exit(1)
+
     includes          = []
     decls             = []   # entity object declarations
     child_dev_decls   = []   # static Device dev_<child>;
