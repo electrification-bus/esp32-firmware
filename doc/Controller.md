@@ -20,7 +20,7 @@ The serial log starts with `===== HOMIE CONTROLLER =====` instead of the device 
 `setup()` brings up the network, portal, network console, mDNS and MQTT exactly as device mode does, using the same configuration (`device.yml`, portal settings in NVS). Then it:
 
 1. Publishes its own retained `$state` of `ready` at `<domain>/5/<device-id>/$state`, republishes it after every MQTT reconnect, and re-asserts it if the broker reports anything else (for example the Last Will's `lost`).
-2. Calls `controller_init(&mqtt_client, top_level_topic(), false)`, so it discovers and commands devices only in this build's domain (`homie`, or `ebus` with `-DUSE_EBUS_TOPIC`).
+2. Calls `controller_init(&mqtt_client, top_level_topic(), false)`, so it discovers and commands devices only in this build's domain (`ebus`; `homie` without `-DUSE_EBUS_TOPIC`).
 3. Registers `controller_mqtt_callback` with `mqtt_set_fallback_callback()`, which hands it every message no settable-property handler claimed.
 4. Calls `controller_setup_discovery()`, which subscribes to `<domain>/5/+/$state` and `<domain>/5/+/$description`.
 
@@ -40,7 +40,7 @@ To add your own logic, edit the `loop()` in the `ENABLE_CONTROLLER` branch of `s
 
 | Function | Purpose |
 |---|---|
-| `controller_init(MQTTClient* mqtt_client, const char* domain = top_level_topic(), bool discover_all_domains = true)` | Store the client and the command domain; `true` discovers in every domain via `+/5/+/...`. Clears the device table. |
+| `controller_init(MQTTClient* mqtt_client, const char* domain = top_level_topic(), bool discover_all_domains = true)` | Store the client and the command domain; `true` discovers in every domain via `+/5/+/...`. Property subscriptions and commands always use `domain`, so a device found in another domain gets neither. Clears the device table. |
 | `controller_setup_discovery()` | Subscribe to the `$state` and `$description` topics. Call after MQTT connects. |
 | `controller_mqtt_callback(char* topic, uint8_t* payload, unsigned int length)` | Feed one MQTT message to the controller. The payload must be null-terminated. |
 | `controller_loop()` | Call every loop: marks a device in `init` or `ready` as `lost` when no `$state` has arrived from it for 60 seconds. |

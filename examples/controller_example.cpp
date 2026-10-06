@@ -208,9 +208,10 @@ void setup() {
     _mqtt.begin(MQTT_BROKER, MQTT_PORT, _net);
     _mqtt.onMessageAdvanced(on_mqtt_message);
 
-    // Commands go to this build's domain (homie, or ebus with -DUSE_EBUS_TOPIC);
-    // true discovers devices in every domain.
-    controller_init(&_mqtt, top_level_topic(), true);
+    // Discover and command devices in this build's domain (ebus; homie without
+    // -DUSE_EBUS_TOPIC). Property subscriptions and commands always use this domain,
+    // so discovering every domain (true) would track devices it cannot reach.
+    controller_init(&_mqtt, top_level_topic(), false);
 
     Serial.println("Controller initialized");
 }
