@@ -137,7 +137,8 @@ static bool mdns_query_one_service(const char* service, uint16_t default_port) {
   Serial.printf("mDNS: Found %d _%s._tcp broker(s)\n", num_found, service);
 
   for (int i = 0; i < num_found; i++) {
-    const char* hostname = MDNS.hostname(i).c_str();
+    char hostname[64];
+    snprintf(hostname, sizeof(hostname), "%s", MDNS.hostname(i).c_str());
     uint16_t svc_port = MDNS.port(i);
     Serial.printf("mDNS:   [%d] host=%s port=%u\n", i, hostname, svc_port);
 
