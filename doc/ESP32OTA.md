@@ -34,8 +34,8 @@ All four routes are registered with `AsyncURIMatcher::exact()`, and that is load
 AsyncWebServer's default matcher is `BackwardCompatible` — `^{uri}(/.*)?$` — so a plain
 `server.on("/api/ota", ...)` *also* matches `/api/ota/filesystem`, and `_attachHandler()`
 binds the first handler that matches. Registered plainly, the toggle silently swallows
-every image push: the body lands in `accumulateBody`'s 2 KB static and the image is
-discarded. The symptom is a `PORTAL: accumulateBody url=/api/ota/filesystem` line in the
+every image push: the body lands in the 2 KB `post_body_buf` and the image is
+discarded. The symptom is a `PORTAL: body url=/api/ota/filesystem` line in the
 log where `PORTAL: OTA push started` belongs.
 
 **Query parameter:** `?reboot=0` stages the image and keeps the device running, so both
@@ -62,10 +62,10 @@ from `config-overlay.yml`, else from `device.yml`. See [GettingStartedCLI.md](Ge
 curl -u admin:<passphrase> -H 'Content-Type: application/json' -d '{"enabled":true}' \
      http://192.168.1.42/api/ota
 curl -u admin:<passphrase> -H 'Content-Type: application/octet-stream' \
-     --data-binary @.pio/build/<env>/littlefs.bin \
+     --data-binary @.pio/cli/build/<env>/littlefs.bin \
      "http://192.168.1.42/api/ota/filesystem?reboot=0"
 curl -u admin:<passphrase> -H 'Content-Type: application/octet-stream' \
-     --data-binary @.pio/build/<env>/firmware.bin \
+     --data-binary @.pio/cli/build/<env>/firmware.bin \
      http://192.168.1.42/api/ota/firmware
 ```
 
@@ -77,8 +77,8 @@ retries will upload the whole image twice.
 ### What the implementation guarantees
 
 - **Streamed, never buffered.** The body handler writes each chunk into `Update.write()`.
-  It deliberately does not use `accumulateBody` — that buffers into a 2 KB static, and an
-  app image is >1 MB.
+  It deliberately does not use the JSON body buffer `post_body_buf`, which holds 2 KB, and
+  an app image is >1 MB.
 - **Authorized on the first chunk.** Body callbacks run *before* the request handler, so
   authorizing only there would let an unauthenticated client on the LAN stream an entire
   image into flash before being refused. A side-effect-free `portalAuthorized()` predicate
@@ -142,13 +142,6 @@ Harmless for a firmware push — the device reboots immediately afterward. For a
 filesystem push (`?reboot=0`) the device keeps running, so expect a gap in readings rather
 than a failure. Don't push images to a device whose sensor data is being relied on at that
 moment.
-
-The probe stays in `otaPushBody()`. Re-measure before trusting these numbers with flash
-encryption enabled (the partition layer encrypts through a stack buffer) or with a TLS
-listener added (an mbedTLS handshake alone wants ~20 KB). If a bump is ever needed it must
-be a `build_flag`, not a `build_src_flag` — the value is consumed when AsyncTCP compiles,
-and `build_src_flags` only reaches `src/`. A watchdog reset or a
-`stack canary watchpoint triggered` panic mid-push is the failure mode to watch for.
 
 ---
 
