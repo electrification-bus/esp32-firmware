@@ -2,35 +2,51 @@ openapi: 3.0.3
 info:
   title: Homie ESP32 Configuration API
   description: |
-    REST API served by the ESP32 captive portal / HTTP server.
-    - With CONFIG_WIFI_AP: all endpoints available via WiFi AP captive portal.
-    - Without CONFIG_WIFI_AP: WiFi endpoints are excluded; API is served over ethernet on port 80.
-  version: 1.1.0
+    REST API served by the device's HTTP server on port 80, on every interface the device has.
+    - Builds with CONFIG_WIFI_AP also serve it on an open setup AP (192.168.4.1), which shuts down
+      2 minutes after the WiFi STA side gets an address, and add the WiFi and captive-portal paths
+      tagged "WiFi AP only".
+    - Other builds serve it over Ethernet (and WiFi STA when credentials are configured).
+
+    Protected operations accept HTTP Basic or Digest auth (username "admin", password the device
+    passphrase) or a session token from POST /api/login in the X-Session-Token header.
+
+    Every request passes a body guard that reads only the headers, before the body is read or any
+    credentials are checked: POST /api/ota/firmware and /api/ota/filesystem take only
+    application/octet-stream; POST /api/broker-cert takes only application/x-pem-file or
+    application/octet-stream, at most 2047 bytes; any other request with a body takes only
+    application/json, at most 2047 bytes. A larger body gets 413, any other Content-Type (and any
+    request with a multipart/* Content-Type header) gets 415.
+  version: 1.2.0
 
 servers:
-  - url: http://192.168.4.1
-    description: WiFi AP (captive portal mode)
-  - url: "http://{device_ip}"
-    description: Ethernet (POE-ISO / wESP32)
+  - url: "http://{device}"
+    description: The device's address on the LAN
     variables:
-      device_ip:
+      device:
         default: "192.168.1.100"
-        description: IP address assigned to the device via DHCP
+        description: IP address (or mDNS name) of the device
+  - url: http://192.168.4.1
+    description: Setup AP (CONFIG_WIFI_AP builds, until it shuts down)
+
+tags:
+  - name: WiFi AP only
+    description: Registered only on builds with CONFIG_WIFI_AP
 
 paths:
   /:
     get:
-      summary: Configuration page
-      description: Serves config.html from SPIFFS filesystem.
+      summary: Setup page
+      description: Serves /html/config.html from LittleFS.
       responses:
         "200":
-          description: HTML configuration page
+          description: HTML setup page
           content:
             text/html:
               schema:
                 type: string
         "500":
-          description: Failed to open config page from SPIFFS
+          description: config.html could not be opened
           content:
             text/plain:
               schema:
@@ -39,7 +55,9 @@ paths:
   /api/device-info:
     get:
       summary: Device information
-      description: Returns device name and Homie MQTT topic.
+      description: >
+        Returns the device name, its Homie topic, its role, and the OTA image URLs set through the
+        portal (empty when the URL comes from config.yml).
       responses:
         "200":
           description: Device info
@@ -53,15 +71,24 @@ paths:
                     example: "greenhouse-controller"
                   topic:
                     type: string
-                    example: "homie/5/abc123def/"
+                    example: "ebus/5/abc123def/"
                   wifi_enabled:
                     type: boolean
+                    description: true on CONFIG_WIFI_AP builds
                     example: false
+                  role:
+                    type: string
+                    enum: [device, controller]
+                  fw_url:
+                    type: string
+                    example: ""
+                  fs_url:
+                    type: string
+                    example: ""
 
   /api/mqtt-status:
     get:
       summary: MQTT connection status
-      description: Returns current MQTT broker connection state.
       responses:
         "200":
           description: MQTT status
@@ -81,32 +108,37 @@ paths:
                   port:
                     type: integer
                     example: 1883
+                  fallback_broker:
+                    type: string
+                    description: Configured fallback broker while mDNS discovery is still searching
+                  fallback_port:
+                    type: integer
               examples:
                 connected:
                   value:
                     status: connected
                     broker: "192.168.1.100"
                     port: 1883
-                failed:
+                searching:
                   value:
-                    status: failed
-                    broker: "192.168.1.100"
-                    port: 1883
+                    status: searching
+                    fallback_broker: "192.168.1.100"
+                    fallback_port: 1883
                 none:
                   value:
                     status: none
 
   /api/login:
     post:
-      summary: Exchange passphrase for a session token
+      summary: Issue a session token
+      description: |
+        Returns a random session token. Later requests may send it in the X-Session-Token header
+        instead of the passphrase. One session exists at a time; a new login replaces the previous
+        token. It expires after 15 minutes without use or 2 hours after login, and on reboot,
+        POST /api/passphrase or POST /api/reset-prefs.
       security:
         - basicAuth: []
-      description: |
-        Authenticates with the device passphrase (Basic auth) and returns a
-        random session token. Subsequent admin requests may send it in the
-        X-Session-Token header instead of re-sending the passphrase.
-        Expires after 15 min idle or 2 h absolute; invalidated by reboot,
-        passphrase change, or reset-prefs.
+        - sessionAuth: []
       responses:
         "200":
           description: Session token issued
@@ -117,26 +149,30 @@ paths:
                 properties:
                   token:
                     type: string
+                    description: 32 hexadecimal characters
                     example: "3fa85f64c9b2de7a1a2b3c4d5e6f7a8b"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/NoPassphrase"
 
   /api/mqtt:
     post:
       summary: Save MQTT configuration
+      description: |
+        Saves the MQTT broker settings to NVS, invalidates the cached CA certificate, and makes
+        the main loop reconnect MQTT with the new settings.
       security:
         - basicAuth: []
         - sessionAuth: []
-      description: |
-        Saves MQTT broker settings to NVS. Invalidates cached CA cert
-        so the next connection fetches a fresh cert for the (possibly new) broker.
-        Sets a flag so the main loop reconnects MQTT with the new settings.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - broker
               properties:
                 broker:
                   type: string
@@ -144,119 +180,132 @@ paths:
                   example: "192.168.1.100"
                 port:
                   type: integer
-                  description: MQTT broker port (default 1883)
+                  description: MQTT broker port (1883 when absent)
                   default: 1883
                   example: 8883
                 username:
                   type: string
-                  description: MQTT username
                   example: "device1"
                 password:
                   type: string
-                  description: MQTT password
                   example: "secret"
       responses:
         "200":
-          description: Configuration saved
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StatusResponse"
-              example:
-                status: ok
+          $ref: "#/components/responses/Ok"
         "400":
-          description: Empty or invalid JSON body
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "408":
+          $ref: "#/components/responses/RequestTimeout"
         "409":
-          description: Another request's body was still arriving; retry
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/NoPassphrase"
 
   /api/firmware:
     post:
-      summary: Save firmware URL and pull the image
+      summary: Set the firmware URL and pull the image
+      description: >
+        Sets the firmware image URL, opens the OTA window, and queues a download. https is
+        supported; the device verifies the server only if a CA for it is present at
+        /certs/<Host>.ca, otherwise the transfer is encrypted but unverified.
       security:
         - basicAuth: []
         - sessionAuth: []
-      description: >
-        Saves the OTA firmware URL and queues a download of it. https is supported;
-        the device verifies the server only if a CA for it is present at
-        /certs/<Host>.ca, otherwise the transfer is encrypted but unverified.
       parameters:
-        - in: query
-          name: start
-          required: false
-          schema: { type: string, enum: ["0"] }
-          description: >
-            start=0 stages the pull without beginning it, so a filesystem and a firmware
-            update can be queued and then run as one session with a single reboot. The
-            next request without this flag arms everything staged.
-        - in: query
-          name: persist
-          required: false
-          schema: { type: string, enum: ["0"] }
-          description: persist=0 uses the URL for this session only, without writing it to NVS.
+        - $ref: "#/components/parameters/start"
+        - $ref: "#/components/parameters/persist"
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - url
               properties:
                 url:
                   type: string
-                  description: Firmware binary URL for OTA update
+                  description: Firmware image URL
                   example: "http://192.168.1.10/firmware.bin"
       responses:
         "200":
-          description: URL saved
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StatusResponse"
-              example:
-                status: ok
+          $ref: "#/components/responses/Ok"
         "400":
-          description: Empty or invalid JSON body
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "408":
+          $ref: "#/components/responses/RequestTimeout"
         "409":
-          description: Another request's body was still arriving; retry
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/NoPassphrase"
 
   /api/filesystem:
     post:
-      summary: Save filesystem URL and pull the image
+      summary: Set the filesystem URL and pull the image
+      description: >
+        Sets the LittleFS image URL, opens the OTA window, and queues a download. Same https and
+        query-flag behavior as /api/firmware. A staged filesystem is always applied before a
+        staged firmware.
       security:
         - basicAuth: []
         - sessionAuth: []
-      description: >
-        Saves the LittleFS image URL and queues a download of it. Same https and query-flag
-        behaviour as /api/firmware. ota_loop() always applies a staged filesystem before a
-        staged firmware, so stage this one first.
       parameters:
-        - in: query
-          name: start
-          required: false
-          schema: { type: string, enum: ["0"] }
-          description: start=0 stages the pull without beginning it (see /api/firmware).
-        - in: query
-          name: persist
-          required: false
-          schema: { type: string, enum: ["0"] }
-          description: persist=0 uses the URL for this session only, without writing it to NVS.
+        - $ref: "#/components/parameters/start"
+        - $ref: "#/components/parameters/persist"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                  description: LittleFS image URL
+                  example: "http://192.168.1.10/littlefs.bin"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "408":
+          $ref: "#/components/responses/RequestTimeout"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/NoPassphrase"
+
+  /api/passphrase:
+    post:
+      summary: Change the device passphrase
+      description: >
+        Saves a new passphrase to NVS, where it overrides config.yml. It takes effect immediately
+        and ends the current session.
+      security:
+        - basicAuth: []
+        - sessionAuth: []
       requestBody:
         required: true
         content:
@@ -264,55 +313,67 @@ paths:
             schema:
               type: object
               required:
-                - url
+                - passphrase
               properties:
-                url:
+                passphrase:
                   type: string
-                  description: LittleFS image URL for OTA update
-                  example: "http://192.168.1.10/littlefs.bin"
+                  description: Stored truncated to 63 bytes
       responses:
         "200":
-          description: URL saved
+          description: Passphrase saved
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StatusResponse"
+                $ref: "#/components/schemas/MessageResponse"
               example:
                 status: ok
+                message: "Passphrase saved. Takes effect immediately."
         "400":
-          description: Empty or invalid JSON body
+          description: Empty body, invalid JSON, or missing passphrase field
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "408":
+          $ref: "#/components/responses/RequestTimeout"
         "409":
-          description: Another request's body was still arriving; retry
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/NoPassphrase"
 
   /api/reset-prefs:
     post:
-      summary: Reset all portal preferences
+      summary: Clear the settings saved in NVS
+      description: >
+        Clears the WiFi, MQTT, OTA URL and passphrase settings saved through the portal and ends
+        the current session. config.yml applies again after a reboot.
       security:
         - basicAuth: []
         - sessionAuth: []
-      description: Clears all NVS preferences (WiFi, MQTT, etc). Reboot to use YML config.
       responses:
         "200":
           description: Preferences cleared
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: ok
-                  message:
-                    type: string
-                    example: "Preferences cleared. Reboot to use YML config."
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                status: ok
+                message: "Preferences cleared. Reboot to use YML config."
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/NoPassphrase"
 
   /api/reboot:
     post:
@@ -320,29 +381,30 @@ paths:
       security:
         - basicAuth: []
         - sessionAuth: []
-      description: Triggers an ESP.restart() after a short delay.
       responses:
         "200":
-          description: Reboot acknowledged (device restarts ~500ms later)
+          description: Reboot acknowledged; the device restarts about 500 ms later
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: ok
-                  message:
-                    type: string
-                    example: "Rebooting..."
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                status: ok
+                message: "Rebooting..."
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/NoPassphrase"
 
   /api/openapi.yml:
     get:
-      summary: OpenAPI specification
-      description: Returns this OpenAPI specification document from SPIFFS.
+      summary: OpenAPI description
+      description: Returns this document from LittleFS.
       responses:
         "200":
-          description: OpenAPI 3.0.3 specification in YAML format
+          description: OpenAPI 3.0.3 description in YAML
           content:
             text/yaml:
               schema:
@@ -350,8 +412,8 @@ paths:
 
   /api/broker-cert:
     get:
-      summary: Download broker CA certificate
-      description: Returns the saved CA certificate for the current MQTT broker from SPIFFS.
+      summary: Download the broker CA certificate
+      description: Returns the CA certificate saved on LittleFS for the current MQTT broker.
       responses:
         "200":
           description: PEM-encoded CA certificate
@@ -366,26 +428,27 @@ paths:
               schema:
                 type: string
     post:
-      summary: Upload broker CA certificate
+      summary: Upload a broker CA certificate
       description: |
-        Uploads a PEM-encoded CA certificate and saves it to SPIFFS as /certs/uploaded-cert.ca.
-        Invalidates the cached cert so the next MQTT connection uses the new one.
-        Requires HTTP Basic Auth (admin / device_passphrase).
+        Saves a PEM-encoded CA certificate to LittleFS as /certs/uploaded-cert.ca and invalidates
+        the cached certificate so the next MQTT connection uses the new one. text/plain is refused
+        because the web server library can parse a PEM body sent as text/plain into form
+        parameters.
       security:
         - basicAuth: []
         - sessionAuth: []
       requestBody:
         required: true
-        description: At most 2047 bytes. Any other Content-Type, including text/plain, is refused with 415.
+        description: At most 2047 bytes.
         content:
           application/x-pem-file:
             schema:
               type: string
-              description: PEM-encoded CA certificate (must contain BEGIN CERTIFICATE header)
+              description: PEM-encoded CA certificate (must contain a BEGIN CERTIFICATE line)
           application/octet-stream:
             schema:
               type: string
-              description: PEM-encoded CA certificate (must contain BEGIN CERTIFICATE header)
+              description: PEM-encoded CA certificate (must contain a BEGIN CERTIFICATE line)
       responses:
         "200":
           description: Certificate saved
@@ -409,17 +472,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "408":
+          $ref: "#/components/responses/RequestTimeout"
         "409":
-          description: Another request's body was still arriving; retry
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          description: The certificate file could not be written
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          $ref: "#/components/responses/NoPassphrase"
 
   /api/ota:
     get:
-      summary: OTA update status
-      description: Returns whether OTA is currently enabled and the auto-disable timeout.
+      summary: OTA status
+      description: >
+        Reports the state of the last pull OTA and the device's uptime. A client whose push reply
+        was lost can compare uptime_s to tell whether the device restarted.
       responses:
         "200":
           description: OTA status
@@ -427,20 +506,33 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                  - status
+                  - uptime_s
                 properties:
-                  ota_enabled:
-                    type: boolean
-                    example: false
-                  timeout_minutes:
+                  status:
+                    type: string
+                    enum: [idle, downloading, host_not_found, file_not_found, http_error,
+                           write_error, download_incomplete, complete]
+                  host:
+                    type: string
+                  file:
+                    type: string
+                  url:
+                    type: string
+                  http_code:
                     type: integer
-                    description: Minutes before OTA auto-disables (0 = no timeout)
-                    example: 10
+                    description: Present when status is http_error
+                  uptime_s:
+                    type: number
+                    description: Seconds since boot, to the millisecond
+                    example: 1234.567
     post:
-      summary: Enable or disable OTA
-      description: |
-        Toggles OTA update capability. Requires HTTP Basic Auth with username "admin"
-        and the device_passphrase from config.yml. OTA auto-disables after timeout_minutes
-        (default 10) and always starts disabled on reboot.
+      summary: Open or close the OTA window
+      description: >
+        The push endpoints refuse an image unless the OTA window is open. It closes after
+        timeout_minutes (OTA_ENABLED_TIMEOUT, default 10, 0 for no timeout) and is always closed
+        after a reboot.
       security:
         - basicAuth: []
         - sessionAuth: []
@@ -455,11 +547,10 @@ paths:
               properties:
                 enabled:
                   type: boolean
-                  description: true to enable OTA, false to disable
                   example: true
       responses:
         "200":
-          description: OTA state changed
+          description: OTA window opened or closed
           content:
             application/json:
               schema:
@@ -475,51 +566,105 @@ paths:
                     type: integer
                     example: 10
         "400":
-          description: Empty body, invalid JSON, or missing 'enabled' field
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: Another request's body was still arriving; retry
+          description: Empty body, invalid JSON, or missing 'enabled' boolean
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
-          description: Invalid credentials (WWW-Authenticate challenge returned)
+          $ref: "#/components/responses/Unauthorized"
+        "408":
+          $ref: "#/components/responses/RequestTimeout"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
         "429":
-          description: Too many failed auth attempts (5 failures = 5 min lockout)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                status: error
-                message: "Too many failed attempts. Try again later."
+          $ref: "#/components/responses/TooManyRequests"
         "503":
-          description: No device_passphrase configured in config.yml
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                status: error
-                message: "No device_passphrase configured"
+          $ref: "#/components/responses/NoPassphrase"
 
-  # === WiFi AP-only endpoints (CONFIG_WIFI_AP) ===
+  /api/ota/firmware:
+    post:
+      summary: Push a firmware image
+      description: >
+        Streams the request body into the inactive app partition. Requires the OTA window to be
+        open. The image must start with the ESP image magic byte (0xE9). One push runs at a time.
+        Unless reboot=0, the device restarts once the reply has been delivered.
+      security:
+        - basicAuth: []
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/reboot"
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          $ref: "#/components/responses/PushOk"
+        "400":
+          $ref: "#/components/responses/PushFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/PushBusy"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/NoPassphrase"
+
+  /api/ota/filesystem:
+    post:
+      summary: Push a LittleFS image
+      description: >
+        Streams the request body into the filesystem partition, which is unmounted for the write.
+        Requires the OTA window to be open. One push runs at a time. Unless reboot=0, the device
+        restarts once the reply has been delivered; with reboot=0 the filesystem is remounted.
+      security:
+        - basicAuth: []
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/reboot"
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          $ref: "#/components/responses/PushOk"
+        "400":
+          $ref: "#/components/responses/PushFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/PushBusy"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/NoPassphrase"
 
   /api/wifi-scan:
     get:
-      summary: Get WiFi scan results
-      description: |
-        Returns cached WiFi scan results (deduplicated, sorted by signal strength).
-        Scan is performed at portal startup. Only available with CONFIG_WIFI_AP.
+      summary: WiFi scan results
+      description: Networks found by the scan at boot, deduplicated and strongest first.
       tags:
         - WiFi AP only
       responses:
         "200":
-          description: Array of discovered WiFi networks
+          description: Discovered WiFi networks
           content:
             application/json:
               schema:
@@ -532,7 +677,7 @@ paths:
                       example: "MyNetwork"
                     rssi:
                       type: integer
-                      description: Signal strength in dBm (higher is stronger)
+                      description: Signal strength in dBm
                       example: -45
                     secure:
                       type: boolean
@@ -542,27 +687,28 @@ paths:
   /api/wifi:
     post:
       summary: Connect to a WiFi network
-      description: |
-        Saves WiFi credentials to NVS and begins STA connection attempt.
-        Poll /api/wifi-status for connection result. Only available with CONFIG_WIFI_AP.
+      description: >
+        Saves WiFi credentials to NVS and starts a STA connection; poll /api/wifi-status for the
+        result. Unauthenticated while the setup AP is up; once the AP has shut down it requires
+        auth like the admin endpoints.
       tags:
         - WiFi AP only
+      security:
+        - {}
+        - basicAuth: []
+        - sessionAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - ssid
               properties:
                 ssid:
                   type: string
-                  description: WiFi network name
                   example: "MyNetwork"
                 password:
                   type: string
-                  description: WiFi password
                   example: "mypassword"
       responses:
         "200":
@@ -576,24 +722,25 @@ paths:
                     type: string
                     example: connecting
         "400":
-          description: Empty or invalid JSON body
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "408":
+          $ref: "#/components/responses/RequestTimeout"
         "409":
-          description: Another request's body was still arriving; retry
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/NoPassphrase"
 
   /api/wifi-status:
     get:
       summary: WiFi STA connection status
-      description: |
-        Returns current WiFi STA connection state. Poll after POST /api/wifi
-        to check if connection succeeded. Only available with CONFIG_WIFI_AP.
       tags:
         - WiFi AP only
       responses:
@@ -611,11 +758,9 @@ paths:
                     enum: [connected, connecting, auth_fail, no_ssid, failed]
                   ip:
                     type: string
-                    description: Assigned IP address (when connected)
                     example: "192.168.1.42"
                   ssid:
                     type: string
-                    description: Connected network name (when connected)
                     example: "MyNetwork"
                   reason:
                     type: integer
@@ -623,7 +768,6 @@ paths:
                     example: 15
                   message:
                     type: string
-                    description: Human-readable error (on failure)
                     example: "Wrong password (reason 15)"
               examples:
                 connected:
@@ -631,9 +775,6 @@ paths:
                     status: connected
                     ip: "192.168.1.42"
                     ssid: "MyNetwork"
-                connecting:
-                  value:
-                    status: connecting
                 auth_fail:
                   value:
                     status: auth_fail
@@ -645,14 +786,13 @@ paths:
                     reason: 201
                     message: "Network not found"
 
-  # Captive portal redirect endpoints (CONFIG_WIFI_AP only)
   /generate_204:
     get:
       summary: Android captive portal detection
       tags: [WiFi AP only]
       responses:
         "302":
-          description: Redirects to config page
+          $ref: "#/components/responses/CaptiveRedirect"
 
   /fwlink:
     get:
@@ -660,7 +800,7 @@ paths:
       tags: [WiFi AP only]
       responses:
         "302":
-          description: Redirects to config page
+          $ref: "#/components/responses/CaptiveRedirect"
 
   /hotspot-detect.html:
     get:
@@ -668,7 +808,23 @@ paths:
       tags: [WiFi AP only]
       responses:
         "302":
-          description: Redirects to config page
+          $ref: "#/components/responses/CaptiveRedirect"
+
+  /connecttest.txt:
+    get:
+      summary: Windows captive portal detection
+      tags: [WiFi AP only]
+      responses:
+        "302":
+          $ref: "#/components/responses/CaptiveRedirect"
+
+  /redirect:
+    get:
+      summary: Captive portal detection
+      tags: [WiFi AP only]
+      responses:
+        "302":
+          $ref: "#/components/responses/CaptiveRedirect"
 
 components:
   securitySchemes:
@@ -676,15 +832,151 @@ components:
       type: http
       scheme: basic
       description: |
-        Username: "admin", Password: device_passphrase from config.yml.
-        Rate limited: 5 failures triggers 5-minute lockout.
+        Username "admin", password the device passphrase (device.device_passphrase in config.yml,
+        or the value saved by POST /api/passphrase). Digest auth with the same credentials is also
+        accepted. Five wrong Authorization headers lock passphrase auth out for 5 minutes.
     sessionAuth:
       type: apiKey
       in: header
       name: X-Session-Token
       description: |
-        Session token from POST /api/login. Expires after 15 min idle or
-        2 h absolute; invalidated by reboot, passphrase change, or reset-prefs.
+        Session token from POST /api/login. Accepted during a lockout. Expires after 15 minutes
+        without use or 2 hours after login, and on reboot, passphrase change or reset-prefs.
+
+  parameters:
+    start:
+      in: query
+      name: start
+      required: false
+      schema: { type: string, enum: ["0"] }
+      description: >
+        start=0 stages the pull without beginning it, so a filesystem and a firmware update can be
+        queued and then run as one session with a single reboot. The next request without this
+        flag arms everything staged.
+    persist:
+      in: query
+      name: persist
+      required: false
+      schema: { type: string, enum: ["0"] }
+      description: persist=0 uses the URL for this session only, without writing it to NVS.
+    reboot:
+      in: query
+      name: reboot
+      required: false
+      schema: { type: string, enum: ["0", "false", "no"] }
+      description: >
+        Any of these values defers the restart, so a client can push the filesystem and the
+        firmware and reboot once at the end. Default is to reboot.
+
+  responses:
+    Ok:
+      description: Saved
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/StatusResponse"
+          example:
+            status: ok
+    BadRequest:
+      description: Empty body or invalid JSON
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            status: error
+            message: "Invalid JSON"
+    Unauthorized:
+      description: Missing or wrong credentials; a WWW-Authenticate challenge is returned
+    RequestTimeout:
+      description: The body took longer than 5 seconds to arrive; retry
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            status: error
+            message: "Request body took too long, retry"
+    Conflict:
+      description: Another request holds the shared body buffer; retry
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            status: error
+            message: "Another request is in progress, retry"
+    PayloadTooLarge:
+      description: Body larger than 2047 bytes
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            status: error
+            message: "Request body too large"
+    UnsupportedMediaType:
+      description: Content-Type not accepted by this endpoint, or a multipart/* Content-Type header
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            status: error
+            message: "Unsupported Content-Type for this endpoint"
+    TooManyRequests:
+      description: Locked out after 5 wrong passphrase attempts; lasts 5 minutes
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            status: error
+            message: "Too many failed attempts. Try again later."
+    NoPassphrase:
+      description: The device has no passphrase configured
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            status: error
+            message: "No device_passphrase configured"
+    PushOk:
+      description: Image written
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/PushResponse"
+          example:
+            status: ok
+            target: firmware
+            bytes: 1351024
+            message: rebooting
+    PushFailed:
+      description: >
+        No image received, OTA window closed, missing Content-Length, bad magic byte, or a flash
+        write error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/PushResponse"
+          example:
+            status: error
+            target: firmware
+            message: "OTA not enabled"
+    PushBusy:
+      description: Another push is in progress
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/PushResponse"
+          example:
+            status: error
+            target: firmware
+            message: "another push in progress"
+    CaptiveRedirect:
+      description: Redirects to the setup page (the AP address while the setup AP is up, else "/")
 
   schemas:
     StatusResponse:
@@ -693,6 +985,15 @@ components:
         status:
           type: string
           example: ok
+
+    MessageResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        message:
+          type: string
 
     ErrorResponse:
       type: object
@@ -703,3 +1004,18 @@ components:
         message:
           type: string
           example: "Invalid JSON"
+
+    PushResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, error]
+        target:
+          type: string
+          enum: [firmware, filesystem]
+        bytes:
+          type: integer
+        message:
+          type: string
+          description: '"rebooting" or "staged, awaiting reboot" on success, the error otherwise'
