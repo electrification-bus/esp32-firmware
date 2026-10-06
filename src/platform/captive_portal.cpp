@@ -655,7 +655,7 @@ static bool checkAuthOrReply(AsyncWebServerRequest *request) {
         return false;
     }
     if (!request->authenticate("admin", device_passphrase)) {
-        // Only penalise wrong credentials, not an unauthenticated first attempt.
+        // Only penalize wrong credentials, not an unauthenticated first attempt.
         // fetch() calls from the portal arrive without an Authorization header;
         // counting those as failures would exhaust the limit on legitimate use.
         if (request->hasHeader("Authorization")) {

@@ -43,7 +43,7 @@ device:
   device_passphrase: a-passphrase-of-your-own
 ```
 
-Only non-empty fields override; anything you leave blank falls back to the value `generate` derived from `device.yml`. Exactly five sections are accepted — `device:`, `wifi:`, `mqtt:`, `log:`, `mdns:`. `nodes:` and `device.environment` decide what firmware gets *generated* and remain `device.yml`'s job alone, so every developer builds the same structure and only the connectivity/identity values differ. An unrecognised key is a hard error at `generate` time rather than a silently-ignored line.
+Only non-empty fields override; anything you leave blank falls back to the value `generate` derived from `device.yml`. Exactly five sections are accepted — `device:`, `wifi:`, `mqtt:`, `log:`, `mdns:`. `nodes:` and `device.environment` decide what firmware gets *generated* and remain `device.yml`'s job alone, so every developer builds the same structure and only the connectivity/identity values differ. An unrecognized key is a hard error at `generate` time rather than a silently-ignored line.
 
 ### Variables you'll commonly set
 

@@ -25,7 +25,7 @@ Outstanding: extracting the charging policy into `control/charge_manager`. No lo
 | `spi/atm90e32_energy_meter` | 365 |
 | **`ble/serial_bms`** | **923** |
 
-`ble/serial_bms` is 2.5× the next largest, and a `grep` for time-of-day or threshold logic across every component in `lib/` returns exactly one file — the same one. So the recommendation here is deliberately **not** a sweeping reorganisation of `lib/`. It is: fix the one outlier, and add the missing piece that caused it.
+`ble/serial_bms` is 2.5× the next largest, and a `grep` for time-of-day or threshold logic across every component in `lib/` returns exactly one file — the same one. So the recommendation here is deliberately **not** a sweeping reorganization of `lib/`. It is: fix the one outlier, and add the missing piece that caused it.
 
 ## Why Modbus is fine and BLE is not
 
@@ -123,7 +123,7 @@ Removed: `charge_manager()`, `isPeakTime()`, `_peak_state_known`, `_last_peak_st
 `deliver_local_set()` removes it by letting any component address `<node>/<property>` through the same settable table MQTT uses. It was cherry-picked onto this branch independently of the scheduler — none of it is scheduling-specific. So:
 
 1. ~~Land the scheduler branch~~ — done, as an isolated `mqtt_client` change.
-2. Add `lib/blecore/` and port `serial_bms` onto `BLEDeviceEntity` — **no behaviour change**, purely a move. Verify against real hardware here.
+2. Add `lib/blecore/` and port `serial_bms` onto `BLEDeviceEntity` — **no behavior change**, purely a move. Verify against real hardware here.
 3. Add `ble/gatt_device` — proves the transport layer is device-agnostic.
 4. Extract `control/charge_manager`, wiring SOC in and the relay out via `deliver_local_set()`.
 
@@ -161,7 +161,7 @@ and its device.yml entry carries the list:
 
 The synthesized properties are injected into the component's node *before* the existing emission loop, so `addProperty()`, `data/homie.yml` and the missing-unit warning all work on them unchanged — the feature is an input to the existing machinery, not a parallel path through it. The same list also emits a static `ModbusRegisterDesc[]` into `src/homie.cpp`, referenced from the constructor via `{registers}` / `{registers_count}`, so the map costs no runtime parsing and no heap.
 
-**Scoped to Modbus registers deliberately.** The opt-in key names `registers` specifically rather than something generic, and one real consumer is enough to prove the shape before committing to it for scheduler rules or controller zones. Generalising is a rename and a second synthesizer, not a redesign.
+**Scoped to Modbus registers deliberately.** The opt-in key names `registers` specifically rather than something generic, and one real consumer is enough to prove the shape before committing to it for scheduler rules or controller zones. Generalizing is a rename and a second synthesizer, not a redesign.
 
 ### Why this is not "move sht20 to examples/"
 
@@ -202,7 +202,7 @@ Every bus in `lib/` now has the same shape, and the class names say which layer 
 
 ## Non-goals
 
-- **Reorganising the rest of `lib/`.** The measurements above say it does not need it.
+- **Reorganizing the rest of `lib/`.** The measurements above say it does not need it.
 - **A generic "policy framework".** `control/charge_manager` and `control/well_pump` share an abstract shape (gated, duty-cycled output). Extracting a common base should wait until both exist and work — two callers is evidence, one is speculation.
 - **Renaming `spi/atm90e32_energy_meter`** at 365 lines. It is larger than the others but it is all protocol and calibration, with no policy in it.
 

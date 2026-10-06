@@ -1,5 +1,5 @@
 #pragma once
-// JSON (de)serialisation for the Homie tree, kept OUT of Property.h / Node.h.
+// JSON (de)serialization for the Homie tree, kept OUT of Property.h / Node.h.
 //
 // These were member functions, which forced <ArduinoJson.h> into those headers — and
 // Property.h reaches driver translation units (any driver implementing
@@ -8,7 +8,7 @@
 // needed only by the $description publisher and the controller's discovery path.
 //
 // They are free functions rather than members precisely so the declaration can live here.
-// Nothing needed private access: serialisation reads public accessors and from_dict()
+// Nothing needed private access: serialization reads public accessors and from_dict()
 // writes through public setters, so no friendship is involved.
 //
 // Include this only where JSON is actually handled — src/homie/Device.cpp, the

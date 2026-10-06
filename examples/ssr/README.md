@@ -19,17 +19,17 @@ That is the test for whether something earns its own driver. [`examples/bms/`](.
 
 ## Polarity: get `active_low` right first
 
-Most opto-isolated SSR and relay boards are **active-low** — the channel energises when its control pin is pulled to GND. Some are active-high. Check yours before wiring, because this is the one setting you cannot correct in software after the fact:
+Most opto-isolated SSR and relay boards are **active-low** — the channel energizes when its control pin is pulled to GND. Some are active-high. Check yours before wiring, because this is the one setting you cannot correct in software after the fact:
 
-**An ESP32 held in reset floats its GPIOs.** On an active-low board with `active_low: false` configured, a reset, a brownout, or the moment between power-up and `setup()` will have the relay energised. If the polarity is right, the same conditions leave it off.
+**An ESP32 held in reset floats its GPIOs.** On an active-low board with `active_low: false` configured, a reset, a brownout, or the moment between power-up and `setup()` will have the relay energized. If the polarity is right, the same conditions leave it off.
 
-`state` is always **logical** — true means "the load is energised" — whatever polarity the board uses. `active_low` inverts the pin, never the property. `setup()` also drives the pin to the correct level *before* calling `pinMode(OUTPUT)`, so a pull-up on the board cannot glitch the load on during initialisation.
+`state` is always **logical** — true means "the load is energized" — whatever polarity the board uses. `active_low` inverts the pin, never the property. `setup()` also drives the pin to the correct level *before* calling `pinMode(OUTPUT)`, so a pull-up on the board cannot glitch the load on during initialization.
 
 ## `initial_state: false`, essentially always
 
-Booting a mains load on is rarely intended, and a reboot loop (watchdog, brownout, flaky supply) turns "on at boot" into repeated switching of a motor or heater. Set `initial_state: true` only when the safe state genuinely *is* energised — a normally-closed valve that must stay open, for instance — and say so in a comment.
+Booting a mains load on is rarely intended, and a reboot loop (watchdog, brownout, flaky supply) turns "on at boot" into repeated switching of a motor or heater. Set `initial_state: true` only when the safe state genuinely *is* energized — a normally-closed valve that must stay open, for instance — and say so in a comment.
 
-The component does not restore the last state across a reboot. That would need NVS, and "resume whatever it was doing before the crash" is usually the wrong behaviour for a load.
+The component does not restore the last state across a reboot. That would need NVS, and "resume whatever it was doing before the crash" is usually the wrong behavior for a load.
 
 ## Sizing
 
@@ -54,7 +54,7 @@ L ──▶ safety interlock ──▶ [SSR] ──▶ contactor coil ──▶ 
        thermostat, …)                     └──▶ contacts ──▶ LOAD
 ```
 
-A dead or rebooting ESP32 then de-energises the SSR and the load stays off. The firmware only ever *removes* permission; it never grants it against the interlock.
+A dead or rebooting ESP32 then de-energizes the SSR and the load stays off. The firmware only ever *removes* permission; it never grants it against the interlock.
 
 ## Safety
 

@@ -66,7 +66,7 @@ public:
 
     // --- lifecycle ---
 
-    // Initialise NimBLE (once per firmware, whichever link calls first), load any cached
+    // Initialize NimBLE (once per firmware, whichever link calls first), load any cached
     // address from NVS, and attempt the first connection. Returns false if NimBLE could
     // not start; a failed *connection* is not an error — loop() retries.
     bool begin(const char* local_device_name);

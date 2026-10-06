@@ -56,7 +56,7 @@ Twelve GPIOs are broken out, and Ethernet has already taken most of the rest ([e
 | 34 | **input-only** | ✅ inputs / ADC only |
 | 36 | **input-only** | ✅ inputs / ADC only — SDK default Modbus RX |
 
-Everything not listed is either SPI flash (6-11) or consumed by the Ethernet RMII/SMI interface (0, 18, 19, 22, 23, 25, 26, 27). That is the thing to internalise about this board: **it looks like an ESP32 but you have about nine usable pins**, two of which cannot drive an output.
+Everything not listed is either SPI flash (6-11) or consumed by the Ethernet RMII/SMI interface (0, 18, 19, 22, 23, 25, 26, 27). That is the thing to internalize about this board: **it looks like an ESP32 but you have about nine usable pins**, two of which cannot drive an output.
 
 **WROVER variants (`esp32-poe-iso-wrover`)**: the PSRAM uses GPIO 16 and 17, so SCL must move. `lib/i2c/bme280.yml` documents the substitution — SDA 13 / SCL **14** instead of SDA 13 / SCL 16.
 

@@ -522,7 +522,7 @@ def write_lean_platformio_ini(env_name: str, used_lib_deps: list,
 # and their device.yml entry carries a `registers:` list, which becomes both the Homie
 # properties and a static descriptor table compiled into src/homie.cpp.
 #
-# Scoped deliberately to Modbus registers for now. The mechanism generalises — the same
+# Scoped deliberately to Modbus registers for now. The mechanism generalizes — the same
 # gap blocks per-rule scheduler properties and per-zone controller properties — but one
 # real consumer is enough to prove the shape before committing to it everywhere.
 
@@ -1666,7 +1666,7 @@ def cmd_push(args) -> None:
 #
 # Two transports, one command:
 #
-#   serial   pio device monitor over USB — the original behaviour.
+#   serial   pio device monitor over USB — the original behavior.
 #   network  pio device monitor --port socket://<host>:<log.tcp_port>, reading the
 #            firmware's serial-over-TCP console (include/platform/log_stream.h). No
 #            extra tooling: pyserial (which pio's monitor uses) speaks socket:// URLs
@@ -1877,7 +1877,7 @@ def resolve_host(cfg: dict, env_name: str, key: str, explicit: str = None,
         # this host has working mDNS. Resolve it *now* rather than handing back a name
         # that would burn the whole --monitor-wait timing out: on a first run there is
         # no cache, and falling straight through to the USB monitor (which is what
-        # populates the cache) is the useful behaviour.
+        # populates the cache) is the useful behavior.
         guess = f"{name}.local"
         try:
             socket.getaddrinfo(guess, None)
@@ -2188,7 +2188,7 @@ def _apply_overlay(config_path: Path) -> None:
     overrides = load_yaml_file(CONFIG_OVERLAY, require_mapping=False) or {}
     if not overrides:
         return
-    # Validate BEFORE merging. An unrecognised key used to be copied in verbatim and then
+    # Validate BEFORE merging. An unrecognized key used to be copied in verbatim and then
     # ignored by the firmware, which reads sections — the overlay looked applied (it was in
     # the generated file) but changed nothing. Fail loudly instead.
     problems = []

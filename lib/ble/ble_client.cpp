@@ -256,7 +256,7 @@ bool BLEClientLink::scanAndConnect() {
     if (match_idx < 0) {
         // Deliberately NOT falling back to "strongest signal": connecting to an arbitrary
         // nearby device and discovering it lacks the service wastes a connection window,
-        // and on a busy site it can repeatedly latch onto a neighbour's hardware.
+        // and on a busy site it can repeatedly latch onto a neighbor's hardware.
         Serial.printf("%s: no device matched service %s%s%s\n", _tag, _service_uuid,
                       _name_filter[0] ? " or name filter " : "", _name_filter);
         return false;

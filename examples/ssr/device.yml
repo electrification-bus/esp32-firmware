@@ -41,13 +41,13 @@ log:
   tcp_port: 23
 
 nodes:
-  # active_low: true suits the common opto-isolated SSR and relay boards, which energise
+  # active_low: true suits the common opto-isolated SSR and relay boards, which energize
   # when the control pin is pulled DOWN. CHECK YOUR BOARD — getting this backwards means
-  # the load sits energised whenever the ESP32 is held in reset, which is the one state
+  # the load sits energized whenever the ESP32 is held in reset, which is the one state
   # you cannot fix in software.
   #
   # initial_state: false — never boot a mains load on. A watchdog reset would otherwise
-  # re-energise it on every reboot loop.
+  # re-energize it on every reboot loop.
   - component: gpio/digital_output
     id: relay1
     config:

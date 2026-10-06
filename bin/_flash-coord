@@ -10,7 +10,7 @@
 #   restart — read the pending file, send the `./ebus-esp32 monitor` command keys to the
 #             original tmux pane, remove the pending file.
 #
-# Multi-board behaviour:
+# Multi-board behavior:
 #   - With PORT explicit: act on that port's breadcrumb only.
 #   - With PORT unset, exactly one live breadcrumb: act on it.
 #   - With PORT unset, multiple live breadcrumbs: ERROR — specify PORT=<port>.

@@ -95,7 +95,7 @@ class Device {
    // wrap a batch of addChildLive/removeChildLive calls in a guard and the
    // consolidated $description is published once when the (outermost) guard goes out
    // of scope. Reentrant via a depth counter; the destructor restores READY even if
-   // the scope exits early. C++ analogue of the python-sdk state_transition() context.
+   // the scope exits early. C++ analog of the python-sdk state_transition() context.
    //
    //   { Device::StateTransition t(&parent);   // parent -> init
    //     parent.addChildLive(&a);              // each child flaps once; parent's

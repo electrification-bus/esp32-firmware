@@ -72,7 +72,7 @@ void                 homie_mqtt_bind(const HomieMqttPort* port);
 const HomieMqttPort* homie_mqtt();      // callers stay null-safe
 ```
 
-`queue_publish` is a **separate slot on purpose.** `Property::publish_queued` goes through `mqtt_queue_publish` because drivers call it from BLE and Modbus tasks, while `publish_value` is main-task direct. Collapsing the two would silently change threading behaviour — the kind of regression that shows up as rare corruption, not a failed build.
+`queue_publish` is a **separate slot on purpose.** `Property::publish_queued` goes through `mqtt_queue_publish` because drivers call it from BLE and Modbus tasks, while `publish_value` is main-task direct. Collapsing the two would silently change threading behavior — the kind of regression that shows up as rare corruption, not a failed build.
 
 `mqtt_qos` and `homie_qos()` move here from `platform/mqtt_client.h:93-94`: they are Homie policy currently stranded in an Arduino header.
 
@@ -103,7 +103,7 @@ Move out of `src/platform/mqtt_client.cpp` (~lines 154–625), verbatim: `subscr
 
 That block is already framework-free — `strcmp`/`strcpy` and function pointers, plus `Serial.printf` diagnostics and exactly one Arduino touch (`mqtt_client.subscribe` in the resubscribe loop). Add `homie_settable_count()` and `homie_settable_topic(int)` so the adapter's connect loop can drive resubscription from outside.
 
-This is the highest-leverage single change here: it deletes the MQTT dependency from the driver contract outright. Two invariants must survive it — the state-dependent `Property*` vs name-based overload rule, and the null-initialised callback fields that fixed the `$state` crash.
+This is the highest-leverage single change here: it deletes the MQTT dependency from the driver contract outright. Two invariants must survive it — the state-dependent `Property*` vs name-based overload rule, and the null-initialized callback fields that fixed the `$state` crash.
 
 ## Staging — decouple in place, split last
 
@@ -138,7 +138,7 @@ library.json          # PlatformIO consumer — same tree, no conflict
 test/cpp/             # host tests
 ```
 
-One tree carries `CMakeLists.txt` and `library.json` simultaneously; they do not collide. esp32-sdk consumes it back as a git submodule plus `lib_extra_dirs` during co-development (editable in place), switching to a versioned `lib_deps` git URL once it stabilises. Every `drivers/<bus>/library.json` must stay byte-identical — the `"includeDir": ".."` trick is what makes `#include <modbus/sht20.h>` resolve.
+One tree carries `CMakeLists.txt` and `library.json` simultaneously; they do not collide. esp32-sdk consumes it back as a git submodule plus `lib_extra_dirs` during co-development (editable in place), switching to a versioned `lib_deps` git URL once it stabilizes. Every `drivers/<bus>/library.json` must stay byte-identical — the `"includeDir": ".."` trick is what makes `#include <modbus/sht20.h>` resolve.
 
 ## Risks
 

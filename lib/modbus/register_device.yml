@@ -55,7 +55,7 @@ implementation: homie-esp32-sdk
 # stays in the order you wrote it so it stays diffable against the datasheet.
 #
 # RS485 pins come from the top-level buses.rs485 block — all modbus/* nodes share ONE
-# physical bus, and only the first one initialised configures the UART.
+# physical bus, and only the first one initialized configures the UART.
 # Reference pins by board: doc/GPIOPins.md
 #
 # WHEN TO WRITE A REAL DRIVER INSTEAD: values spanning two registers, non-linear
