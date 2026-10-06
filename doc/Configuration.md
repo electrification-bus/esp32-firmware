@@ -76,7 +76,7 @@ Earlier versions generated `data/config.yml` as one flat block (`wifi_ssid:`, `m
 
 ### Cleartext credentials caveat
 
-Right now the firmware dumps the full parsed config to the serial console at boot, including `mqtt.password` and `device.device_passphrase` in cleartext. Anyone with USB serial access (or remote serial via a TCP-to-serial bridge) can read them. Treat them as low-secrecy until that log line is redacted — there's a tactical one-line fix queued up plus a larger design note in [proposals/RuntimeConfigViaNVS.md](proposals/RuntimeConfigViaNVS.md) covering NVS-backed runtime provisioning.
+The boot-time config dump replaces every value whose key contains `password` or `passphrase` with `***`. The values themselves are still written in cleartext to `data/config.yml` and flashed in the filesystem image, so anyone who can read the board's flash over USB can recover them. Values saved through the web UI live in NVS instead; [proposals/RuntimeConfigViaNVS.md](proposals/RuntimeConfigViaNVS.md) covers keeping secrets out of the image.
 
 ## 2. PlatformIO build/upload — `platformio_local.ini`
 
