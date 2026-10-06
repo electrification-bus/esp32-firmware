@@ -20,7 +20,7 @@ The LLM never touches your firmware directly — it goes through MQTT, exactly l
 
 ```sh
 # Clone alongside esp32-sdk (a sibling directory is convenient but not required)
-cd ~/projects/eBus/repo                                 # or wherever your clones live
+cd <your-workspace>                                     # wherever your clones live
 git clone https://github.com/Tieske/homie5-mcp-server.git
 
 cd homie5-mcp-server
@@ -47,10 +47,10 @@ You should see log output as it subscribes and starts caching devices. `Ctrl-C` 
 | `HOMIE_BROKER_URL` | `mqtt://<user>:<pass>@<host>:<port>` | Same broker your firmware uses — copy from `config-overlay.yml`, or from `device.yml` |
 | `HOMIE_DOMAIN` | **`ebus`** | This project's Homie topic prefix is `ebus`, not the default `homie`. The MCP server defaults to `homie` and won't find anything if you forget this. |
 
-If your `mqtt:` section has `host: mqtt.yapjack.net`, `username: dcj`, `password: secret`, `port: 1883`, your broker URL is:
+If your `mqtt:` section has `host: broker.example.com`, `username: user`, `password: pass`, `port: 1883`, your broker URL is:
 
 ```
-mqtt://dcj:secret@mqtt.yapjack.net:1883
+mqtt://user:pass@broker.example.com:1883
 ```
 
 (For brokers with no auth, omit the `user:pass@` chunk.)
@@ -63,9 +63,9 @@ The simplest path — preconfigured broker, no per-session reconnect:
 
 ```sh
 claude mcp add homie-mcp -- \
-    env HOMIE_BROKER_URL='mqtt://dcj:secret@mqtt.yapjack.net:1883' \
+    env HOMIE_BROKER_URL='mqtt://user:pass@broker.example.com:1883' \
         HOMIE_DOMAIN=ebus \
-        node /Users/dcj/projects/eBus/repo/homie5-mcp-server/build/index.js
+        node /path/to/homie5-mcp-server/build/index.js
 ```
 
 Replace the URL/path with your own. After running this, Claude Code reloads its MCP server list and you'll see `homie-mcp` available. The Homie tools (`mcp__homie-mcp__homie_get_devices` etc.) become callable from any session in any project — the server doesn't have to live inside this repo.
@@ -75,7 +75,7 @@ Interactive mode (LLM chooses broker via `homie_connect`):
 ```sh
 claude mcp add homie-mcp -- \
     env HOMIE_DOMAIN=ebus \
-        node /Users/dcj/projects/eBus/repo/homie5-mcp-server/build/index.js
+        node /path/to/homie5-mcp-server/build/index.js
 ```
 
 In this mode the LLM will need to call `homie_connect` with a broker URL before any other tool will work.
