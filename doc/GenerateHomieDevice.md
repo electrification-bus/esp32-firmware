@@ -385,6 +385,6 @@ Available boards (defined in `platformio/platformio.ini`):
 | `wesp32-poe` | Silicognition wESP32 | 4 MB | no | `wesp32-poe-arduino2` |
 | `seeed_xiao_esp32s3` | Seeed XIAO ESP32S3 | 8 MB | yes (octal) | none |
 
-The unsuffixed envs build on arduino-esp32 3.x; each `-arduino2` twin builds the same board on 2.0.x. The `wesp32-poe` envs set neither `board_build.partitions` nor `board_build.filesystem`, so they use the framework's default partition table, whose 1.25 MB app slots are smaller than the 3.x firmware built from the default `device.yml` (`wesp32-poe` fails its size check; the 2.0.x firmware fits), and they build a SPIFFS filesystem image, which the firmware's LittleFS mount cannot read. Adding `board_build.partitions = partitions/partitions_ota.csv` and `board_build.filesystem = littlefs`, as `esp32-poe-iso` has, lets `wesp32-poe` build both images.
+The unsuffixed envs build on arduino-esp32 3.x; each `-arduino2` twin builds the same board on 2.0.x. The `wesp32-poe` envs use the same `partitions/partitions_ota.csv` partition table and LittleFS filesystem as `esp32-poe-iso`.
 
 List all boards: `./ebus-esp32 envs`
