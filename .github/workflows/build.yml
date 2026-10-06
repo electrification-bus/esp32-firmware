@@ -29,9 +29,13 @@ jobs:
       - name: Cache PlatformIO packages
         uses: actions/cache@v4
         with:
-          path: ~/.platformio
-          key: pio-${{ matrix.env }}-${{ hashFiles('platformio/platformio.ini', 'lib/*/library.json', 'lib/*/*.yml') }}
-          restore-keys: pio-${{ matrix.env }}-
+          # penv/ is a virtualenv bound to this runner's Python; a restored copy on a
+          # newer runner image points at an interpreter that is gone.
+          path: |
+            ~/.platformio
+            !~/.platformio/penv
+          key: pio-v2-${{ matrix.env }}-${{ hashFiles('platformio/platformio.ini', 'lib/*/library.json', 'lib/*/*.yml') }}
+          restore-keys: pio-v2-${{ matrix.env }}-
 
       - name: Install PlatformIO and PyYAML
         run: pip install platformio pyyaml

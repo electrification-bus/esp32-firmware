@@ -87,13 +87,26 @@ MONITOR_HOSTS  = BUILD_DIR / "monitor-hosts.json"  # learned Device ID -> last-k
 
 # ── pio helper ─────────────────────────────────────────────────────────────────
 
+def _interpreter_present(script: Path) -> bool:
+    """False when a script's #! interpreter is missing, e.g. a PlatformIO penv copied
+    from another machine; running it would fail with FileNotFoundError."""
+    try:
+        with open(script, "rb") as f:
+            first = f.readline(256)
+    except OSError:
+        return False
+    if not first.startswith(b"#!"):
+        return True
+    parts = first[2:].strip().split()
+    return not parts or Path(parts[0].decode(errors="replace")).exists()
+
 def find_pio() -> str:
     candidates = [
         Path.home() / ".platformio/penv/Scripts/pio.exe",  # Windows
         Path.home() / ".platformio/penv/bin/pio",           # Unix/Mac
     ]
     for p in candidates:
-        if p.exists():
+        if p.exists() and _interpreter_present(p):
             return str(p)
     if shutil.which("pio"):
         return "pio"
