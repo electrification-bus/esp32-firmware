@@ -4,14 +4,14 @@ This project uses **two overlay files** so that each developer (or each deployed
 
 | What it controls | Real file (gitignored) | Tracked template | Used by |
 |---|---|---|---|
-| Firmware runtime config (MQTT, WiFi, Homie, device id) | `config-overlay.yml` (repo root) | *none — create it only if you need it* | `./ebus-esp32 generate` merges it into the generated `data/config.yml` (built from `device.yml`), then it's baked into the LittleFS image alongside firmware |
+| Firmware runtime config (MQTT, WiFi, Homie, device id) | `config-overlay.yml` (repo root) | *none; create it before the first `generate`, which needs `device.device_passphrase` from it* | `./ebus-esp32 generate` merges it into the generated `data/config.yml` (built from `device.yml`), then it's baked into the LittleFS image alongside firmware |
 | PlatformIO build / upload settings | `platformio_local.ini` (repo root) | `platformio_local.ini.example` | `pio` reads automatically via `extra_configs` in `platformio/platformio.ini` |
 
 ## 1. Firmware config — `config-overlay.yml`
 
 This is what the firmware reads at boot to learn its MQTT broker, WiFi credentials, device id, Homie role, OTA passphrase, etc. `data/config.yml` is a **generated, gitignored** file: `./ebus-esp32 generate` builds it from `device.yml` and then merges your personal overlay on top. It gets baked into the **LittleFS partition**, so a config change reaches the device only when the filesystem is re-uploaded. `./ebus-esp32 run` and `./ebus-esp32 push` both do that as a matter of course — they upload firmware and filesystem as separate steps — so an ordinary `run` is all a config change needs. (`push --fs-only` exists to skip the firmware half when that's all you want.)
 
-There is deliberately **no template and no init step**: the overlay either exists and is applied, or is absent and ignored.
+There is deliberately **no template and no init step**. Create the overlay before the first `generate`: the tracked `device.yml` leaves `device.device_passphrase` empty, and `generate` refuses an empty or `changeme` passphrase.
 
 ### Flow
 
@@ -40,7 +40,7 @@ mqtt:
   username: me
   password: s3cret
 device:
-  device_passphrase: something-better-than-changeme
+  device_passphrase: a-passphrase-of-your-own
 ```
 
 Only non-empty fields override; anything you leave blank falls back to the value `generate` derived from `device.yml`. Exactly five sections are accepted — `device:`, `wifi:`, `mqtt:`, `log:`, `mdns:`. `nodes:` and `device.environment` decide what firmware gets *generated* and remain `device.yml`'s job alone, so every developer builds the same structure and only the connectivity/identity values differ. An unrecognised key is a hard error at `generate` time rather than a silently-ignored line.
@@ -59,7 +59,7 @@ Only non-empty fields override; anything you leave blank falls back to the value
 | `mdns.enabled` | *(legacy)* `true`/`false` — sets **both** `mdns.discovery` and `mdns.advertise` at once. Prefer the two granular keys above. Omit the whole `mdns:` section to keep the firmware's build-conditional default (see `device.yml`) |
 | `device.id` | A **template** resolved on-device to a Homie-legal id (`${chip_id}` full eFuse MAC, `${chip_id_short}` last 3 bytes, `${name}`). Default `${chip_id}`. Device-ids are **opaque** — consumers identify a device by `$type` + `info/serial-number`, never by parsing the id. A fixed literal (no `${chip_id}`) collides across units. See [GenerateHomieDevice.md](GenerateHomieDevice.md#the-id-template) |
 | `device.id_prefix` | Optional deployment-scoped segment prepended to the resolved id with a hyphen (`lab1` + `ebus-${chip_id}` → `lab1-ebus-b0b21c90f570`). Sanitized independently, so `Lab 1` also yields `lab1`. Empty = no prefix. Adds **no** per-unit uniqueness — every board on a site shares it, so keep a `${chip_id}` in `device.id`. This is the key to set per-site from an overlay rather than editing the tracked template |
-| `device.device_passphrase` | Required for OTA and admin REST endpoints. Change from `changeme` for any non-trivial use |
+| `device.device_passphrase` | Password for the admin and OTA endpoints (see [Authentication.md](Authentication.md)). `generate` refuses to run when it is empty or `changeme` after the overlay is merged, so set it here rather than in the tracked `device.yml` |
 
 ### Legacy flat keys
 

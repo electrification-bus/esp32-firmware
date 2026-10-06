@@ -73,10 +73,12 @@ terminal — see [`GettingStartedCLI.md`](GettingStartedCLI.md).)
 
 This project ships one task in [`.vscode/tasks.json`](../.vscode/tasks.json). It wraps the LSP helper for regenerating the compilation database.
 
-Before you build for the first time, optionally create your per-developer config overlay from a terminal (this is a manual step, not a VSCode task). There is no template to copy — write `config-overlay.yml` in the repo root with only the keys you want to override, using `device.yml`'s own sections and key names:
+Before you build for the first time, create your per-developer config overlay from a terminal (this is a manual step, not a VSCode task). There is no template to copy: write `config-overlay.yml` in the repo root with only the keys you want to override, using `device.yml`'s own sections and key names. `device.device_passphrase` is required, because `generate` refuses an empty or `changeme` value:
 
 ```yaml
 # config-overlay.yml
+device:
+  device_passphrase: a-passphrase-of-your-own
 wifi:
   ssid: my-network
   password: hunter2

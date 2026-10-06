@@ -56,9 +56,9 @@ bin/pio                       Repo-local shim to PlatformIO Core (~/.platformio/
 platformio/platformio.ini                Shared build config (tracked)
 platformio_local.ini.example  Per-developer PIO overrides template (tracked)
 platformio_local.ini          Your local PIO overrides (gitignored, optional)
-config-overlay.yml            Your per-developer config overlay (gitignored, optional).
-                              Create it only to override device.yml values — e.g. real
-                              broker credentials that must not be committed
+config-overlay.yml            Your per-developer config overlay (gitignored). Required:
+                              it holds device.device_passphrase, plus any other values
+                              that must not be committed (e.g. broker credentials)
 LICENSE                       MIT
 ```
 
@@ -83,7 +83,7 @@ Edit `device.yml` (the declarative device definition), then drive everything thr
 
 The network console reads the firmware's serial-over-TCP log (`log.tcp_port` in `device.yml`, default 23), so a board installed without a USB cable can still be watched — it replays its ring buffer on connect, so the boot log survives connecting late. `--monitor` also works on `build` and `push`. See [GettingStartedCLI.md](doc/GettingStartedCLI.md#network-console-no-usb-cable).
 
-The generated `src/homie.cpp`, `data/homie.yml`, and `data/config.yml` are gitignored and rebuilt from `device.yml` before every `pio run` (a PlatformIO pre-build hook) — `device.yml` and the `lib/<bus>/*.yml` component definitions are the only tracked source. To keep real credentials out of the tracked `device.yml`, create a gitignored `config-overlay.yml` with just the keys you want to override, written in `device.yml`'s own sections and key names — see [GettingStartedCLI.md](doc/GettingStartedCLI.md). On Windows use `ebus-esp32.bat` (or `python ebus-esp32`).
+The generated `src/homie.cpp`, `data/homie.yml`, and `data/config.yml` are gitignored and rebuilt from `device.yml` before every `pio run` (a PlatformIO pre-build hook) — `device.yml` and the `lib/<bus>/*.yml` component definitions are the only tracked source. Before the first `generate`, create a gitignored `config-overlay.yml` that sets `device.device_passphrase` (`generate` refuses an empty or `changeme` passphrase) plus any other values that must stay out of the tracked `device.yml`, such as broker credentials, written in `device.yml`'s own sections and key names — see [GettingStartedCLI.md](doc/GettingStartedCLI.md). On Windows use `ebus-esp32.bat` (or `python ebus-esp32`).
 
 VSCode users: run `./ebus-esp32` in the integrated terminal. The PlatformIO extension does not adopt this folder as a project, because the tracked config is `platformio/platformio.ini` rather than a root `platformio.ini`; [GettingStartedVSCode.md](doc/GettingStartedVSCode.md) explains why and how to opt back in.
 

@@ -7,7 +7,7 @@ This is the command-line counterpart to [`GettingStartedVSCode.md`](GettingStart
 - A small **`./bin/pio` shim** that points at PlatformIO Core installed under `~/.platformio/penv/`. No `$PATH` edits required — if the VSCode PlatformIO extension is installed, the shim already works.
 - **`./ebus-esp32`** — the project CLI (a Python script with a shebang; run it directly on Unix/Mac, or `ebus-esp32.bat` / `python ebus-esp32` on Windows). All generate, build, flash, and monitor commands go through it.
 - **`device.yml`** — the declarative device definition and the source of truth. `./ebus-esp32 generate` (run automatically before every build by a PlatformIO pre-build hook) turns it into `src/homie.cpp`, `data/homie.yml`, and `data/config.yml`. Those three are **gitignored** — regenerated, never committed.
-- A **per-developer config overlay** at `config-overlay.yml` (gitignored, never committed). There is no template to copy — create it only if you need it. It is written in `device.yml`'s own shape (the same `device:`/`wifi:`/`mqtt:`/`log:`/`mdns:` sections and key names), and its non-empty fields are merged into the generated `data/config.yml` during `generate`, so your real broker and credentials never land in `device.yml`.
+- A **per-developer config overlay** at `config-overlay.yml` (gitignored, never committed). There is no template to copy. You need one before the first build, because `generate` refuses an empty or `changeme` `device.device_passphrase` and the tracked `device.yml` leaves it empty. It is written in `device.yml`'s own shape (the same `device:`/`wifi:`/`mqtt:`/`log:`/`mdns:` sections and key names), and its non-empty fields are merged into the generated `data/config.yml` during `generate`, so your real broker and credentials never land in `device.yml`.
 
 ## Prerequisites
 
@@ -21,17 +21,20 @@ This is the command-line counterpart to [`GettingStartedVSCode.md`](GettingStart
 git clone <repo-url>
 cd esp32-sdk
 
-# Optional: create a personal config overlay with only the keys you want to
-# override. It uses device.yml's own sections and key names, so copy the block
-# you care about out of device.yml and change the values:
+# Create a personal config overlay with only the keys you want to override.
+# It uses device.yml's own sections and key names, so copy the block you care
+# about out of device.yml and change the values. device_passphrase is required:
+# generate refuses an empty or "changeme" value.
 #
+#   device:
+#     device_passphrase: a-passphrase-of-your-own
 #   wifi:
 #     ssid: my-network
 #     password: hunter2
 #   mqtt:
 #     host: broker.example.com
 #
-# There is no template to copy — create the file only if you need it.
+# There is no template to copy.
 $EDITOR config-overlay.yml
 
 # Sanity-check the toolchain and hardware

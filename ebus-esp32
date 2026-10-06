@@ -646,6 +646,7 @@ def cmd_generate(args) -> None:
               f"to device.environment (a PlatformIO env name; list them with "
               f"'./ebus-esp32 envs').", file=sys.stderr)
         sys.exit(1)
+    _require_passphrase(cfg, device_yml)
 
     includes          = []
     decls             = []   # entity object declarations
@@ -943,7 +944,7 @@ def cmd_generate(args) -> None:
             "model":             device.get("model")             or "",
             "serial_number":     device.get("serial_number")     or "",
             "homie_role":        device.get("homie_role")        or "device",
-            "device_passphrase": device.get("device_passphrase") or "changeme",
+            "device_passphrase": device.get("device_passphrase") or "",
         },
         "wifi": {
             "ssid":     wifi.get("ssid")     or "",
@@ -1411,17 +1412,7 @@ def _pull_watch(host: str, passphrase: str, timeout: int) -> int:
     return 1
 
 def _ota_passphrase(cfg: dict, args) -> str:
-    # Same precedence the firmware sees: config-overlay.yml's device.device_passphrase is
-    # merged over device.yml's by _apply_overlay, so the CLI must authenticate with it too.
-    overlay = {}
-    if CONFIG_OVERLAY.exists():
-        overlay = load_yaml_file(CONFIG_OVERLAY, require_mapping=False) or {}
-    overlay_device = overlay.get("device") if isinstance(overlay, dict) else None
-    if not isinstance(overlay_device, dict):
-        overlay_device = {}
-    passphrase = getattr(args, "passphrase", None) or \
-                 overlay_device.get("device_passphrase") or \
-                 (cfg.get("device") or {}).get("device_passphrase") or ""
+    passphrase = getattr(args, "passphrase", None) or _configured_passphrase(cfg)
     if not passphrase:
         print("ERROR: no device_passphrase in config-overlay.yml or device.yml "
               "(and no --passphrase given).\n"
@@ -2159,6 +2150,36 @@ def _deep_merge(base: dict, overrides: dict) -> int:
             applied += 1
     return applied
 
+def _configured_passphrase(cfg: dict) -> str:
+    """device.device_passphrase as the firmware will see it: config-overlay.yml's value
+    when non-empty (as _apply_overlay merges it), else device.yml's, else ""."""
+    overlay = {}
+    if CONFIG_OVERLAY.exists():
+        overlay = load_yaml_file(CONFIG_OVERLAY, require_mapping=False) or {}
+    overlay_device = overlay.get("device") if isinstance(overlay, dict) else None
+    if not isinstance(overlay_device, dict):
+        overlay_device = {}
+    device = cfg.get("device") if isinstance(cfg.get("device"), dict) else {}
+    value = overlay_device.get("device_passphrase")
+    if value is None or value == "":
+        value = device.get("device_passphrase")
+    return "" if value is None else str(value)
+
+def _require_passphrase(cfg: dict, device_yml: Path) -> None:
+    """Refuse to generate firmware whose admin and OTA endpoints would accept an empty
+    or placeholder passphrase."""
+    passphrase = _configured_passphrase(cfg)
+    if passphrase.strip() and passphrase.strip().lower() != "changeme":
+        return
+    what = "empty" if not passphrase.strip() else f"the placeholder '{passphrase}'"
+    print(f"ERROR: device.device_passphrase is {what} (after merging "
+          f"{CONFIG_OVERLAY.name} over {device_yml}).\n"
+          f"       It is the password for the device's admin and OTA endpoints. Set your own\n"
+          f"       in {CONFIG_OVERLAY} (gitignored), for example:\n\n"
+          f"         device:\n"
+          f"           device_passphrase: <a passphrase of your own>\n", file=sys.stderr)
+    sys.exit(1)
+
 def _apply_overlay(config_path: Path) -> None:
     """Merge config-overlay.yml sections into the generated config.yml."""
     if not CONFIG_OVERLAY.exists():
@@ -2198,12 +2219,14 @@ def cmd_config_status(args) -> None:
         print(f"overlay state:   ACTIVE ({CONFIG_OVERLAY.stat().st_size} bytes) — merged into "
               f"data/config.yml on every build")
     else:
-        print("overlay state:   none (optional — device.yml supplies everything)")
+        print("overlay state:   none (put device.device_passphrase in one; generate refuses an empty or 'changeme' value)")
         print()
         print("To add one, create config-overlay.yml with only the keys you want to")
         print(f"override, using device.yml's sections ({', '.join(OVERLAY_SECTIONS)}) and")
         print("key names. e.g.:")
         print()
+        print("  device:")
+        print("    device_passphrase: a-passphrase-of-your-own")
         print("  wifi:")
         print("    ssid: my-network")
         print("    password: hunter2")

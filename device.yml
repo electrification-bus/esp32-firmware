@@ -54,7 +54,7 @@ device:
   model: ESP32-POE-ISO
   serial_number:   # leave empty to use device_id
   homie_role: device  # "device" or "controller"
-  device_passphrase: changeme  # required for OTA and admin REST endpoints
+  device_passphrase: ""  # set it in config-overlay.yml; generate refuses an empty or "changeme" value
 
 wifi:
   ssid: ''

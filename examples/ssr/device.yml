@@ -23,7 +23,7 @@ device:
   model: ESP32-S3
   serial_number:
   homie_role: device
-  device_passphrase: changeme
+  device_passphrase: ""  # set it in config-overlay.yml; generate refuses an empty or "changeme" value
 
 wifi:
   ssid: ''
