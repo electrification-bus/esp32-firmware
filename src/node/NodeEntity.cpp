@@ -56,11 +56,13 @@ const char* NodeEntity::getPropertyTopic(const char* property_id, char* buf, siz
   return buf;
 }
 
-void NodeEntity::entity_settable_callback(Property* property) {
+bool NodeEntity::entity_settable_callback(Property* property) {
     Serial.printf("NodeEntity: entity_settable_callback(Property*) not implemented for node id: %s\n", _homie_node_id);
+    return true;   // no driver behind it: accepted, as for a property with no callback
 }
 
-void NodeEntity::entity_settable_callback(const char* property_id, const char* value) {
+bool NodeEntity::entity_settable_callback(const char* property_id, const char* value) {
     Serial.printf("NodeEntity: entity_settable_callback('%s','%s') not implemented for node id: %s\n",
         property_id, value, _homie_node_id);
+    return true;
 }

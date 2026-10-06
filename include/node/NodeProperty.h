@@ -48,8 +48,9 @@ class NodeProperty {
         // (no std::function, no lambda). Subscribes this property's /set topic and fires
         // handler(ctx, value) when a controller publishes. Call after setup() (needs the
         // built topic). The property should also be declared settable so it appears in
-        // $description; the author's static trampoline recovers `this` from ctx, e.g.:
-        //   static void on_state(void* ctx, const char* v) { ((MyDrv*)ctx)->set(v); }
+        // $description; the author's static trampoline recovers `this` from ctx and returns
+        // whether the value was accepted (see settable_handler_t), e.g.:
+        //   static bool on_state(void* ctx, const char* v) { return ((MyDrv*)ctx)->apply(v); }
         //   _state.on_set(&MyDrv::on_state, this);
         void on_set(settable_handler_t handler, void* ctx);
 

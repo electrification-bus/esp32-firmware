@@ -517,27 +517,36 @@ void SerialBMS::loop() {
 // ---- Settable: charge_control ----
 
 void SerialBMS::set(bool onOff) {
+    setChargeControl(onOff);
+}
+
+// Returns false, publishing nothing, when the MOSFET command does not reach the BMS. The
+// contactor is still switched in the order below either way.
+bool SerialBMS::setChargeControl(bool onOff) {
     Serial.printf("BMS: Charge control SET: %s\n", onOff ? "ON" : "OFF");
+    bool ok;
     if (onOff) {
         //energize the AC contactor before re-enabling the charge MOSFETs
         if (_ssr) _ssr->set(true);
         delay(1500);
-        setMosfetAllOn();
+        ok = setMosfetAllOn();
     } else {
-        setMosfetChgOff();
+        ok = setMosfetChgOff();
         delay(1500);
         //de-energize the AC contactor after disabling the charge MOSFETs
         if (_ssr) _ssr->set(false);
     }
+    if (!ok) return false;
     _np_charge_control.set_value_and_publish(onOff);
+    return true;
 }
 
-void SerialBMS::entity_settable_callback(Property* property) {
+bool SerialBMS::entity_settable_callback(Property* property) {
     Serial.printf("BMS: settable callback(Property*) '%s'='%s'\n", property->id(), property->value());
-    entity_settable_callback(property->id(), property->value());
+    return entity_settable_callback(property->id(), property->value());
 }
 
-void SerialBMS::entity_settable_callback(const char* property_id, const char* value) {
+bool SerialBMS::entity_settable_callback(const char* property_id, const char* value) {
     Serial.printf("BMS: settable callback '%s'='%s'\n", property_id, value);
 
     if (strcmp(property_id, "rescan") == 0) {
@@ -547,63 +556,70 @@ void SerialBMS::entity_settable_callback(const char* property_id, const char* va
             _link.forgetAddress();
             _np_rescan.set_value_and_publish(false);  // reset — it's a trigger, not state
         }
+        return true;
     } else if (strcmp(property_id, "mosfet-charge") == 0) {
         if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0) {
             Serial.println("BMS: mosfet_charge SET true");
-            setMosfetAllOn();
+            if (!setMosfetAllOn()) return false;
             _np_mosfet_charge.set_value_and_publish("true");
             _np_mosfet_discharge.set_value_and_publish("true");
+            return true;
         } else if (strcmp(value, "false") == 0 || strcmp(value, "0") == 0) {
             Serial.println("BMS: mosfet_charge SET false");
-            setMosfetChgOff();
+            if (!setMosfetChgOff()) return false;
             _np_mosfet_charge.set_value_and_publish("false");
-        } else {
-            Serial.printf("BMS: invalid value '%s' for mosfet_charge (expected true/false)\n", value);
+            return true;
         }
+        Serial.printf("BMS: invalid value '%s' for mosfet_charge (expected true/false)\n", value);
+        return false;
     } else if (strcmp(property_id, "charge-control") == 0) {
         if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0 ||
             strcmp(value, "on") == 0 || strcmp(value, "yes") == 0) {
-            set(true);
+            return setChargeControl(true);
         } else if (strcmp(value, "false") == 0 || strcmp(value, "0") == 0 ||
                    strcmp(value, "off") == 0 || strcmp(value, "no") == 0) {
-            set(false);
-        } else {
-            Serial.printf("BMS: invalid value '%s' for charge_control\n", value);
+            return setChargeControl(false);
         }
+        Serial.printf("BMS: invalid value '%s' for charge_control\n", value);
+        return false;
     } else if (strcmp(property_id, "charge-threshold-low") == 0) {
         int threshold = atoi(value);
         if (threshold > 0 && threshold < 100) {
             Serial.printf("BMS: Setting charge low-threshold to %d%%\n", threshold);
             _np_charge_threshold_low.set_value_and_publish(threshold);
-        } else {
-            Serial.printf("BMS: Invalid charge_threshold_low value '%s'\n", value);
+            return true;
         }
+        Serial.printf("BMS: Invalid charge_threshold_low value '%s'\n", value);
+        return false;
     } else if (strcmp(property_id, "charge-threshold-high") == 0) {
         int threshold = atoi(value);
         if (threshold > 0 && threshold < 100) {
             Serial.printf("BMS: Setting charge high-threshold to %d%%\n", threshold);
             _np_charge_threshold_high.set_value_and_publish(threshold);
-        } else {
-            Serial.printf("BMS: Invalid charge_threshold_high value '%s'\n", value);
+            return true;
         }
+        Serial.printf("BMS: Invalid charge_threshold_high value '%s'\n", value);
+        return false;
     } else if (strcmp(property_id, "peak-begin-min") == 0) {
         int minutes = atoi(value);
         if (minutes > 0 && minutes < 1440) {
             Serial.printf("BMS: Setting peak start to %d min (%02d:%02d)\n",
                 minutes, minutes / 60, minutes % 60);
             _np_peak_begin_min.set_value_and_publish(minutes);
-        } else {
-            Serial.printf("BMS: Invalid peak_begin_min value '%s'\n", value);
+            return true;
         }
+        Serial.printf("BMS: Invalid peak_begin_min value '%s'\n", value);
+        return false;
     } else if (strcmp(property_id, "peak-end-min") == 0) {
         int minutes = atoi(value);
         if (minutes > 0 && minutes < 1440) {
             Serial.printf("BMS: Setting peak end to %d min (%02d:%02d)\n",
                 minutes, minutes / 60, minutes % 60);
             _np_peak_end_min.set_value_and_publish(minutes);
-        } else {
-            Serial.printf("BMS: Invalid peak_end_min value '%s'\n", value);
+            return true;
         }
+        Serial.printf("BMS: Invalid peak_end_min value '%s'\n", value);
+        return false;
     } else if (strcmp(property_id, "threshold-discharge-daily") == 0) {
         bool enable = (strcmp(value, "true") == 0);
         Serial.printf("BMS: threshold_discharge_daily -> %s\n", enable ? "true" : "false");
@@ -611,6 +627,8 @@ void SerialBMS::entity_settable_callback(const char* property_id, const char* va
         if (!enable) {
             _in_discharge_phase = false;  // cancel any active discharge wait
         }
+        return true;
     }
+    return false;
 }
 

@@ -71,8 +71,8 @@ class GME12864 : public I2CEntity {
 
         // Both overloads, because which one fires depends on whether MQTT was connected
         // when the properties subscribed (see CLAUDE.md / Property::subscribe()).
-        void entity_settable_callback(Property* property) override;
-        void entity_settable_callback(const char* property_id, const char* value) override;
+        bool entity_settable_callback(Property* property) override;
+        bool entity_settable_callback(const char* property_id, const char* value) override;
 
     private:
         void blankLayouts(NodeProperty* keep);

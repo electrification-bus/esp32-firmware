@@ -22,14 +22,17 @@ class Property;
 
 class NodeEntity; // Forward declaration
 
-typedef void (Property::*property_settable_callback_t)(const char*, const char*);
-typedef void (NodeEntity::*entity_settable_callback_t)(Property*);
+// Validates and stores a /set payload on the Homie property (Property::store_set_payload).
+typedef bool (Property::*property_settable_callback_t)(const char* payload);
+// Driver settable callbacks return true when they accepted (applied) the value and false
+// when they refused it. Only an accepted value is published; a refused one is put back.
+typedef bool (NodeEntity::*entity_settable_callback_t)(Property*);
 
 // Per-settable handler (D3): a plain function pointer + opaque context — the STL-free,
 // heap-free callback idiom (no std::function, no lambda). The author registers a static
 // trampoline and passes `this` as ctx to recover instance state. value is the decoded
-// /set payload.
-typedef void (*settable_handler_t)(void* ctx, const char* value);
+// /set payload. Returns true to accept the value, false to refuse it.
+typedef bool (*settable_handler_t)(void* ctx, const char* value);
 
 // EVERY member needs a default initializer. The dispatch tests each callback pointer for
 // null before using it, so an indeterminate one is not "unused garbage" — it is a branch
@@ -66,6 +69,10 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
 // the same pair an MQTT controller would publish to, rather than holding a pointer to it.
 // A pointer can only be wired from a hand-coded src/homie.cpp (the generator cannot emit
 // cross-node links), which is why examples/bms still carries setContactor().
+//
+// Call it from the main task only: it runs the same dispatch as an inbound /set, which
+// snapshots and restores the property's value without a lock. A true return means the
+// set was delivered, not that the driver accepted it.
 bool deliver_local_set(const char* topic, const char* value);
 void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data);
 

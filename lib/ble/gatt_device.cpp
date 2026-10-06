@@ -126,19 +126,19 @@ bool GattDevice::sendHex(const char* hex) {
     return _link.write(buf, n);
 }
 
-void GattDevice::entity_settable_callback(Property* property) {
-    if (!property) return;
-    entity_settable_callback(property->id(), property->value());
+bool GattDevice::entity_settable_callback(Property* property) {
+    if (!property) return false;
+    return entity_settable_callback(property->id(), property->value());
 }
 
-void GattDevice::entity_settable_callback(const char* property_id, const char* value) {
+bool GattDevice::entity_settable_callback(const char* property_id, const char* value) {
     if (strcmp(property_id, "write") == 0) {
         if (!sendHex(value)) {
             Serial.printf("GATT[%s]: write '%s' failed — bad hex, no write "
                           "characteristic, or not connected\n", getNodeId(), value);
-        } else {
-            Serial.printf("GATT[%s]: TX %s\n", getNodeId(), value);
+            return false;
         }
+        Serial.printf("GATT[%s]: TX %s\n", getNodeId(), value);
     } else if (strcmp(property_id, "rescan") == 0) {
         if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0) {
             _link.forgetAddress();
@@ -147,5 +147,7 @@ void GattDevice::entity_settable_callback(const char* property_id, const char* v
         }
     } else {
         Serial.printf("GATT[%s]: unhandled settable '%s'\n", getNodeId(), property_id);
+        return false;
     }
+    return true;
 }

@@ -39,8 +39,10 @@ class NodeEntity {
         Property* validate(const char* node_id, const char* property_id);
 
 
-        virtual void entity_settable_callback(Property* property);
-        virtual void entity_settable_callback(const char* property_id, const char* value);
+        // Settable callbacks: return true when the value was accepted (applied), false to
+        // refuse it, so it is not published. See entity_settable_callback_t.
+        virtual bool entity_settable_callback(Property* property);
+        virtual bool entity_settable_callback(const char* property_id, const char* value);
         virtual void set(bool onOff) {};
         virtual void set(int val) {};
         virtual void set(float val) {};

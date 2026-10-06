@@ -201,12 +201,12 @@ void GME12864::blankLayouts(NodeProperty* keep) {
     }
 }
 
-void GME12864::entity_settable_callback(Property* property) {
-    if (!property) return;
-    entity_settable_callback(property->id(), property->value());
+bool GME12864::entity_settable_callback(Property* property) {
+    if (!property) return false;
+    return entity_settable_callback(property->id(), property->value());
 }
 
-void GME12864::entity_settable_callback(const char* property_id, const char* value) {
+bool GME12864::entity_settable_callback(const char* property_id, const char* value) {
     for (uint8_t i = 0; i < MAX_LAYOUT_LINES; i++) {
         // The id setup() stored is the one /set dispatch hands us — already Homie-legal,
         // so it equals LAYOUT_IDS[i], but comparing against it cannot drift if it isn't.
@@ -215,12 +215,13 @@ void GME12864::entity_settable_callback(const char* property_id, const char* val
             // Not drawn, so not published: the topic must not claim the screen says it.
             Serial.printf("GME12864[%s]: %s ignored — display not present\n",
                           getNodeId(), property_id);
-            return;
+            return false;
         }
         Serial.printf("GME12864[%s]: %s = '%s'\n", getNodeId(), property_id, value);
         _layouts[i]->set_value_and_publish(value);
         blankLayouts(_layouts[i]);
-        return;
+        return true;
     }
     Serial.printf("GME12864[%s]: unhandled settable '%s'\n", getNodeId(), property_id);
+    return false;
 }

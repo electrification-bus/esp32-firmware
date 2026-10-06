@@ -72,7 +72,30 @@ public:
     bool publish_queued(bool force = false);
 
     void clearValue();   // rrj.4: mark unavailable — retract retained topic, no sentinel
-    void mqtt_settable_callback(const char* topic, const char* payload);
+    // The /set path, in the order dispatch_settable() runs it: store_set_payload()
+    // validates and stores; the driver, if any, accepts or refuses; publish_set() reports
+    // an accepted value, and restore_value() undoes a refused one.
+    bool store_set_payload(const char* payload);
+    void publish_set(const char* payload, bool value_queued);
+    // Count of publishes publish_queued() has handed off. dispatch_settable() compares it
+    // across the driver call to tell whether the driver published the value itself.
+    uint32_t queued_count() const { return __atomic_load_n(&_queued_count, __ATOMIC_RELAXED); }
+
+    // A plain copy of the value state (text and typed fields), with no lock: dispatch
+    // takes and restores it on the main task, so a settable property must be stored only
+    // from the main task, or a restore could overwrite a value another task just stored.
+    // A restore does not recall a publish the driver already queued, so a driver that
+    // refuses must not have set or published the property itself.
+    struct ValueSnapshot {
+        char value[VALUE_MAX + 1];
+        bool has_value;
+        bool bool_value;
+        float float_value;
+        uint64_t unsigned_value;
+        int int_value;
+    };
+    void save_value(ValueSnapshot* s) const;
+    void restore_value(const ValueSnapshot* s);
     void device_new_value_callback(const char* sensor_value);
     void subscribe();
     const char* topic();
@@ -111,6 +134,7 @@ private:
     // While any are in flight the gate never suppresses: the memo describes the last one
     // SENT, and a still-queued different value would land after it.
     volatile uint32_t _in_flight = 0;
+    uint32_t _queued_count = 0;       // see queued_count()
 
     bool _dirty_settable = false;
     bool _has_value = false;   // C3: false until setValue() — guards phantom retained-empty topics
@@ -132,7 +156,6 @@ private:
     void* _async_loop = nullptr;
 
     bool _boolValue;
-    char _stringValue[256];
     float _floatValue;
     uint64_t _unsignedValue;
     int _intValue;

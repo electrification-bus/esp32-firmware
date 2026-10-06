@@ -564,52 +564,76 @@ void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data)
     } while (*data++ != 0);
 }
 
-// Deliver `value` to every settable subscriber registered for `topic`, firing the same
-// three callback paths a remote /set does: the D3 fn-ptr handler, the Property* member
-// callback, and the entity callback (Property* overload when a Homie Property exists,
-// else the name-based one with the property id parsed back out of the topic).
+// Call the driver behind one subscriber: the D3 fn-ptr handler, then the entity callback
+// (Property* overload when a Homie Property exists, else the name-based one with the
+// property id parsed back out of the topic). Returns false if a driver refused the value,
+// true if every driver present accepted it or there is none. A handler that refuses stops
+// the chain: the entity callback is not called.
+static bool call_settable_driver(subscribed_settable_property_t* s, const char* topic,
+                                 const char* value) {
+  bool accepted = true;
+  if (s->handler) {
+      Serial.printf("MQTT: Invoking settable handler for topic '%s'\n", topic);
+      accepted = s->handler(s->handler_ctx, value);
+  }
+  if (accepted && s->entity_callback && s->entity) {
+      if (s->instance) {
+          // Homie Property exists — use Property* overload
+          Serial.printf("MQTT: Invoking entity callback for topic '%s'\n", topic);
+          accepted = (s->entity->*s->entity_callback)(s->instance);
+      } else {
+          // NodeProperty settable — extract property ID from topic, call name-based overload
+          const char* set_slash = strrchr(topic, '/');  // /set
+          if (set_slash && set_slash > topic) {
+              const char* p = set_slash - 1;
+              while (p > topic && *p != '/') p--;
+              if (*p == '/') p++;
+              char pid[32];
+              int plen = set_slash - p;
+              if (plen > 31) plen = 31;
+              strncpy(pid, p, plen);
+              pid[plen] = '\0';
+              Serial.printf("MQTT: Invoking entity callback '%s'='%s'\n", pid, value);
+              accepted = s->entity->entity_settable_callback(pid, value);
+          }
+      }
+  }
+  return accepted;
+}
+
+// Deliver `value` to every settable subscriber registered for `topic`. For one with a
+// Homie Property: validate the payload against its datatype and format (an invalid one is
+// logged and goes no further), store it so the driver can read property->value(), and
+// call the driver. Only if the driver accepts are the value and $target published (the
+// value only if the driver did not queue a publish of it already); if it refuses, the
+// property's previous value is put back and nothing is published.
 // Returns true if at least one subscriber matched.
 //
 // Factored out of subscriber_callback() so deliver_local_set() takes the IDENTICAL route
 // as an inbound message. One dispatch path, so a driver never needs to care where a set
-// came from.
+// came from. Both must run on the main task (the MQTT loop runs in loop(); see
+// deliver_local_set() in mqtt_client.h), which is what lets the snapshot go without a lock.
 static bool dispatch_settable(const char* topic, const char* value) {
   bool handled = false;
   for(int i=0;i<num_subscribers;i++) {
-    //Serial.printf("MQTT CALLBACK: checking subscriber %d: topic '%s'\n", i, settable_properties[i].topic);
-    if (strcmp(settable_properties[i].topic, topic) == 0) {
-      handled = true;
-      // D3: per-property fn-ptr handler (+context) — the STL-free callback path.
-      if (settable_properties[i].handler) {
-          Serial.printf("MQTT: Invoking settable handler for topic '%s'\n", topic);
-          settable_properties[i].handler(settable_properties[i].handler_ctx, value);
-      }
-      if (settable_properties[i].property_callback && settable_properties[i].instance) {
-        Serial.printf("MQTT: Invoking property callback for topic '%s'\n", topic);
-          (settable_properties[i].instance->*settable_properties[i].property_callback)(topic, value);
-      }
-      if (settable_properties[i].entity_callback && settable_properties[i].entity) {
-          if (settable_properties[i].instance) {
-              // Homie Property exists — use Property* overload
-              Serial.printf("MQTT: Invoking entity callback for topic '%s'\n", topic);
-              (settable_properties[i].entity->*settable_properties[i].entity_callback)(settable_properties[i].instance);
-          } else {
-              // NodeProperty settable — extract property ID from topic, call name-based overload
-              const char* set_slash = strrchr(topic, '/');  // /set
-              if (set_slash && set_slash > topic) {
-                  const char* p = set_slash - 1;
-                  while (p > topic && *p != '/') p--;
-                  if (*p == '/') p++;
-                  char pid[32];
-                  int plen = set_slash - p;
-                  if (plen > 31) plen = 31;
-                  strncpy(pid, p, plen);
-                  pid[plen] = '\0';
-                  Serial.printf("MQTT: Invoking entity callback '%s'='%s'\n", pid, value);
-                  settable_properties[i].entity->entity_settable_callback(pid, value);
-              }
-          }
-      }
+    subscribed_settable_property_t* s = &settable_properties[i];
+    if (strcmp(s->topic, topic) != 0) continue;
+    handled = true;
+    Property* prop = s->property_callback ? s->instance : nullptr;
+    Property::ValueSnapshot before;
+    uint32_t queued_before = 0;
+    if (prop) {
+      prop->save_value(&before);
+      if (!(prop->*s->property_callback)(value)) continue;   // invalid: logged, not stored
+      queued_before = prop->queued_count();
+    }
+    bool accepted = call_settable_driver(s, topic, value);
+    if (!prop) continue;
+    if (accepted) {
+      prop->publish_set(value, prop->queued_count() != queued_before);
+    } else {
+      prop->restore_value(&before);
+      Serial.printf("MQTT: '%s' = '%s' refused by its driver, not published\n", topic, value);
     }
   }
   return handled;

@@ -132,11 +132,12 @@ void on_mqtt_reconnect() {
 // Must not publish from here — runs inside the MQTT receive callback. See device half.
 static volatile bool _state_reassert_pending = false;
 
-static void on_state_observed(void* ctx, const char* value) {
+static bool on_state_observed(void* ctx, const char* value) {
     (void)ctx;
-    if (strcmp(value, HOMIE_STATE_READY) == 0) return;
+    if (strcmp(value, HOMIE_STATE_READY) == 0) return true;
     Serial.printf("CONTROLLER: broker holds $state='%s' but we are running — re-asserting\n", value);
     _state_reassert_pending = true;
+    return true;   // a watch, not a property: nothing to refuse
 }
 
 static void watch_own_state() {
@@ -343,13 +344,14 @@ void loop() {
 // client mid-packet. Record here, act from loop(), same as the BLE notify path.
 static volatile bool _state_reassert_pending = false;
 
-static void on_state_observed(void* ctx, const char* value) {
+static bool on_state_observed(void* ctx, const char* value) {
     (void)ctx;
     const char* actual = device_state_to_cstr(theDevice.state());
-    if (strcmp(value, actual) == 0) return;   // broker agrees — nothing to do
+    if (strcmp(value, actual) == 0) return true;   // broker agrees — nothing to do
     Serial.printf("DEVICE: broker holds $state='%s' but this device is '%s' — re-asserting\n",
                   value, actual);
     _state_reassert_pending = true;
+    return true;   // a watch, not a property: nothing to refuse
 }
 
 static void watch_own_state() {

@@ -52,17 +52,21 @@ void DigitalOutput::set(bool on) {
     _state_property.set_value_and_publish(_state);
 }
 
-void DigitalOutput::entity_settable_callback(Property* property) {
-    if (!property) return;
-    entity_settable_callback(property->id(), property->value());
+bool DigitalOutput::entity_settable_callback(Property* property) {
+    if (!property) return false;
+    return entity_settable_callback(property->id(), property->value());
 }
 
-void DigitalOutput::entity_settable_callback(const char* property_id, const char* value) {
+bool DigitalOutput::entity_settable_callback(const char* property_id, const char* value) {
     if (strcmp(property_id, "state") != 0) {
         Serial.printf("DOUT[%s]: unhandled settable '%s'\n", getNodeId(), property_id);
-        return;
+        return false;
     }
     if      (truthy(value)) set(true);
     else if (falsy(value))  set(false);
-    else Serial.printf("DOUT[%s]: invalid boolean '%s' for 'state'\n", getNodeId(), value);
+    else {
+        Serial.printf("DOUT[%s]: invalid boolean '%s' for 'state'\n", getNodeId(), value);
+        return false;
+    }
+    return true;
 }

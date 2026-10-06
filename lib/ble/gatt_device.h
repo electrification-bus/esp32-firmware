@@ -29,8 +29,8 @@ public:
     bool setup() override;
     void loop() override;
 
-    void entity_settable_callback(Property* property) override;
-    void entity_settable_callback(const char* property_id, const char* value) override;
+    bool entity_settable_callback(Property* property) override;
+    bool entity_settable_callback(const char* property_id, const char* value) override;
 
 private:
     // Static trampoline — fires on the NimBLE task, so it only copies bytes and sets a

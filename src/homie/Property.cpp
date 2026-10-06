@@ -67,7 +67,6 @@ void Property::setValue(float value) {
     _has_value = true;
 }
 void Property::setValue(const char* value) {
-    snprintf(_stringValue, sizeof(_stringValue), "%s", value);
     snprintf(_value, sizeof(_value), "%s", value);
     _has_value = true;
 }
@@ -197,7 +196,9 @@ bool Property::publish_queued(bool force) {
     if (!gate_allows(payload, len, force)) return true;
     // Counted before the hand-off: the main task may send it before this call returns.
     __atomic_add_fetch(&_in_flight, 1, __ATOMIC_ACQ_REL);
-    return mqtt_queue_publish(topic(), payload, len, retained(), this);
+    bool ok = mqtt_queue_publish(topic(), payload, len, retained(), this);
+    if (ok) __atomic_add_fetch(&_queued_count, 1, __ATOMIC_RELAXED);
+    return ok;
 }
 
 // Mark this property UNAVAILABLE (rrj.4): retract its retained topic (zero-length,
@@ -224,7 +225,10 @@ void Property::device_new_value_callback(const char* sensor_value) {
     setValue(sensor_value);
 }
 
-void Property::mqtt_settable_callback(const char* topic, const char* payload) {
+// Validate a /set payload against the datatype and format and, if valid, store it.
+// Returns false, with nothing stored, for an invalid payload. Publishing is left to
+// dispatch_settable(), which first asks the driver (see publish_set()).
+bool Property::store_set_payload(const char* payload) {
     bool isValid = false;
     if (strcmp(datatype(), HOMIE_DATATYPE_BOOLEAN) == 0) {
         //TODO allow various bools?
@@ -234,7 +238,7 @@ void Property::mqtt_settable_callback(const char* topic, const char* payload) {
             setValue(false);
         } else {
             Serial.printf("Node: '%s', Property: '%s' - invalid boolean value '%s'\n", _parent_node->id(), _id, payload);
-            return; //invalid value
+            return false; //invalid value
         }; 
         isValid = true;
     } else if (strcmp(datatype(),  HOMIE_DATATYPE_STRING) == 0) {
@@ -268,14 +272,38 @@ void Property::mqtt_settable_callback(const char* topic, const char* payload) {
     }
     if (isValid) {
         Serial.printf("Node: '%s',  Property: '%s': datetype: '%s', new value: '%s'\n",_parent_node->id(), _id, datatype(), payload);
-        // C5: if this property supports $target, publish the EXACT received value to
-        // $target first (byte-for-byte, closing the controller's control loop), then
-        // publish the (coerced) property value. For instantaneous changes both happen
-        // now; a slow transition would keep $target fixed and update the value over time.
-        if (_supports_target) publish_target_value(payload);
-        publish();
     }
+    return isValid;
+}
 
+// Report a /set that was stored and accepted. `value_queued` is true when the driver
+// already queued a publish of this property while handling the set (see queued_count());
+// that message reports the value, so only $target is published here.
+void Property::publish_set(const char* payload, bool value_queued) {
+    // C5: if this property supports $target, publish the EXACT received value to
+    // $target first (byte-for-byte, closing the controller's control loop), then
+    // publish the (coerced) property value. For instantaneous changes both happen
+    // now; a slow transition would keep $target fixed and update the value over time.
+    if (_supports_target) publish_target_value(payload);
+    if (!value_queued) publish();
+}
+
+void Property::save_value(ValueSnapshot* s) const {
+    memcpy(s->value, _value, sizeof(s->value));
+    s->has_value = _has_value;
+    s->bool_value = _boolValue;
+    s->float_value = _floatValue;
+    s->unsigned_value = _unsignedValue;
+    s->int_value = _intValue;
+}
+
+void Property::restore_value(const ValueSnapshot* s) {
+    memcpy(_value, s->value, sizeof(_value));
+    _has_value = s->has_value;
+    _boolValue = s->bool_value;
+    _floatValue = s->float_value;
+    _unsignedValue = s->unsigned_value;
+    _intValue = s->int_value;
 }
 
 void Property::subscribe() {
@@ -298,7 +326,7 @@ void Property::subscribe() {
         }
     }
     //register the property for callbacks
-    subscribe_for_callbacks(set, &Property::mqtt_settable_callback, this);
+    subscribe_for_callbacks(set, &Property::store_set_payload, this);
 }
 
 const char* Property::topic() {

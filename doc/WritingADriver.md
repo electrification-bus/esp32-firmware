@@ -21,7 +21,7 @@ A driver derives from `NodeEntity` (or from a subclass like `ModbusRTUEntity` fo
 - The constructor takes the Homie node id and chains to `NodeEntity(homie_node_id)`. That id is both the published node id and the object's runtime identity.
 - Override `bool setup()` — chain `NodeEntity::setup()` first, then call `.setup(node_id, property_id)` on each `NodeProperty` member, then bring up your hardware.
 - Override `void loop()` — read your hardware, then `.set(value)` and `.publish()` each property. Gate the work with `pollIntervalTrigger()` (or your own interval check) so you don't spam the bus.
-- For settable properties, either override `set(bool/int/float/const char*)` / `entity_settable_callback(...)` at the entity level, or register a per-property handler with `NodeProperty::on_set()` (below).
+- For settable properties, either override `entity_settable_callback(...)` at the entity level, or register a per-property handler with `NodeProperty::on_set()` (below). Both return `bool`: see [the settable contract](#the-settable-contract).
 
 ### The `NodeProperty` value API
 
@@ -76,14 +76,18 @@ Everything is statically allocated — no heap, no `String`, no STL. That's the 
 
 ## Settable properties: per-property `on_set` handlers
 
-`NodeProperty::on_set(handler, ctx)` registers a **plain function pointer** (`void(*)(void* ctx, const char* value)`) plus an opaque context for *one* settable property — no `std::function`, no lambda, no heap. Write a `static` trampoline and pass `this` as the context to recover instance state:
+`NodeProperty::on_set(handler, ctx)` registers a **plain function pointer** (`bool(*)(void* ctx, const char* value)`) plus an opaque context for *one* settable property — no `std::function`, no lambda, no heap. Write a `static` trampoline and pass `this` as the context to recover instance state:
 
 ```cpp
 class MyRelay : public NodeEntity {
     NodeProperty _state;
-    static void on_state_set(void* ctx, const char* value) {     // static, no capture
-        static_cast<MyRelay*>(ctx)->set_relay(strcmp(value, "true") == 0);
+    static bool on_state_set(void* ctx, const char* value) {     // static, no capture
+        MyRelay* self = static_cast<MyRelay*>(ctx);
+        if (strcmp(value, "true") == 0)  return self->set_relay(true);
+        if (strcmp(value, "false") == 0) return self->set_relay(false);
+        return false;                                            // refused: not published
     }
+    bool set_relay(bool on);   // true once the relay has switched
 public:
     MyRelay(const char* id) : NodeEntity(id) {}
     bool setup() override {
@@ -96,6 +100,18 @@ public:
 ```
 
 `on_set` subscribes the property's `/set` topic (QoS 0) and fires the handler with the decoded payload on each command — a cleaner alternative to one entity-level `entity_settable_callback` that `if/else`s over every property-id. Declare the property `settable` so it also advertises in `$description`.
+
+### The settable contract
+
+A settable callback returns `true` when it accepted (applied) the value and `false` when it refused it. For every `/set`, whether from the broker or from `deliver_local_set()`, dispatch runs in this order:
+
+1. Validate the payload against the property's datatype and format. An invalid payload is logged and goes no further; the driver is not called.
+2. Store the value on the property, so a callback can read it with `property->value()` or `getBoolValue()` and friends.
+3. Call the driver. On `true`, publish `$target` (if the property supports it) and the value; if the callback already published the property itself (for example with `set_value_and_publish()`), that publish reports the value and dispatch does not repeat it. On `false`, put the property's previous value back and publish nothing, so the broker keeps the last value the device actually holds.
+
+On refusal, do not set or publish the property itself: restoring the previous value does not recall a publish already queued. If a subscriber has both an `on_set` handler and an entity callback, the handler runs first, and a refusal from it means the entity callback is not called.
+
+Return `false` whenever the hardware did not take the value: no display attached, a BLE write that failed, a value outside the range the device supports. A callback that cannot fail returns `true`. A valid value for a property with no driver callback is always accepted. Callbacks run on the main task; store to a settable property only from the main task, because a refused set restores the previous value without a lock.
 
 ## Publishing discipline: omit unavailable values, never publish sentinels
 

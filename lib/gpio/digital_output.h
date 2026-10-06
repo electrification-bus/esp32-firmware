@@ -34,8 +34,8 @@ public:
     // Property::subscribe() had already registered the /set topic when NodeProperty::setup()
     // ran, and that depends on whether the broker was connected at boot. Implementing only
     // the Property* form leaves the output unresponsive on a device that came up offline.
-    void entity_settable_callback(Property* property) override;
-    void entity_settable_callback(const char* property_id, const char* value) override;
+    bool entity_settable_callback(Property* property) override;
+    bool entity_settable_callback(const char* property_id, const char* value) override;
 
 private:
     void applyState(bool on);
