@@ -2104,6 +2104,11 @@ def main():
 
     args = parser.parse_args()
 
+    # Every `pio run` re-runs generate from scripts/generate_homie.py; this tells that
+    # hook which device.yml we were given, so it does not regenerate from ./device.yml.
+    if getattr(args, "device_yml", None):
+        os.environ["EBUS_DEVICE_YML"] = str(Path(args.device_yml).resolve())
+
     dispatch = {                       # same alphabetical order as the parsers above
         "build":         cmd_build,
         "check":         cmd_check,

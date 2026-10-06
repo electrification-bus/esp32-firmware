@@ -40,7 +40,7 @@ That is the whole loop. The commands below are for finer control.
 ./ebus-esp32 envs     [device.yml]                          list available board environments
 ```
 
-Every build path regenerates from `device.yml` first (the pre-build hook), so `generate` on its own is only needed when you want to read the generated files without compiling. All commands accept an optional path to `device.yml` as the last argument (default: `device.yml` in the project root). On Windows, use `ebus-esp32.bat run` (or `python ebus-esp32 run`).
+Every build path regenerates from `device.yml` first (the pre-build hook), so `generate` on its own is only needed when you want to read the generated files without compiling. All commands accept an optional path to `device.yml` as the last argument (default: `device.yml` in the project root). The pre-build hook regenerates from that same file: the CLI passes its path in the `EBUS_DEVICE_YML` environment variable, which you can also set for a bare `pio run`. On Windows, use `ebus-esp32.bat run` (or `python ebus-esp32 run`).
 
 ---
 
