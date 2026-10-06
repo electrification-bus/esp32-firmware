@@ -358,8 +358,13 @@ paths:
         - sessionAuth: []
       requestBody:
         required: true
+        description: At most 2047 bytes. Any other Content-Type, including text/plain, is refused with 415.
         content:
-          text/plain:
+          application/x-pem-file:
+            schema:
+              type: string
+              description: PEM-encoded CA certificate (must contain BEGIN CERTIFICATE header)
+          application/octet-stream:
             schema:
               type: string
               description: PEM-encoded CA certificate (must contain BEGIN CERTIFICATE header)

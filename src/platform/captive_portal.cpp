@@ -196,6 +196,115 @@ static void accumulateBody(AsyncWebServerRequest *request, uint8_t *data, size_t
     post_body_buf[post_body_len] = '\0';
 }
 
+// ============================================================================
+// Request body guard
+// ESPAsyncWebServer parses an application/x-www-form-urlencoded body, a multipart
+// body, or a text/plain body that starts like "name=value" into heap-allocated
+// AsyncWebParameter Strings whenever the attached handler is non-trivial. That
+// happens while the body arrives, before any handler or auth check runs, so one
+// unauthenticated POST of a few hundred KB exhausts the heap and aborts.
+//
+// The guard is registered ahead of every route. Its canHandle() runs once the
+// headers are in and before the body is read; when it claims a request, the request
+// is attached to the guard, which is trivial (the AsyncWebHandler default), so the
+// library discards the body without parsing or buffering it, and handleRequest()
+// answers 413/415 once the body has drained.
+// ============================================================================
+#define PORTAL_URI_OTA_PUSH_FIRMWARE   "/api/ota/firmware"
+#define PORTAL_URI_OTA_PUSH_FILESYSTEM "/api/ota/filesystem"
+#define PORTAL_URI_BROKER_CERT         "/api/broker-cert"
+
+// Returns the HTTP status that refuses this request's body, or 0 to let it through.
+//   image push routes: application/octet-stream only, streamed, no size cap here
+//                      (Update.begin() refuses an image larger than the partition)
+//   everything else:   must fit post_body_buf, which is all accumulateBody() keeps;
+//                      application/json only, except POST /api/broker-cert, which
+//                      takes only application/x-pem-file or application/octet-stream
+// The library parses a text/plain body into parameters when its first chunk holds an
+// '=' before any '{', '[' or '&', and a PEM's base64 '=' padding meets that test, so
+// broker-cert answers text/plain with 415 instead of discarding the certificate.
+// No route takes multipart. The library sets multipart() from any Content-Type header
+// that starts with "multipart/" and never clears it, while contentType() holds the
+// last such header, so a request carrying both passes a contentType() check and still
+// has its body run through the unbounded multipart parser. multipart() is checked first.
+static int portalBodyVerdict(AsyncWebServerRequest *request) {
+    if (request->contentLength() == 0) return 0;
+    if (request->multipart()) return 415;
+    const char* url  = request->url().c_str();
+    const char* type = request->contentType().c_str();
+    if (strcmp(url, PORTAL_URI_OTA_PUSH_FIRMWARE) == 0 ||
+        strcmp(url, PORTAL_URI_OTA_PUSH_FILESYSTEM) == 0) {
+        return strcasecmp(type, "application/octet-stream") == 0 ? 0 : 415;
+    }
+    if (request->contentLength() >= sizeof(post_body_buf)) return 413;
+    if (request->method() == HTTP_POST && strcmp(url, PORTAL_URI_BROKER_CERT) == 0) {
+        return (strcasecmp(type, "application/x-pem-file") == 0 ||
+                strcasecmp(type, "application/octet-stream") == 0) ? 0 : 415;
+    }
+    if (strcasecmp(type, "application/json") == 0) return 0;
+    return 415;
+}
+
+class PortalBodyGuard : public AsyncWebHandler {
+public:
+    bool canHandle(AsyncWebServerRequest *request) const override {
+        return portalBodyVerdict(request) != 0;
+    }
+    void handleRequest(AsyncWebServerRequest *request) override {
+        int code = portalBodyVerdict(request);
+        Serial.printf("PORTAL: refused %s %s (%u bytes, type '%s') with %d\n",
+                      request->methodToString(), request->url().c_str(),
+                      (unsigned)request->contentLength(), request->contentType().c_str(), code);
+        request->send(code, "application/json", code == 413
+            ? "{\"status\":\"error\",\"message\":\"Request body too large\"}"
+            : "{\"status\":\"error\",\"message\":\"Unsupported Content-Type for this endpoint\"}");
+    }
+};
+
+// POST /api/broker-cert is registered through this trivial handler instead of
+// server.on(), so a body the library diverts into its parameter parser is discarded
+// rather than parsed into heap allocations; the guard admits only types the library
+// passes to the body callback. handleRequest() passes the request on only when this
+// request's body reached handleBody(), so an empty or discarded body never leaves the
+// handler reading whatever post_body_buf held from an earlier request.
+typedef void (*PortalRequestFn)(AsyncWebServerRequest *request);
+typedef void (*PortalBodyFn)(AsyncWebServerRequest *request, uint8_t *data, size_t len,
+                             size_t index, size_t total);
+
+class PortalRawPostHandler : public AsyncWebHandler {
+public:
+    PortalRawPostHandler(const char* uri, PortalRequestFn on_request, PortalBodyFn on_body)
+        : _uri(uri), _on_request(on_request), _on_body(on_body) {}
+    bool canHandle(AsyncWebServerRequest *request) const override {
+        if (request->method() != HTTP_POST || strcmp(request->url().c_str(), _uri) != 0) {
+            return false;
+        }
+        _body_request = nullptr;
+        return true;
+    }
+    void handleRequest(AsyncWebServerRequest *request) override {
+        if (_body_request != request) {
+            request->send(400, "application/json",
+                "{\"status\":\"error\",\"message\":\"Empty or unsupported body\"}");
+            return;
+        }
+        _body_request = nullptr;
+        _on_request(request);
+    }
+    void handleBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
+                    size_t index, size_t total) override {
+        if (index == 0) _body_request = request;
+        _on_body(request, data, len, index, total);
+    }
+
+private:
+    const char*     _uri;
+    PortalRequestFn _on_request;
+    PortalBodyFn    _on_body;
+    // Set by handleBody() at index 0; canHandle() is const, hence mutable.
+    mutable AsyncWebServerRequest* _body_request = nullptr;
+};
+
 #ifdef CONFIG_WIFI_AP
 // Handle POST /api/wifi - save WiFi credentials and begin connection.
 // Deliberately unauthenticated: this is the first-time-setup path (user on the
@@ -618,8 +727,8 @@ static void handleOtaStatus(AsyncWebServerRequest *request) {
 // Streams the raw request body straight into Update.write(). Deliberately does NOT
 // use accumulateBody: a firmware image is >1MB and post_body_buf is 2KB.
 //
-//   curl -u admin:<passphrase> --data-binary @firmware.bin
-//        http://<device-ip>/api/ota/firmware
+//   curl -u admin:<passphrase> -H 'Content-Type: application/octet-stream'
+//        --data-binary @firmware.bin http://<device-ip>/api/ota/firmware
 //   (one line; no trailing backslash here — it would continue the comment)
 //
 // Flash writes happen on the AsyncTCP task, which is why CONFIG_ASYNC_TCP_STACK_SIZE
@@ -991,6 +1100,10 @@ void captive_portal_start() {
     Serial.println("PORTAL: Starting HTTP API server (ethernet mode)");
 #endif
 
+    // First handler, so it sees every request before any route can claim it.
+    // AsyncWebServer owns its handlers (unique_ptr), as with server.on().
+    server.addHandler(new PortalBodyGuard());
+
     // === Common endpoints (available on all interfaces) ===
     server.on("/", HTTP_GET, serveConfigPage);
     server.on("/api/device-info", HTTP_GET, handleDeviceInfo);
@@ -1002,8 +1115,8 @@ void captive_portal_start() {
     server.on("/api/passphrase", HTTP_POST, handlePassphraseSave, NULL, accumulateBody);
     server.on("/api/reset-prefs", HTTP_POST, handleResetPrefs);
     server.on("/api/reboot", HTTP_POST, handleReboot);
-    server.on("/api/broker-cert", HTTP_GET, handleBrokerCert);
-    server.on("/api/broker-cert", HTTP_POST, handleBrokerCertUpload, NULL, accumulateBody);
+    server.on(PORTAL_URI_BROKER_CERT, HTTP_GET, handleBrokerCert);
+    server.addHandler(new PortalRawPostHandler(PORTAL_URI_BROKER_CERT, handleBrokerCertUpload, accumulateBody));
     // AsyncURIMatcher::exact() is REQUIRED on these two, not cosmetic. A bare
     // server.on("/api/ota", ...) uses the library's BackwardCompatible matcher,
     // which is ^{uri}(/.*)?$ — so "/api/ota" also matches "/api/ota/filesystem",
@@ -1014,8 +1127,8 @@ void captive_portal_start() {
     server.on(AsyncURIMatcher::exact("/api/ota"), HTTP_GET, handleOtaStatus);
     server.on(AsyncURIMatcher::exact("/api/ota"), HTTP_POST, handleOtaToggle, NULL, accumulateBody);
     // Image push — distinct paths; /api/ota itself is the enable/disable toggle.
-    server.on(AsyncURIMatcher::exact("/api/ota/firmware"),   HTTP_POST, handleOtaPushFirmwareDone, NULL, otaPushFirmwareBody);
-    server.on(AsyncURIMatcher::exact("/api/ota/filesystem"), HTTP_POST, handleOtaPushFilesystemDone, NULL, otaPushFilesystemBody);
+    server.on(AsyncURIMatcher::exact(PORTAL_URI_OTA_PUSH_FIRMWARE),   HTTP_POST, handleOtaPushFirmwareDone, NULL, otaPushFirmwareBody);
+    server.on(AsyncURIMatcher::exact(PORTAL_URI_OTA_PUSH_FILESYSTEM), HTTP_POST, handleOtaPushFilesystemDone, NULL, otaPushFilesystemBody);
     server.on("/api/openapi.yml", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(LittleFS, "/openapi.yml", "text/yaml");
     });

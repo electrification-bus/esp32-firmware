@@ -59,12 +59,17 @@ from `config-overlay.yml`, else from `device.yml`. See [GettingStartedCLI.md](Ge
 ### With curl
 
 ```sh
-curl -u admin:changeme -X POST -d '{"enabled":true}' http://192.168.1.42/api/ota
-curl -u admin:changeme --data-binary @.pio/build/<env>/littlefs.bin \
+curl -u admin:changeme -H 'Content-Type: application/json' -d '{"enabled":true}' \
+     http://192.168.1.42/api/ota
+curl -u admin:changeme -H 'Content-Type: application/octet-stream' \
+     --data-binary @.pio/build/<env>/littlefs.bin \
      "http://192.168.1.42/api/ota/filesystem?reboot=0"
-curl -u admin:changeme --data-binary @.pio/build/<env>/firmware.bin \
+curl -u admin:changeme -H 'Content-Type: application/octet-stream' \
+     --data-binary @.pio/build/<env>/firmware.bin \
      http://192.168.1.42/api/ota/firmware
 ```
+
+The `Content-Type` headers are required: curl's default for `-d` and `--data-binary` is `application/x-www-form-urlencoded`, which the device refuses with 415. Image pushes take only `application/octet-stream`; the JSON control requests take only `application/json`, at most 2047 bytes (413 above that). See [Authentication.md](Authentication.md#security-notes).
 
 Send credentials **pre-emptively** (as `-u` does). An auth scheme that waits for a 401 and
 retries will upload the whole image twice.
@@ -193,10 +198,10 @@ the filesystem; `--pull-wait` bounds the poll (default 300s).
 
 ```sh
 # stage the filesystem without starting it, and keep the URL out of NVS
-curl -u admin:changeme -X POST -d '{"url":"http://10.0.0.2:8080/littlefs.bin"}' \
+curl -u admin:changeme -H 'Content-Type: application/json' -d '{"url":"http://10.0.0.2:8080/littlefs.bin"}' \
      'http://192.168.1.42/api/filesystem?start=0&persist=0'
 # the firmware request arms both — one download session, one reboot
-curl -u admin:changeme -X POST -d '{"url":"http://10.0.0.2:8080/firmware.bin"}' \
+curl -u admin:changeme -H 'Content-Type: application/json' -d '{"url":"http://10.0.0.2:8080/firmware.bin"}' \
      'http://192.168.1.42/api/firmware?persist=0'
 ```
 

@@ -111,6 +111,13 @@ Returns the saved CA cert for the current MQTT broker. No auth required (read-on
 
 Accepts a PEM certificate body, saves to `/certs/uploaded-cert.ca` on SPIFFS, and invalidates the cached cert so the next MQTT connection uses the new one.
 
+The body must be sent as `application/x-pem-file` or `application/octet-stream` and be at most 2047 bytes; any other type gets 415. `text/plain` is refused because the web server library parses a `text/plain` body into form parameters when an `=` (such as base64 padding) comes before any `{`, `[` or `&` in its first received chunk, and the certificate would then never reach the handler.
+
+```sh
+curl -u admin:changeme -H 'Content-Type: application/x-pem-file' \
+     --data-binary @data/certs/publicCloudShiftrIo.ca http://192.168.1.42/api/broker-cert
+```
+
 ---
 
 ## Security Notes
@@ -120,6 +127,7 @@ Accepts a PEM certificate body, saves to `/certs/uploaded-cert.ca` on SPIFFS, an
 - **Reboot-to-disable**: OTA state is RAM-only. Power cycle or reboot always returns to OTA-disabled.
 - **No passphrase in responses**: The passphrase is never echoed back in any API response.
 - **Rate limiting across endpoints**: The lockout counter is shared by all protected endpoints, so brute-forcing any one endpoint triggers lockout for all.
+- **Request body limits**: Checked from the headers, before the body is read or any auth runs. `/api/ota/firmware` and `/api/ota/filesystem` take only `application/octet-stream` (415 otherwise). Every other endpoint takes at most 2047 bytes (413 above that) and only `application/json`, except `POST /api/broker-cert`, which takes only `application/x-pem-file` or `application/octet-stream` (415 otherwise). A request with any `multipart/*` Content-Type header is refused with 415 on every endpoint.
 
 ---
 
