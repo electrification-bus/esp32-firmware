@@ -85,14 +85,18 @@ public:
     // Payload last actually put on the wire, for the change gate. Exposed for tests and
     // for anything that needs to know what the broker currently holds.
     const char* last_published() const { return _last_pub_len >= 0 ? _last_pub : nullptr; }
+    // Called by the publish queue exactly once for every message publish_queued()
+    // handed it, when the message is sent (sent=true) or dropped. Not for drivers.
+    void queued_publish_done(const char* payload, int len, bool sent);
 
 private:
-    // True when this payload should reach the wire. Three carve-outs, all deliberate:
+    // True when this payload should reach the wire. Four carve-outs, all deliberate:
     //   - a NON-RETAINED (event) property is never gated: the broker stores nothing for it,
     //     so an identical consecutive payload is a second real event, not a redundant
     //     write, and suppressing it would lose the event.
     //   - `force` is never gated (whole-tree republish after a reconnect).
     //   - a payload longer than the memo is never gated — see PROPERTY_MEMO_MAX.
+    //   - nothing is gated while a queued publish is in flight (see _in_flight).
     bool gate_allows(const char* payload, int len, bool force);
     void note_published(const char* payload, int len);
 
@@ -103,6 +107,10 @@ private:
     static const int PROPERTY_MEMO_MAX = 64;
     char _last_pub[PROPERTY_MEMO_MAX] = {0};
     int  _last_pub_len = -1;          // -1 = nothing published on this topic yet
+    // Messages publish_queued() has enqueued that the queue has not yet sent or dropped.
+    // While any are in flight the gate never suppresses: the memo describes the last one
+    // SENT, and a still-queued different value would land after it.
+    volatile uint32_t _in_flight = 0;
 
     bool _dirty_settable = false;
     bool _has_value = false;   // C3: false until setValue() — guards phantom retained-empty topics

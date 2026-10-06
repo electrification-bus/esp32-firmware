@@ -76,6 +76,7 @@ struct MqttQueueItem {
     char payload[MQTT_PAYLOAD_MAX];
     int  length;        // explicit byte count — carries 0x00 (empty-string value, C3)
     bool retained;
+    Property* source;   // told when this is sent or dropped (publish-on-change memo), or null
 };
 
 static QueueHandle_t mqtt_publish_queue = nullptr;
@@ -101,7 +102,8 @@ bool mqtt_queue_publish(const char* topic, const char* payload, bool retained) {
 // Length-aware variant: publishes exactly `length` bytes, so a single 0x00 byte
 // (the Homie empty-string value, C3) survives instead of being treated as a
 // null-terminated zero-length payload. memcpy (not strncpy) preserves embedded NULs.
-bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool retained) {
+bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool retained,
+                        Property* source) {
     if (length < 0) length = 0;
     if (length > MQTT_PAYLOAD_MAX) {
         // Truncating a payload silently produces a subtly wrong retained value that looks
@@ -113,7 +115,9 @@ bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool
     }
     if (mqtt_publish_queue == nullptr) {
         Serial.println("MQTT: Queue not initialized, publishing directly");
-        return mqtt_client.publish(topic, payload, length, retained, homie_qos(retained));
+        bool ok = mqtt_client.publish(topic, payload, length, retained, homie_qos(retained));
+        if (source) source->queued_publish_done(payload, length, ok);
+        return ok;
     }
 
     MqttQueueItem item;
@@ -122,10 +126,12 @@ bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool
     memcpy(item.payload, payload, length);
     item.length = length;
     item.retained = retained;
+    item.source = source;
 
     // Non-blocking queue send (don't wait if queue is full)
     if (xQueueSend(mqtt_publish_queue, &item, 0) != pdTRUE) {
         Serial.println("MQTT: Queue full, message dropped");
+        if (source) source->queued_publish_done(payload, length, false);
         return false;
     }
     return true;
@@ -139,12 +145,14 @@ void mqtt_process_queue() {
     // Process up to 4 messages per loop iteration to avoid blocking
     int processed = 0;
     while (processed < 4 && xQueueReceive(mqtt_publish_queue, &item, 0) == pdTRUE) {
+        bool ok = false;
         if (mqtt_client.connected()) {
             // Length-aware publish so an empty-string value (single 0x00 byte) is sent
             // intact rather than collapsing to a zero-length (retract) payload (C3).
             // Retained -> configured QoS (default 2), non-retained -> QoS 0 (C4).
-            mqtt_client.publish(item.topic, item.payload, item.length, item.retained, homie_qos(item.retained));
+            ok = mqtt_client.publish(item.topic, item.payload, item.length, item.retained, homie_qos(item.retained));
         }
+        if (item.source) item.source->queued_publish_done(item.payload, item.length, ok);
         processed++;
     }
 }

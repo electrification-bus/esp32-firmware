@@ -98,7 +98,11 @@ void mqtt_queue_init();
 bool mqtt_queue_publish(const char* topic, const char* payload, bool retained = false);
 // Length-aware variant — publishes exactly `length` bytes (carries a single 0x00 byte
 // for the Homie empty-string value; a zero-length payload would retract the topic). C3.
-bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool retained);
+// `source` is set only by Property::publish_queued(), which counts the message in
+// flight; the queue calls its queued_publish_done() exactly once, when the client sends
+// the message or it is dropped.
+bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool retained,
+                        Property* source = nullptr);
 
 //extern PubSubClient mqtt_client;
 extern MQTTClient mqtt_client;

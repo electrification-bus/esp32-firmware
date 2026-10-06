@@ -151,6 +151,7 @@ bool Property::gate_allows(const char* payload, int len, bool force) {
     if (force) return true;
     if (!_retained) return true;              // event property: a repeat is a real event
     if (len > PROPERTY_MEMO_MAX) return true; // longer than the memo — never gate blind
+    if (__atomic_load_n(&_in_flight, __ATOMIC_ACQUIRE) != 0) return true;
     if (_last_pub_len != len) return true;
     return memcmp(_last_pub, payload, len) != 0;
 }
@@ -159,6 +160,11 @@ void Property::note_published(const char* payload, int len) {
     if (len > PROPERTY_MEMO_MAX) { _last_pub_len = -1; return; }  // unmemoable: forget
     memcpy(_last_pub, payload, len);
     _last_pub_len = len;
+}
+
+void Property::queued_publish_done(const char* payload, int len, bool sent) {
+    if (sent) note_published(payload, len);
+    __atomic_sub_fetch(&_in_flight, 1, __ATOMIC_RELEASE);
 }
 
 bool Property::publish_value(bool force) {
@@ -179,6 +185,9 @@ bool Property::publish_value(bool force) {
 
 // Same value, same gate, but handed to the publish queue instead of the client — so a
 // driver running on the NimBLE or Modbus task can publish without racing the MQTT client.
+// The memo is not touched here: the queue reports back through queued_publish_done()
+// once the client has actually sent the message, so a dropped one is not mistaken for
+// delivered.
 bool Property::publish_queued(bool force) {
     if (!_has_value) return false;
     static const char nul = 0x00;
@@ -186,9 +195,9 @@ bool Property::publish_queued(bool force) {
     int len = (_value[0] == '\0') ? 1 : (int)strlen(_value);
 
     if (!gate_allows(payload, len, force)) return true;
-    bool ok = mqtt_queue_publish(topic(), payload, len, retained());
-    if (ok) note_published(payload, len);
-    return ok;
+    // Counted before the hand-off: the main task may send it before this call returns.
+    __atomic_add_fetch(&_in_flight, 1, __ATOMIC_ACQ_REL);
+    return mqtt_queue_publish(topic(), payload, len, retained(), this);
 }
 
 // Mark this property UNAVAILABLE (rrj.4): retract its retained topic (zero-length,
