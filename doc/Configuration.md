@@ -129,7 +129,7 @@ See [`platformio_local.ini.example`](../platformio_local.ini.example) for fully-
 
 Different lifecycles. `data/config.yml` controls what gets baked into the device's filesystem image and changes per-deployment (per device, per environment, per customer). `platformio_local.ini` controls how *your specific machine* builds and uploads to *your specific connected board* and changes per-developer. A new dev joining the project would typically:
 
-1. Create `config-overlay.yml` → edit it with their MQTT broker
+1. Create `config-overlay.yml` with a `device.device_passphrase` (required: `generate` refuses an empty or `changeme` one) and their MQTT broker
 2. Possibly `cp platformio_local.ini.example platformio_local.ini` once → tweak `upload_speed` if they're on a CH340 chip
 3. Then `./ebus-esp32 run` (full cycle) or `./ebus-esp32 push` (upload only) indefinitely without touching either file
 
