@@ -49,11 +49,14 @@ char mqtt_username[64] = {0};
 char mqtt_password[64] = {0};
 char device_id_prefix[32] = {0};
 
-// Device info for mDNS advertisement
+// Device info for mDNS advertisement. manufacturer and model are required _device-info
+// TXT keys, so an empty configured value falls back to these defaults.
+#define DEVICE_MANUFACTURER_DEFAULT "unknown"
+#define DEVICE_MODEL_DEFAULT        "ESP32"
 char device_name[32] = {0};
 char device_type[HOMIE_TYPE_MAXLEN] = {0};   // eBus device types up to 41 chars
-char device_manufacturer[32] = {0};
-char device_model[32] = "ESP32";
+char device_manufacturer[32] = DEVICE_MANUFACTURER_DEFAULT;
+char device_model[32] = DEVICE_MODEL_DEFAULT;
 char device_serial[32] = {0};
 char firmware_name[32] = {0};
 char firmware_version[16] = "1.0.0";
@@ -368,6 +371,9 @@ bool loadPlatformConfiguration() {
 
   cfg_copy_str("device", "manufacturer",  "manufacturer",  device_manufacturer, sizeof(device_manufacturer));
   cfg_copy_str("device", "model",         "model",         device_model,        sizeof(device_model));
+  // generate writes "" for an unset key, which would replace the defaults.
+  if (device_manufacturer[0] == '\0') strcpy(device_manufacturer, DEVICE_MANUFACTURER_DEFAULT);
+  if (device_model[0] == '\0') strcpy(device_model, DEVICE_MODEL_DEFAULT);
   cfg_copy_str("device", "serial_number", "serial_number", device_serial,       sizeof(device_serial));
 
   cfg_copy_str("device", "firmware_name",    "firmware_name",    firmware_name,    sizeof(firmware_name));
