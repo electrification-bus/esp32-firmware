@@ -15,7 +15,12 @@ static bool      _ota_pending      = false;
 static bool      _fs_pending       = false;
 static bool      _armed            = false;
 static OtaStatus _ota_status       = OTA_STATUS_IDLE;
-static char      _last_url[256]    = {0};
+// Each target keeps its own URL, captured when it is queued: staging both images must
+// not leave the filesystem step downloading the firmware URL. _last_url is the one most
+// recently queued or downloading, for status reporting. All sized to the config source.
+static char      _fw_url[128]      = {0};
+static char      _fs_url[128]      = {0};
+static char      _last_url[128]    = {0};
 static char      _last_host[128]   = {0};
 static char      _last_file[128]   = {0};
 static int       _last_http_code   = 0;
@@ -72,7 +77,9 @@ void ota_start_update(bool start_now) {
         Serial.println("OTA: Update rejected - no firmware URL");
         return;
     }
-    strncpy(_last_url, firmware_url, sizeof(_last_url) - 1);
+    strncpy(_fw_url, firmware_url, sizeof(_fw_url) - 1);
+    _fw_url[sizeof(_fw_url) - 1] = '\0';
+    strncpy(_last_url, _fw_url, sizeof(_last_url) - 1);
     _last_url[sizeof(_last_url) - 1] = '\0';
     parse_url(_last_url);
     _last_http_code = 0;
@@ -90,7 +97,9 @@ void ota_start_fs_update(bool start_now) {
         Serial.println("OTA: FS update rejected - no fs URL");
         return;
     }
-    strncpy(_last_url, fs_url, sizeof(_last_url) - 1);
+    strncpy(_fs_url, fs_url, sizeof(_fs_url) - 1);
+    _fs_url[sizeof(_fs_url) - 1] = '\0';
+    strncpy(_last_url, _fs_url, sizeof(_last_url) - 1);
     _last_url[sizeof(_last_url) - 1] = '\0';
     parse_url(_last_url);
     _last_http_code = 0;
@@ -132,11 +141,16 @@ static bool load_ota_ca_cert(const char* host, char* buf, size_t buf_len) {
     return true;
 }
 
-static bool run_update(int update_type) {
+static bool run_update(int update_type, const char* url) {
     HTTPClient http;
     WiFiClient plain_client;
     WiFiClientSecure secure_client;
     char* ca_cert = nullptr;
+
+    strncpy(_last_url, url, sizeof(_last_url) - 1);
+    _last_url[sizeof(_last_url) - 1] = '\0';
+    parse_url(_last_url);
+    _last_http_code = 0;
     bool  https   = url_is_https(_last_url);
 
     Serial.printf("OTA: Starting %s update from %s\n",
@@ -276,11 +290,11 @@ void ota_loop() {
 
     if (_fs_pending) {
         _fs_pending = false;
-        ok = run_update(U_SPIFFS);
+        ok = run_update(U_SPIFFS, _fs_url);
     }
     if (ok && _ota_pending) {
         _ota_pending = false;
-        ok = run_update(U_FLASH);
+        ok = run_update(U_FLASH, _fw_url);
     }
 
     _armed = false;
