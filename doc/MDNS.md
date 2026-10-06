@@ -24,14 +24,14 @@ Two consequences fall out of this:
 1. **UC2 is the high-value, crash-safe path; UC1 is the low-value, crash-prone one.** So the cheap, valuable capability (find the broker) does not require the risky responder at all.
 2. **Discovery is transient.** Once the ESP32 has found and connected to the broker, it does not need to keep listening — UC2's browse is a one-shot at boot (a few attempts, then stop). The querier only re-engages as a reconnect fallback (below).
 
-### The split gate (implemented, ESP32-6du.6)
+### The split gate (implemented)
 
 A single flag used to gate *both* mechanisms, which left UC2 hostage to the crash-prone responder. There are now two independent gates, so discovery can run with the responder off:
 
 - `mdns.discovery` — the querier (UC2): browse for the broker, resolve `.local` names.
 - `mdns.advertise` — the responder (UC1/UC3): claim the hostname, register services.
 
-[`setup_mdns()`](../src/platform/network.cpp#L203) honours them separately: it returns early only when *both* are off, registers services solely under `mdns_advertise` ([network.cpp:262](../src/platform/network.cpp#L262)), and runs the broker query solely under `mdns_discovery` ([network.cpp:257](../src/platform/network.cpp#L257)). The reconnect re-query is likewise the querier's job ([network.cpp:514](../src/platform/network.cpp#L514)).
+`setup_mdns()` in [`src/platform/network.cpp`](../src/platform/network.cpp) honours them separately: it returns early only when *both* are off, calls `mdns_register_services()` solely under `mdns_advertise`, and calls `mdns_query_mqtt_broker()` solely under `mdns_discovery`. The periodic re-query in `loop_mdns()` is likewise the querier's job: it returns immediately unless `mdns_discovery` is set.
 
 `mdns.enabled` remains as a legacy convenience that sets both at once; the granular keys override it. Note the Arduino `MDNS.begin()` API couples `mdns_init()` with a hostname claim, so a discovery-only build still initialises the responder stack even though it registers no services.
 
