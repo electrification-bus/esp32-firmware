@@ -51,9 +51,10 @@ data/config.yml
 data/config.yml~
 data/config.yml.bak
 
-# Per-developer config overlay. Optional: if present, its non-empty fields are merged
-# over the device.yml-derived values, so real broker/WiFi credentials stay out of the
-# tracked device.yml. No template and no init step — create it only if you need it.
+# Per-developer config overlay. Required before the first generate: it sets
+# device.device_passphrase, which generate refuses to leave empty or "changeme". Its
+# non-empty fields are merged over the device.yml-derived values, so the passphrase
+# and real broker/WiFi credentials stay out of the tracked device.yml. No template.
 config-overlay.yml
 
 # The tracked PlatformIO config lives in platformio/platformio.ini, NOT here. A root

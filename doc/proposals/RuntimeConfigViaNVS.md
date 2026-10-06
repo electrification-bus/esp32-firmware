@@ -4,7 +4,7 @@
 
 ## What exists today
 
-`data/config.yml` is generated from `device.yml` (plus an optional `config-overlay.yml`) and flashed in the LittleFS image. At boot, `portal_prefs_load_fallbacks()` ([`include/platform/portal_prefs.h`](../../include/platform/portal_prefs.h)) overrides it with any values saved in NVS through the device's web UI:
+`data/config.yml` is generated from `device.yml` (plus the per-developer `config-overlay.yml`) and flashed in the LittleFS image. At boot, `portal_prefs_load_fallbacks()` ([`include/platform/portal_prefs.h`](../../include/platform/portal_prefs.h)) overrides it with any values saved in NVS through the device's web UI:
 
 | Setting | Saved by | Stored in NVS |
 |---|---|---|
