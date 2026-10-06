@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include <platform/mqtt_client.h>
 #include <TimeLib.h>
 #include <WiFiClient.h>
@@ -17,9 +18,21 @@ WiFiClientSecure secureClient;
 Client* transportClient = nullptr;  // Pointer to active client
 bool mqtt_using_secure = false;
 
+// Client packet buffer. An inbound PUBLISH must fit whole in it: 1 byte packet type,
+// up to 4 bytes remaining length, 2 bytes topic length, the topic (every topic the
+// firmware uses, nested child $description included, is under 128 bytes), 2 bytes
+// packet id at QoS 1/2, then a payload of up to MAX_DATA_LEN bytes. That is
+// MAX_DATA_LEN + 137; 256 bytes of headroom covers it with margin.
+#define MQTT_PACKET_HEADROOM 256
+MQTTClient mqtt_client(MAX_DATA_LEN + MQTT_PACKET_HEADROOM);
+
+// Set once begin() has bound the client to a transport. Until then loop_mqtt() does not
+// call loop() and mqtt_connected() does not call connected().
+static bool _mqtt_begun = false;
+
 #define TOPIC_TOKEN_SIZ 80
 char topic_device[TOPIC_TOKEN_SIZ] = {0};
-// Static LWT topic buffer - must persist after mqtt_connect() returns
+// Static LWT topic buffer - must persist after broker_connect() returns
 // (pointer corruption fix per arduino-mqtt issue #89)
 static char lwt_topic[64] = {0};
 int num_subscribers = 0;
@@ -524,6 +537,93 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
   }
 }
 
+// Open a broker session on the configured host. Returns true when connected.
+// Called by setup_mqtt() and by loop_mqtt()'s reconnect path. On success it re-subscribes
+// every settable topic (the session may be new) and then runs the reconnect callback,
+// which re-publishes $state over the "lost" the broker may hold from the will.
+
+static bool broker_connect() {
+  if (!client_connected()) {
+    Serial.println("MQTT: no network interface up, not connecting");
+    return false;
+  }
+  if (mqtt_host[0] == '\0') {
+    Serial.println("MQTT: no broker host, not connecting");
+    return false;
+  }
+
+  // Transport selection may rewrite mqtt_port (POE-ISO without a CA falls back to 1883),
+  // so port and TLS state are read only after it.
+  if (transportClient == nullptr && !mqtt_init_transport()) {
+    Serial.println("MQTT: transport setup failed, not connecting");
+    return false;
+  }
+  Serial.printf("MQTT: connecting to %s:%u%s\n", mqtt_host, mqtt_port,
+                mqtt_using_secure ? " [TLS]" : "");
+
+  const int keepalive_s = 60;
+  const int op_timeout_ms = mqtt_using_secure ? 2000 : 1000;
+  // Socket connect/read/write timeout, 15 s for TLS and 10 s plain, set on the concrete
+  // client. On 3.x it is NetworkClient::_timeout, reached only through
+  // setConnectionTimeout(ms); setTimeout() there sets Stream's timeout, which the MQTT
+  // library never uses. On 2.x WiFiClient::setTimeout(seconds) hides Stream's, so it
+  // must not go through Client*, which would take the millisecond Stream one.
+  const uint32_t socket_timeout_s = mqtt_using_secure ? 15 : 10;
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  if (mqtt_using_secure) {
+    secureClient.setConnectionTimeout(socket_timeout_s * 1000);
+  } else {
+    insecureClient.setConnectionTimeout(socket_timeout_s * 1000);
+  }
+#else
+  if (mqtt_using_secure) {
+    secureClient.setTimeout(socket_timeout_s);
+  } else {
+    insecureClient.setTimeout(socket_timeout_s);
+  }
+#endif
+  // Clean session off: the broker keeps our subscriptions across a reconnect.
+  mqtt_client.setOptions(keepalive_s, false, op_timeout_ms);
+  Serial.printf("MQTT: keepalive %d s, operation timeout %d ms\n", keepalive_s, op_timeout_ms);
+
+  // Will on the root device only; child devices share this connection and are treated
+  // as lost with their root. The library keeps the topic pointer, so it is static.
+  int n = snprintf(lwt_topic, sizeof(lwt_topic), "%s/%s/$state", HOMIE_TOPIC_PREFIX, getDeviceID());
+  if (n < 0 || n >= (int)sizeof(lwt_topic)) {
+    Serial.printf("MQTT: **ERROR -- will topic truncated to '%s'\n", lwt_topic);
+  }
+  mqtt_client.setWill(lwt_topic, HOMIE_STATE_LOST, true, homie_qos(true));
+  Serial.printf("MQTT: will '%s' = '%s'\n", lwt_topic, HOMIE_STATE_LOST);
+
+  ntp_lookup_wait();   // begin()/connect() resolve mqtt_host; see network.cpp
+  mqtt_client.begin(mqtt_host, mqtt_port, *transportClient);
+  mqtt_client.onMessageAdvanced(subscriber_callback);   // begin() clears it
+  _mqtt_begun = true;
+
+  bool ok;
+  if (mqtt_username[0] == '\0') {
+    ok = mqtt_client.connect(getDeviceID());
+  } else {
+    Serial.printf("MQTT: authenticating as '%s'\n", mqtt_username);
+    ok = mqtt_client.connect(getDeviceID(), mqtt_username, mqtt_password);
+  }
+  if (!ok) {
+    Serial.printf("MQTT: connect to %s failed, error %d, return code %d\n", mqtt_host,
+                  (int)mqtt_client.lastError(), (int)mqtt_client.returnCode());
+    return false;
+  }
+  Serial.printf("MQTT: connected to %s\n", mqtt_host);
+
+  // QoS 0, the library default, which /set requires.
+  for (int i = 0; i < num_subscribers; i++) {
+    mqtt_client.subscribe(settable_properties[i].topic);
+    Serial.printf("MQTT: subscribed '%s'\n", settable_properties[i].topic);
+  }
+
+  if (_reconnect_callback) _reconnect_callback();
+  return true;
+}
+
 void setup_mqtt() {
   // Resolve broker based on mqtt_mode
   if (mqtt_mode == MQTT_MODE_CONFIGURED_ONLY) {
@@ -581,14 +681,67 @@ void setup_mqtt() {
     return;
   }
 
-  if (!mqtt_connect()) {
+  if (!broker_connect()) {
     delay(250);
-    if (!mqtt_connect()) {
+    if (!broker_connect()) {
       delay(500);
-      if (!mqtt_connect()) {
+      if (!broker_connect()) {
         Serial.println("MQTT: FAILED TO CONNECT");
         return;
       }
     }
   }
+}
+
+#define MQTT_RECONNECT_INTERVAL_MS 10000UL
+#define MQTT_STATUS_INTERVAL_MS 30000UL
+
+// Service the client, watch the link, reconnect when it is down, and drain the publish
+// queue. Called from the main task on every pass, so inbound /set dispatch runs there.
+void loop_mqtt() {
+  static bool was_up = false;
+  static uint32_t last_attempt_ms = 0;
+  static uint32_t last_status_ms = 0;
+
+  bool serviced = _mqtt_begun && mqtt_client.loop();
+  bool up = serviced && mqtt_client.connected();
+  uint32_t now = millis();
+
+  if (up) {
+    if (now - last_status_ms >= MQTT_STATUS_INTERVAL_MS) {
+      last_status_ms = now;
+      Serial.printf("MQTT: connected OK%s, up %lu s, broker %s, device %s\n",
+                    mqtt_using_secure ? " [TLS]" : "", (unsigned long)(now / 1000),
+                    mqtt_host, topic_device);
+    }
+    was_up = true;
+  } else {
+    if (was_up) {
+      was_up = false;
+      Serial.printf("MQTT: DISCONNECTED! error %d, loop %s, up %lu s\n",
+                    (int)mqtt_client.lastError(), serviced ? "ok" : "failed",
+                    (unsigned long)(now / 1000));
+    }
+    if (now - last_attempt_ms >= MQTT_RECONNECT_INTERVAL_MS) {
+      last_attempt_ms = now;
+      Serial.printf("MQTT: not connected (error %d), reconnecting to %s\n",
+                    (int)mqtt_client.lastError(), mqtt_host);
+      broker_connect();
+    }
+  }
+
+  // Runs while disconnected too: queued items are then dropped and reported failed.
+  mqtt_process_queue();
+}
+
+// Drop the session (a clean DISCONNECT, so the broker does not fire the will) and forget
+// the transport, so the next connect re-selects it for the possibly changed port and CA.
+// The caller follows with setup_mqtt().
+void mqtt_restart() {
+  if (mqtt_connected()) mqtt_client.disconnect();
+  transportClient = nullptr;
+}
+
+boolean mqtt_connected() {
+  return _mqtt_begun && mqtt_client.connected();
 }
