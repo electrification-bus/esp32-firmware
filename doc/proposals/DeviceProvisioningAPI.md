@@ -11,7 +11,7 @@ POST https://provision.example.com/api/v1/device/provision
 Content-Type: application/json
 
 {
-  "device_id": "ESP32POEISO_A1B2C3",
+  "device_id": "a1b2c3d4e5f6",
   "passphrase": "alpha-bravo-charlie-delta",
   "firmware_version": "1.0.0",
   "model": "ESP32-POE-ISO"
@@ -25,11 +25,11 @@ Content-Type: application/json
   "mqtt": {
     "host": "mqtt.example.com",
     "port": 8883,
-    "username": "esp32poeiso_a1b2c3",
+    "username": "a1b2c3d4e5f6",
     "password": "generated-credential-here"
   },
   "ca_cert": "-----BEGIN CERTIFICATE-----\nMIID...\n-----END CERTIFICATE-----\n",
-  "homie_base_topic": "homie/5/ESP32POEISO_A1B2C3/",
+  "homie_base_topic": "ebus/5/a1b2c3d4e5f6/",
   "credential_ttl": 0
 }
 ```
@@ -44,21 +44,22 @@ Content-Type: application/json
 
 ## How It Fits the ESP32 Codebase
 
-A new `mqtt_mode` value `provisioned` would trigger this flow:
+A new `mqtt.mode` value `provisioned` would trigger this flow:
 
 ```yaml
 # config.yml
-mqtt_mode: provisioned
-provision_url: https://provision.example.com/api/v1/device/provision
-provision_passphrase: alpha-bravo-charlie-delta
+mqtt:
+  mode: provisioned
+  provision_url: https://provision.example.com/api/v1/device/provision
+  provision_passphrase: alpha-bravo-charlie-delta
 ```
 
 ### Device-Side Flow
 
-1. Device boots, loads config, sees `mqtt_mode: provisioned`
+1. Device boots, loads config, sees `mqtt.mode: provisioned`
 2. After WiFi/ETH connects, device POSTs passphrase + device_id to `provision_url`
-3. Response populates `mqtt_host`, `mqtt_port`, `mqtt_username`, `mqtt_password`
-4. If `ca_cert` is returned, it is saved to SPIFFS (replacing the current auto-fetch)
+3. Response populates `mqtt.host`, `mqtt.port`, `mqtt.username`, `mqtt.password`
+4. If `ca_cert` is returned, it is saved to LittleFS (replacing the current auto-fetch)
 5. Normal MQTT connection proceeds
 6. Credentials can be cached in NVS (`portal_prefs`) so reprovisioning is not needed every boot -- only on failure
 
@@ -103,7 +104,7 @@ static bool mqtt_provision() {
     }
 
     // Parse response into mqtt_host, mqtt_port, mqtt_username, mqtt_password
-    // Save ca_cert to SPIFFS if present
+    // Save ca_cert to LittleFS if present
     // Cache credentials in NVS
     ...
     return true;
