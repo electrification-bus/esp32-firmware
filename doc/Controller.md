@@ -1,317 +1,97 @@
 # Homie Controller
 
-The firmware supports **dual-role operation**: your device always acts as a **Homie Device** (publishing its own sensors/relays), and can optionally also act as a **Homie Controller**. In controller mode the device discovers, monitors, and commands *other* Homie 5.0 devices on the MQTT broker instead of only publishing its own nodes. It is a procedural C/C++ implementation that reuses the existing `Device`, `Node`, and `Property` classes from the homie folder, so it integrates seamlessly with the rest of the codebase.
+A controller build discovers, monitors and commands other Homie 5 devices on the MQTT broker. Controller mode is exclusive: when `ENABLE_CONTROLLER` is defined, `src/main.cpp` compiles its controller branch instead of the device branch, so the board publishes no nodes or properties of its own. The controller API is declared in [`include/homie/controller.h`](../include/homie/controller.h) and implemented in `src/homie/controller.cpp`; it stores what it discovers in the same `Device`, `Node` and `Property` classes the device role uses.
 
 ## Enabling it
 
-Controller features are gated behind the `-DENABLE_CONTROLLER` build flag. Without it the device runs in default Device mode (~61KB RAM, ~968KB Flash); with it, the controller code is compiled in.
-
-### Method 1: platformio/platformio.ini (Recommended)
-
-Edit `platformio/platformio.ini` and uncomment the controller flag in the `[common]` section:
-
-```ini
-build_flags =
-    -DUSE_SOFTWARE_SERIAL
-    -DARDUINO_USB_CDC_ON_BOOT=1
-    -Wall -Wextra
-    -D CONFIG_ARDUHAL_LOG_COLORS
-    -D CORE_DEBUG_LEVEL=ARDUHAL_LOG_LEVEL_DEBUG
-    -D ARDUINO_ARCH_AVR
-    -DENABLE_CONTROLLER  ; <-- Uncomment this line
-```
-
-### Method 2: Per-Environment
-
-Enable controller only for specific environments:
+`ENABLE_CONTROLLER` is a build flag that only `src/main.cpp` reads. Add it for your board's env in `platformio_local.ini` at the repo root (gitignored; see [Configuration.md](Configuration.md)). Appending to `build_src_flags` keeps the env's own `build_flags` intact:
 
 ```ini
 [env:esp32-poe-iso]
-build_flags =
-    ${common.build_flags}
-    -DENABLE_CONTROLLER  ; Controller enabled for this board only
+build_src_flags = ${env.build_src_flags} -DENABLE_CONTROLLER
 ```
 
-### Method 3: Command Line
+Use the env named by `device.environment` in your `device.yml`, then build and flash as usual (`./ebus-esp32 build`, `./ebus-esp32 run`). Also set `homie_role: controller` in the `device:` section; the firmware reports it in the mDNS TXT record and the portal status, and it does not select the mode.
 
-```bash
-pio run -e esp32-poe-iso --build-flag="-DENABLE_CONTROLLER"
-```
+The serial log starts with `===== HOMIE CONTROLLER =====` instead of the device banner, and `CONTROLLER: Ready - discovering devices...` once discovery is subscribed.
 
-### Verifying it is enabled
+## What the controller branch does
 
-Check the serial output at startup.
+`setup()` brings up the network, portal, network console, mDNS and MQTT exactly as device mode does, using the same configuration (`device.yml`, portal settings in NVS). Then it:
 
-**Without controller:**
-```
-===== HOMIE DEVICE =====
-```
+1. Publishes its own retained `$state` of `ready` at `<domain>/5/<device-id>/$state`, republishes it after every MQTT reconnect, and re-asserts it if the broker reports anything else (for example the Last Will's `lost`).
+2. Calls `controller_init(&mqtt_client, top_level_topic(), false)`, so it discovers and commands devices only in this build's domain (`homie`, or `ebus` with `-DUSE_EBUS_TOPIC`).
+3. Registers `controller_mqtt_callback` with `mqtt_set_fallback_callback()`, which hands it every message no settable-property handler claimed.
+4. Calls `controller_setup_discovery()`, which subscribes to `<domain>/5/+/$state` and `<domain>/5/+/$description`.
 
-**With controller:**
-```
-===== HOMIE DEVICE =====
-CONTROLLER: Enabling controller features
-Controller initialized
-```
+`loop()` services the portal, NTP, mDNS and MQTT, calls `controller_loop()`, prints the discovered devices every 30 seconds (own state, effective state, and root or child) and prints `CONTROLLER Stats` every 60 seconds.
 
-With the controller enabled you'll see additional discovery output as devices appear:
+To add your own logic, edit the `loop()` in the `ENABLE_CONTROLLER` branch of `src/main.cpp` and call the functions below.
 
-```
-===== HOMIE DEVICE =====
-Device name 'ESP32POEISO', type 'ebus'
-CONTROLLER: Enabling controller features
-Controller initialized
+## Discovery
 
-CONTROLLER: Discovered 2 devices
-  esp32poe3A3D78: ebus (state: ready)
-  esp32poe5F2A91: ebus (state: ready)
-
-CONTROLLER Stats: 2 devices, 8 properties, 127 messages
-```
-
-## Features
-
-When `ENABLE_CONTROLLER` is defined, everything from Device mode continues to work, plus:
-
-- **Device Discovery**: Automatically discovers all Homie devices on the network via MQTT wildcard subscriptions (`+/5/+/$state`)
-- **Description Parsing**: Receives and parses each device's `$description` JSON to build full Device/Node/Property structures
-- **Property Monitoring**: Subscribes to all properties of discovered devices, caches their current values, and tracks state changes
-- **Command Sending**: Sends commands to settable properties (non-retained, per Homie spec)
-- **State Tracking**: Monitors device states (the Homie 5 set: init, ready, disconnected, sleeping, lost)
-- **Health Monitoring**: Tracks which devices are online/offline
-- **Timeout Detection**: Automatically marks a device as "lost" if not seen for 60 seconds
-- **Object-Oriented Data**: Uses actual `Device`, `Node`, and `Property` objects internally — no duplicate data structures
-
-Discovery happens in the background and is non-blocking, sharing the same MQTT connection as the device role.
+- A `$state` message from an unknown device creates a `ControllerDevice` entry and subscribes to `<domain>/5/<device-id>/+/+` for its property values (once per device).
+- A `$description` message builds the device's `Node` and `Property` objects (name, datatype, unit, settable, retained) and records `parent` and `root` for nested devices.
+- A property value updates the cached `Property`, parsed by its datatype (boolean, integer, float, otherwise the string).
 
 ## API
 
-The controller API is declared in `include/homie/controller.h` and implemented in `src/homie/controller.cpp`.
+### Setup and runtime
 
-### Data structure: ControllerDevice
+| Function | Purpose |
+|---|---|
+| `controller_init(MQTTClient* mqtt_client, const char* domain = top_level_topic(), bool discover_all_domains = true)` | Store the client and the command domain; `true` discovers in every domain via `+/5/+/...`. Clears the device table. |
+| `controller_setup_discovery()` | Subscribe to the `$state` and `$description` topics. Call after MQTT connects. |
+| `controller_mqtt_callback(char* topic, uint8_t* payload, unsigned int length)` | Feed one MQTT message to the controller. The payload must be null-terminated. |
+| `controller_loop()` | Call every loop: marks a device in `init` or `ready` as `lost` when no `$state` has arrived from it for 60 seconds. |
+| `controller_reset()` | Delete every discovered device and zero the statistics. |
 
-A wrapper around a discovered `Device` object that adds controller-level bookkeeping:
+### Reading discovered devices
 
-```cpp
-typedef struct {
-    Device* device;              // Actual Device object from homie folder
-    char domain[16];             // Domain name (e.g., "homie" or "ebus")
-    DeviceState state;           // Current device state
-    unsigned long last_seen_ms;  // Last time we heard from this device
-    bool has_description;        // Whether we've received $description
-    bool is_active;              // Whether this slot is in use
-} ControllerDevice;
-```
+| Function | Returns |
+|---|---|
+| `controller_get_device(device_id)` | The `Device*`, or `nullptr` |
+| `controller_get_node(device_id, node_id)` | The `Node*`, or `nullptr` |
+| `controller_get_property(device_id, node_id, property_id)` | The `Property*`, or `nullptr` |
+| `controller_get_device_info(device_id)` | The `ControllerDevice*` wrapper, or `nullptr` |
+| `controller_list_devices(Device** devices, int max_devices)` | Count, filling `devices` |
+| `controller_list_device_info(ControllerDevice* devices, int max_devices)` | Count, copying the wrappers into `devices` |
+| `controller_get_stats(ControllerStats* stats)` | Fills `stats` |
 
-### Functions
+`ControllerDevice` holds the `Device*`, the device's `domain`, its own reported `state`, `last_seen_ms` (time of the last `$state`), `has_description`, `properties_subscribed`, and the `parent_id` and `root_id` from its description (empty for a root).
 
-Initialization:
-```cpp
-void controller_init(PubSubClient* mqtt_client, const char* domain = "homie");
-void controller_setup_discovery();
-```
+`ControllerStats` holds `devices_discovered`, `messages_received`, `commands_sent` and `last_discovery_ms`. Its `properties_discovered` field counts devices whose `$description` has arrived, not properties.
 
-Runtime:
-```cpp
-void controller_loop();  // Call in main loop for timeout checking
-void controller_mqtt_callback(char* topic, uint8_t* payload, unsigned int length);
-```
+### Nested devices
 
-Device access:
-```cpp
-Device* controller_get_device(const char* device_id);
-Node* controller_get_node(const char* device_id, const char* node_id);
-Property* controller_get_property(const char* device_id, const char* node_id,
-                                  const char* property_id);
-ControllerDevice* controller_get_device_info(const char* device_id);
-```
-
-Control:
-```cpp
-bool controller_set_property(const char* device_id, const char* node_id,
-                             const char* property_id, const char* value);
-```
-
-Discovery query and statistics:
-```cpp
-int controller_list_devices(Device** devices, int max_devices);
-void controller_get_stats(ControllerStats* stats);
-```
-
-### Basic setup
-
-```cpp
-#include <homie/controller.h>
-
-PubSubClient mqttClient(espClient);
-
-void setup() {
-    // Setup MQTT
-    mqttClient.setServer(MQTT_BROKER, 1883);
-    mqttClient.setBufferSize(2048);  // Increase for device descriptions
-
-    // IMPORTANT: Set callback to controller
-    mqttClient.setCallback(controller_mqtt_callback);
-
-    // Initialize controller
-    controller_init(&mqttClient, "homie");
-
-    // After MQTT connects, setup discovery
-    controller_setup_discovery();
-}
-
-void loop() {
-    mqttClient.loop();
-    controller_loop();  // Timeout checking
-}
-```
-
-### Accessing discovered devices
-
-```cpp
-// Get Device object
-Device* dev = controller_get_device("esp32poe3A3D78");
-if (dev) {
-    Serial.printf("Device: %s (%s)\n", dev->getId(), dev->type());
-}
-
-// Get specific property
-Property* prop = controller_get_property("esp32poe3A3D78", "relay1", "state");
-if (prop) {
-    Serial.printf("Property value: %s\n", prop->value());
-}
-
-// Get device info (includes state, last_seen)
-ControllerDevice* info = controller_get_device_info("esp32poe3A3D78");
-if (info) {
-    Serial.printf("State: %s, Last seen: %lu ms ago\n",
-                 device_state_to_cstr(info->state),
-                 millis() - info->last_seen_ms);
-}
-```
+| Function | Returns |
+|---|---|
+| `controller_is_root(device_id)` | `true` for a discovered device with no parent (including one whose description has not arrived) |
+| `controller_get_parent_id(device_id)` | The parent id, or `nullptr` for a root or unknown device |
+| `controller_get_root_id(device_id)` | The root id, the device's own id for a root, or `nullptr` if unknown |
+| `controller_effective_state(device_id)` | The root's state when the root is not `ready`, otherwise the device's own; `DEVICE_STATE_UNKNOWN` if unknown |
+| `controller_list_children(device_id, out, max_out)` | Count of direct children, filling `out` |
+| `controller_list_descendants(device_id, out, max_out)` | Count of all descendants, filling `out` |
 
 ### Sending commands
 
+`controller_set_property(device_id, node_id, property_id, value)` publishes `value` non-retained at QoS 0 to `<domain>/5/<device-id>/<node-id>/<property-id>/set`. It returns `false` without publishing when MQTT is disconnected, or when the property is unknown or not settable.
+
 ```cpp
-// Control a settable property
-if (controller_set_property("esp32poe3A3D78", "relay1", "state", "true")) {
-    Serial.println("Command sent successfully");
+Property* state = controller_get_property("relay-device-id", "relay1", "state");
+if (state && controller_effective_state("relay-device-id") == DEVICE_STATE_READY) {
+    controller_set_property("relay-device-id", "relay1", "state",
+                            state->getBoolValue() ? "false" : "true");
 }
 ```
 
-### Listing all devices
+## Standalone sketch
 
-```cpp
-Device* devices[MAX_DISCOVERED_DEVICES];
-int count = controller_list_devices(devices, MAX_DISCOVERED_DEVICES);
+[`examples/controller_example.cpp`](../examples/controller_example.cpp) uses the same API on its own WiFi and `MQTTClient` connection, without the firmware's configuration, portal or mDNS. It defines its own `setup()` and `loop()`, so it replaces `src/main.cpp` rather than running beside it.
 
-for (int i = 0; i < count; i++) {
-    Serial.printf("Device %d: %s\n", i, devices[i]->getId());
-}
-```
+## Limits
 
-See `examples/controller_example.cpp` for a complete standalone example.
-
-### Customizing the controller loop
-
-Edit `src/main.cpp` to customize controller behavior:
-
-```cpp
-#ifdef ENABLE_CONTROLLER
-void controller_main_loop() {
-    controller_loop();  // Required: timeout handling
-
-    // Add your custom controller logic here
-    // Check properties, send commands, etc.
-}
-#endif
-```
-
-## Architecture
-
-The controller is a procedural implementation layered on top of the existing homie classes. Rather than defining its own representation of devices, it stores discovered state inside the same `Device` / `Node` / `Property` objects the device role uses.
-
-### Integration with existing code
-
-The controller reuses the existing homie classes:
-- `Device` — represents discovered devices with full metadata
-- `Node` — nodes within devices (created from `$description`)
-- `Property` — individual properties with values and metadata
-- `DeviceState` — standard Homie device states
-
-This means no duplicate data structures, seamless interoperability with device-role code, and a familiar API for developers already using the homie classes.
-
-### Homie convention compliance
-
-This implementation follows the [Homie 5.0 specification](https://homieiot.github.io/specification/) for controllers:
-
-1. **Discovery**: Subscribes to the `+/5/+/$state` wildcard topic
-2. **Non-retained commands**: Commands to `/set` topics are published without the retain flag
-3. **Property subscriptions**: Auto-subscribes to `domain/5/device_id/+/+` for all properties
-4. **State monitoring**: Tracks device state transitions and timeout
-
-### Performance and limits
-
-| Mode | RAM Usage | Flash Usage | Notes |
-|------|-----------|-------------|-------|
-| Device Only | 61KB | 968KB | Default, lowest resource usage |
-| Device + Controller | ~65KB | ~980KB | Adds ~4KB RAM, ~12KB Flash |
-
-- **Maximum 16 discovered devices**, configurable via `MAX_DISCOVERED_DEVICES`
-- **Unlimited properties per device** (stored within the Device/Node/Property objects)
-- **Overhead**: minimal — procedural approach with static storage
-- The controller shares the device role's single MQTT connection; discovery runs in the background without blocking
-
-### Files
-
-- `include/homie/controller.h` — controller API
-- `src/homie/controller.cpp` — controller implementation
-- `examples/controller_example.cpp` — complete usage example
-
-## Example use cases
-
-### Multi-room temperature monitoring
-```cpp
-// In your main.cpp loop (when ENABLE_CONTROLLER is defined)
-Property* living_temp = controller_get_property("living-room", "bme280", "temperature");
-Property* bedroom_temp = controller_get_property("bedroom", "bme280", "temperature");
-
-if (living_temp && bedroom_temp) {
-    float avg_temp = (living_temp->getFloatValue() + bedroom_temp->getFloatValue()) / 2.0;
-    Serial.printf("Average house temp: %.1f°C\n", avg_temp);
-}
-```
-
-### Coordinated relay control
-```cpp
-// If garage door opens, turn on garage light
-Property* door = controller_get_property("garage", "door-sensor", "state");
-if (door && door->getBoolValue() == true) {
-    controller_set_property("garage", "light", "state", "true");
-}
-```
-
-### Load management
-```cpp
-// Prevent multiple high-power relays from running simultaneously
-bool heater1_on = controller_get_property("zone1", "heater", "state")->getBoolValue();
-bool heater2_on = controller_get_property("zone2", "heater", "state")->getBoolValue();
-
-if (heater1_on && heater2_on) {
-    // Disable one to reduce load
-    controller_set_property("zone2", "heater", "state", "false");
-    Serial.println("Load management: Disabled zone2 heater");
-}
-```
-
-## Future enhancements
-
-- [ ] Support for Homie extensions
-- [ ] Persist discovered devices across reboot
-- [ ] Advanced filtering (by type, domain, etc.)
-- [ ] Event callbacks for device discovery/loss
-- [ ] Batch property updates
-
-## License
-
-Same as the parent project (open source, MIT-style license).
+- At most `MAX_DISCOVERED_DEVICES` (16) devices; further devices are not tracked.
+- Device ids and parent/root ids are stored in 32-byte buffers and domains in 16-byte buffers.
+- Homie devices publish `$state` when it changes, not periodically, so the 60-second timeout in `controller_loop()` also marks an idle, healthy device `lost`.
+- Each discovered `Device` is allocated with `new`, and `$description` parsing uses ArduinoJson documents.

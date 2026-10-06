@@ -170,10 +170,11 @@ Re-flash the filesystem after editing either file: `pio run -c platformio/platfo
 
 A controller — a device that discovers and monitors *other* Homie devices instead of publishing its own nodes — is a build-time mode, not a `device.yml` option. It's selected by the **`ENABLE_CONTROLLER`** build flag, which switches `main.cpp` to the controller branch: `controller_init()`, `controller_setup_discovery()`, and the discovery/stats loop, all from [`include/homie/controller.h`](../include/homie/controller.h).
 
-To build a controller, add the flag to your env (or a `platformio_local.ini` override):
+To build a controller, add the flag to your env in a `platformio_local.ini` override:
 
 ```ini
-build_flags = ${env.build_flags} -DENABLE_CONTROLLER
+[env:esp32-poe-iso]
+build_src_flags = ${env.build_src_flags} -DENABLE_CONTROLLER
 ```
 
 In this mode you do **not** implement `register_homie_properties()` / `setup_homie()` / `loop_homie()` — the controller branch of `main.cpp` drives everything via the controller API. Fuller controller documentation lives in [`Controller.md`](Controller.md).
