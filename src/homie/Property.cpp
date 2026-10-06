@@ -5,6 +5,7 @@
 #include <homie/homie_datatype.h>
 #include <platform/mqtt_client.h>
 #include <util/jsonUtils.h>
+#include <ctype.h>
 
 Property::Property() {
     _parent_node = nullptr;
@@ -225,6 +226,47 @@ void Property::device_new_value_callback(const char* sensor_value) {
     setValue(sensor_value);
 }
 
+// Reader for deserializeJson() that records how far the parser read. ArduinoJson stops
+// at the bracket that closes the top-level array or object without reading past it, so
+// anything left after _pos is trailing input that a whole-payload check must reject.
+struct JsonPayloadReader {
+    const char* _pos;
+    const char* _end;
+    int read() { return _pos < _end ? (unsigned char)*_pos++ : -1; }
+    size_t readBytes(char* buffer, size_t length) {
+        size_t n = 0;
+        while (n < length && _pos < _end) buffer[n++] = *_pos++;
+        return n;
+    }
+};
+
+// Homie 5: a json property's payload MUST be a JSON array or object. True if the whole
+// of `payload` (surrounding whitespace aside) is one. Logs the reason when it is not.
+// The document is local, so the pool ArduinoJson allocates for it is freed on return.
+static bool validate_json_payload(const char* node_id, const char* prop_id,
+                                  const char* payload, size_t len) {
+    JsonPayloadReader reader = { payload, payload + len };
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, reader);
+    if (err) {
+        Serial.printf("Node: '%s', Property: '%s' - invalid json payload '%s' (%s)\n",
+                      node_id, prop_id, payload, err.c_str());
+        return false;
+    }
+    while (reader._pos < reader._end && isspace((unsigned char)*reader._pos)) reader._pos++;
+    if (reader._pos != reader._end) {
+        Serial.printf("Node: '%s', Property: '%s' - invalid json payload '%s' (trailing input)\n",
+                      node_id, prop_id, payload);
+        return false;
+    }
+    if (!doc.is<JsonObject>() && !doc.is<JsonArray>()) {
+        Serial.printf("Node: '%s', Property: '%s' - json payload '%s' is not an array or object\n",
+                      node_id, prop_id, payload);
+        return false;
+    }
+    return true;
+}
+
 // Validate a /set payload against the datatype and format and, if valid, store it.
 // Returns false, with nothing stored, for an invalid payload. Publishing is left to
 // dispatch_settable(), which first asks the driver (see publish_set()).
@@ -265,8 +307,25 @@ bool Property::store_set_payload(const char* payload) {
         if (homie_validate_datetime(payload)) { setValue(payload); isValid = true; }
     } else if (strcmp(datatype(), HOMIE_DATATYPE_DURATION) == 0) {
         if (homie_validate_duration(payload)) { setValue(payload); isValid = true; }
+    } else if (strcmp(datatype(), HOMIE_DATATYPE_JSON) == 0) {
+        // Stored whole or not at all: setValue() would cut a longer payload at VALUE_MAX,
+        // leaving a value that is no longer valid JSON.
+        size_t len = strlen(payload);
+        if (len > (size_t)VALUE_MAX) {
+            Serial.printf("Node: '%s', Property: '%s' - json payload is %u chars, longer than "
+                          "the %d a property holds; refused\n",
+                          _parent_node->id(), _id, (unsigned)len, VALUE_MAX);
+            return false;
+        }
+        if (!validate_json_payload(_parent_node->id(), _id, payload, len)) return false;
+        setValue(payload);
+        isValid = true;
+    } else {
+        Serial.printf("Node: '%s', Property: '%s' - unknown datatype '%s'; /set '%s' refused\n",
+                      _parent_node->id(), _id, datatype(), payload);
+        return false;
     }
-    if (!isValid && strlen(datatype()) > 0) {
+    if (!isValid) {
         Serial.printf("Node: '%s', Property: '%s' - invalid %s payload '%s' (format '%s')\n",
                       _parent_node->id(), _id, datatype(), payload, _format);
     }
