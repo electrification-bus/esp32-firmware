@@ -30,10 +30,10 @@ device:
   # Placeholders: ${chip_id} (full eFuse MAC hex, unique), ${chip_id_short} (last 3
   # bytes), ${name}. No quoting needed. Empty/omitted -> "${chip_id}". A fixed literal
   # (no placeholder) collides across units.
-  #   ${chip_id} -> b0b21c90f570   |   ebus-${chip_id} -> ebus-b0b21c90f570
+  #   ${chip_id} -> a1b2c3d4e5f6   |   ebus-${chip_id} -> ebus-a1b2c3d4e5f6
   id: ${chip_id}
   # id_prefix is an OPTIONAL deployment-scoped segment prepended to the resolved id with a
-  # hyphen: id_prefix "lab1" + id "ebus-${chip_id}" -> "lab1-ebus-b0b21c90f570". It is
+  # hyphen: id_prefix "lab1" + id "ebus-${chip_id}" -> "lab1-ebus-a1b2c3d4e5f6". It is
   # sanitized to Homie-legal characters on its own, so "Lab 1" also yields "lab1". Empty or
   # omitted = no prefix. It adds NO per-unit uniqueness (every board on a site shares it) —
   # keep a ${chip_id} in `id:`. Usually set from config-overlay.yml so a site can namespace
@@ -55,7 +55,7 @@ device:
   firmware_url: http://example.com/firmware.bin
   fs_url: 
   # mDNS device info
-  manufacturer: NESL
+  manufacturer: Example Manufacturer
   model: ESP32-POE-ISO
   serial_number:   # leave empty to use device_id
   homie_role: device  # "device" or "controller"

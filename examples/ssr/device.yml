@@ -19,7 +19,7 @@ device:
   firmware_name: Relay Board
   firmware_version: 1.0.0
   firmware_url: http://example.com/firmware.bin
-  manufacturer: NESL
+  manufacturer: Example Manufacturer
   model: ESP32-S3
   serial_number:
   homie_role: device
