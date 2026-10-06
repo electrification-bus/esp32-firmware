@@ -1,15 +1,21 @@
 # mDNS
 
-The firmware uses mDNS/DNS-SD for two separate jobs, each behind its own gate:
+On arduino-esp32 3.x builds the firmware always claims `<device-id>.local` (see [Hostname](#hostname)). Two further jobs each sit behind their own gate:
 
 - **Discovery** (querier, `mdns.discovery`): browse the LAN for an MQTT broker. Outbound queries only.
-- **Advertising** (responder, `mdns.advertise`): claim `<hostname>.local` and advertise the `_ebus._tcp`, `_http._tcp`, `_telnet._tcp` and `_device-info._tcp` services.
+- **Advertising** (responder, `mdns.advertise`): advertise the `_ebus._tcp`, `_http._tcp`, `_telnet._tcp` and `_device-info._tcp` services.
 
 Homie device discovery itself runs over MQTT and needs neither.
 
 ## Defaults and configuration
 
-Both gates default **on** for Ethernet-only builds on arduino-esp32 3.x (the default, unsuffixed envs) and **off** for WiFi-AP builds and every `-arduino2` env. The test is the `#if` above `mdns_discovery` in [`src/platform/config.cpp`](../src/platform/config.cpp). An Ethernet board has no captive portal and takes an unpredictable DHCP lease, so `<hostname>.local` is the practical way to reach it. A WiFi-AP board is reachable at 192.168.4.1 through its portal.
+| Build | Hostname claim | `mdns.advertise` default | `mdns.discovery` default |
+|---|---|---|---|
+| arduino-esp32 3.x, Ethernet (default, unsuffixed envs) | always | on | on |
+| arduino-esp32 3.x, WiFi-AP (`CONFIG_WIFI_AP`) | always | on | off |
+| `-arduino2` (arduino-esp32 2.0.x) | only when a gate is on | off | off |
+
+The defaults are the `#if` above `mdns_discovery` in [`src/platform/config.cpp`](../src/platform/config.cpp).
 
 Override the build default in the `mdns:` section of `device.yml` or `config-overlay.yml`; omit the section to keep it:
 
@@ -22,9 +28,11 @@ mdns:
 
 `mqtt.mode` decides whether discovery is used to find the broker: `configured-only` (the default) never queries, `discovery-with-fallback` tries mDNS first and then the configured `mqtt.host`, and `discovery-only` ignores the configured host. A discovery mode turns `mdns.discovery` on even when the configuration turns it off.
 
+On 3.x builds the gates do not affect the hostname: `enabled: false` stops discovery and advertising, and `<device-id>.local` is still claimed.
+
 ### Responder crash on arduino-esp32 2.0.x
 
-The precompiled ESP-IDF mDNS component in arduino-esp32 2.0.x can crash on certain inbound mDNS packets (backtrace: `_mdns_remove_scheduled_answer` from `mdns_parse_packet`). The crash is in the responder path and cannot be fixed from application code; arduino-esp32 3.x carries the upstream rewrite. This is why `-arduino2` envs default both gates off. The Arduino `MDNS.begin()` call also starts the responder stack, so a discovery-only build still initializes it, but registers no services.
+The precompiled ESP-IDF mDNS component in arduino-esp32 2.0.x can crash on certain inbound mDNS packets (backtrace: `_mdns_remove_scheduled_answer` from `mdns_parse_packet`). The crash is in the responder path and cannot be fixed from application code; arduino-esp32 3.x carries the upstream rewrite. This is why `-arduino2` envs default both gates off and claim no hostname unless a gate is on. The Arduino `MDNS.begin()` call also starts the responder stack, so a discovery-only build still initializes it, but registers no services.
 
 ## Broker discovery
 
@@ -34,7 +42,7 @@ mDNS is unauthenticated LAN multicast, and any host can advertise an MQTT servic
 
 ## Hostname
 
-The hostname is `device.name` from `device.yml`, lowercased, with spaces and underscores turned into hyphens and other non-alphanumeric characters dropped. Without a name it is the device ID. When advertising, the firmware checks whether another host already answers for the name and, if so, tries `<name>-2` through `<name>-99`. Ethernet boards send the same sanitized name, without a suffix, as their DHCP hostname.
+The hostname is the device ID as resolved at boot from the `device.id` template (default `${chip_id}`, for example `b0b21c90f570.local`), with `device.id_prefix` applied when set. It is the `Device ID:` line in the boot log. One firmware image therefore gives every board its own hostname. `device.name` is only the display name, in `$description` and the `name` TXT key. The firmware checks whether another host already answers for the name and, if so, tries `<id>-2` through `<id>-99`; on `-arduino2` builds this check runs only when advertising. Ethernet and WiFi send the device ID, without a suffix, as their DHCP hostname.
 
 ## Advertised services
 
@@ -100,6 +108,7 @@ avahi-browse -rt _ebus._tcp
 avahi-browse -rt _telnet._tcp
 
 # macOS
+dns-sd -G v4 <device-id>.local
 dns-sd -B _ebus._tcp
 dns-sd -L "<instance-name>" _ebus._tcp local
 ```

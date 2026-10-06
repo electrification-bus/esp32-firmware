@@ -23,23 +23,22 @@ uint16_t mqtt_port;
 uint8_t mqtt_qos = 2;   // QoS for retained Homie publications; Homie 5 recommends 2 (C4)
 // mDNS gates. The default is BUILD-CONDITIONAL; data/config.yml overrides
 // either gate at runtime, and omitting the keys there leaves these defaults in force.
+// On arduino-esp32 3.x the <device id>.local hostname is claimed regardless of either
+// gate (see setup_mdns()); the gates control only the querier and the service records.
 //
-// WiFi-AP builds default OFF: the captive portal already puts the device at a known
-// address (192.168.4.1) with a UI to read its DHCP lease from, so <name>.local buys
-// little against the mDNS responder crash surface.
-//
-// Ethernet-only builds default ON: there is no AP and no portal landing page, so the
-// board comes up on an unpredictable DHCP lease with nothing announcing it. mDNS is the
-// practical way to reach it — and it is what makes the _telnet._tcp advert of the
-// serial-over-TCP console usable by name (see mdns_register_services()).
 // The version test is NOT incidental. Per doc/MDNS.md the responder crash is a null-deref
 // inside the PRECOMPILED ESP-IDF mdns component shipped with arduino-esp32 2.0.x
 // (_mdns_remove_scheduled_answer <- mdns_parse_packet), triggered by inbound mDNS packets
-// and unfixable app-side. arduino-esp32 3.x carries the upstream rewrite. So mDNS defaults
-// on ONLY where both conditions hold: no captive portal to fall back on, AND a platform
-// without the known-crashy responder. Every 2.0.x env keeps the safe default.
-#if !defined(CONFIG_WIFI_AP) && ESP_ARDUINO_VERSION_MAJOR >= 3
+// and unfixable app-side. arduino-esp32 3.x carries the upstream rewrite. So every 2.0.x
+// env keeps both gates off, and every 3.x env advertises, WiFi-AP builds included.
+//
+// Discovery defaults ON for 3.x Ethernet builds and OFF for WiFi-AP builds.
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+#ifdef CONFIG_WIFI_AP
+bool mdns_discovery = false;
+#else
 bool mdns_discovery = true;
+#endif
 bool mdns_advertise = true;
 #else
 bool mdns_discovery = false;

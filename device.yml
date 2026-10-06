@@ -80,19 +80,15 @@ mqtt:
   # always QoS 0 per spec. Valid: 0, 1, 2.
   qos: 2
 
-# mDNS default depends on the BUILD, and this key overrides it:
-#   Ethernet-only AND arduino-esp32 3.x (the default, unsuffixed envs)  -> ON
-#   everything else (WiFi-AP builds, and every -arduino2 env)           -> OFF
+# mDNS. arduino-esp32 3.x builds always claim <device id>.local (the resolved
+# device.id, e.g. b0b21c90f570.local; not device.name), whatever this block says.
+# These keys gate only the querier (discovery) and the service records (advertise):
+#   3.x Ethernet (the default, unsuffixed envs)   advertise ON,  discovery ON
+#   3.x WiFi-AP                                   advertise ON,  discovery OFF
+#   every -arduino2 env                           both OFF, and no hostname claim
 # The 2.0.x exclusion is deliberate: its precompiled mDNS responder has an upstream
 # null-deref on inbound packets (doc/MDNS.md). 3.x carries the rewrite.
-# Ethernet boards DO serve the same web UI on port 80 — what they lack is the CAPTIVE
-# half of it (softAP + DNS hijack + the redirect endpoints, all #ifdef CONFIG_WIFI_AP in
-# captive_portal.cpp). Nothing steers a browser to them, and they take an unpredictable
-# DHCP lease, so you know the UI is up but not what address it is on. <device>.local is
-# the practical way to reach it — and it is what makes the _telnet._tcp advert of the
-# serial console findable by name. WiFi-AP builds already hand you 192.168.4.1 and land
-# you on that UI, so they stay off: the bundled ESP-IDF responder can crash on certain
-# packets, and that risk is not worth re-taking there.
+# On 3.x, `enabled: false` turns off discovery and advertising; the hostname stays.
 #
 # COMMENT THIS BLOCK OUT to accept the build default. Setting it — true or false —
 # pins the behavior for every build of this device.

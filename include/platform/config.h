@@ -69,11 +69,13 @@ extern MqttMode mqtt_mode;
 //                    records (TXT-heavy) so other hosts can find this device. This is where
 //                    the bundled ESP-IDF responder in arduino-esp32 2.0.x can crash on
 //                    certain inbound packets.
+// On arduino-esp32 3.x the <device id>.local hostname is claimed whatever the gates say,
+// so `mdns_enabled: false` there leaves the hostname up with no querier and no services.
 // NOTE (Level-1 limitation): the Arduino MDNS API couples mdns_init() with a hostname
 // claim, so mdns_discovery still brings up a *minimal* hostname responder; only the
 // heavy service/TXT advertising is gated by mdns_advertise. A pure query-only path (no
 // responder at all) needs the ESP-IDF C API — tracked separately.
-// Legacy: a `mdns_enabled: true` config key sets BOTH gates (old single-flag behavior).
+// Legacy: a `mdns_enabled` config key sets BOTH gates (old single-flag behavior).
 extern bool mdns_discovery;
 extern bool mdns_advertise;
 

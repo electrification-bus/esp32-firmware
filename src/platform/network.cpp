@@ -28,7 +28,7 @@ WiFiMulti wifiMulti;
 static bool eth_connected = false;
 #endif
 
-// Static buffer for sanitized hostname (shared across functions)
+// Hostname for mDNS and DHCP: the sanitized device id (shared across functions)
 static char mdns_hostname[64] = {0};
 
 bool client_connected() {
@@ -67,7 +67,7 @@ const char* get_eth_ip() {
   return "";
 }
 
-// Get the mDNS hostname (sanitized device name)
+// Get the mDNS hostname (sanitized device id)
 const char* get_mdns_hostname() {
   return mdns_hostname;
 }
@@ -96,7 +96,7 @@ const char* get_wlan_mac() {
   return wlan_mac_str;
 }
 
-// Convert device name to valid mDNS hostname (lowercase, alphanumeric, hyphens)
+// Convert a name to a valid mDNS hostname (lowercase, alphanumeric, hyphens)
 static void sanitize_hostname(const char* input, char* output, size_t max_len) {
   size_t j = 0;
   for (size_t i = 0; input[i] && j < max_len - 1; i++) {
@@ -210,31 +210,34 @@ bool mdns_has_broker() {
   return mdns_broker_host[0] != '\0';
 }
 
+// arduino-esp32 3.x always claims <device id>.local; the gates control only the querier
+// and the service records. The 2.0.x responder has a crash bug (doc/MDNS.md), so on
+// 2.0.x nothing starts unless a gate asks for it.
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+static const bool MDNS_HOSTNAME_ALWAYS = true;
+#else
+static const bool MDNS_HOSTNAME_ALWAYS = false;
+#endif
+
 bool setup_mdns() {
-  // mDNS split into two independent gates: mdns_discovery (querier —
-  // find the broker, crash-safe, high value) and mdns_advertise (responder — register
-  // service records, the mDNS responder crash surface). Defaults are build-conditional —
-  // see the #if in config.cpp.
-  if (!mdns_discovery && !mdns_advertise) {
+  // Two independent gates: mdns_discovery (querier: find the broker) and mdns_advertise
+  // (responder: register service records). Defaults are build-conditional; see the #if
+  // in config.cpp.
+  if (!MDNS_HOSTNAME_ALWAYS && !mdns_discovery && !mdns_advertise) {
     Serial.println("mDNS: disabled (mdns_discovery=false, mdns_advertise=false)");
     return false;
   }
 
-  // Use device name as hostname (sanitized for mDNS); fall back to device ID.
+  // The hostname is the resolved device id, so one image gives every board its own name.
   char base_hostname[48] = {0};
-  if (strlen(device_name) > 0) {
-    sanitize_hostname(device_name, base_hostname, sizeof(base_hostname));
-  } else {
-    strncpy(base_hostname, getDeviceID(), sizeof(base_hostname) - 1);
-  }
+  sanitize_hostname(getDeviceID(), base_hostname, sizeof(base_hostname));
   strncpy(mdns_hostname, base_hostname, sizeof(mdns_hostname) - 1);
 
   // The Arduino MDNS API couples mdns_init() with a hostname claim, so MDNS.begin()
-  // is required even for the querier. When advertising, defend a UNIQUE hostname by
-  // probing for conflicts and appending a suffix. When only discovering, the hostname
-  // is cosmetic and no services are registered, so a single begin() is enough — that
-  // keeps the responder surface minimal (no service/TXT records, the main crash path).
-  if (mdns_advertise) {
+  // is required even for the querier. A claimed hostname is defended against a true
+  // collision by probing and appending a suffix. A 2.0.x querier-only start does a
+  // single begin(), keeping the responder surface minimal (no service/TXT records).
+  if (MDNS_HOSTNAME_ALWAYS || mdns_advertise) {
     for (int suffix = 2; suffix <= 99; suffix++) {
       if (MDNS.begin(mdns_hostname)) {
         // Check for conflict: query our own hostname and see if another device responds
@@ -569,15 +572,7 @@ void WiFiEvent(WiFiEvent_t event)
 #ifndef CONFIG_WIFI_AP
     case ARDUINO_EVENT_ETH_START:
       Serial.println("ETH Started");
-      if (strlen(mdns_hostname) > 0) {
-        ETH.setHostname(mdns_hostname);
-      } else if (strlen(device_name) > 0) {
-        char hostname[64] = {0};
-        sanitize_hostname(device_name, hostname, sizeof(hostname));
-        ETH.setHostname(hostname);
-      } else {
-        ETH.setHostname(getDeviceID());
-      }
+      ETH.setHostname(mdns_hostname);   // set from the device id in setup_ethernet()
       break;
     case ARDUINO_EVENT_ETH_CONNECTED:
       Serial.println("ETH Connected");
@@ -699,6 +694,10 @@ bool setup_wifi_sta() {
 }
 
 void setup_ethernet() {
+  // DHCP hostname on both interfaces: the device id, the same name mDNS claims. Set
+  // before ETH.begin() and before any WiFi.mode() call so both netifs pick it up.
+  sanitize_hostname(getDeviceID(), mdns_hostname, sizeof(mdns_hostname));
+  WiFi.setHostname(mdns_hostname);
   WiFi.onEvent(WiFiEvent);
 #ifndef CONFIG_WIFI_AP
   ETH.begin();

@@ -29,7 +29,7 @@ const char* get_eth_ip();
 const char* get_eth_mac();
 const char* get_wlan_mac();
 
-// Get the mDNS hostname (sanitized device name)
+// Get the mDNS hostname (sanitized device id)
 const char* get_mdns_hostname();
 
 // mDNS-discovered MQTT broker (discovered independently from config)
