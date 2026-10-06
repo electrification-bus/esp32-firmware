@@ -50,6 +50,10 @@ mosquitto_pub -h 192.168.1.10 -t 'ebus/5/<id>/led/state/set' -m true
 
 To build a different device file in place, pass its path: `./ebus-esp32 build examples/sht20/device.yml`. The comments in [`device.yml`](device.yml) list the available components and explain how to switch to a real sensor.
 
+## Finding the device on the network
+
+Every board claims the mDNS hostname `<id>.local`, where `<id>` is the `Device ID` from its boot log, and advertises its eBus, device-info, HTTP and log-console services (on by default in arduino-esp32 3.x builds). Try `ping <id>.local`, or browse with `dns-sd -B _ebus._tcp` (macOS) or `avahi-browse -rt _ebus._tcp` (Linux). [doc/MDNS.md](doc/MDNS.md) covers the services and TXT records, the configuration switches, and broker discovery.
+
 ## Getting Started
 
 The [Quick start](#quick-start) is the shortest path. For the full setup, pick the guide that matches how you work:
