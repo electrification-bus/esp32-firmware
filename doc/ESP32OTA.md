@@ -59,12 +59,12 @@ from `config-overlay.yml`, else from `device.yml`. See [GettingStartedCLI.md](Ge
 ### With curl
 
 ```sh
-curl -u admin:changeme -H 'Content-Type: application/json' -d '{"enabled":true}' \
+curl -u admin:<passphrase> -H 'Content-Type: application/json' -d '{"enabled":true}' \
      http://192.168.1.42/api/ota
-curl -u admin:changeme -H 'Content-Type: application/octet-stream' \
+curl -u admin:<passphrase> -H 'Content-Type: application/octet-stream' \
      --data-binary @.pio/build/<env>/littlefs.bin \
      "http://192.168.1.42/api/ota/filesystem?reboot=0"
-curl -u admin:changeme -H 'Content-Type: application/octet-stream' \
+curl -u admin:<passphrase> -H 'Content-Type: application/octet-stream' \
      --data-binary @.pio/build/<env>/firmware.bin \
      http://192.168.1.42/api/ota/firmware
 ```
@@ -198,10 +198,10 @@ the filesystem; `--pull-wait` bounds the poll (default 300s).
 
 ```sh
 # stage the filesystem without starting it, and keep the URL out of NVS
-curl -u admin:changeme -H 'Content-Type: application/json' -d '{"url":"http://10.0.0.2:8080/littlefs.bin"}' \
+curl -u admin:<passphrase> -H 'Content-Type: application/json' -d '{"url":"http://10.0.0.2:8080/littlefs.bin"}' \
      'http://192.168.1.42/api/filesystem?start=0&persist=0'
 # the firmware request arms both — one download session, one reboot
-curl -u admin:changeme -H 'Content-Type: application/json' -d '{"url":"http://10.0.0.2:8080/firmware.bin"}' \
+curl -u admin:<passphrase> -H 'Content-Type: application/json' -d '{"url":"http://10.0.0.2:8080/firmware.bin"}' \
      'http://192.168.1.42/api/firmware?persist=0'
 ```
 

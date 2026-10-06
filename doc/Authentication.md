@@ -84,7 +84,7 @@ The AP shuts down 2 minutes after the STA side gets an address, which leaves tim
 
 ## OTA window
 
-The push endpoints (`/api/ota/firmware`, `/api/ota/filesystem`) refuse an image unless the OTA window is open. `POST /api/ota` with `{"enabled": true}` opens it; `POST /api/firmware` and `POST /api/filesystem` open it themselves before starting a pull. The window closes after `OTA_ENABLED_TIMEOUT` minutes (default 10, `0` for no timeout), which a build can change with `-DOTA_ENABLED_TIMEOUT=<minutes>` in its `build_flags` (see `platformio_local.ini.example`). The window state is in RAM only, so every boot starts with it closed. Only one push runs at a time; a second push gets `409`.
+The push endpoints (`/api/ota/firmware`, `/api/ota/filesystem`) refuse an image unless the OTA window is open. `POST /api/ota` with `{"enabled": true}` opens it; `POST /api/firmware` and `POST /api/filesystem` open it themselves before starting a pull. The window closes after `OTA_ENABLED_TIMEOUT` minutes (default 10, `0` for no timeout, defined in `include/platform/config.h`), which a build can change with `-DOTA_ENABLED_TIMEOUT=<minutes>` in its `build_flags`. The window state is in RAM only, so every boot starts with it closed. Only one push runs at a time; a second push gets `409`.
 
 ```sh
 curl -u admin:<passphrase> -H 'Content-Type: application/json' -d '{"enabled":true}' http://<device>/api/ota
