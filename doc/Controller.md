@@ -87,7 +87,14 @@ if (state && controller_effective_state("relay-device-id") == DEVICE_STATE_READY
 
 ## Standalone sketch
 
-[`examples/controller_example.cpp`](../examples/controller_example.cpp) uses the same API on its own WiFi and `MQTTClient` connection, without the firmware's configuration, portal or mDNS. It defines its own `setup()` and `loop()`, so it replaces `src/main.cpp` rather than running beside it.
+[`examples/controller_example.cpp`](../examples/controller_example.cpp) uses the same API on its own WiFi and `MQTTClient` connection, without the firmware's configuration, portal or mDNS. It defines its own `setup()` and `loop()`, so it replaces `src/main.cpp` rather than running beside it. To build it, set its WiFi, broker and device-id constants, then swap it in for `src/main.cpp` in `platformio_local.ini` for the env named by `device.environment` and run `./ebus-esp32 build`:
+
+```ini
+[env:esp32-poe-iso]
+build_src_filter = +<*> -<main.cpp> +<../examples/controller_example.cpp>
+```
+
+Remove the override to build the firmware again.
 
 ## Limits
 

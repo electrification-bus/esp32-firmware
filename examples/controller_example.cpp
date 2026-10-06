@@ -9,7 +9,8 @@
  * - Send commands to settable properties
  *
  * This sketch defines its own setup() and loop(), so it replaces src/main.cpp
- * rather than running beside it. The firmware's built-in controller mode
+ * rather than running beside it; doc/Controller.md gives the platformio_local.ini
+ * override that builds it. The firmware's built-in controller mode
  * (-DENABLE_CONTROLLER, see doc/Controller.md) needs no sketch of its own.
  *
  * Set the WiFi, broker and device-id constants below before building.
