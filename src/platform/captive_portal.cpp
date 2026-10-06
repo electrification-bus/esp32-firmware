@@ -180,20 +180,64 @@ static void handleWifiScan(AsyncWebServerRequest *request) {
 // POST body accumulation
 // ESPAsyncWebServer delivers body in chunks via onBody callback.
 // We accumulate into a static buffer, then parse JSON in the request handler.
+//
+// The buffer is shared by every route that uses accumulateBody, so it belongs to one
+// request at a time: the request whose first chunk arrives while it is free owns it
+// until its handler calls claimPostBody() or its client disconnects. A request with
+// no body (Content-Length 0) never reaches accumulateBody, and a second request whose
+// body starts while another request owns the buffer is not stored, so neither can make
+// a handler parse bytes left by, or still arriving for, a different request. Body
+// callbacks, request handlers and the disconnect callback all run on the AsyncTCP
+// task, so the ownership state needs no locking.
 // ============================================================================
 char post_body_buf[2048];
 static size_t post_body_len = 0;
+static AsyncWebServerRequest* post_body_owner = NULL;
+
+// onDisconnect for the owning request whose handler has not claimed the body.
+static void postBodyOwnerDisconnected() {
+    post_body_owner = NULL;
+}
 
 static void accumulateBody(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     Serial.printf("PORTAL: accumulateBody url=%s len=%d index=%d total=%d\n",
                    request->url().c_str(), len, index, total);
     (void)total;
-    if (index == 0) post_body_len = 0;
+    if (index == 0) {
+        if (post_body_owner) return;   // claimPostBody() answers 409
+        post_body_owner = request;
+        request->onDisconnect(postBodyOwnerDisconnected);
+        post_body_len = 0;
+    }
+    if (request != post_body_owner) return;
     if (post_body_len + len < sizeof(post_body_buf)) {
         memcpy(post_body_buf + post_body_len, data, len);
         post_body_len += len;
     }
     post_body_buf[post_body_len] = '\0';
+}
+
+// Called by every accumulateBody route's handler before it reads post_body_buf.
+// Returns true, and frees the buffer for the next request, when post_body_buf holds
+// this request's complete body; the handler then parses it before returning, which no
+// other request can interrupt. Otherwise sends 409 when the request had a body (the
+// guard admits only types the library hands to the body callback, so a body that
+// missed the buffer found it owned by another request) or 400 when it had none, and
+// returns false.
+static bool claimPostBody(AsyncWebServerRequest *request) {
+    if (request == post_body_owner) {
+        post_body_owner = NULL;
+        request->onDisconnect(nullptr);
+        return true;
+    }
+    if (request->contentLength() > 0) {
+        request->send(409, "application/json",
+            "{\"status\":\"error\",\"message\":\"Another request is in progress, retry\"}");
+    } else {
+        request->send(400, "application/json",
+            "{\"status\":\"error\",\"message\":\"Empty body\"}");
+    }
+    return false;
 }
 
 // ============================================================================
@@ -264,9 +308,7 @@ public:
 // POST /api/broker-cert is registered through this trivial handler instead of
 // server.on(), so a body the library diverts into its parameter parser is discarded
 // rather than parsed into heap allocations; the guard admits only types the library
-// passes to the body callback. handleRequest() passes the request on only when this
-// request's body reached handleBody(), so an empty or discarded body never leaves the
-// handler reading whatever post_body_buf held from an earlier request.
+// passes to the body callback.
 typedef void (*PortalRequestFn)(AsyncWebServerRequest *request);
 typedef void (*PortalBodyFn)(AsyncWebServerRequest *request, uint8_t *data, size_t len,
                              size_t index, size_t total);
@@ -276,24 +318,13 @@ public:
     PortalRawPostHandler(const char* uri, PortalRequestFn on_request, PortalBodyFn on_body)
         : _uri(uri), _on_request(on_request), _on_body(on_body) {}
     bool canHandle(AsyncWebServerRequest *request) const override {
-        if (request->method() != HTTP_POST || strcmp(request->url().c_str(), _uri) != 0) {
-            return false;
-        }
-        _body_request = nullptr;
-        return true;
+        return request->method() == HTTP_POST && strcmp(request->url().c_str(), _uri) == 0;
     }
     void handleRequest(AsyncWebServerRequest *request) override {
-        if (_body_request != request) {
-            request->send(400, "application/json",
-                "{\"status\":\"error\",\"message\":\"Empty or unsupported body\"}");
-            return;
-        }
-        _body_request = nullptr;
         _on_request(request);
     }
     void handleBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
                     size_t index, size_t total) override {
-        if (index == 0) _body_request = request;
         _on_body(request, data, len, index, total);
     }
 
@@ -301,8 +332,6 @@ private:
     const char*     _uri;
     PortalRequestFn _on_request;
     PortalBodyFn    _on_body;
-    // Set by handleBody() at index 0; canHandle() is const, hence mutable.
-    mutable AsyncWebServerRequest* _body_request = nullptr;
 };
 
 #ifdef CONFIG_WIFI_AP
@@ -310,6 +339,7 @@ private:
 // Deliberately unauthenticated: this is the first-time-setup path (user on the
 // captive AP joining the device to a network), before any passphrase workflow.
 static void handleWifiSave(AsyncWebServerRequest *request) {
+    if (!claimPostBody(request)) return;
     Serial.printf("PORTAL: handleWifiSave called, body=%d bytes\n", post_body_len);
 
     JsonDocument doc;
@@ -509,6 +539,7 @@ static void handleLogin(AsyncWebServerRequest *request) {
 // Handle POST /api/mqtt - save MQTT configuration from JSON body
 static void handleMqttSave(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
+    if (!claimPostBody(request)) return;
     Serial.printf("PORTAL: handleMqttSave called, body=%d bytes\n", post_body_len);
 
     JsonDocument doc;
@@ -566,6 +597,7 @@ static bool otaQueryFlag(AsyncWebServerRequest *request, const char* name) {
 // Handle POST /api/firmware - save firmware URL from JSON body
 static void handleFirmwareSave(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
+    if (!claimPostBody(request)) return;
     Serial.printf("PORTAL: handleFirmwareSave called, body=%d bytes\n", post_body_len);
 
     JsonDocument doc;
@@ -595,6 +627,7 @@ static void handleFirmwareSave(AsyncWebServerRequest *request) {
 // Handle POST /api/filesystem - save filesystem image URL from JSON body and trigger LittleFS OTA
 static void handleFilesystemSave(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
+    if (!claimPostBody(request)) return;
     Serial.printf("PORTAL: handleFilesystemSave called, body=%d bytes\n", post_body_len);
 
     JsonDocument doc;
@@ -645,6 +678,7 @@ static void handleBrokerCert(AsyncWebServerRequest *request) {
 // Handle POST /api/broker-cert - upload a CA cert and save to SPIFFS (requires Basic Auth)
 static void handleBrokerCertUpload(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
+    if (!claimPostBody(request)) return;
 
     Serial.printf("PORTAL: handleBrokerCertUpload called, body=%d bytes\n", post_body_len);
 
@@ -973,6 +1007,7 @@ static void handleOtaPushFilesystemDone(AsyncWebServerRequest *request) {
 // Handle POST /api/ota - enable or disable OTA (requires Basic Auth)
 static void handleOtaToggle(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
+    if (!claimPostBody(request)) return;
 
     JsonDocument doc;
     if (deserializeJson(doc, post_body_buf, post_body_len)) {
@@ -1000,6 +1035,7 @@ static void handleOtaToggle(AsyncWebServerRequest *request) {
 // Handle POST /api/passphrase - save device passphrase from JSON body
 static void handlePassphraseSave(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
+    if (!claimPostBody(request)) return;
     Serial.printf("PORTAL: handlePassphraseSave called, body=%d bytes\n", post_body_len);
 
     JsonDocument doc;

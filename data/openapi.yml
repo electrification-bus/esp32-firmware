@@ -165,7 +165,13 @@ paths:
               example:
                 status: ok
         "400":
-          description: Invalid JSON body
+          description: Empty or invalid JSON body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Another request's body was still arriving; retry
           content:
             application/json:
               schema:
@@ -218,7 +224,13 @@ paths:
               example:
                 status: ok
         "400":
-          description: Invalid JSON body
+          description: Empty or invalid JSON body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Another request's body was still arriving; retry
           content:
             application/json:
               schema:
@@ -268,7 +280,13 @@ paths:
               example:
                 status: ok
         "400":
-          description: Invalid JSON body
+          description: Empty or invalid JSON body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Another request's body was still arriving; retry
           content:
             application/json:
               schema:
@@ -391,6 +409,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Another request's body was still arriving; retry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/ota:
     get:
@@ -451,7 +475,13 @@ paths:
                     type: integer
                     example: 10
         "400":
-          description: Invalid JSON or missing 'enabled' field
+          description: Empty body, invalid JSON, or missing 'enabled' field
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Another request's body was still arriving; retry
           content:
             application/json:
               schema:
@@ -546,7 +576,13 @@ paths:
                     type: string
                     example: connecting
         "400":
-          description: Invalid JSON body
+          description: Empty or invalid JSON body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Another request's body was still arriving; retry
           content:
             application/json:
               schema:
