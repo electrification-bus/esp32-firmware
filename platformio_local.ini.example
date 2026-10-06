@@ -38,6 +38,7 @@
 ; supplies only the shared part, so repeat the env's own flags from
 ; platformio/platformio.ini as well. ${env:esp32-poe-iso.build_flags} cannot
 ; be used here: PlatformIO rejects the self-reference as infinite recursion.
+; ([env] sets no build_flags, so ${env.build_flags} is empty.)
 ; ----------------------------------------------------------------------
 ; [env:esp32-poe-iso]
 ; build_flags = ${common.build_flags}
