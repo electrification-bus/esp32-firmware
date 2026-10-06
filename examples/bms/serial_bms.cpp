@@ -520,23 +520,35 @@ void SerialBMS::set(bool onOff) {
     setChargeControl(onOff);
 }
 
-// Returns false, publishing nothing, when the MOSFET command does not reach the BMS. The
-// contactor is still switched in the order below either way.
+// Returns false, publishing nothing, when the MOSFET command does not reach the BMS.
+// The contactor is meant to switch with the charge MOSFET off: ON closes it before enabling
+// the MOSFETs, OFF opens it after disabling the charge MOSFET. On a refusal OFF leaves
+// the contactor alone, and ON opens it again if it was open before. The exception: if
+// _basic_info records the charge MOSFET as on, ON leaves the contactor closed rather than
+// open it under charge. A failed command does not update _basic_info.
 bool SerialBMS::setChargeControl(bool onOff) {
     Serial.printf("BMS: Charge control SET: %s\n", onOff ? "ON" : "OFF");
-    bool ok;
     if (onOff) {
+        bool contactor_was_on = _ssr ? _ssr->getState() : false;
         //energize the AC contactor before re-enabling the charge MOSFETs
         if (_ssr) _ssr->set(true);
         delay(1500);
-        ok = setMosfetAllOn();
+        if (!setMosfetAllOn()) {
+            if (_ssr && !contactor_was_on && !(_basic_info.mosfet_status & 0x01)) {
+                Serial.println("BMS: charge MOSFET not enabled - opening the contactor again");
+                _ssr->set(false);
+            }
+            return false;
+        }
     } else {
-        ok = setMosfetChgOff();
+        if (!setMosfetChgOff()) {
+            Serial.println("BMS: charge MOSFET not disabled - contactor left as it was");
+            return false;
+        }
         delay(1500);
         //de-energize the AC contactor after disabling the charge MOSFETs
         if (_ssr) _ssr->set(false);
     }
-    if (!ok) return false;
     _np_charge_control.set_value_and_publish(onOff);
     return true;
 }
