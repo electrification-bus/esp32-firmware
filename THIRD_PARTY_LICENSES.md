@@ -36,6 +36,6 @@ Ship the license text and copyright notices of every library in the image. For t
 | [Adafruit BusIO](https://github.com/adafruit/Adafruit_BusIO) | 1.17.4 | `i2c/bme280` | MIT |
 | [U8g2](https://github.com/olikraus/u8g2) | `^2.35.0` (2.36.18 today) | `i2c/gme12864` | BSD-2-Clause |
 | [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino) | `^2.0.0` (2.5.1 today) | `ble/gatt_device`, `examples/bms` | Apache-2.0 |
-| [ATM90E32](https://github.com/CircuitSetup/ATM90E32) | default branch (commit 0f5fba4 today) | `spi/atm90e32_energy_meter` | MIT |
+| [ATM90E32](https://github.com/CircuitSetup/ATM90E32) | commit 467858f | `spi/atm90e32_energy_meter` | MIT |
 
 U8g2's fonts are licensed separately. `i2c/gme12864` uses the Logisoso fonts, which the [u8g2 Logisoso font page](https://github.com/olikraus/u8g2/wiki/fntgrplogisoso) lists as SIL Open Font License (according to openfontlibrary.org) while quoting the font archive's COPYING.TXT as GPL v2 with a font exception, and the X11 fonts `5x7`, `9x15` and `10x20` (public domain).
