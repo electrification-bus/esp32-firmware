@@ -1,0 +1,51 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.env }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env:
+          - esp32-poe-iso
+          - esp32-poe-iso-arduino2
+          - esp32-s3-devkitc-1
+          - esp32-s3-devkitc-1-arduino2
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ matrix.env }}-${{ hashFiles('platformio/platformio.ini', 'lib/*/library.json', 'lib/*/*.yml') }}
+          restore-keys: pio-${{ matrix.env }}-
+
+      - name: Install PlatformIO and PyYAML
+        run: pip install platformio pyyaml
+
+      # The tracked device.yml names one environment; build each matrix env from a copy.
+      # The overlay gives the image a throwaway admin passphrase so no secret is needed.
+      - name: Prepare device file and config overlay
+        run: |
+          sed "s/^  environment: .*/  environment: ${{ matrix.env }}/" device.yml > ci-device.yml
+          grep -q "^  environment: ${{ matrix.env }}$" ci-device.yml
+          printf 'device:\n  device_passphrase: "%s"\n' "$(openssl rand -hex 16)" > config-overlay.yml
+
+      - name: Generate
+        run: ./ebus-esp32 generate ci-device.yml
+
+      - name: Build
+        run: ./ebus-esp32 build ci-device.yml
