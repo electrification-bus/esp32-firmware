@@ -7,6 +7,12 @@
 // guard rather than a live constraint — it only starts to matter if that is raised.
 #define MODBUS_MAX_RUN_WORDS 64
 
+// How long a queued read may stay outstanding before it is presumed lost. The worker
+// answers every command it dequeues, but drops the answer if the response queue stays
+// full for a second. A full 16-deep command queue of 2 s ModbusMaster timeouts drains in
+// about 33 s, so 60 s only fires for a response that is never coming.
+#define REGDEV_INFLIGHT_LIMIT_MS 60000
+
 ModbusRegisterDevice::ModbusRegisterDevice(const char* homie_node_id, Stream& serial,
                                            int pin_rs485_a, int pin_rs485_b, uint8_t addr,
                                            const ModbusRegisterDesc* regs, size_t count,
@@ -65,7 +71,7 @@ void ModbusRegisterDevice::plan_runs() {
         if (extends) {
             run->count++;
         } else {
-            _runs[_num_runs++] = { d.reg, (uint8_t)i, 1, d.holding, 0 };
+            _runs[_num_runs++] = { d.reg, (uint8_t)i, 1, d.holding, 0, 0 };
         }
     }
 }
@@ -110,6 +116,12 @@ void ModbusRegisterDevice::publish_one(uint8_t desc_index, uint16_t raw) {
     }
 }
 
+// Retract rather than publish a sentinel: a consumer cannot tell a real 0 from a failed
+// read. See doc/WritingADriver.md.
+void ModbusRegisterDevice::retract_run(const ModbusRun& run) {
+    for (uint8_t k = 0; k < run.count; k++) _props[_order[run.first + k]].clearValue();
+}
+
 uint8_t ModbusRegisterDevice::poll() {
     uint8_t last = ku8MBSuccess;
 
@@ -120,9 +132,7 @@ uint8_t ModbusRegisterDevice::poll() {
         if (rc != ku8MBSuccess) {
             Serial.printf("MODBUS[%s]: read of %u register(s) from %u failed (0x%02X)\n",
                           getNodeId(), run.count, run.start_reg, rc);
-            // Retract rather than publish a sentinel — a consumer cannot tell a real 0
-            // from a failed read. See doc/WritingADriver.md.
-            for (uint8_t k = 0; k < run.count; k++) _props[_order[run.first + k]].clearValue();
+            retract_run(run);
             last = rc;
             continue;
         }
@@ -141,12 +151,32 @@ uint8_t ModbusRegisterDevice::poll() {
 // matched back exactly. Correlating on the id rather than on reg_address matters when a
 // map names the same address twice — that produces two runs which are otherwise
 // indistinguishable.
+//
+// A run whose read is still outstanding is NOT re-queued. Overwriting cmd_id would orphan
+// the earlier read, and its response, success or failure, would then match nothing and be
+// dropped; a dropped failure is a retraction that never happens, leaving a stale value
+// published as if it were current.
 
 void ModbusRegisterDevice::pollAsync() {
+    uint32_t now = millis();
     for (uint8_t i = 0; i < _num_runs; i++) {
         ModbusRun& run = _runs[i];
+        if (run.cmd_id != 0) {
+            if (now - run.queued_ms < REGDEV_INFLIGHT_LIMIT_MS) continue;
+            Serial.printf("MODBUS[%s]: no response to read of %u register(s) from %u "
+                          "in %u ms, presumed lost\n", getNodeId(), run.count,
+                          run.start_reg, (unsigned)(now - run.queued_ms));
+            retract_run(run);
+        }
         run.cmd_id = run.holding ? queueReadHoldingRegisters(run.start_reg, run.count)
                                  : queueReadInputRegisters(run.start_reg, run.count);
+        run.queued_ms = now;
+        if (run.cmd_id == 0) {
+            // Not queued (command queue full or not ready): keep the published value and
+            // retry on the next poll.
+            Serial.printf("MODBUS[%s]: could not queue read of %u register(s) from %u\n",
+                          getNodeId(), run.count, run.start_reg);
+        }
     }
 }
 
@@ -161,7 +191,7 @@ void ModbusRegisterDevice::handleAsyncResponse(ModbusResponse* resp) {
             Serial.printf("MODBUS[%s]: async read of %u register(s) from %u failed "
                           "(error=%d)\n", getNodeId(), run.count, run.start_reg,
                           resp->error_code);
-            for (uint8_t k = 0; k < run.count; k++) _props[_order[run.first + k]].clearValue();
+            retract_run(run);
             return;
         }
         // Short reads are possible in principle; publish only what actually arrived

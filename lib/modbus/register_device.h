@@ -53,6 +53,7 @@ struct ModbusRun {
     uint8_t  count;       // registers in the span (also the response word count)
     bool     holding;     // function code for the whole span
     uint32_t cmd_id;      // async: id of the outstanding queued read, 0 when none
+    uint32_t queued_ms;   // async: millis() when cmd_id was queued
 };
 
 class ModbusRegisterDevice : public ModbusRTUEntity {
@@ -74,6 +75,7 @@ public:
 private:
     void plan_runs();
     void publish_one(uint8_t desc_index, uint16_t raw);
+    void retract_run(const ModbusRun& run);
 
     const ModbusRegisterDesc* _regs;
     size_t _count;
