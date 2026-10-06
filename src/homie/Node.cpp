@@ -25,7 +25,7 @@ void Node::addProperty(Property* property) {
 void Node::addProperty(Property* property, const char* id, const char* name, const char* datatype, const char* unit, bool settable, bool retained, const char* format) {
     property->setNode(this);  // must precede setId() — setId() dereferences _parent_node->topic()
     // Property-id is a topic level: coerce to Homie-legal (a-z 0-9 -) on the publisher
-    // side, matching NodeProperty::setup() so the value lookup stays consistent (rrj.2).
+    // side, matching NodeProperty::setup() so the value lookup stays consistent.
     // (This is the explicit-id publisher path; the controller's from_dict path keeps
     // exact wire ids.)
     char prop_id[32] = {0};

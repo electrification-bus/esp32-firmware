@@ -71,7 +71,7 @@ class NodeProperty {
         // whose payload is unchanged is not republished. See Property::publish_queued.
         void publish();
 
-        // rrj.4: mark this property UNAVAILABLE. Retracts the retained topic rather than
+        // mark this property UNAVAILABLE. Retracts the retained topic rather than
         // publishing a sentinel (0, -999, NaN) for a failed reading. Also clears the
         // change memo, so a later set() of the same value publishes again.
         void clearValue();

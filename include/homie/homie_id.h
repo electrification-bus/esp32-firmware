@@ -2,7 +2,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// Coerce an arbitrary string into a Homie-legal topic id (rrj.2).
+// Coerce an arbitrary string into a Homie-legal topic id.
 //
 // Homie 5 (convention §"Topic IDs"): a topic level id MAY ONLY contain lowercase
 // letters `a`-`z`, digits `0`-`9`, and the hyphen `-`. Vendor-supplied node ids
@@ -21,7 +21,7 @@
 // sanitized.
 void sanitize_homie_id(const char* in, char* out, size_t out_size);
 
-// --- Unique-id generation toolkit (rrj.2) ---
+// --- Unique-id generation toolkit ---
 // Hardcoding unique device-ids doesn't scale; derive them from hardware instead.
 
 // Format `n` MAC bytes as lowercase hex (a Homie-legal id fragment). E.g. the bytes

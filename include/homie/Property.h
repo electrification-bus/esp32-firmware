@@ -71,7 +71,7 @@ public:
     bool publish_value(bool force = false);
     bool publish_queued(bool force = false);
 
-    void clearValue();   // rrj.4: mark unavailable — retract retained topic, no sentinel
+    void clearValue();   // mark unavailable — retract retained topic, no sentinel
     // The /set path, in the order dispatch_settable() runs it: store_set_payload()
     // validates and stores; the driver, if any, accepts or refuses; publish_set() reports
     // an accepted value, and restore_value() undoes a refused one.

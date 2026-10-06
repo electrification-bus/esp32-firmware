@@ -211,9 +211,9 @@ bool mdns_has_broker() {
 }
 
 bool setup_mdns() {
-  // mDNS split into two independent gates (ESP32-6du.6): mdns_discovery (querier —
+  // mDNS split into two independent gates: mdns_discovery (querier —
   // find the broker, crash-safe, high value) and mdns_advertise (responder — register
-  // service records, the ESP32-9mx crash surface). Defaults are build-conditional —
+  // service records, the mDNS responder crash surface). Defaults are build-conditional —
   // see the #if in config.cpp.
   if (!mdns_discovery && !mdns_advertise) {
     Serial.println("mDNS: disabled (mdns_discovery=false, mdns_advertise=false)");
@@ -269,7 +269,7 @@ bool setup_mdns() {
     mdns_query_mqtt_broker();
   }
 
-  // Responder: advertise our service records (the ESP32-9mx crash surface).
+  // Responder: advertise our service records (the mDNS responder crash surface).
   if (mdns_advertise) {
     mdns_register_services();
   }
@@ -709,7 +709,7 @@ void setup_ethernet() {
 static unsigned long mdns_last_poll = 0;
 
 void loop_mdns() {
-  if (!mdns_discovery) return;                                 // re-query is the querier's job (ESP32-6du.6)
+  if (!mdns_discovery) return;                                 // re-query is the querier's job
   // No mDNS polling in configured-only mode
   if (mqtt_mode == MQTT_MODE_CONFIGURED_ONLY) return;
 

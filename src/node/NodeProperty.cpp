@@ -15,7 +15,7 @@ void NodeProperty::setup(const char* node_id, const char* property_id) {
     // Property-id is a topic level too — coerce to Homie-legal (a-z 0-9 -), e.g.
     // 'relative_humidity' -> 'relative-humidity'. The SAME sanitized id is used for the
     // topic AND the getProperty() lookup, so they stay in sync with the Property's own
-    // sanitized id (set in Node::addProperty). (rrj.2)
+    // sanitized id (set in Node::addProperty).
     sanitize_homie_id(property_id, _homie_property_id, sizeof(_homie_property_id));
     if (_homie_property_id[0] == '\0') {
         snprintf(_homie_property_id, sizeof(_homie_property_id), "%s", property_id);

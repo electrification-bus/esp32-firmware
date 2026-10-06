@@ -17,7 +17,7 @@ bool NodeEntity::pollIntervalTrigger() {
 }
 
 void NodeEntity::setHomieNodeId(const char* id) {
-    // Coerce to a Homie-legal id (rrj.2). This is the single chokepoint: getNodeId()
+    // Coerce to a Homie-legal id. This is the single chokepoint: getNodeId()
     // feeds both Device::addNode() and the per-property NodeProperty::setup() calls,
     // so the published node topic and every property topic under it stay consistent.
     char sanitized[sizeof(_homie_node_id)] = {0};

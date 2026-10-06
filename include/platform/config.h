@@ -24,7 +24,7 @@ extern char device_id_prefix[32];
 
 // Device info for mDNS advertisement
 extern char device_name[32];
-extern char device_type[HOMIE_TYPE_MAXLEN];   // eBus device types up to 41 chars (rrj.5)
+extern char device_type[HOMIE_TYPE_MAXLEN];   // eBus device types up to 41 chars
 extern char device_manufacturer[32];
 extern char device_model[32];
 extern char device_serial[32];
@@ -56,22 +56,23 @@ enum MqttMode {
   MQTT_MODE_CONFIGURED_ONLY          // config only, no mDNS discovery (default)
 };
 // NOTE: a discovery mode (not CONFIGURED_ONLY) auto-enables mdns_discovery at config
-// load (ESP32-6du.8), so the mode and the querier gate can't be set incoherently.
+// load, so the mode and the querier gate can't be set incoherently.
 
 extern MqttMode mqtt_mode;
 
-// mDNS is split into two independent gates (ESP32-6du.6), both OFF by default:
+// mDNS is split into two independent gates; their default depends on the build (see
+// config.cpp):
 //   mdns_discovery — querier: browse for the MQTT broker (_mqtt._tcp / _secure-mqtt._tcp)
 //                    and resolve .local names. The crash-safe client side; this is the
 //                    high-value path (find the broker) and is what discovery MqttModes need.
 //   mdns_advertise — responder: register the _device-info / _http / _homie / _ebus service
 //                    records (TXT-heavy) so other hosts can find this device. This is where
-//                    the bundled ESP-IDF responder can crash on certain inbound packets
-//                    (ESP32-9mx), so it's opt-in.
+//                    the bundled ESP-IDF responder in arduino-esp32 2.0.x can crash on
+//                    certain inbound packets.
 // NOTE (Level-1 limitation): the Arduino MDNS API couples mdns_init() with a hostname
 // claim, so mdns_discovery still brings up a *minimal* hostname responder; only the
 // heavy service/TXT advertising is gated by mdns_advertise. A pure query-only path (no
-// responder at all) needs the ESP-IDF C API — tracked separately (ESP32-4xl.1).
+// responder at all) needs the ESP-IDF C API — tracked separately.
 // Legacy: a `mdns_enabled: true` config key sets BOTH gates (old single-flag behavior).
 extern bool mdns_discovery;
 extern bool mdns_advertise;

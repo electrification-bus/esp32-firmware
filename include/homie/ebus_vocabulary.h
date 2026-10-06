@@ -1,6 +1,6 @@
 #pragma once
 
-// Optional convenience constants for the registered eBus vocabulary (B/rrj.1).
+// Optional convenience constants for the registered eBus vocabulary.
 //
 // The Homie `type` attribute is free-form; the SDK stays generic and accepts ANY type
 // string (like the python-sdk). These constants are purely a convenience so callers can

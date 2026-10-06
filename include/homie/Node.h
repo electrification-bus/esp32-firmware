@@ -48,7 +48,7 @@ public:
 private:
     char _id[64] = {0};
     char _name[64] = {0};
-    char _type[HOMIE_TYPE_MAXLEN] = {0};   // eBus capability types up to 36 chars (rrj.5)
+    char _type[HOMIE_TYPE_MAXLEN] = {0};   // eBus capability types up to 36 chars
     char _topic[64] = {0};
     MQTTClient* _mqtt_client; // MQTT client for this node
     Property* _properties[MAX_PROPERTIES]; //array of properties, could be a vector or list in a full implementation

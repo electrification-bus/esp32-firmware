@@ -202,7 +202,7 @@ bool Property::publish_queued(bool force) {
     return ok;
 }
 
-// Mark this property UNAVAILABLE (rrj.4): retract its retained topic (zero-length,
+// Mark this property UNAVAILABLE: retract its retained topic (zero-length,
 // retained => MQTT delete) rather than publishing a sentinel value. Resets _has_value
 // so publish() won't re-emit the stale value until a fresh setValue().
 void Property::clearValue() {

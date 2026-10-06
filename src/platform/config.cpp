@@ -21,12 +21,12 @@ char wifi_password[64] = {0};
 char mqtt_host[64] = {0};
 uint16_t mqtt_port;
 uint8_t mqtt_qos = 2;   // QoS for retained Homie publications; Homie 5 recommends 2 (C4)
-// mDNS gates (ESP32-6du.6). The default is BUILD-CONDITIONAL; data/config.yml overrides
+// mDNS gates. The default is BUILD-CONDITIONAL; data/config.yml overrides
 // either gate at runtime, and omitting the keys there leaves these defaults in force.
 //
 // WiFi-AP builds default OFF: the captive portal already puts the device at a known
 // address (192.168.4.1) with a UI to read its DHCP lease from, so <name>.local buys
-// little against the ESP32-9mx responder crash surface.
+// little against the mDNS responder crash surface.
 //
 // Ethernet-only builds default ON: there is no AP and no portal landing page, so the
 // board comes up on an unpredictable DHCP lease with nothing announcing it. mDNS is the
@@ -52,7 +52,7 @@ char device_id_prefix[32] = {0};
 
 // Device info for mDNS advertisement
 char device_name[32] = {0};
-char device_type[HOMIE_TYPE_MAXLEN] = {0};   // eBus device types up to 41 chars (rrj.5)
+char device_type[HOMIE_TYPE_MAXLEN] = {0};   // eBus device types up to 41 chars
 char device_manufacturer[32] = {0};
 char device_model[32] = "ESP32";
 char device_serial[32] = {0};
@@ -72,7 +72,7 @@ static bool _ota_enabled = false;
 static unsigned long _ota_enabled_at = 0;
 
 // Default; overridden by mqtt_mode key in config.yml. CONFIGURED_ONLY is the coherent
-// default given mDNS defaults off (ESP32-6du.8): use the configured broker, no querier
+// default given mDNS defaults off: use the configured broker, no querier
 // needed. A discovery mode auto-enables the querier (see parse_config coherence check).
 MqttMode mqtt_mode = MQTT_MODE_CONFIGURED_ONLY;
 
@@ -326,7 +326,7 @@ bool loadPlatformConfiguration() {
     else Serial.printf("CONFIG: ignoring invalid mqtt_qos=%d (must be 0-2)\n", q);
   }
 
-  // mDNS gates (ESP32-6du.6). Legacy `mdns_enabled` sets BOTH; granular keys override.
+  // mDNS gates. Legacy `mdns_enabled` sets BOTH; granular keys override.
   JsonVariant v_mdns_enabled = cfg_value("mdns", "enabled", "mdns_enabled");
   if (v_mdns_enabled.is<bool>()) {
     bool en = v_mdns_enabled.as<bool>();
@@ -392,12 +392,12 @@ bool loadPlatformConfiguration() {
     Serial.printf("CONFIG: mqtt_mode=%s\n", mode_str);
   }
 
-  // Coherence (ESP32-6du.8): a discovery mqtt_mode locates the broker via mDNS, so it
+  // Coherence: a discovery mqtt_mode locates the broker via mDNS, so it
   // needs the querier. If discovery is requested but mdns_discovery is off, enable it —
   // otherwise no broker can ever be found and the device never connects.
   if (mqtt_mode != MQTT_MODE_CONFIGURED_ONLY && !mdns_discovery) {
     mdns_discovery = true;
-    Serial.println("CONFIG: mqtt_mode needs discovery — enabling mdns_discovery (ESP32-6du.8)");
+    Serial.println("CONFIG: mqtt_mode needs discovery — enabling mdns_discovery");
   }
 
   return true;
