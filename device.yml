@@ -73,7 +73,7 @@ mqtt:
   # qos: QoS for retained Homie publications ($state, $description, property values).
   # Homie 5 recommends 2 (default if omitted). Non-retained messages and /set are
   # always QoS 0 per spec. Valid: 0, 1, 2.
-  qos: 1
+  qos: 2
 
 # mDNS default depends on the BUILD, and this key overrides it:
 #   Ethernet-only AND arduino-esp32 3.x (the default, unsuffixed envs)  -> ON
