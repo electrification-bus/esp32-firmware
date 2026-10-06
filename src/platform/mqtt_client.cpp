@@ -1,32 +1,3 @@
-/*
-   -------------------------------------------------------------------
-   EmonESP Serial to Emoncms gateway
-   -------------------------------------------------------------------
-   Adaptation of Chris Howells OpenEVSE ESP Wifi
-   by Trystan Lea, Glyn Hudson, OpenEnergyMonitor
-
-   Modified to use with the CircuitSetup.us Split Phase Energy Meter by jdeglavina
-   Modified to use with EMS Workshop by dmendonca
-
-   All adaptation GNU General Public License as below.
-
-   -------------------------------------------------------------------
-
-   This file is part of OpenEnergyMonitor.org project.
-   EmonESP is free software; you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 3, or (at your option)
-   any later version.
-   EmonESP is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-   GNU General Public License for more details.
-   You should have received a copy of the GNU General Public License
-   along with EmonESP; see the file COPYING.  If not, write to the
-   Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-   Boston, MA 02111-1307, USA.
-*/
-
 #include <platform/mqtt_client.h>
 #include <TimeLib.h>
 #include <WiFiClient.h>
@@ -39,7 +10,6 @@
 #include <freertos/queue.h>
 #include <LittleFS.h>
 #include <mbedtls/base64.h>
-#define ENABLE_DEBUG_MQTT = 1
 
 // Transport clients - use secure or insecure based on port
 WiFiClient insecureClient;
@@ -47,13 +17,8 @@ WiFiClientSecure secureClient;
 Client* transportClient = nullptr;  // Pointer to active client
 bool mqtt_using_secure = false;
 
-MQTTClient mqtt_client(MAX_DATA_LEN + 200);  // Buffer size for MQTT packets
 #define TOPIC_TOKEN_SIZ 80
-#define MQTT_DATA_SIZ 128
-unsigned long mqtt_interval_ts = 0;
-static char mqtt_data[MQTT_DATA_SIZ] = "";
 char topic_device[TOPIC_TOKEN_SIZ] = {0};
-char topic_cmd[TOPIC_TOKEN_SIZ + 8] = {0};  // topic_device + "/set"
 // Static LWT topic buffer - must persist after mqtt_connect() returns
 // (pointer corruption fix per arduino-mqtt issue #89)
 static char lwt_topic[64] = {0};
@@ -183,9 +148,6 @@ static mqtt_reconnect_callback_t _reconnect_callback = nullptr;
 void mqtt_set_reconnect_callback(mqtt_reconnect_callback_t callback) {
     _reconnect_callback = callback;
 }
-
-// Function prototype for mqtt_publish_json
-void mqtt_publish_json(const char* subtopic, const JsonDocument* payload);
 
 #ifndef ESP32_POE_ISO
 // Fetch root CA cert from broker via TLS on port 443 and save to SPIFFS
@@ -347,7 +309,6 @@ bool mqtt_init_transport() {
 
 void generateTopics() {
   snprintf(topic_device, sizeof(topic_device), "%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID());
-  snprintf(topic_cmd, sizeof(topic_cmd), "%s/%s", topic_device, HOMIE_TOPIC_SET);
 }
 
 void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb, Property* instance) {
@@ -431,137 +392,6 @@ void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_
    } else {
      Serial.printf("ENTITY: Callback Subscription: FAIL - table full\n");
    }
-}
-
-boolean mqtt_connect() {
-  // MQTTClient::connect() resolves the host through lwIP. With no interface up the
-  // stack may never have been started (null core-lock mutex: assert, reboot loop), and
-  // with no host there is nothing to resolve.
-  if (!client_connected()) {
-    Serial.println("MQTT: no network interface up, not connecting");
-    return false;
-  }
-  if (mqtt_host[0] == '\0') {
-    Serial.println("MQTT: no broker host, not connecting");
-    return false;
-  }
-  Serial.printf("MQTT Connecting: '%s:%d'%s\r\n", mqtt_host, mqtt_port,
-                mqtt_using_secure ? " (TLS)" : "");
-
-  // Initialize transport client if not already done
-  if (transportClient == nullptr) {
-    if (!mqtt_init_transport()) {
-      Serial.println("MQTT: Failed to initialize transport");
-      return false;
-    }
-  }
-
-  // Configure socket timeout based on connection type
-  if (mqtt_using_secure) {
-    secureClient.setTimeout(15);  // Longer timeout for TLS handshake
-  } else {
-    insecureClient.setTimeout(10);  // 10 seconds for plain TCP
-  }
-
-  // setOptions(keepAlive, cleanSession, timeout)
-  // cleanSession: false - maintain session across reconnects
-  // timeout: 1000ms - short timeout for operations (2000ms for TLS)
-  int operationTimeout = mqtt_using_secure ? 2000 : 1000;
-  mqtt_client.setOptions(60, false, operationTimeout);
-  Serial.printf("MQTT: configured keepalive=%ds, timeout=%dms\n", 60, operationTimeout);
-
-  // Set Last Will and Testament (LWT) - published by broker if connection lost.
-  // ROOT-ONLY by construction: the will is a property of this single MQTT connection,
-  // which the whole nested device tree shares, so it targets the ROOT device's $state.
-  // Per Homie 5, a "lost" root $state cascades to every child in the tree (consumers
-  // treat all children as lost); children neither need nor can have their own will.
-  // On reconnect, on_mqtt_reconnect() re-asserts $state for the whole tree.
-  // Use static buffer lwt_topic to prevent pointer corruption (arduino-mqtt issue #89)
-  // Use QoS 0 - QoS 1 causes connection issues with this library
-  snprintf(lwt_topic, sizeof(lwt_topic), "%s/%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID(), HOMIE_$STATE);
-  mqtt_client.setWill(lwt_topic, HOMIE_STATE_LOST, true, homie_qos(true));  // retained $state -> QoS 2 (C4)
-  Serial.printf("MQTT will topic:'%s' msg:'%s'\n", lwt_topic, HOMIE_STATE_LOST);
-
-  // Configure MQTT client BEFORE connecting
-  // begin() sets up the network client and host — also resets the message callback,
-  // so re-register it here on every connect (including reconnects).
-  ntp_lookup_wait();   // connect() below resolves mqtt_host; see network.cpp
-  mqtt_client.begin(mqtt_host, mqtt_port, *transportClient);
-  mqtt_client.onMessageAdvanced(subscriber_callback);
-
-  // Connect with or without credentials
-  bool connected = false;
-  if (strlen(mqtt_username) == 0) {
-    // Anonymous connection
-    connected = mqtt_client.connect(getDeviceID());
-  } else {
-    Serial.printf("MQTT Username: '%s'\n", mqtt_username);
-    connected = mqtt_client.connect(getDeviceID(), mqtt_username, mqtt_password);
-  }
-
-  if (connected) {
-    Serial.printf("MQTT connected: %s\r\n", mqtt_host);
-    // Re-subscribe to topics if needed
-    for (int i = 0; i < num_subscribers; i++) {
-      Serial.printf("MQTT subscribing to topic: %s\n", settable_properties[i].topic);
-      mqtt_client.subscribe(settable_properties[i].topic);
-    }
-    // Call reconnect callback to re-publish state (overrides LWT "lost")
-    if (_reconnect_callback) {
-      _reconnect_callback();
-    }
-  } else {
-    Serial.printf("MQTT failed: error=%d, returnCode=%d\n",
-                  mqtt_client.lastError(), mqtt_client.returnCode());
-    return (0);
-  }
-  return (1);
-}
-
-void mqtt_publish_json(const char* subtopic, const JsonDocument * payload) {
-
-    if (measureJson(*payload) >= 1024) {
-      Serial.println("MQTT publish: payload too large");
-      return;
-    }
-    char topicBuf[256];
-    char jsonString[1024];
-    serializeJson(*payload, jsonString);
-    snprintf(topicBuf, sizeof(topicBuf), "%s/%s", topic_device, subtopic);
-    if (!mqtt_client.publish(topicBuf, jsonString, true, homie_qos(true))) {  // retained -> QoS 2 (C4)
-        Serial.println("MQTT publish: failed");
-    }
-    Serial.printf("topic: %s, data: %s\n", topicBuf, jsonString);
-}
-
-//pull apart a comma-sep colon-delim name:value string and publish the name:value pairs under 'subtopic'
-void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data) {
-    char topicBuf[384];
-    char buf[256];
-    Serial.printf("MQTT publish: size:%d chars", strlen(data));
-    do {
-      int pos = strcspn(data, ":");
-      strncpy(buf, data, pos);
-      buf[pos] = 0;
-      snprintf(topicBuf, sizeof(topicBuf), "%s%s/%s", topic_device, subtopic, buf);
-      //topic_ptr[pos] = 0;
-      data += pos;
-      if (*data++ == 0) {
-        break;
-      }
-
-      pos = strcspn(data, ",");
-      strncpy(mqtt_data, data, pos);
-      mqtt_data[pos] = 0;
-      data += pos;
-
-      if (!mqtt_client.publish(topicBuf, mqtt_data, true, homie_qos(true))) {  // retained -> QoS 2 (C4)
-       Serial.println("MQTT publish: failed");
-      }
-#ifdef ENABLE_DEBUG_MQTT
-      Serial.printf("topic: %s, data: %s\n", topicBuf, mqtt_data);
-#endif
-    } while (*data++ != 0);
 }
 
 // Call the driver behind one subscriber: the D3 fn-ptr handler, then the entity callback
@@ -761,65 +591,4 @@ void setup_mqtt() {
       }
     }
   }
-  mqtt_interval_ts = now();
-}
-
-unsigned long last_connect_error = 0;
-static unsigned long last_loop_success = 0;
-
-static unsigned long last_connected_log = 0;
-static bool was_connected = false;
-
-void loop_mqtt() {
-    // Must call loop() frequently to handle keepalive pings and receive messages
-    // MQTTClient::loop() returns false if connection was lost
-    bool loop_ok = mqtt_client.loop();
-
-    bool is_connected = mqtt_client.connected();
-
-    if (is_connected && loop_ok) {
-        // Connection is healthy
-        last_loop_success = millis();
-
-        // Log connection status periodically (every 30 seconds)
-        if (millis() - last_connected_log > 30000) {
-            last_connected_log = millis();
-            unsigned long uptime = millis() / 1000;
-            Serial.printf("MQTT: connected OK%s (uptime: %lus) %s/%s\n",
-                          mqtt_using_secure ? " [TLS]" : "", uptime, mqtt_host, topic_device);
-        }
-        was_connected = true;
-    } else {
-        // Connection lost or loop failed
-        if (was_connected) {
-            // Just disconnected - log immediately
-            Serial.printf("MQTT: DISCONNECTED! error=%d, loop_ok=%d, uptime=%lus\n",
-                          mqtt_client.lastError(), loop_ok, millis() / 1000);
-            was_connected = false;
-        }
-
-        if (millis() - last_connect_error > MQTTPublish_rootrate) {
-            last_connect_error = millis();
-            Serial.printf("MQTT not connected (error=%d) - retrying: %s\n",
-                          mqtt_client.lastError(), mqtt_host);
-            mqtt_connect();
-        }
-    }
-    
-    // Process queued publish requests from other tasks (thread-safe)
-    // Do this AFTER loop() to prioritize keepalive pings
-    mqtt_process_queue();
-    mqtt_interval_ts = millis();
-}
-
-void mqtt_restart() {
-  if (mqtt_client.connected()) {
-    mqtt_client.disconnect();
-  }
-  // Reset transport client to force re-initialization on next connect
-  transportClient = nullptr;
-}
-
-boolean mqtt_connected() {
-  return mqtt_client.connected();
 }

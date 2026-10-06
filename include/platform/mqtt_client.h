@@ -1,6 +1,5 @@
 #pragma once
 #include <Arduino.h>
-//#include <PubSubClient.h>   // MQTT https://github.com/knolleary/pubsubclient PlatformIO lib: 89
 #include <MQTT.h>
 // Property is used here ONLY as a pointer and in pointer-to-member typedefs, both of
 // which an incomplete type satisfies. Forward-declaring instead of including breaks a
@@ -11,11 +10,7 @@
 class Property;
 
 #ifndef MAX_DATA_LEN
-#define MAX_DATA_LEN 8192 //+2048
-#endif
-
-#ifndef MQTT_TIMEOUT
-#define MQTT_TIMEOUT 3
+#define MAX_DATA_LEN 8192
 #endif
 
 #define MQTTPublish_rootrate 10000
@@ -74,7 +69,6 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
 // snapshots and restores the property's value without a lock. A true return means the
 // set was delivered, not that the driver accepted it.
 bool deliver_local_set(const char* topic, const char* value);
-void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data);
 
 // Callback type for forwarding unhandled MQTT messages (used by controller)
 typedef void (*mqtt_fallback_callback_t)(char* topic, uint8_t* payload, unsigned int length);
@@ -88,7 +82,6 @@ typedef void (*mqtt_reconnect_callback_t)();
 // Register a callback to be called after MQTT reconnection
 void mqtt_set_reconnect_callback(mqtt_reconnect_callback_t callback);
 
-void mqtt_publish(const char * data);
 void mqtt_restart();
 boolean mqtt_connected();
 
@@ -111,5 +104,4 @@ bool mqtt_queue_publish(const char* topic, const char* payload, bool retained = 
 bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool retained,
                         Property* source = nullptr);
 
-//extern PubSubClient mqtt_client;
 extern MQTTClient mqtt_client;
