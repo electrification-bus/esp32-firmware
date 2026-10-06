@@ -11,7 +11,15 @@ This is the command-line counterpart to [`GettingStartedVSCode.md`](GettingStart
 
 ## Prerequisites
 
-- Python 3.9+ and `pip install pyyaml`.
+- Python 3.9+ with PyYAML. Install it in a virtual environment at the repo root, since Homebrew Python and most Linux distributions refuse `pip install` into the system interpreter (PEP 668):
+
+  ```sh
+  python3 -m venv .venv
+  . .venv/bin/activate        # Windows: .venv\Scripts\activate
+  pip install pyyaml
+  ```
+
+  Activate the venv in each new shell before running `./ebus-esp32`. `.venv/` is gitignored.
 - **PlatformIO Core** installed somewhere `./bin/pio` can find. The default is `~/.platformio/penv/bin/pio` (Unix/Mac) or `~/.platformio/penv/Scripts/pio.exe` (Windows) — the paths the VSCode PlatformIO extension uses. If you don't have it, install via: VSCode + PlatformIO IDE extension, `pipx install platformio`, or `brew install platformio`.
 - An ESP32 board with a USB-to-serial connection.
 
@@ -180,7 +188,7 @@ Two overlay files keep per-developer settings out of the shared repo: `config-ov
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `ERROR: PyYAML is not installed for ...` | PyYAML not installed for the `python3` that ran the CLI | `pip install pyyaml` |
+| `ERROR: PyYAML is not installed for ...` | PyYAML not installed for the `python3` that ran the CLI | Activate the repo venv (`. .venv/bin/activate`), or create it as in [Prerequisites](#prerequisites) |
 | PlatformIO not found | `~/.platformio/penv/...pio` doesn't exist | Install via VSCode PlatformIO extension or `pipx install platformio` |
 | `run` / `push` finds no port / hangs at "Connecting…" | No board attached, wrong port, or board not in bootloader state | `./ebus-esp32 devices` to list ports; some boards need BOOT held during reset for first flash |
 | `monitor` → `termios.error` | Running through a non-PTY context | Run in a real terminal window |

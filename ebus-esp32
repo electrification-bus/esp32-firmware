@@ -34,11 +34,25 @@ import shutil
 import configparser
 import http.server
 from pathlib import Path
+# PyYAML is only required by the commands that read YAML, so that --help and `devices`
+# work before it is installed. load_yaml_file() calls require_yaml().
 try:
     import yaml
 except ModuleNotFoundError:
-    sys.exit(f"ERROR: PyYAML is not installed for {sys.executable}; "
-             "run ./ebus-esp32 from the project venv or `pip install pyyaml`")
+    yaml = None
+
+def require_yaml() -> None:
+    if yaml is not None:
+        return
+    sys.exit(f"ERROR: PyYAML is not installed for {sys.executable}.\n"
+             "Install it in a virtual environment at the repo root (Homebrew and most\n"
+             "Linux distributions refuse a plain `pip install` into the system Python, PEP 668):\n"
+             "\n"
+             "  python3 -m venv .venv\n"
+             "  . .venv/bin/activate          (Windows: .venv\\Scripts\\activate)\n"
+             "  pip install pyyaml\n"
+             "\n"
+             "then run ./ebus-esp32 again from that shell.")
 
 # ── paths ──────────────────────────────────────────────────────────────────────
 
@@ -174,6 +188,7 @@ def load_yaml_file(path: Path, *, require_mapping: bool = True) -> dict:
     document, e.g. a list instead of a mapping) into a clean, actionable error —
     file path plus line/column — instead of a raw Python traceback or a confusing
     AttributeError several calls later when .get() hits the wrong type."""
+    require_yaml()
     try:
         with open(path, encoding="utf-8") as f:
             doc = yaml.safe_load(f)

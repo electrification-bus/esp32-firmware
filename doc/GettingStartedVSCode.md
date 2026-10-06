@@ -59,11 +59,22 @@ terminal — see [`GettingStartedCLI.md`](GettingStartedCLI.md).)
 1. In VSCode, choose **File → Open Folder…** and select the cloned repository folder. Use this rather than PlatformIO's "Open Project"; the note at the top of this page explains why.
 2. Open the integrated terminal (**View → Terminal**). Every command below runs there, from the repo root.
 
-### Step 5: Select the board environment
+### Step 5: Set up Python for the CLI
+`./ebus-esp32` is a Python 3.9+ script that needs PyYAML. Install it in a virtual environment at the repo root (Homebrew Python and most Linux distributions refuse `pip install` into the system interpreter):
+
+```sh
+python3 -m venv .venv
+. .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install pyyaml
+```
+
+Activate the venv in each new terminal before running `./ebus-esp32`. On Windows, run the CLI as `ebus-esp32.bat` (or `python ebus-esp32`) wherever this guide says `./ebus-esp32`.
+
+### Step 6: Select the board environment
 1. Set `environment:` in the `device:` section of `device.yml` to the PlatformIO env matching your board. The default is **`esp32-poe-iso`** (Olimex ESP32-POE-ISO); `./ebus-esp32 envs` lists the rest, and the README's *Hardware Targets* table describes them.
 2. You normally don't edit `platformio/platformio.ini` to switch boards. For per-developer build/upload tweaks, use `platformio_local.ini` (see [`Configuration.md`](Configuration.md)).
 
-### Step 6: Build and Flash the Firmware
+### Step 7: Build and Flash the Firmware
 1. Connect your ESP32 to your computer via USB.
 2. `./ebus-esp32 build` compiles the firmware and filesystem image. The first build downloads the platform and libraries and can take several minutes.
 3. `./ebus-esp32 run` builds and flashes both; add `--port <port>` if more than one board is attached (`./ebus-esp32 devices` lists them).

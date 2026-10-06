@@ -15,6 +15,9 @@ include/config.h
 compile_commands.json
 .cache/
 
+# Python virtual environment for ./ebus-esp32 (see doc/GettingStartedCLI.md)
+.venv/
+
 # macOS Finder metadata — never track
 .DS_Store
 
