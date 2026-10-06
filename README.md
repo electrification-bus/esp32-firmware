@@ -111,7 +111,6 @@ VSCode users: run `./ebus-esp32` in the integrated terminal. The PlatformIO exte
   - [Authentication.md](doc/Authentication.md)
   - [Controller.md](doc/Controller.md)
   - [TestDeployment.md](doc/TestDeployment.md)
-  - [OTAServer.md](doc/OTAServer.md)
   - [ESP32Notes.md](doc/ESP32Notes.md)
 
 ## Hardware Targets
