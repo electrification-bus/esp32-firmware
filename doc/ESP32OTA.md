@@ -17,9 +17,7 @@ How firmware and filesystem images reach a device that has no reachable USB cabl
 
 ## Push over TCP (recommended for development and field work)
 
-The device's portal accepts a raw image body and streams it straight into the app or
-filesystem partition. Implemented in the "OTA image push" block of
-[`src/platform/captive_portal.cpp`](../src/platform/captive_portal.cpp).
+The device's portal accepts a raw image body and streams it straight into the app or filesystem partition. Implemented in the "OTA image push" block of [`src/platform/captive_portal.cpp`](../src/platform/captive_portal.cpp).
 
 ### Endpoints
 
@@ -30,17 +28,9 @@ filesystem partition. Implemented in the "OTA image push" block of
 | `POST` | `/api/ota/firmware` | push an app image (`U_FLASH`) |
 | `POST` | `/api/ota/filesystem` | push a LittleFS image (`U_SPIFFS`) |
 
-All four routes are registered with `AsyncURIMatcher::exact()`, and that is load-bearing.
-AsyncWebServer's default matcher is `BackwardCompatible` — `^{uri}(/.*)?$` — so a plain
-`server.on("/api/ota", ...)` *also* matches `/api/ota/filesystem`, and `_attachHandler()`
-binds the first handler that matches. Registered plainly, the toggle silently swallows
-every image push: the body lands in the 2 KB `post_body_buf` and the image is
-discarded. The symptom is a `PORTAL: body url=/api/ota/filesystem` line in the
-log where `PORTAL: OTA push started` belongs.
+All four routes are registered with `AsyncURIMatcher::exact()`, and that is load-bearing. AsyncWebServer's default matcher is `BackwardCompatible` — `^{uri}(/.*)?$` — so a plain `server.on("/api/ota", ...)` *also* matches `/api/ota/filesystem`, and `_attachHandler()` binds the first handler that matches. Registered plainly, the toggle silently swallows every image push: the body lands in the 2 KB `post_body_buf` and the image is discarded. The symptom is a `PORTAL: body url=/api/ota/filesystem` line in the log where `PORTAL: OTA push started` belongs.
 
-**Query parameter:** `?reboot=0` stages the image and keeps the device running, so both
-images can be pushed in one session with a single restart at the end. The default is to
-reboot, so a one-image `curl` takes effect immediately.
+**Query parameter:** `?reboot=0` stages the image and keeps the device running, so both images can be pushed in one session with a single restart at the end. The default is to reboot, so a one-image `curl` takes effect immediately.
 
 ### With the CLI
 
@@ -52,9 +42,7 @@ ebus-esp32 run  --ota --monitor             # build, flash over TCP, then watch 
 ebus-esp32 push --ota --host 10.0.0.5:8080  # non-default port
 ```
 
-The CLI opens the OTA window, pushes the filesystem staged, then the firmware carrying
-the reboot. The passphrase is `--passphrase` if given, else `device.device_passphrase`
-from `config-overlay.yml`, else from `device.yml`. See [GettingStartedCLI.md](GettingStartedCLI.md).
+The CLI opens the OTA window, pushes the filesystem staged, then the firmware carrying the reboot. The passphrase is `--passphrase` if given, else `device.device_passphrase` from `config-overlay.yml`, else from `device.yml`. See [GettingStartedCLI.md](GettingStartedCLI.md).
 
 ### With curl
 
@@ -71,33 +59,19 @@ curl -u admin:<passphrase> -H 'Content-Type: application/octet-stream' \
 
 The `Content-Type` headers are required: curl's default for `-d` and `--data-binary` is `application/x-www-form-urlencoded`, which the device refuses with 415. Image pushes take only `application/octet-stream`; the JSON control requests take only `application/json`, at most 2047 bytes (413 above that). See [Authentication.md](Authentication.md#security-notes).
 
-Send credentials **pre-emptively** (as `-u` does). An auth scheme that waits for a 401 and
-retries will upload the whole image twice.
+Send credentials **pre-emptively** (as `-u` does). An auth scheme that waits for a 401 and retries will upload the whole image twice.
 
 ### What the implementation guarantees
 
-- **Streamed, never buffered.** The body handler writes each chunk into `Update.write()`.
-  It deliberately does not use the JSON body buffer `post_body_buf`, which holds 2 KB, and
-  an app image is >1 MB.
-- **Authorized on the first chunk.** Body callbacks run *before* the request handler, so
-  authorizing only there would let an unauthenticated client on the LAN stream an entire
-  image into flash before being refused. A side-effect-free `portalAuthorized()` predicate
-  gates the writes; `requireAuth()` still produces the actual 401/429 response afterward.
-  (Two responses to one request is a bug, which is why the check is split in two.)
-- **Reboot deferred to the main loop.** The handler runs on the AsyncTCP task and the
-  response has not reached the wire yet; `captive_portal_loop()` performs the restart.
-- **Filesystem safety.** `U_SPIFFS` requires unmounting LittleFS first. If the push is
-  staged or fails, LittleFS is remounted so the device stays serviceable rather than
-  needing a power cycle.
-- **Rejected up front:** OTA window closed, zero/absent `Content-Length` (the device sizes
-  `Update.begin()` from it), a concurrent push, and — for app images — a first byte that
-  is not the ESP image magic `0xE9`.
+- **Streamed, never buffered.** The body handler writes each chunk into `Update.write()`. It deliberately does not use the JSON body buffer `post_body_buf`, which holds 2 KB, and an app image is >1 MB.
+- **Authorized on the first chunk.** Body callbacks run *before* the request handler, so authorizing only there would let an unauthenticated client on the LAN stream an entire image into flash before being refused. A side-effect-free `portalAuthorized()` predicate gates the writes; `requireAuth()` still produces the actual 401/429 response afterward. (Two responses to one request is a bug, which is why the check is split in two.)
+- **Reboot deferred to the main loop.** The handler runs on the AsyncTCP task and the response has not reached the wire yet; `captive_portal_loop()` performs the restart.
+- **Filesystem safety.** `U_SPIFFS` requires unmounting LittleFS first. If the push is staged or fails, LittleFS is remounted so the device stays serviceable rather than needing a power cycle.
+- **Rejected up front:** OTA window closed, zero/absent `Content-Length` (the device sizes `Update.begin()` from it), a concurrent push, and — for app images — a first byte that is not the ESP image magic `0xE9`.
 
 ### Stack sizing
 
-Flash writes happen on the AsyncTCP service task, not the main loop, so the task's stack
-has to cover them. **It already does** — `CONFIG_ASYNC_TCP_STACK_SIZE` is left at the
-library default (16384 in the ESP32Async fork of AsyncTCP; upstream is 8192).
+Flash writes happen on the AsyncTCP service task, not the main loop, so the task's stack has to cover them. **It already does** — `CONFIG_ASYNC_TCP_STACK_SIZE` is left at the library default (16384 in the ESP32Async fork of AsyncTCP; upstream is 8192).
 
 Measured on an ESP32-S3, both image types, at the 16384 default:
 
@@ -108,29 +82,18 @@ PORTAL: OTA push started  (firmware,  1353856 bytes),  async_tcp stack: 13796 by
 PORTAL: OTA push complete (1353856 bytes written),     async_tcp stack: 13796 bytes free of 16384 at low-water (used 2588)
 ```
 
-Peak usage is **2,588 bytes** — identical for a 192 KB filesystem and a 1.35 MB firmware,
-and identical before and after each transfer. Two things follow:
+Peak usage is **2,588 bytes** — identical for a 192 KB filesystem and a 1.35 MB firmware, and identical before and after each transfer. Two things follow:
 
-- **The write path costs no stack.** The peak is set by ordinary TCP/lwIP processing
-  before the first `Update.write()`. That includes the `U_FLASH` finalization
-  (`Update.end(true)` → `esp_ota_set_boot_partition()` → `esp_image_verify()`), which the
-  filesystem path never runs.
-- **Image size is irrelevant.** Each chunk traverses the same call path, so a larger image
-  means more calls at the same depth, not deeper ones.
+- **The write path costs no stack.** The peak is set by ordinary TCP/lwIP processing before the first `Update.write()`. That includes the `U_FLASH` finalization (`Update.end(true)` → `esp_ota_set_boot_partition()` → `esp_image_verify()`), which the filesystem path never runs.
+- **Image size is irrelevant.** Each chunk traverses the same call path, so a larger image means more calls at the same depth, not deeper ones.
 
 That leaves ~84% of the default stack unused, which is why there is no override.
 
-The probe stays in `otaPushBody()`. Re-measure before trusting these numbers with flash
-encryption enabled (the partition layer encrypts through a stack buffer) or with a TLS
-listener added (an mbedTLS handshake alone wants ~20 KB). If a bump is ever needed it must
-be a `build_flag`, not a `build_src_flag` — the value is consumed when AsyncTCP compiles,
-and `build_src_flags` only reaches `src/`. A watchdog reset or a
-`stack canary watchpoint triggered` panic mid-push is the failure mode to watch for.
+The probe stays in `otaPushBody()`. Re-measure before trusting these numbers with flash encryption enabled (the partition layer encrypts through a stack buffer) or with a TLS listener added (an mbedTLS handshake alone wants ~20 KB). If a bump is ever needed it must be a `build_flag`, not a `build_src_flag` — the value is consumed when AsyncTCP compiles, and `build_src_flags` only reaches `src/`. A watchdog reset or a `stack canary watchpoint triggered` panic mid-push is the failure mode to watch for.
 
 ### Side effect: the main loop stalls during a push
 
-Flash writes are slow and block the task performing them, and the main loop gets less time
-while a large image streams in. On a board with Modbus nodes this shows up as timeouts:
+Flash writes are slow and block the task performing them, and the main loop gets less time while a large image streams in. On a board with Modbus nodes this shows up as timeouts:
 
 ```
 PORTAL: OTA push started (firmware, 1353856 bytes) ...
@@ -138,25 +101,17 @@ Modbus: Cmd 7 failed - RESPONSE_TIMEOUT (0xE2) addr=1 reg=1
 SHT20: Async read failed, error=226
 ```
 
-Harmless for a firmware push — the device reboots immediately afterward. For a *staged*
-filesystem push (`?reboot=0`) the device keeps running, so expect a gap in readings rather
-than a failure. Don't push images to a device whose sensor data is being relied on at that
-moment.
+Harmless for a firmware push — the device reboots immediately afterward. For a *staged* filesystem push (`?reboot=0`) the device keeps running, so expect a gap in readings rather than a failure. Don't push images to a device whose sensor data is being relied on at that moment.
 
 ---
 
 ## Pull from a URL (suited to fleet rollout)
 
-The device downloads the images itself. This is the shape that works when the device can
-reach a server but you cannot reach the device — a fleet behind a NAT or gateway — and
-the natural fit for rolling a versioned artifact out to many boards. Implemented in
-[`src/platform/ota.cpp`](../src/platform/ota.cpp).
+The device downloads the images itself. This is the shape that works when the device can reach a server but you cannot reach the device — a fleet behind a NAT or gateway — and the natural fit for rolling a versioned artifact out to many boards. Implemented in [`src/platform/ota.cpp`](../src/platform/ota.cpp).
 
 ### Serving the images
 
-The image server is yours to run and configure — a release server, an S3 bucket, an
-nginx on the LAN. For development, `serve` publishes the current build without setting
-anything up:
+The image server is yours to run and configure — a release server, an S3 bucket, an nginx on the LAN. For development, `serve` publishes the current build without setting anything up:
 
 ```sh
 ./ebus-esp32 serve                 # http://<this machine>:8080
@@ -169,12 +124,9 @@ anything up:
   http://192.168.1.91:8080/littlefs.bin    (196608 bytes)
 ```
 
-Paste either URL into the device's portal (Firmware URL / Filesystem URL) and the device
-pulls it. Each request is logged, so you can see the device fetch.
+Paste either URL into the device's portal (Firmware URL / Filesystem URL) and the device pulls it. Each request is logged, so you can see the device fetch.
 
-It serves **exactly those two paths**, not the build directory — which also holds the
-ELF, the map and every object file. `--url-host` overrides the printed hostname for a
-device that reaches you by name; `--bind` narrows the interface.
+It serves **exactly those two paths**, not the build directory — which also holds the ELF, the map and every object file. `--url-host` overrides the printed hostname for a device that reaches you by name; `--bind` narrows the interface.
 
 ### Driving the pull from the CLI
 
@@ -182,10 +134,7 @@ device that reaches you by name; `--bind` narrows the interface.
 ./ebus-esp32 push --pull --url https://releases.example.com/ebus/v1.2 --host 192.168.1.42
 ```
 
-`--url` is the base the **device** downloads from — it is required, since the server is
-separate from this tool. The CLI stages both images, arms them, then polls `GET /api/ota`
-and prints the device's progress until it completes or reboots. `--fs-only` sends just
-the filesystem; `--pull-wait` bounds the poll (default 300s).
+`--url` is the base the **device** downloads from — it is required, since the server is separate from this tool. The CLI stages both images, arms them, then polls `GET /api/ota` and prints the device's progress until it completes or reboots. `--fs-only` sends just the filesystem; `--pull-wait` bounds the poll (default 300s).
 
 ### With curl
 
@@ -203,45 +152,27 @@ curl -u admin:<passphrase> -H 'Content-Type: application/json' -d '{"url":"http:
 | `start=0` | stage the pull without beginning it. The next request without the flag arms everything staged. This is what makes a two-image pull deterministic — otherwise the first download starts immediately and the second request races it |
 | `persist=0` | do not write the URL to NVS. A workstation serving one image should not become the device's configured `firmware_url` for the rest of its life |
 
-`ota_loop()` (called from `captive_portal_loop()`) performs the work on the main loop,
-always filesystem first, and reboots once when both complete. `GET /api/ota` reports
-`idle`, `downloading`, `host_not_found`, `file_not_found`, `http_error`, `write_error`,
-`download_incomplete` (the connection closed, or sent nothing for 30 s, before the whole
-image arrived), `complete`.
+`ota_loop()` (called from `captive_portal_loop()`) performs the work on the main loop, always filesystem first, and reboots once when both complete. `GET /api/ota` reports `idle`, `downloading`, `host_not_found`, `file_not_found`, `http_error`, `write_error`, `download_incomplete` (the connection closed, or sent nothing for 30 s, before the whole image arrived), `complete`.
 
 ### https and redirects
 
-`https://` URLs work. The device looks for a CA at `/certs/<Host>.ca` — same naming as
-the MQTT broker certs, so put it in `data/certs/` and flash the filesystem. **Without a
-matching cert the transfer still proceeds, encrypted but unverified**, and the log says
-so: anything able to intercept the connection could serve its own image. Verify the
-server for anything that matters.
+`https://` URLs work. The device looks for a CA at `/certs/<Host>.ca` — same naming as the MQTT broker certs, so put it in `data/certs/` and flash the filesystem. **Without a matching cert the transfer still proceeds, encrypted but unverified**, and the log says so: anything able to intercept the connection could serve its own image. Verify the server for anything that matters.
 
-TLS costs roughly 40 KB of heap for the session on top of whatever the MQTT transport
-holds; the device logs free heap before the handshake so a failure there is diagnosable.
+TLS costs roughly 40 KB of heap for the session on top of whatever the MQTT transport holds; the device logs free heap before the handshake so a failure there is diagnosable.
 
-Redirects are followed for GET (`HTTPC_STRICT_FOLLOW_REDIRECTS`), which release hosting
-needs — a GitHub or S3 download URL answers with a 30x to a signed location. A plain-http
-URL still cannot follow a redirect *to* https.
+Redirects are followed for GET (`HTTPC_STRICT_FOLLOW_REDIRECTS`), which release hosting needs — a GitHub or S3 download URL answers with a 30x to a signed location. A plain-http URL still cannot follow a redirect *to* https.
 
-`firmware_url` and `fs_url` can also be baked in from `device.yml`, so a device knows
-where to look with no request at all.
+`firmware_url` and `fs_url` can also be baked in from `device.yml`, so a device knows where to look with no request at all.
 
 ### Why ArduinoOTA (espota) was removed
 
-espota sends a UDP invitation to `device:3232`, and then **the device opens a TCP
-connection back to the host**. That reverse connection does not survive NAT, VPNs, routed
-subnets, or a host firewall, and it needs its own shared-password scheme separate from the
-`device_passphrase` auth the portal already implements. `setup_ota()`/`loop_ota()` were also
-never called by anything — dead code presenting a working-looking API. Removal saved ~5 KB
-of flash.
+espota sends a UDP invitation to `device:3232`, and then **the device opens a TCP connection back to the host**. That reverse connection does not survive NAT, VPNs, routed subnets, or a host firewall, and it needs its own shared-password scheme separate from the `device_passphrase` auth the portal already implements. `setup_ota()`/`loop_ota()` were also never called by anything — dead code presenting a working-looking API. Removal saved ~5 KB of flash.
 
 ---
 
 ## Partition layout
 
-`partitions/partitions_ota.csv` (4 MB flash), selected per-env by
-`board_build.partitions`:
+`partitions/partitions_ota.csv` (4 MB flash), selected per-env by `board_build.partitions`:
 
 ```
 nvs      data nvs    0x9000   0x5000
@@ -253,13 +184,10 @@ spiffs   data spiffs 0x3D0000 0x30000    <-   196,608 B  LittleFS
 
 Two consequences worth remembering:
 
-- A firmware image must fit in **1,966,080 bytes** — the percentage PlatformIO prints
-  after a build is against this number, not total flash.
-- A filesystem image must fit in **196,608 bytes**. `littlefs.bin` is built at exactly the
-  partition size.
+- A firmware image must fit in **1,966,080 bytes** — the percentage PlatformIO prints after a build is against this number, not total flash.
+- A filesystem image must fit in **196,608 bytes**. `littlefs.bin` is built at exactly the partition size.
 
-16 MB boards use `partitions/partitions_ota_n16r8.csv`. A confused `otadata` can boot the
-wrong slot after a flash; `ebus-esp32 run --erase` resets it.
+16 MB boards use `partitions/partitions_ota_n16r8.csv`. A confused `otadata` can boot the wrong slot after a flash; `ebus-esp32 run --erase` resets it.
 
 ---
 
@@ -276,8 +204,7 @@ Update.errorString();                    // human-readable failure
 Update.isRunning();
 ```
 
-`U_FLASH` targets the inactive app slot; `U_SPIFFS` targets the filesystem partition
-(the constant is named for SPIFFS but is correct for LittleFS).
+`U_FLASH` targets the inactive app slot; `U_SPIFFS` targets the filesystem partition (the constant is named for SPIFFS but is correct for LittleFS).
 
 ---
 
@@ -285,22 +212,15 @@ Update.isRunning();
 
 What is in place today:
 
-- **Authentication** on every OTA endpoint — HTTP Basic with `device_passphrase`, or an
-  `X-Session-Token` from `POST /api/login`. Failed attempts are rate limited and lock out.
-- **A time-boxed OTA window** — `POST /api/ota {"enabled":true}` opens it and it closes on
-  its own, so the write surface is not permanently exposed.
+- **Authentication** on every OTA endpoint — HTTP Basic with `device_passphrase`, or an `X-Session-Token` from `POST /api/login`. Failed attempts are rate limited and lock out.
+- **A time-boxed OTA window** — `POST /api/ota {"enabled":true}` opens it and it closes on its own, so the write surface is not permanently exposed.
 - **Magic-byte rejection** of non-ESP32 app images before anything is written.
 
 What is *not*, and should be understood before this leaves a trusted LAN:
 
-- **Plain HTTP.** The passphrase travels as base64 Basic auth and the image travels in
-  clear. Anyone able to observe the LAN can capture both.
-- **Unsigned images.** There is no checksum or signature check — whatever is POSTed with
-  a valid passphrase gets written. ESP32 secure boot + signed images
-  (`CONFIG_SECURE_SIGNED_ON_UPDATE`) is the real answer if devices leave a controlled
-  network.
-- **A wrong passphrase still costs a full upload.** HTTP has no way to avoid this without
-  `Expect: 100-continue`. Nothing reaches flash, but the transfer completes before the 401.
+- **Plain HTTP.** The passphrase travels as base64 Basic auth and the image travels in clear. Anyone able to observe the LAN can capture both.
+- **Unsigned images.** There is no checksum or signature check — whatever is POSTed with a valid passphrase gets written. ESP32 secure boot + signed images (`CONFIG_SECURE_SIGNED_ON_UPDATE`) is the real answer if devices leave a controlled network.
+- **A wrong passphrase still costs a full upload.** HTTP has no way to avoid this without `Expect: 100-continue`. Nothing reaches flash, but the transfer completes before the 401.
 
 ---
 
