@@ -1,0 +1,47 @@
+# SHT20 temperature/humidity sensor on Modbus RTU over RS485, on an Olimex ESP32-POE-ISO.
+#
+# Needs an RS485 transceiver module wired to the bus pins below (pin_a to the module's
+# "RXD" pin, pin_b to its "TXD" pin) and an SHT20 at Modbus address 1 on that bus. Other
+# boards' reference pins are in doc/GPIOPins.md.
+#
+# Build it in place:  ./ebus-esp32 build examples/sht20/device.yml
+# or flash it:        ./ebus-esp32 run examples/sht20/device.yml
+#
+#   mosquitto_sub -t 'ebus/5/<device-id>/environment-sht20/#' -v
+
+device:
+  name: sht20
+  id: ${chip_id}                # template, resolved on-device (opaque id)
+  type: energy
+  environment: esp32-poe-iso    # must match a [env:…] in platformio/platformio.ini
+  device_type: ebus
+  firmware_name: ESP32-POE-ISO Firmware
+  firmware_version: 1.0.0
+  firmware_url: http://example.com/firmware.bin
+  manufacturer: NESL
+  model: ESP32-POE-ISO
+  serial_number:
+  homie_role: device
+  device_passphrase: changeme
+
+wifi:
+  ssid: ''
+  password: ''
+
+mqtt:
+  mode: configured-only
+  host: ''                      # set in config-overlay.yml to keep it out of git
+  port: 1883
+  username: ''
+  password: ''
+  qos: 2
+
+log:
+  tcp_port: 23
+
+buses:
+  rs485: { pin_a: 36, pin_b: 4 }
+
+nodes:
+  - component: modbus/sht20
+    id: environment-sht20

@@ -17,9 +17,14 @@
 #
 # Bus pins are board facts shared by every node on that bus, so they are declared once
 # in the buses: block below; a node's config: holds only what is per device (an address).
+#
+# As shipped this device needs no extra hardware: its one node drives GPIO 14, which is
+# free on the Olimex ESP32-POE-ISO. To use a real sensor, uncomment its bus under buses:
+# and replace the node under nodes:. examples/sht20/device.yml is an SHT20 on RS485, and
+# examples/ has more; `./ebus-esp32 build examples/<name>/device.yml` builds one in place.
 
 device:
-  name: sht20
+  name: ebus-demo
   # id is a TEMPLATE, resolved on-device at boot to a Homie-legal id. Device-ids are
   # OPAQUE (consumers identify by $type + info/serial-number, never by parsing the id).
   # Placeholders: ${chip_id} (full eFuse MAC hex, unique), ${chip_id_short} (last 3
@@ -34,7 +39,7 @@ device:
   # keep a ${chip_id} in `id:`. Usually set from config-overlay.yml so a site can namespace
   # its fleet without touching this tracked file.
   id_prefix: ''
-  type: energy
+  type: control
   # environment names a [env:…] section in platformio.ini — NOT a PlatformIO `board`.
   # An env pins platform (arduino-esp32 3.x vs 2.0.x), board, PSRAM, flash size, partitions
   # and build flags together; six envs here share `board = esp32-poe-iso` and differ only
@@ -111,10 +116,17 @@ log:
 #   i2c:   pin_sda / pin_scl (all i2c/* nodes; WROVER boards keep SCL off GPIO 16/17)
 #   spi:   pin_sck / pin_miso / pin_mosi (all spi/* nodes; chip-selects stay per node)
 buses:
-  rs485: { pin_a: 36, pin_b: 4 }
+  #rs485: { pin_a: 36, pin_b: 4 }
   #i2c:   { pin_sda: 13, pin_scl: 16 }
   #spi:   { pin_sck: 14, pin_miso: 34, pin_mosi: 15 }
 
 nodes:
-  - component: modbus/sht20
-    id: environment-sht20
+  # A settable boolean on GPIO 14. Nothing needs to be connected; wire an LED and a
+  # resistor from GPIO 14 to GND to see it follow
+  #   mosquitto_pub -t 'ebus/5/<device-id>/led/state/set' -m true
+  - component: gpio/digital_output
+    id: led
+    config:
+      pin: 14
+      active_low: false
+      initial_state: false
