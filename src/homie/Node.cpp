@@ -122,5 +122,5 @@ Property* Node::getProperty(const char* id) {
 
 void Node::settable_callback(Property* property) {
     // Notify the device about the property change
-    Serial.printf("Node: '%s' send/set property change to/on Device '%s' change\n", _id, property->id());
+    Serial.printf("Node: '%s' property '%s' set\n", _id, property->id());
 }
