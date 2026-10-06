@@ -68,7 +68,7 @@ GENERATED_INI  = BUILD_DIR / "platformio.ini"
 # still lying around so it isn't silently ignored.
 CONFIG_OVERLAY        = ROOT / "config-overlay.yml"
 CONFIG_OVERLAY_LEGACY = Path.home() / ".config" / "eBus" / "config.yml"
-MONITOR_HOSTS  = BUILD_DIR / "monitor-hosts.json"  # learned device.yml#name -> last-known IP
+MONITOR_HOSTS  = BUILD_DIR / "monitor-hosts.json"  # learned Device ID -> last-known IP
 
 # ── pio helper ─────────────────────────────────────────────────────────────────
 
@@ -1134,9 +1134,12 @@ def _ota_unreachable(host: str, detail: str, unresolved: bool = False) -> None:
     if not re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}", bare):
         print( "       Try an IP instead: ./ebus-esp32 push --ota --host <ip>", file=sys.stderr)
     cached = _hosts_load()
-    if cached:
-        known = ", ".join(f"{env}={addr}" for env, addr in sorted(cached.items()))
-        print(f"       Addresses learned from earlier serial sessions: {known}", file=sys.stderr)
+    learned = [f"{d}={e.get('host')}" for d, e in sorted(cached["devices"].items())]
+    learned += [f"{k}={e.get('host')}" for k, e in sorted(cached["ymls"].items()) if e.get("host")]
+    learned += [f"{env}={addr}" for env, addr in sorted(cached["environments"].items())]
+    if learned:
+        print(f"       Addresses learned from earlier serial sessions: {', '.join(learned)}",
+              file=sys.stderr)
     sys.exit(1)
 
 def _ota_request(host: str, path: str, passphrase: str, payload: bytes,
@@ -1644,7 +1647,7 @@ def _ota_target(cfg, args):
     if not (getattr(args, "ota", False) or getattr(args, "pull", False)):
         return None
     host, source = resolve_host(cfg, get_environment(cfg), _host_key(cfg, args.device_yml),
-                                getattr(args, "host", None))
+                                getattr(args, "host", None), unique=True)
     if not host:
         flag = "--pull" if getattr(args, "pull", False) else "--ota"
         print(f"ERROR: {flag} given but no device address is known.", file=sys.stderr)
@@ -1685,14 +1688,18 @@ def cmd_push(args) -> None:
 # There is no mDNS browse — the firmware advertises _telnet._tcp, but mdns is opt-in
 # and off by default, so the cache is what makes `--net` work with no arguments.
 #
-# The cache is keyed by device.yml path plus device.name, so devices with different
-# device.yml files no longer share an entry the way they did under an environment
-# key. Boards flashed from one device.yml (e.g. with `id: ${chip_id}`) still share
-# one, and `push --ota` targets whichever of them last talked over USB.
-# Each entry also records the Device ID the firmware printed, so a cached address is
-# reported with the device it belongs to. Older caches mapped environment -> IP
-# string; those entries are still read (and said to be per-environment) until the
-# same environment learns an address under the new key, which replaces them.
+# The cache is per board. The serial monitor learns each board's Device ID (printed at
+# boot) together with its IP, and stores the address under that id, with the
+# device.yml#name key it was seen from; that key also points at the board seen most
+# recently from it. Boards flashed from one device.yml (e.g. with `id: ${chip_id}`)
+# therefore each keep their own address. When more than one is known for the
+# device.yml in use, `push --ota` and `--pull` list them and require --host (an IP or
+# a Device ID), while the monitor attaches to the most recent and says so.
+# A session that never saw the Device ID line is matched to a board learned from the
+# same device.yml at that address; failing that, its address is kept on the
+# device.yml key and offered as the newest candidate. Two older formats are still
+# read: device.yml#name -> {host, device_id}, and environment -> IP string (said to be
+# per-environment, and dropped once that environment learns an address).
 
 # main.cpp prints exactly these once an interface has an IP. Scraping them while a
 # serial monitor is already running is how the cache gets populated, at zero cost to
@@ -1711,48 +1718,165 @@ def _host_key(cfg: dict, device_yml) -> str:
         pass
     return f"{path.as_posix()}#{(cfg.get('device') or {}).get('name') or ''}"
 
+def _hosts_empty() -> dict:
+    return {"version": 2, "devices": {}, "ymls": {}, "environments": {}}
+
+def _hosts_entries(section, want_host: bool) -> dict:
+    """The well-formed entries of one cache section: dicts whose host and device_id,
+    when present, are strings and whose seen, when present, is a Unix time in
+    [0, 2**32). A device entry also needs a host."""
+    if not isinstance(section, dict):
+        return {}
+    good = {}
+    for key, val in section.items():
+        if not isinstance(val, dict):
+            continue
+        host, device_id = val.get("host"), val.get("device_id")
+        if host is not None and not isinstance(host, str):
+            continue
+        if device_id is not None and not isinstance(device_id, str):
+            continue
+        seen = val.get("seen")
+        if seen is not None and (isinstance(seen, bool) or not isinstance(seen, (int, float))
+                                 or not 0 <= seen < 2**32):
+            continue
+        if want_host and not host:
+            continue
+        good[key] = val
+    return good
+
 def _hosts_load() -> dict:
-    """Learned key -> entry map (see above for both entry formats). A corrupt/missing
-    cache is not an error: the monitor still works with an explicit --host."""
+    """The cache in its current form (see above), converting both older formats on
+    read. A corrupt/missing cache is not an error: the monitor still works with an
+    explicit --host. Malformed entries are dropped."""
     try:
         data = json.loads(MONITOR_HOSTS.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
-        return {}
+        data = None
+    hosts = _hosts_empty()
+    if not isinstance(data, dict):
+        return hosts
+    if data.get("version") == 2:
+        hosts["devices"] = _hosts_entries(data.get("devices"), want_host=True)
+        hosts["ymls"] = _hosts_entries(data.get("ymls"), want_host=False)
+        envs = data.get("environments")
+        if isinstance(envs, dict):
+            hosts["environments"] = {k: v for k, v in envs.items() if isinstance(v, str)}
+        return hosts
+    for key, val in data.items():
+        if isinstance(val, str):
+            hosts["environments"][key] = val          # environment -> IP
+        elif isinstance(val, dict) and isinstance(val.get("host"), str) and val["host"]:
+            device_id = val.get("device_id")          # device.yml#name -> entry
+            if isinstance(device_id, str) and device_id:
+                hosts["devices"][device_id] = {"host": val["host"],
+                                               "environment": val.get("environment"),
+                                               "yml": key, "seen": 0}
+                hosts["ymls"][key] = {"device_id": device_id}
+            else:
+                hosts["ymls"][key] = {"device_id": None, "host": val["host"],
+                                      "environment": val.get("environment"), "seen": 0}
+    return hosts
 
 def _host_learn(key: str, env_name: str, host: str, device_id: str = None) -> None:
     hosts = _hosts_load()
-    prev = hosts.get(key)
-    if device_id is None and isinstance(prev, dict) and prev.get("host") == host:
-        device_id = prev.get("device_id")   # this session missed the Device ID line
-    entry = {"host": host, "device_id": device_id, "environment": env_name}
-    legacy = isinstance(hosts.get(env_name), str)
-    if hosts.get(key) == entry and not legacy:
-        return
-    hosts[key] = entry
-    if legacy:
-        del hosts[env_name]
+    devices = hosts["devices"]
+    pointer = hosts["ymls"].get(key) or {}
+    if device_id is None:
+        # This session missed the Device ID line: still a known board if one learned
+        # from this device.yml was last seen at this address.
+        same = [d for d, e in devices.items() if e.get("yml") == key and e.get("host") == host]
+        if pointer.get("device_id") in same:
+            device_id = pointer["device_id"]
+        elif same:
+            device_id = max(same, key=lambda d: devices[d].get("seen") or 0)
+    now = int(time.time())
+    if device_id:
+        entry = {"host": host, "environment": env_name, "yml": key}
+        prev = devices.get(device_id) or {}
+        changed = any(prev.get(k) != v for k, v in entry.items())
+        # One address belongs to one board at a time; a board that held it before has
+        # moved, and its entry would only offer a wrong choice.
+        for other in [d for d, e in devices.items() if d != device_id and e.get("host") == host]:
+            del devices[other]
+            changed = True
+        entry["seen"] = now
+        devices[device_id] = entry
+        new_pointer = {"device_id": device_id}
+        changed = changed or pointer != new_pointer
+    else:
+        # An address whose board is unknown. It is the newest thing learned for this
+        # device.yml, so resolve_host offers it ahead of the boards learned before.
+        new_pointer = {"device_id": None, "host": host, "environment": env_name}
+        changed = any(pointer.get(k) != v for k, v in new_pointer.items())
+        new_pointer["seen"] = now
+    changed = changed or env_name in hosts["environments"]
+    hosts["ymls"][key] = new_pointer
+    hosts["environments"].pop(env_name, None)
     try:
         BUILD_DIR.mkdir(parents=True, exist_ok=True)
         MONITOR_HOSTS.write_text(json.dumps(hosts, indent=2) + "\n", encoding="utf-8")
-        who = f"device {device_id} ({key})" if device_id else key
-        print(f"\n[ebus] learned address {host} for {who}"
-              f"  ->  ebus-esp32 monitor --net\n", flush=True)
     except OSError as e:
         print(f"[ebus] WARNING: could not cache device address: {e}", file=sys.stderr)
+        return
+    if changed:
+        who = f"device {device_id} ({key})" if device_id else f"{key}, device id not seen"
+        print(f"\n[ebus] learned address {host} for {who}"
+              f"  ->  ebus-esp32 monitor --net\n", flush=True)
 
-def resolve_host(cfg: dict, env_name: str, key: str, explicit: str = None):
-    """(host, source) for the network monitor, or (None, None) if nothing is known.
-    source names where the address came from and, for a cached one, which device."""
-    if explicit:
-        return explicit, "--host"
+def _seen_text(seen) -> str:
+    if not seen:
+        return "seen by an older CLI"
+    return "last seen " + time.strftime("%Y-%m-%d %H:%M", time.localtime(seen))
+
+_UNSEEN_ID = "(device id not seen)"
+
+def resolve_host(cfg: dict, env_name: str, key: str, explicit: str = None,
+                 unique: bool = False):
+    """(host, source) for the network monitor or OTA, or (None, None) if nothing is
+    known. source names where the address came from and, for a cached one, which
+    device. --host also accepts a learned Device ID.
+
+    The candidates for this device.yml are the devices learned from it, plus the
+    address of the latest session if it missed the Device ID line. When there is more
+    than one, they are listed; with unique (push --ota / --pull) that is an error
+    asking for --host, otherwise the most recently learned one is used."""
     hosts = _hosts_load()
+    devices = hosts["devices"]
     cache = MONITOR_HOSTS.relative_to(ROOT)
-    entry = hosts.get(key)
-    if isinstance(entry, dict) and entry.get("host"):
-        who = f"device {entry['device_id']}" if entry.get("device_id") else "device id not seen"
-        return entry["host"], f"learned for {key}, {who}, {cache}"
-    legacy = hosts.get(env_name)
+    if explicit:
+        entry = devices.get(explicit)
+        if entry:
+            return entry["host"], f"learned for device {explicit}, {cache}"
+        return explicit, "--host"
+    pointer = hosts["ymls"].get(key) or {}
+    known = sorted(((d, e) for d, e in devices.items() if e.get("yml") == key),
+                   key=lambda de: de[1].get("seen") or 0, reverse=True)
+    latest = pointer.get("device_id")
+    if not latest and pointer.get("host"):
+        # Learned after every device above (the pointer is rewritten on each learn).
+        known.insert(0, (_UNSEEN_ID, pointer))
+        latest = _UNSEEN_ID
+    if latest not in dict(known):
+        latest = known[0][0] if known else None
+    if len(known) > 1:
+        print(f"{len(known)} devices have been learned for {key} ({cache}):",
+              file=sys.stderr)
+        for d, e in known:
+            mark = "  <- most recent" if d == latest else ""
+            print(f"  {d:<24} {e['host']:<16} {_seen_text(e.get('seen'))}{mark}",
+                  file=sys.stderr)
+        if unique:
+            print("ERROR: more than one device could be the target. Name one with "
+                  "--host <ip or Device ID>.", file=sys.stderr)
+            sys.exit(1)
+        print(f"Using the most recent, {latest}; pass --host <ip or Device ID> to "
+              f"pick another.", file=sys.stderr)
+    if latest == _UNSEEN_ID:
+        return pointer["host"], f"learned for {key}, device id not seen, {cache}"
+    if latest:
+        return devices[latest]["host"], f"learned for {key}, device {latest}, {cache}"
+    legacy = hosts["environments"].get(env_name)
     if isinstance(legacy, str) and legacy:
         return legacy, (f"learned per environment {env_name} by an older CLI, {cache}; "
                         f"any board on this environment could own it")
@@ -2128,8 +2252,8 @@ def main():
     port_arg    = dict(default=None, metavar="PORT",
                        help="serial port, e.g. COM3 or /dev/ttyUSB0 (auto-detected if omitted)")
     host_arg    = dict(default=None, metavar="ADDR",
-                       help="device IP/hostname for the network monitor "
-                            "(default: address learned from a previous serial session)")
+                       help="device IP/hostname, or a Device ID learned from a previous "
+                            "serial session (default: the address learned for device.yml)")
     wait_arg    = dict(type=int, default=90, metavar="SECONDS",
                        help="how long to wait for the device's TCP console to answer (default: 90)")
 

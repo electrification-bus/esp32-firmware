@@ -87,8 +87,8 @@ The firmware tees its console to a TCP listener (`include/platform/log_stream.h`
 
 **How the address is found**, in order:
 
-1. `--host <ip|name>`
-2. the address learned from a previous USB session, cached in `build/monitor-hosts.json` (gitignored) under the `device.yml` path and `device.name`, with the Device ID the firmware printed. Boards flashed from one `device.yml` share that entry, so it holds whichever last talked over USB. `push --ota` and `--pull` print which device and address they chose
+1. `--host <ip|name|Device ID>`
+2. the address learned from a previous USB session, cached in `build/monitor-hosts.json` (gitignored) per board, under the Device ID the firmware printed, along with the `device.yml` path and `device.name` it was seen from. When more than one board has been learned from the same `device.yml`, the CLI lists them; `push --ota` and `--pull` then stop and ask for `--host`, which takes an IP or one of the listed Device IDs, and `monitor` attaches to the most recently seen one and says so. An address from a session whose boot log lacked the Device ID line is listed among them as the newest, unless a known board from that `device.yml` was last seen at it. `push --ota` and `--pull` print which device and address they chose
 3. `<device.name>.local` — needs the mDNS **responder** (`mdns.advertise`, or the legacy
    `mdns.enabled` which sets both gates). On by default for Ethernet-only builds on
    arduino-esp32 3.x, off otherwise; pin it with an `mdns:` section in `device.yml`
