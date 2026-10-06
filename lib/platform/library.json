@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "4-20ma/ModbusMaster": "2.0.1",
-    "plerup/EspSoftwareSerial": "^8.2.0"
+    "dok-net/ghostl": "1.0.1",
+    "plerup/EspSoftwareSerial": "8.2.0"
   }
 }

@@ -49,4 +49,7 @@ generator:
   header: i2c/bme280.h
   constructor: '("{id}", {bus.i2c.pin_sda}, {bus.i2c.pin_scl}, {config.address})'
   lib_deps:
-    - https://github.com/adafruit/Adafruit_BME280_Library.git
+    # The BME280 library depends on these two without versions; listing them first pins them.
+    - adafruit/Adafruit Unified Sensor @ 1.1.15
+    - adafruit/Adafruit BusIO @ 1.17.4
+    - https://github.com/adafruit/Adafruit_BME280_Library.git#2.3.0
