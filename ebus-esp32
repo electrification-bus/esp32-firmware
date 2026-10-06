@@ -1295,8 +1295,9 @@ def _ota_get(host: str, path: str, passphrase: str, timeout: int = 10):
 # images run as ONE session with a single reboot, and ?persist=0 keeps a throwaway URL
 # out of the device's NVS.
 #
-# --pull with no --url serves the images from THIS machine for the duration of the
-# transfer, which needs no infrastructure at all on a LAN.
+# --pull requires --url: the CLI never serves the images itself during a pull. To pull
+# from this machine on a LAN, run `ebus-esp32 serve` in another terminal and pass its
+# address as --url.
 
 def _pull_request(host: str, path: str, passphrase: str, url: str,
                   start: bool, persist: bool, label: str) -> None:
