@@ -156,7 +156,7 @@ littlefs, data, littlefs,0x3D0000, 0x30000,
 - `nvs` must appear before any `app` partition; the default start is `0x9000`.
 - `otadata` tracks which OTA slot is active; without it, OTA updates are impossible.
 - Both `ota_0` and `ota_1` must be the same size, and each must be large enough for the firmware `.bin`.
-- LittleFS/SPIFFS must be uploaded separately (`pio run --target uploadfs` will upoload the contents of the /data folder); OTA only flashes the app partition.
+- LittleFS/SPIFFS must be uploaded separately (`./ebus-esp32 push --fs-only` uploads the contents of the `data/` folder); OTA only flashes the app partition.
 - Total of all partition sizes + offsets must not exceed the flash chip size (e.g. 4 MB = `0x400000`).
 
 **Common mistakes:**
@@ -175,12 +175,10 @@ Classic ESP32 and S3 have 3 hardware UARTs (UART0/1/2), all pin-remappable via `
 | UART1 | `Serial1` | RS485/Modbus on WROOM boards |
 | UART2 | `Serial2` | RS485/Modbus on WROVER boards (Serial1 pins GPIO 9/10 are internally connected to SPI flash on WROVER modules and cannot be used) |
 
-The `get_serial1()` function in [modbus_master.cpp](src/modbus/modbus_master.cpp) abstracts the correct UART via preprocessor:
-- `USE_SOFTWARE_SERIAL` defined → SoftwareSerial (legacy fallback, not active in any current environment)
-- `BOARD_HAS_PSRAM` defined (WROVER) → `Serial2`
-- Otherwise (WROOM) → `Serial1`
-
-**SoftwareSerial** is conditionally compiled via `#ifdef USE_SOFTWARE_SERIAL` and is not active in any current build environment. It would only be considered if all three hardware UARTs were already occupied.
+The `get_serial1()` function in [modbus_master.cpp](../lib/platform/modbus/modbus_master.cpp) abstracts the correct UART via preprocessor:
+- `USE_SOFTWARE_SERIAL` defined and `<SoftwareSerial.h>` reachable → SoftwareSerial. Every non-WROVER env in `platformio/platformio.ini` defines `USE_SOFTWARE_SERIAL`, and `lib/platform/library.json` pulls in EspSoftwareSerial whenever a Modbus component is in the build.
+- `BOARD_HAS_PSRAM` defined (WROVER) → `Serial2`. The WROVER envs leave `USE_SOFTWARE_SERIAL` commented out because SoftwareSerial crashes with PSRAM.
+- Otherwise → `Serial1`
 
 ### RISC-V vs Xtensa toolchain
 C3/C6/H2 use a different compiler backend. Arduino and PlatformIO handle this transparently, but inline assembly, compiler intrinsics, and some low-level IDF calls are architecture-specific. Code written for classic ESP32 generally compiles on RISC-V variants without modification.
@@ -231,7 +229,7 @@ Flash: [======    ]  63.3% (used 1244093 bytes from 1966080 bytes)
 **Verbose section sizes from the command line:**
 ```bash
 # Build and show section sizes
-pio run -e esp32-poe-iso-16mb -v 2>&1 | grep -E "\.text|\.data|\.bss|\.rodata"
+pio run -c platformio/platformio.ini -e esp32-poe-iso-16mb -v 2>&1 | grep -E "\.text|\.data|\.bss|\.rodata"
 
 # Or use xtensa size tool directly on the ELF
 ~/.platformio/packages/toolchain-xtensa-esp32/bin/xtensa-esp32-elf-size \
@@ -242,19 +240,19 @@ pio run -e esp32-poe-iso-16mb -v 2>&1 | grep -E "\.text|\.data|\.bss|\.rodata"
 
 ```bash
 # Build specific environment
-pio run -e esp32-poe-iso-16mb
+pio run -c platformio/platformio.ini -e esp32-poe-iso-16mb
 
 # Build and upload firmware
-pio run -e esp32-poe-iso-16mb -t upload
+pio run -c platformio/platformio.ini -e esp32-poe-iso-16mb -t upload
 
 # Upload filesystem (LittleFS) only — does not reflash firmware
-pio run -e esp32-poe-iso-16mb -t uploadfs
+pio run -c platformio/platformio.ini -e esp32-poe-iso-16mb -t uploadfs
 
 # Serial monitor
 pio device monitor -p COM15 -b 115200
 
 # List available targets for an environment
-pio run -e esp32-poe-iso-16mb --list-targets
+pio run -c platformio/platformio.ini -e esp32-poe-iso-16mb --list-targets
 
 # Full flash erase (use before switching filesystem type, e.g. SPIFFS → LittleFS)
 esptool.py --port COM15 erase_flash
