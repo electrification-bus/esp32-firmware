@@ -387,9 +387,11 @@ bool setup_wifi() {
 //
 // A new lease starts a lookup round of every name. A name that fails keeps its last
 // address, if it has one, and SNTP runs on whatever addresses exist. While any name
-// fails, only the failed names are looked up again, with exponential backoff. Once all
-// names resolve, they are looked up again every NTP_REFRESH_MS, since pool.ntp.org
-// members rotate. SNTP is restarted only when the address set changed.
+// fails, only the failed names are looked up again, with exponential backoff. Every
+// name is looked up again once NTP_REFRESH_MS has passed since the last round of every
+// name, since pool.ntp.org members rotate; a retry due after that point looks up every
+// name, so a name that never resolves does not hold the others at their first address.
+// SNTP is restarted only when the address set changed.
 #define NTP_RETRY_MIN_MS        30000UL
 #define NTP_RETRY_MAX_MS        (30UL * 60 * 1000)
 #define NTP_REFRESH_MS          (12UL * 60 * 60 * 1000)
@@ -408,6 +410,7 @@ static bool _ntp_round_active = false;
 static bool _ntp_next_armed = false;
 static bool _ntp_next_all = false;      // next round looks up every name, not just failed ones
 static unsigned long _ntp_next_at = 0;
+static unsigned long _ntp_all_at = 0;   // millis() when the last round of every name started
 static unsigned long _ntp_retry_ms = NTP_RETRY_MIN_MS;
 static bool _ntp_started = false;
 // sntp_setservername() keeps the pointers, and SNTP's tcpip-thread requests read them
@@ -475,6 +478,7 @@ static void ntp_round_start(bool all) {
     portEXIT_CRITICAL(&_ntp_dns_mux);
     if (lookup && tcpip_callback(ntp_dns_start, (void*)i) != ERR_OK) ntp_dns_store(i, nullptr);
   }
+  if (all) _ntp_all_at = millis();
   _ntp_round_active = true;
 }
 
@@ -547,7 +551,12 @@ void loop_ntp() {
     return;
   }
   _ntp_next_armed = false;
-  ntp_round_start(_ntp_next_all);
+  bool all = _ntp_next_all;
+  if (!all && millis() - _ntp_all_at >= NTP_REFRESH_MS) {
+    Serial.println("NTP: refresh due, looking up every name");
+    all = true;
+  }
+  ntp_round_start(all);
 }
 
 void WiFiEvent(WiFiEvent_t event)
