@@ -107,7 +107,7 @@ A settable callback returns `true` when it accepted (applied) the value and `fal
 
 1. Validate the payload against the property's datatype and format. An invalid payload is logged and goes no further; the driver is not called.
 2. Store the value on the property, so a callback can read it with `property->value()` or `getBoolValue()` and friends.
-3. Call the driver. On `true`, publish `$target` (if the property supports it) and the value; if the callback already published the property itself (for example with `set_value_and_publish()`), that publish reports the value and dispatch does not repeat it. On `false`, put the property's previous value back and publish nothing, so the broker keeps the last value the device actually holds.
+3. Call the driver. On `true`, publish `$target` (if the property supports it) and the value. The value is reported by the callback's own queued publish of the property (for example with `set_value_and_publish()`), or, when the callback queued none, by dispatch's own publish. A callback's publish that the publish-on-change gate suppressed, or that the publish queue did not accept (for example because it was full), counts as none, so dispatch publishes the value itself. On `false`, put the property's previous value back and publish nothing, so the broker keeps the last value the device actually holds.
 
 On refusal, do not set or publish the property itself: restoring the previous value does not recall a publish already queued. If a subscriber has both an `on_set` handler and an entity callback, the handler runs first, and a refusal from it means the entity callback is not called.
 
