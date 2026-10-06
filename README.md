@@ -123,7 +123,7 @@ Defined in [`platformio/platformio.ini`](platformio/platformio.ini). Run `./ebus
 | `esp32-poe-iso-wrover` | Same Olimex board with WROVER-E module (8 MB PSRAM) | NimBLE tuned for memory |
 | `esp32-poe-iso-16mb` | Same Olimex board, 16 MB flash variant | Larger partition table |
 | `esp32-s3-devkitc-1` | Espressif ESP32-S3-DevKitC | Native USB CDC |
-| `wesp32-poe` | Silicognition wESP32 | Compile check only until it gets OTA partitions and LittleFS; see its `platformio/platformio.ini` comment |
+| `wesp32-poe` | Silicognition wESP32 | Not buildable as defined: needs `board_build.partitions` and `board_build.filesystem = littlefs`; see [Board targets](doc/GenerateHomieDevice.md#board-targets) |
 | `seeed_xiao_esp32s3` | Seeed XIAO ESP32-S3 | Native USB only; WiFi, no Ethernet. 3.x only (no `-arduino2` twin) |
 | `*-arduino2` | The boards above, except the XIAO, on the legacy platform | arduino-esp32 2.0.17 / ESP-IDF 4.4.7, pinned. Kept for A/B until the 3.x port is verified on every board |
 
