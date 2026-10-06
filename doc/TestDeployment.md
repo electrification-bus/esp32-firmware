@@ -1,6 +1,6 @@
-# Test Deployment Topology
+# Example Test Topology
 
-Exercises the sensor and actuator components across five boards: one controller and four devices.
+An example bench layout that exercises six sensor and actuator components across five boards: one controller and four devices. The board labels and the per-board device files (`controller.yml`, `poe16-a.yml` and so on) are placeholders to create yourself; substitute whichever boards you have.
 
 ## Hardware Roster
 
@@ -34,7 +34,7 @@ OTA needs no node: every build carries the OTA endpoints described in [ESP32OTA.
 
 ## Per-Device Configuration
 
-Each board gets its own `device.yml` (for example `poe16-a.yml`), with `device.environment` set to the env above and a `buses:` block for the board's pins ([GPIOPins.md](GPIOPins.md)). Only the `nodes:` section differs between them; the keys each component needs are documented at the top of its `lib/<bus>/<name>.yml`.
+Create one device file per board (for example `poe16-a.yml`), with `device.environment` set to the env above and a `buses:` block for the board's pins ([GPIOPins.md](GPIOPins.md)). Only the `nodes:` section differs between them; the keys each component needs are documented at the top of its `lib/<bus>/<name>.yml`.
 
 ### 1. controller — `esp32-s3-devkitc-1`
 
@@ -42,7 +42,7 @@ Add `-DENABLE_CONTROLLER` to the env's `build_src_flags` in `platformio_local.in
 
 ### 2. poe16-a — `esp32-poe-iso-16mb` — Modbus SHT20 + Eletechsup32
 
-Both devices share the RS485 bus at different Modbus addresses (SHT20 default `0x01`, Eletechsup32 default `0x01`: set one to a different address on hardware).
+Both devices share the RS485 bus at their default Modbus addresses, which differ: SHT20 `0x01` (`SHT20_ADDR`) and Eletechsup32 `0x04` (`INPUT32_ADDR`), both in `lib/platform/modbus/modbus_master.h`.
 
 ```yaml
 nodes:
