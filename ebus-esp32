@@ -994,6 +994,7 @@ def cmd_generate(args) -> None:
         yaml.dump(config_doc, f, allow_unicode=True, sort_keys=False)
     print(f"  generated: {out_config.relative_to(ROOT)}")
     _apply_overlay(out_config)
+    _warn_no_broker(out_config)
 
     env_name = device.get("environment", "<environment>")
     print(f"\n{len(nodes_cfg)} node(s), environment: {env_name}")
@@ -2239,6 +2240,14 @@ def _apply_overlay(config_path: Path) -> None:
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.dump(doc, f, allow_unicode=True, sort_keys=False)
     print(f"  overlay:   {CONFIG_OVERLAY} ({applied} field(s))")
+
+def _warn_no_broker(config_path: Path) -> None:
+    """configured-only with an empty host leaves the device nothing to connect to."""
+    mqtt = (load_yaml_file(config_path) or {}).get("mqtt") or {}
+    if mqtt.get("mode") == "configured-only" and not mqtt.get("host"):
+        print("  WARNING: mqtt.host is empty and mqtt.mode is configured-only, so the device\n"
+              "           has no broker to connect to (unless one is saved from its web portal).\n"
+              f"           Set mqtt.host in {CONFIG_OVERLAY.name} (kept out of git) or the device file.")
 
 def cmd_config_status(args) -> None:
     print(f"overlay path:    {CONFIG_OVERLAY}")
