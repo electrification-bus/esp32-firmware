@@ -252,7 +252,7 @@ Example output for the quickstart config above:
 BME280 environment_bme280("environment-bme280", 13, 16);
 SHT20 environment_sht20("environment-sht20", get_serial1(), 6, 7);
 DigitalOutput relay1("relay1", 4, true, false);
-EnergyMeter energy_meter("energy-meter", 15, 16);
+EnergyMeter energy_meter("energy-meter", 12, 13, 11, 15, 16);
 
 void setup_homie() {
     environment_bme280.setup();
