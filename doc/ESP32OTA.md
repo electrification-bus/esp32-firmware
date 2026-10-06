@@ -208,7 +208,8 @@ curl -u admin:changeme -X POST -d '{"url":"http://10.0.0.2:8080/firmware.bin"}' 
 `ota_loop()` (called from `captive_portal_loop()`) performs the work on the main loop,
 always filesystem first, and reboots once when both complete. `GET /api/ota` reports
 `idle`, `downloading`, `host_not_found`, `file_not_found`, `http_error`, `write_error`,
-`complete`.
+`download_incomplete` (the connection closed, or sent nothing for 30 s, before the whole
+image arrived), `complete`.
 
 ### https and redirects
 

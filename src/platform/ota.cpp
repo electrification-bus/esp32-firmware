@@ -10,6 +10,8 @@
 // after, rather than held as static: the static footprint is already near the level that
 // starves the FreeRTOS idle task at boot (see the note in Device.cpp).
 #define OTA_CA_MAX_SIZE 4096
+// Abandon a download that has delivered no data for this long while still connected.
+#define OTA_STALL_TIMEOUT_MS 30000
 
 static bool      _ota_pending      = false;
 static bool      _fs_pending       = false;
@@ -59,6 +61,7 @@ const char* ota_get_status_str() {
         case OTA_STATUS_FILE_NOT_FOUND: return "file_not_found";
         case OTA_STATUS_HTTP_ERROR:     return "http_error";
         case OTA_STATUS_WRITE_ERROR:    return "write_error";
+        case OTA_STATUS_DOWNLOAD_INCOMPLETE: return "download_incomplete";
         case OTA_STATUS_COMPLETE:       return "complete";
         default:                        return "unknown";
     }
@@ -219,6 +222,9 @@ static bool run_update(int update_type, const char* url) {
 
     Serial.printf("OTA: Image size: %d bytes\n", contentLength);
 
+    // The filesystem partition cannot be rewritten while mounted; ota_loop() remounts it.
+    if (update_type == U_SPIFFS) LittleFS.end();
+
     if (!Update.begin(contentLength, update_type)) {
         Serial.printf("OTA: Not enough space: %s\n", Update.errorString());
         _ota_status = OTA_STATUS_WRITE_ERROR;
@@ -232,10 +238,17 @@ static bool run_update(int update_type, const char* url) {
     int written = 0;
     int last_progress = 0;
     int remaining = contentLength;
+    uint32_t last_data_ms = millis();
 
     while (http.connected() && remaining > 0) {
         size_t available = stream->available();
+        if (!available && millis() - last_data_ms >= OTA_STALL_TIMEOUT_MS) {
+            Serial.printf("OTA: No data for %u s, giving up\n",
+                          (unsigned)(OTA_STALL_TIMEOUT_MS / 1000));
+            break;
+        }
         if (available) {
+            last_data_ms = millis();
             size_t to_read = (available < sizeof(buffer)) ? available : sizeof(buffer);
             size_t read_bytes = stream->readBytes(buffer, to_read);
 
@@ -245,6 +258,7 @@ static bool run_update(int update_type, const char* url) {
                 Update.abort();
                 _ota_status = OTA_STATUS_WRITE_ERROR;
                 http.end();
+                delete[] ca_cert;
                 return false;
             }
 
@@ -258,6 +272,16 @@ static bool run_update(int update_type, const char* url) {
             }
         }
         delay(1);
+    }
+
+    if (remaining > 0) {
+        Serial.printf("OTA: Download incomplete, %d of %d bytes received\n",
+                      written, contentLength);
+        Update.abort();
+        _ota_status = OTA_STATUS_DOWNLOAD_INCOMPLETE;
+        http.end();
+        delete[] ca_cert;
+        return false;
     }
 
     // Drain any TCP data buffered ahead by the stack so HTTPClient closes cleanly.
@@ -291,6 +315,10 @@ void ota_loop() {
     if (_fs_pending) {
         _fs_pending = false;
         ok = run_update(U_SPIFFS, _fs_url);
+        // run_update() unmounts LittleFS to write the partition. Remount whatever is
+        // there now (a no-op if it never got that far; formats if the write failed
+        // partway) so the portal keeps serving when no reboot follows.
+        LittleFS.begin(true);
     }
     if (ok && _ota_pending) {
         _ota_pending = false;

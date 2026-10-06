@@ -1157,6 +1157,7 @@ _PULL_ERRORS = {
     "file_not_found": "the server answered 404 — wrong path?",
     "http_error":     "the server answered with an error",
     "write_error":    "the device could not write the image (bad image, or no space)",
+    "download_incomplete": "the download stopped before the whole image arrived",
 }
 
 def _pull_watch(host: str, passphrase: str, timeout: int) -> int:
