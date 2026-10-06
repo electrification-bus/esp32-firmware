@@ -17,6 +17,12 @@ That is the test for whether something earns its own driver. [`examples/bms/`](.
     initial_state: false
 ```
 
+This folder's [`device.yml`](device.yml) is a complete device built on that node. It targets the ESP32-S3-DevKitC-1 and uses GPIO 14, which is not a strapping pin there or on a classic ESP32 such as the ESP32-POE-ISO (see [Picking a pin](#picking-a-pin)). Build and flash it in place, without copying it over the root `device.yml`:
+
+```sh
+./ebus-esp32 run examples/ssr/device.yml
+```
+
 ## Polarity: get `active_low` right first
 
 Most opto-isolated SSR and relay boards are **active-low** — the channel energizes when its control pin is pulled to GND. Some are active-high. Check yours before wiring, because this is the one setting you cannot correct in software after the fact:

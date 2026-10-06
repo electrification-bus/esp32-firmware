@@ -5,7 +5,7 @@
 # sizing, which is what README.md in this folder is about. Read it before connecting
 # anything to mains.
 #
-# To try it:  cp examples/ssr/device.yml device.yml && ./ebus-esp32 run
+# To try it:  ./ebus-esp32 run examples/ssr/device.yml
 #
 #   mosquitto_pub -t 'ebus/5/<device-id>/relay1/state/set' -m true
 #   mosquitto_sub -t 'ebus/5/<device-id>/relay1/#' -v
@@ -51,7 +51,7 @@ nodes:
   - component: gpio/digital_output
     id: relay1
     config:
-      pin: 14
+      pin: 14                   # not a strapping pin on the S3 or on a classic ESP32
       active_low: true
       initial_state: false
 
