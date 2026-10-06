@@ -139,8 +139,7 @@ Information flows one way — the generator reads each instance's component yml 
 in the instance's `id:`, `config:` and the bus pins; the result is `src/homie.cpp` and
 `data/homie.yml`. Three things follow:
 
-- **Only what you list is built.** A component not named in `device.yml` is not compiled
-  in, and its `lib_deps` are not added to the generated `build/platformio.ini`.
+- **Only what you list is built.** A component not named in `device.yml` is not compiled in, and its `lib_deps` are not added to the generated `build/platformio.ini`. Each `lib/<bus>/` folder is one PlatformIO library, so `generate` writes the components in use to `build/platformio.ini` as `custom_ebus_components`, and `scripts/lib_src_filter.py` (the folder's `library.json` `extraScript`) leaves every other component's `<name>.cpp` out of that library. A component whose header another one includes (`modbus/register_device`, under `modbus/sht20`) is kept, and files that belong to no component (`i2c_bus.cpp`) always build. A build from the tracked `platformio/platformio.ini` compiles every source in the folder.
 - **One type, many instances.** Two relays are two `nodes:` entries with the same
   `component: gpio/digital_output` and different `id:` and `pin:` — a component cannot
   know how many of itself a board has.

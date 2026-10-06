@@ -406,7 +406,35 @@ def collect_optional_lib_catalog() -> set:
             catalog.add(dep)
     return catalog
 
-def write_lean_platformio_ini(env_name: str, used_lib_deps: list) -> None:
+_INCLUDE_RE = re.compile(r'^\s*#\s*include\s*[<"]([^>"]+)[>"]', re.M)
+
+def component_source_closure(used_components: list) -> list:
+    """The lib/<bus>/<name> components whose sources this build compiles: the ones
+    device.yml uses, plus any component whose header one of them includes (sht20.h
+    includes modbus/register_device.h, so register_device.cpp has to build too).
+    Followed transitively through every lib/ header and .cpp reached. Returned as
+    sorted 'bus/name' strings for scripts/lib_src_filter.py."""
+    seen_files = set()
+    pending = []
+    for comp in used_components:
+        pending += [LIB_DIR / f"{comp}.h", LIB_DIR / f"{comp}.cpp"]
+    while pending:
+        path = pending.pop()
+        if path in seen_files or not path.is_file():
+            continue
+        seen_files.add(path)
+        for inc in _INCLUDE_RE.findall(path.read_text(encoding="utf-8", errors="replace")):
+            target = LIB_DIR / inc
+            if target.is_file():
+                pending += [target, target.with_suffix(".cpp")]
+    found = set(used_components)
+    for path in seen_files:
+        if path.with_suffix(".yml").is_file():
+            found.add(f"{path.parent.name}/{path.stem}")
+    return sorted(found)
+
+def write_lean_platformio_ini(env_name: str, used_lib_deps: list,
+                              used_components: list) -> None:
     """Write build/platformio.ini: a standalone copy of platformio.ini containing
     only [platformio], [env], [common] (lib_deps pruned+extended), and this one
     environment's [env:<name>] — everything `pio_run()` needs, nothing device.yml's
@@ -466,6 +494,11 @@ def write_lean_platformio_ini(env_name: str, used_lib_deps: list) -> None:
     out.add_section(env_section)
     for key, val in src.items(env_section):
         out.set(env_section, key, val)
+    # Read by scripts/lib_src_filter.py, so a lib/<bus> library compiles only these
+    # components' sources: an unused component's #include would otherwise need a
+    # library that kept_deps left out.
+    out.set(env_section, "custom_ebus_components",
+            " ".join(component_source_closure(used_components)))
 
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
     with open(GENERATED_INI, "w", encoding="utf-8") as f:
@@ -624,6 +657,7 @@ def cmd_generate(args) -> None:
     homie_nodes       = []   # ROOT device's nodes only (data/homie.yml)
     seen_node_ids     = {}   # node_id -> component that first used it (duplicate-id check)
     used_lib_deps     = []   # lib_deps strings from every used component's generator block (dedup, ordered)
+    used_components   = []   # 'bus/name' of every used component (dedup, ordered)
     pin_uses          = {}   # label -> GPIO, for every bus and node pin in use (conflict check)
 
     def _cvar(s):
@@ -715,6 +749,9 @@ def cmd_generate(args) -> None:
         for dep in gen.get("lib_deps") or []:
             if dep not in used_lib_deps:
                 used_lib_deps.append(dep)
+        comp_name = f"{comp_path.parent.name}/{comp_path.stem}"
+        if comp_name not in used_components:
+            used_components.append(comp_name)
         includes.append(f"#include <{header}>")
         if registers is not None:
             decls.extend(registers_to_desc_table(registers, node_id))
@@ -851,7 +888,7 @@ def cmd_generate(args) -> None:
     # see write_lean_platformio_ini().
     env_for_ini = device.get("environment")
     if env_for_ini:
-        write_lean_platformio_ini(env_for_ini, used_lib_deps)
+        write_lean_platformio_ini(env_for_ini, used_lib_deps, used_components)
 
     # data/homie.yml
     homie_doc = {
