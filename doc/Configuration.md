@@ -74,9 +74,9 @@ The certificate must be smaller than 4096 bytes. Store only CA certificates ther
 
 Earlier versions generated `data/config.yml` as one flat block (`wifi_ssid:`, `mqtt_host:`, `device_passphrase:` …) nested under a single-element `config:` list. **Neither is supported any more**: sections must be at the top level. The firmware still accepts a flat *key* at the top level as a fallback (`mqtt_host:` beside `mqtt:`), which covers a hand-maintained file mid-conversion, but the `config:` wrapper is gone. A board carrying an old filesystem image needs its filesystem re-flashed, which any `./ebus-esp32 run` or `push` does anyway. `generate` rejects flat keys in an overlay and tells you the section equivalent.
 
-### Cleartext credentials caveat
+### Credentials on the device
 
-The boot-time config dump replaces every value whose key contains `password` or `passphrase` with `***`. The values themselves are still written in cleartext to `data/config.yml` and flashed in the filesystem image, so anyone who can read the board's flash over USB can recover them. Values saved through the web UI live in NVS instead; [proposals/RuntimeConfigViaNVS.md](proposals/RuntimeConfigViaNVS.md) covers keeping secrets out of the image.
+At boot the firmware prints the parsed config to the serial console, which is also mirrored to the unauthenticated TCP log console. Before printing, it replaces the value of every key whose name contains `password` or `passphrase` with `***` (`redact_secrets()` in `src/platform/config.cpp`). The values themselves are stored as plain YAML in `data/config.yml` on the LittleFS partition, so anyone who can read the board's flash can recover them. Values saved through the web UI live in NVS instead; [proposals/RuntimeConfigViaNVS.md](proposals/RuntimeConfigViaNVS.md) covers keeping secrets out of the image.
 
 ## 2. PlatformIO build/upload — `platformio_local.ini`
 
@@ -101,8 +101,9 @@ platformio_local.ini.example  ←  documented template (tracked)
 ```sh
 cp platformio_local.ini.example platformio_local.ini   # copy template
 $EDITOR platformio_local.ini                           # uncomment / add the overrides you need
-./bin/pio project config | grep upload_speed           # verify the override took effect
 ```
+
+`./ebus-esp32` runs `pio` from the repo root with `-c build/platformio.ini`, and `extra_configs` resolves `platformio_local.ini` against that directory, so the overrides apply to every `./ebus-esp32` build and upload. `pio project config` cannot show them: it takes no `-c` and there is no `platformio.ini` at the repo root.
 
 Or skip the bootstrap entirely — if you don't need any overrides, leave `platformio_local.ini` absent. PIO ignores a missing `extra_configs` path silently.
 
