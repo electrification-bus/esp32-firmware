@@ -413,7 +413,10 @@
         wifiStatus.className = 'status';
         wifiStatus.textContent = 'Connecting...';
         var body = JSON.stringify({ ssid: selected.value, password: wifiPassInput.value });
-        fetch('/api/wifi', { method: 'POST', headers: {'Content-Type':'application/json'}, body: body })
+        // Sent when a session exists: the device requires auth here once its setup AP is down.
+        var wifiHeaders = {'Content-Type':'application/json'};
+        if (sessionToken) wifiHeaders['X-Session-Token'] = sessionToken;
+        fetch('/api/wifi', { method: 'POST', headers: wifiHeaders, body: body })
           .then(function(r) { return r.json(); })
           .then(function() { pollWifiStatus(20); })
           .catch(function(err) {

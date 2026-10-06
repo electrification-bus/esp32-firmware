@@ -36,6 +36,15 @@ static volatile uint8_t wifi_disconnect_reason = 0;
 static volatile bool wifi_connected = false;
 static volatile bool wifi_connecting = false;  // true while connection attempt in progress
 
+// The setup AP has no password. It is shut down this long after the STA side gets an
+// address, which leaves a user who joined the device to a network through the setup
+// page time to read the new IP there. A disconnect before then cancels the shutdown.
+// The AP returns only on the next boot.
+#define PORTAL_AP_SHUTDOWN_MS 120000UL
+static volatile bool portal_ap_running = false;   // written on the main loop, read by handlers
+static volatile bool portal_ap_shutdown_pending = false;
+static volatile unsigned long portal_ap_shutdown_since = 0;
+
 static void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
     switch (event) {
         case ARDUINO_EVENT_WIFI_STA_CONNECTED:
@@ -54,12 +63,15 @@ static void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
             wifi_connected = true;
             wifi_connecting = false;
             wifi_disconnect_reason = 0;
+            portal_ap_shutdown_since = millis();
+            portal_ap_shutdown_pending = true;
             Serial.printf("PORTAL: WiFi STA got IP: %s\n",
                 IPAddress(info.got_ip.ip_info.ip.addr).toString().c_str());
             break;
         case ARDUINO_EVENT_WIFI_STA_DISCONNECTED: {
             uint8_t reason = info.wifi_sta_disconnected.reason;
             wifi_connected = false;
+            portal_ap_shutdown_pending = false;
             // Reason 8 (ASSOC_LEAVE) is from our intentional WiFi.disconnect() - ignore it
             if (reason == 8 && wifi_connecting) {
                 Serial.printf("PORTAL: WiFi STA disconnect ignored (intentional reset, reason=%d)\n", reason);
@@ -314,10 +326,11 @@ static void accumulateAuthBody(AsyncWebServerRequest *request, uint8_t *data, si
 }
 
 #ifdef CONFIG_WIFI_AP
-// Body callback for POST /api/wifi, the one unauthenticated body route.
+// Body callback for POST /api/wifi, which is unauthenticated only while the setup AP
+// is up (see handleWifiSave()).
 static void accumulateOpenBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
                                size_t index, size_t total) {
-    storeBody(request, data, len, index, total, false);
+    storeBody(request, data, len, index, total, !portal_ap_running);
 }
 #endif
 
@@ -445,10 +458,14 @@ private:
 };
 
 #ifdef CONFIG_WIFI_AP
+static bool requireAuth(AsyncWebServerRequest *request);   // defined with the auth helpers
+
 // Handle POST /api/wifi - save WiFi credentials and begin connection.
-// Deliberately unauthenticated: this is the first-time-setup path (user on the
-// captive AP joining the device to a network), before any passphrase workflow.
+// Unauthenticated while the setup AP is up: this is the first-time-setup path (user on
+// the captive AP joining the device to a network), before any passphrase workflow.
+// Once the AP has shut down it requires auth like the admin endpoints.
 static void handleWifiSave(AsyncWebServerRequest *request) {
+    if (!portal_ap_running && !requireAuth(request)) return;
     if (!claimPostBody(request)) return;
     Serial.printf("PORTAL: handleWifiSave called, body=%d bytes\n", post_body_len);
 
@@ -479,7 +496,7 @@ static void handleWifiSave(AsyncWebServerRequest *request) {
     wifi_connecting = true;
     WiFi.disconnect(true);
     delay(100);
-    WiFi.mode(WIFI_AP_STA);
+    WiFi.mode(portal_ap_running ? WIFI_AP_STA : WIFI_STA);
     WiFi.begin(wifi_ssid, wifi_password);
 
     request->send(200, "application/json", "{\"status\":\"connecting\"}");
@@ -1185,6 +1202,10 @@ static void handleReboot(AsyncWebServerRequest *request) {
 // Uses absolute URL with AP IP - relative redirects can confuse Android captive portal WebView
 static char redirect_url[32];
 static void handleCaptiveRedirect(AsyncWebServerRequest *request) {
+    if (!portal_ap_running) {       // softAPIP() is 0.0.0.0 once the AP is down
+        request->redirect("/");
+        return;
+    }
     IPAddress ip = WiFi.softAPIP();
     snprintf(redirect_url, sizeof(redirect_url), "http://%d.%d.%d.%d/", ip[0], ip[1], ip[2], ip[3]);
     Serial.printf("PORTAL: Redirecting %s %s -> %s\n", request->methodToString(), request->url().c_str(), redirect_url);
@@ -1194,7 +1215,15 @@ static void handleCaptiveRedirect(AsyncWebServerRequest *request) {
 
 void captive_portal_loop() {
 #ifdef CONFIG_WIFI_AP
-    dnsServer.processNextRequest();
+    if (portal_ap_running) dnsServer.processNextRequest();
+    if (portal_ap_running && portal_ap_shutdown_pending &&
+        millis() - portal_ap_shutdown_since >= PORTAL_AP_SHUTDOWN_MS) {
+        portal_ap_shutdown_pending = false;
+        portal_ap_running = false;
+        dnsServer.stop();
+        WiFi.softAPdisconnect(true);   // true: drop AP mode, keep STA
+        Serial.println("PORTAL: setup AP shut down (STA has an address)");
+    }
 #endif
     ota_check_timeout();
     ota_loop();
@@ -1224,6 +1253,7 @@ void captive_portal_start() {
     // Start WiFi in AP+STA mode: AP serves portal, STA connects to user's network
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP(device_name);
+    portal_ap_running = true;
     delay(500);  // Allow AP and STA radio to stabilize before scanning
 
     IPAddress ap_ip = WiFi.softAPIP();
