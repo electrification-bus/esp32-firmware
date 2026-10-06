@@ -80,7 +80,7 @@ Hardware and firmware details, on port 80.
 
 | TXT key | Value |
 |---|---|
-| `manufacturer` | `device.manufacturer` |
+| `manufacturer` | `device.manufacturer`; omitted when empty |
 | `model` | `device.model` |
 | `serial_number` | `device.serial_number`, or the device ID when that is empty |
 | `eth_mac` | Ethernet MAC address |

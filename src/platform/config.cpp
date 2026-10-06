@@ -53,7 +53,7 @@ char device_id_prefix[32] = {0};
 // Device info for mDNS advertisement
 char device_name[32] = {0};
 char device_type[HOMIE_TYPE_MAXLEN] = {0};   // eBus device types up to 41 chars (rrj.5)
-char device_manufacturer[32] = "NESL";
+char device_manufacturer[32] = {0};
 char device_model[32] = "ESP32";
 char device_serial[32] = {0};
 char firmware_name[32] = {0};
