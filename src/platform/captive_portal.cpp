@@ -613,8 +613,8 @@ static void handleOtaStatus(AsyncWebServerRequest *request) {
 //   (one line; no trailing backslash here — it would continue the comment)
 //
 // Flash writes happen on the AsyncTCP task, which is why CONFIG_ASYNC_TCP_STACK_SIZE
-// is raised in platformio.ini. The reboot is deferred to captive_portal_loop() so the
-// response is actually flushed to the client first.
+// is raised in platformio.ini. The reboot is deferred to captive_portal_loop() and
+// triggered by the client disconnecting, so the response is delivered first.
 //
 // One push at a time: the request that passes auth on its first chunk owns the push
 // state below until its handler replies or its client disconnects. Every other request
@@ -628,9 +628,15 @@ static bool     ota_push_done     = false;   // Update.end() succeeded
 static int      ota_push_target   = U_FLASH;
 static size_t   ota_push_written  = 0;
 static char     ota_push_error[96] = {0};
-static bool     ota_push_reboot_pending = false;
-static uint32_t ota_push_reboot_at      = 0;
 static AsyncWebServerRequest* ota_push_owner = NULL;
+// Read by captive_portal_loop() on the main task, written on the AsyncTCP task.
+static volatile bool     ota_push_reboot_pending = false;
+static volatile uint32_t ota_push_reboot_at      = 0;
+
+// Fallback when the client never closes the connection after the reply: reboot anyway.
+#define OTA_PUSH_REBOOT_FALLBACK_MS 5000
+// Grace after the disconnect, so the TCP close completes before the restart.
+#define OTA_PUSH_REBOOT_GRACE_MS    100
 
 static void ota_push_fail(const char* msg) {
     ota_push_failed = true;
@@ -676,6 +682,12 @@ static void ota_push_release() {
 static void otaPushOwnerDisconnected() {
     Serial.println("PORTAL: OTA push client disconnected");
     ota_push_release();
+}
+
+// onDisconnect for the owning request once a rebooting push has been answered: the
+// reply has been delivered, so the restart no longer has to wait for the fallback.
+static void otaPushRebootNow() {
+    ota_push_reboot_at = millis() + OTA_PUSH_REBOOT_GRACE_MS;
 }
 
 static void otaPushBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
@@ -816,16 +828,19 @@ static void handleOtaPushDone(AsyncWebServerRequest *request, int update_type) {
              "{\"status\":\"ok\",\"target\":\"%s\",\"bytes\":%u,\"message\":\"%s\"}",
              target, (unsigned)ota_push_written,
              reboot ? "rebooting" : "staged, awaiting reboot");
-    request->send(200, "application/json", resp);
 
     ota_push_owner = NULL;
     ota_push_done  = false;
     if (reboot) {
         // Reboot from the main loop, not here: this runs on the AsyncTCP task and the
-        // response above has not gone out on the wire yet.
+        // response below has not gone out on the wire yet. The server closes the
+        // connection once the client has ACKed the response, and that disconnect
+        // brings the reboot forward; the fallback covers a client that never ACKs.
+        ota_push_reboot_at      = millis() + OTA_PUSH_REBOOT_FALLBACK_MS;
         ota_push_reboot_pending = true;
-        ota_push_reboot_at      = millis() + 500;
+        request->onDisconnect(otaPushRebootNow);
     }
+    request->send(200, "application/json", resp);
 }
 
 static void handleOtaPushFirmwareDone(AsyncWebServerRequest *request) {
