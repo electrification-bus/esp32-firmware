@@ -53,7 +53,10 @@ void SerialBMS::on_ble_rx(void* ctx, const uint8_t* data, size_t len) {
 // queryBasicInfo()/queryCellVoltages() are blocked in waitForFrame() on the Arduino task.
 void SerialBMS::handleRx(const uint8_t* data, size_t len) {
     for (size_t i = 0; i < len; i++) {
-        if (_rx_len < BMS_FRAME_MAX) _rx_buf[_rx_len++] = data[i];
+        // Read-modify-write spelled out: ++ on a volatile is deprecated in C++20 (GCC 12
+        // warns). Only this task writes _rx_len, so nothing is lost by splitting it.
+        uint8_t n = _rx_len;
+        if (n < BMS_FRAME_MAX) { _rx_buf[n] = data[i]; _rx_len = n + 1; }
     }
     if (_rx_len >= 7 && _rx_buf[0] == 0xDD && _rx_buf[_rx_len - 1] == 0x77) {
         Serial.printf("BMS BLE: frame complete, %d bytes\n", _rx_len);

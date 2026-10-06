@@ -28,6 +28,7 @@
 #define BLECLIENT_UUID_LEN   40
 #define BLECLIENT_MAX_LINKS       4     // concurrent BLE connections this build supports
 #define BLECLIENT_NAME_FILTER_LEN 64
+#define BLECLIENT_ADDR_TYPE_UNKNOWN 0xFF  // not yet learned; connect alternates public/random
 
 // Notification payload callback: fn-ptr + opaque context, fired from the NimBLE task.
 // Keep it short — copy the bytes and return; do not block or publish MQTT from here.
@@ -53,6 +54,8 @@ public:
     void setNVSNamespace(const char* ns);
 
     // Pre-seed the address (e.g. from device.yml config), skipping the scan entirely.
+    // A bare address does not say whether it is public or random, so until one connects
+    // the attempts alternate between the two.
     void setAddress(const char* address);
 
     // Log prefix, so a board with two links produces readable output. Default "BLE".
@@ -94,10 +97,11 @@ public:
     void* _notifyCharHandle() const { return _notify_char_handle; }
 
 private:
-    bool connectByAddress(const char* address);
+    bool connectByAddress();
     bool scanAndConnect();
     void loadAddress();
-    void saveAddress(const char* address);
+    void saveAddress();
+    void saveAddressType();
 
     char _service_uuid[BLECLIENT_UUID_LEN] = {0};
     char _notify_uuid[BLECLIENT_UUID_LEN]  = {0};
@@ -106,6 +110,8 @@ private:
     char _nvs_ns[16]   = "ble_link";
     char _tag[16]      = "BLE";
     char _address[BLECLIENT_ADDR_LEN] = {0};
+    uint8_t _addr_type = BLECLIENT_ADDR_TYPE_UNKNOWN;   // BLE_ADDR_* once known
+    bool    _try_random = false;   // next guess while _addr_type is unknown
 
     uint8_t  _scan_seconds  = 5;
     uint32_t _reconnect_ms  = 30000;

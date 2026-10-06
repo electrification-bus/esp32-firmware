@@ -88,6 +88,7 @@ void BLEClientLink::setNVSNamespace(const char* ns) {
 
 void BLEClientLink::setAddress(const char* address) {
     snprintf(_address, sizeof(_address), "%s", address ? address : "");
+    _addr_type = BLECLIENT_ADDR_TYPE_UNKNOWN;
 }
 
 void BLEClientLink::setTag(const char* tag) {
@@ -105,26 +106,42 @@ void BLEClientLink::loadAddress() {
         size_t len = prefs.getString("addr", buf, sizeof(buf));
         if (len > 0) {
             setAddress(buf);
+            // Caches written before the type was stored have no "type" key; the type is
+            // then learned on the first connect and written back.
+            if (prefs.isKey("type")) _addr_type = prefs.getUChar("type", BLECLIENT_ADDR_TYPE_UNKNOWN);
             Serial.printf("%s: loaded cached address '%s'\n", _tag, _address);
         }
     }
     prefs.end();
 }
 
-void BLEClientLink::saveAddress(const char* address) {
+void BLEClientLink::saveAddress() {
     Preferences prefs;
     prefs.begin(_nvs_ns, false);
-    prefs.putString("addr", address);
+    prefs.putString("addr", _address);
+    prefs.putUChar("type", _addr_type);
     prefs.end();
-    Serial.printf("%s: cached address '%s'\n", _tag, address);
+    Serial.printf("%s: cached address '%s' (type %u)\n", _tag, _address, (unsigned)_addr_type);
+}
+
+// Record a type learned by connecting, but only beside the address it belongs to: a
+// configured address is never written to the cache, so it re-learns after a reboot.
+void BLEClientLink::saveAddressType() {
+    Preferences prefs;
+    prefs.begin(_nvs_ns, false);
+    char cached[BLECLIENT_ADDR_LEN] = {0};
+    if (prefs.isKey("addr")) prefs.getString("addr", cached, sizeof(cached));
+    if (strcmp(cached, _address) == 0) prefs.putUChar("type", _addr_type);
+    prefs.end();
 }
 
 void BLEClientLink::forgetAddress() {
     Preferences prefs;
     prefs.begin(_nvs_ns, false);
     prefs.remove("addr");
+    prefs.remove("type");
     prefs.end();
-    _address[0] = '\0';
+    setAddress("");
     disconnect();
     _last_attempt = 0;                       // loop() rescans on the next tick
     Serial.printf("%s: cached address cleared — will rescan\n", _tag);
@@ -138,17 +155,17 @@ bool BLEClientLink::begin(const char* local_device_name) {
         return false;
     }
     if (!_nimble_started) {
-        Serial.printf("%s: NimBLE init (heap before: %u)\n", _tag, ESP.getFreeHeap());
+        Serial.printf("%s: NimBLE init (heap before: %u)\n", _tag, (unsigned)ESP.getFreeHeap());
         NimBLEDevice::init(local_device_name ? local_device_name : "ESP32");
         esp_log_level_set("NimBLEClient", ESP_LOG_WARN);
         _nimble_started = true;
-        Serial.printf("%s: NimBLE ready (heap after: %u)\n", _tag, ESP.getFreeHeap());
+        Serial.printf("%s: NimBLE ready (heap after: %u)\n", _tag, (unsigned)ESP.getFreeHeap());
     }
     _slot = register_link(this);
     _initialized = true;
 
     loadAddress();
-    if (_address[0]) connectByAddress(_address);
+    if (_address[0]) connectByAddress();
     else             scanAndConnect();
     return true;
 }
@@ -162,7 +179,7 @@ void BLEClientLink::loop() {
                   _tag, (unsigned long)((millis() - _last_attempt) / 1000));
     // A known address is retried directly and never falls back to scanning: on a site
     // with several similar devices a scan could latch onto the wrong one.
-    if (_address[0]) connectByAddress(_address);
+    if (_address[0]) connectByAddress();
     else             scanAndConnect();
 }
 
@@ -245,13 +262,15 @@ bool BLEClientLink::scanAndConnect() {
         return false;
     }
 
-    char addr[BLECLIENT_ADDR_LEN];
-    snprintf(addr, sizeof(addr), "%s",
-             results.getDevice(match_idx)->getAddress().toString().c_str());
+    // The advertisement carries the address type, so a scanned device never needs the
+    // public/random guessing a configured address does.
+    const NimBLEAddress& found = results.getDevice(match_idx)->getAddress();
+    setAddress(found.toString().c_str());
+    _addr_type = found.getType();
     _rssi = results.getDevice(match_idx)->getRSSI();
 
-    if (connectByAddress(addr)) {
-        saveAddress(addr);
+    if (connectByAddress()) {
+        saveAddress();
         return true;
     }
     return false;
@@ -259,10 +278,20 @@ bool BLEClientLink::scanAndConnect() {
 
 // ---- connect ----------------------------------------------------------------
 
-bool BLEClientLink::connectByAddress(const char* address) {
+bool BLEClientLink::connectByAddress() {
     _last_attempt = millis();
-    setAddress(address);
-    Serial.printf("%s: connecting to %s\n", _tag, _address);
+
+    // An address without a known type (configured, or cached before types were stored)
+    // is tried as public and random on alternate attempts until one connects.
+    bool    learning = (_addr_type == BLECLIENT_ADDR_TYPE_UNKNOWN);
+    uint8_t type     = _addr_type;
+    if (learning) {
+        type = _try_random ? BLE_ADDR_RANDOM : BLE_ADDR_PUBLIC;
+        _try_random = !_try_random;
+    }
+    Serial.printf("%s: connecting to %s (%s%s)\n", _tag, _address,
+                  (type & 1) ? "random" : "public",   // bit 0 is set for RANDOM and RANDOM_ID
+                  learning ? ", guessed" : "");
 
     NimBLEClient* c = (NimBLEClient*)_client;
     if (c == nullptr) {
@@ -273,12 +302,12 @@ bool BLEClientLink::connectByAddress(const char* address) {
             c->setClientCallbacks(cb, false);
         }   // registry full: no disconnect notifications, already warned at begin()
         c->setConnectionParams(12, 12, 0, 200);
-        c->setConnectTimeout(5);
+        c->setConnectTimeout(5000);     // milliseconds in NimBLE-Arduino 2.x (seconds in 1.x)
         _client = c;
     }
 
     uint32_t t0 = millis();
-    if (!c->connect(NimBLEAddress(std::string(address), BLE_ADDR_PUBLIC))) {
+    if (!c->connect(NimBLEAddress(std::string(_address), type))) {
         Serial.printf("%s: connect failed (%lums)\n", _tag, (unsigned long)(millis() - t0));
         return false;
     }
@@ -324,6 +353,10 @@ bool BLEClientLink::connectByAddress(const char* address) {
         return false;
     }
 
+    if (learning) {
+        _addr_type = type;
+        saveAddressType();
+    }
     _connected = true;
     _last_success = millis();
     Serial.printf("%s: connected and ready (%s, %lums)\n", _tag, _address,
