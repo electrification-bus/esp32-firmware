@@ -199,7 +199,7 @@ static void handleWifiScan(AsyncWebServerRequest *request) {
 // 3 s idle timeout resets on every byte and so does not bound it.
 #define POST_BODY_HOLD_MS 5000
 
-char post_body_buf[2048];
+static char post_body_buf[2048];
 static size_t post_body_len = 0;
 static AsyncWebServerRequest* post_body_owner = NULL;
 static uint32_t post_body_owned_since = 0;
