@@ -114,7 +114,7 @@ Or skip the bootstrap entirely — if you don't need any overrides, leave `platf
 | `upload_speed = 115200` | CH340 USB-serial chip (Olimex POE-ISO) sometimes drops bytes at the 921600 default |
 | `upload_port = /dev/cu.usbserial-XXXX` | Pin to a specific board when you have multiple plugged in |
 | `monitor_port = /dev/cu.usbserial-XXXX` | Same, for `pio device monitor` |
-| `build_flags = ${common.build_flags} -DMY_DEBUG=1` | Add a debug define without modifying the shared base. **Use `${common.build_flags}` to APPEND** — bare assignment replaces |
+| `build_flags = ${common.build_flags} <the env's own flags> -DMY_DEBUG=1` | Add a debug define without modifying the shared base. The key **replaces** the env's whole `build_flags`, so repeat all of the env's own flags from `platformio/platformio.ini` after `${common.build_flags}` (`platformio_local.ini.example` shows the full list for `esp32-poe-iso`). Referring to the env's own value (`${env:esp32-poe-iso.build_flags}`) is an infinite-recursion error |
 | `[platformio] default_envs = esp32-poe-iso` | Make plain `pio run` target a specific env without `-e` |
 
 See [`platformio_local.ini.example`](../platformio_local.ini.example) for fully-commented examples of each pattern.

@@ -34,11 +34,21 @@
 
 ; ----------------------------------------------------------------------
 ; Example: add a debug build flag without modifying the shared base.
-; Note: use ${env.build_flags} or ${common.build_flags} to APPEND
-; rather than replace; bare assignment replaces.
+; Note: build_flags here REPLACES the env's whole list. ${common.build_flags}
+; supplies only the shared part, so repeat the env's own flags from
+; platformio/platformio.ini as well. ${env:esp32-poe-iso.build_flags} cannot
+; be used here: PlatformIO rejects the self-reference as infinite recursion.
 ; ----------------------------------------------------------------------
 ; [env:esp32-poe-iso]
 ; build_flags = ${common.build_flags}
+;     -DUSE_SOFTWARE_SERIAL
+;     -DESP32_POE_ISO
+;     -DCONFIG_BT_NIMBLE_ROLE_PERIPHERAL_DISABLED
+;     -DCONFIG_BT_NIMBLE_ROLE_BROADCASTER_DISABLED
+;     -DCONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+;     -DCONFIG_BT_NIMBLE_MAX_BONDS=1
+;     -DCONFIG_BT_NIMBLE_TRANSPORT_ACL_FROM_LL_COUNT=4
+;     -DCONFIG_BT_NIMBLE_WHITELIST_SIZE=1
 ;     -DMY_DEBUG_THING=1
 
 ; ----------------------------------------------------------------------
