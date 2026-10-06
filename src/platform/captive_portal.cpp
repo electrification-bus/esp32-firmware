@@ -187,7 +187,10 @@ static void handleWifiScan(AsyncWebServerRequest *request) {
 // held the buffer for POST_BODY_HOLD_MS. On an authenticated route the first chunk
 // claims the buffer only from an authorized request, so an unauthenticated client
 // cannot hold it at all, and the hold limit keeps an authorized but slow client from
-// holding it indefinitely. A request with no body (Content-Length 0) never reaches a
+// holding it indefinitely. On the one unauthenticated route, a request cannot claim
+// the buffer for a while after an earlier request on that route freed it (see
+// post_body_open_wait_ms), so back-to-back slow requests cannot keep it from
+// authenticated routes. A request with no body (Content-Length 0) never reaches a
 // body callback, and a second request whose body starts while another request owns
 // the buffer is not stored, so neither can make a handler parse bytes left by, or
 // still arriving for, a different request. Body callbacks, request handlers and the
@@ -203,30 +206,66 @@ static char post_body_buf[2048];
 static size_t post_body_len = 0;
 static AsyncWebServerRequest* post_body_owner = NULL;
 static uint32_t post_body_owned_since = 0;
-// The last request evicted by the hold limit, compared by address only (it may have
-// been freed since), so its handler can answer 408 instead of 409.
+// Whether the owner claimed the buffer through the unauthenticated route.
+static bool post_body_owner_open = false;
+// When an open-route owner frees the buffer, open-route claims are refused for twice
+// as long as it held the buffer (capped at twice the hold limit), so unauthenticated
+// clients keep it busy at most a third of the time and an authenticated request, which
+// may claim at any time, finds it free. A normal setup request holds it for
+// milliseconds.
+static uint32_t post_body_open_freed_at = 0;
+static uint32_t post_body_open_wait_ms = 0;
+// The request evicted by the hold limit, compared by address only, so its handler can
+// answer 408 instead of 409. It is set only while that request is still connected:
+// its onDisconnect clears it, and its handler clears it and that onDisconnect.
 static AsyncWebServerRequest* post_body_evicted = NULL;
+
+// Marks the buffer free, starting the open-route wait when an open-route owner held it.
+static void freePostBody() {
+    if (post_body_owner_open) {
+        uint32_t held = millis() - post_body_owned_since;
+        if (held > POST_BODY_HOLD_MS) held = POST_BODY_HOLD_MS;
+        post_body_open_freed_at = millis();
+        post_body_open_wait_ms = 2 * held;
+    }
+    post_body_owner = NULL;
+    post_body_owner_open = false;
+}
+
+// True while open-route claims are refused after an open-route owner freed the buffer.
+static bool openClaimWaiting() {
+    return millis() - post_body_open_freed_at < post_body_open_wait_ms;
+}
 
 // onDisconnect for the owning request whose handler has not claimed the body.
 static void postBodyOwnerDisconnected() {
-    post_body_owner = NULL;
+    freePostBody();
+}
+
+// onDisconnect for the evicted request whose handler has not run.
+static void postBodyEvictedDisconnected() {
+    post_body_evicted = NULL;
 }
 
 // Frees the buffer when this request owns it.
 static void releasePostBody(AsyncWebServerRequest *request) {
     if (request != post_body_owner) return;
-    post_body_owner = NULL;
+    freePostBody();
     request->onDisconnect(nullptr);
 }
 
-// Evicts the owner once it has held the buffer for POST_BODY_HOLD_MS.
+// Evicts the owner once it has held the buffer for POST_BODY_HOLD_MS. Only the latest
+// eviction is labeled: an earlier evicted request still connected loses its label
+// (and answers 409) rather than keeping an onDisconnect that would clear the new one.
 static void expirePostBodyOwner() {
     if (post_body_owner == NULL) return;
     if (millis() - post_body_owned_since < POST_BODY_HOLD_MS) return;
     Serial.printf("PORTAL: evicting %s, body incomplete after %u ms\n",
                   post_body_owner->url().c_str(), (unsigned)POST_BODY_HOLD_MS);
+    if (post_body_evicted) post_body_evicted->onDisconnect(nullptr);
     post_body_evicted = post_body_owner;
     releasePostBody(post_body_owner);
+    post_body_evicted->onDisconnect(postBodyEvictedDisconnected);
 }
 
 // Side-effect-free authorization check. requireAuth() sends its own 401/429 and
@@ -253,7 +292,9 @@ static void storeBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
     if (index == 0) {
         if (need_auth && !portalAuthorized(request)) return;   // requireAuth() answers 401
         if (post_body_owner) return;                           // claimPostBody() answers 409
+        if (!need_auth && openClaimWaiting()) return;          // claimPostBody() answers 409
         post_body_owner = request;
+        post_body_owner_open = !need_auth;
         post_body_owned_since = millis();
         request->onDisconnect(postBodyOwnerDisconnected);
         post_body_len = 0;
@@ -286,7 +327,8 @@ static void accumulateOpenBody(AsyncWebServerRequest *request, uint8_t *data, si
 // other request can interrupt. Otherwise sends 408 when the hold limit evicted this
 // request, 409 when the request had a body (the guard admits only types the library
 // hands to the body callback, so a body that missed the buffer found it owned by
-// another request) or 400 when it had none, and returns false.
+// another request, or arrived on the open route during its wait) or 400 when it had
+// none, and returns false.
 static bool claimPostBody(AsyncWebServerRequest *request) {
     expirePostBodyOwner();
     if (request == post_body_owner) {
@@ -295,6 +337,7 @@ static bool claimPostBody(AsyncWebServerRequest *request) {
     }
     if (request->contentLength() > 0 && request == post_body_evicted) {
         post_body_evicted = NULL;
+        request->onDisconnect(nullptr);
         request->send(408, "application/json",
             "{\"status\":\"error\",\"message\":\"Request body took too long, retry\"}");
     } else if (request->contentLength() > 0) {
