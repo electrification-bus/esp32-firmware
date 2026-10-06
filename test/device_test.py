@@ -199,6 +199,9 @@ class HomieDeviceTest:
                 self.mqtt_port = int(port)
             else:
                 self.mqtt_port = 8883 if self.mqtt_tls else 1883
+            # Match the firmware, which uses TLS exactly when port == MQTT_SECURE_PORT (8883).
+            if self.mqtt_port == 8883:
+                self.mqtt_tls = True
 
             self.log(LogLevel.INFO, f"Config loaded: {self.mqtt_host}:{self.mqtt_port} device={self.device_id}")
             return True

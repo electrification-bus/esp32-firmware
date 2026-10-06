@@ -6,7 +6,7 @@ A standalone Python test tool for validating Homie convention MQTT devices.
 
 This test tool:
 1. Connects to your MQTT broker
-2. **Discovers ALL devices** by subscribing to `homie/5/+/$description` (wildcard matches any device)
+2. **Discovers ALL devices** by subscribing to `ebus/5/+/$description` (wildcard matches any device)
 3. Collects all devices found during a 5-second discovery window
 4. **Iterates over each discovered device** and runs the full test suite:
    - Validates `$description` matches expected nodes from `homie.yml`
@@ -32,12 +32,12 @@ This test tool:
 
 ### MQTT Topic Structure
 
-The test automatically uses the correct topic format based on the Homie version in `homie.yml`:
+The test builds the base topic from `--domain` (default `ebus`) and the Homie major version in `homie.yml`:
 
 | Homie Version | Base Topic | Example Property Topic |
 |--------------|------------|------------------------|
-| 5.x | `homie/5` | `homie/5/esp32poeiso/relay1/state` |
-| 4.x | `homie/4` | `homie/4/esp32poeiso/relay1/state` |
+| 5.x | `ebus/5` | `ebus/5/esp32poeiso/relay1/state` |
+| 4.x | `ebus/4` | `ebus/4/esp32poeiso/relay1/state` |
 
 ## Requirements
 
@@ -62,8 +62,8 @@ Power on your ESP32 device and verify it connects to MQTT. The 'name' property o
 
 ```bash
 # Monitor MQTT topics (optional - requires mosquitto-clients)
-# Homie 5.x uses topic format: homie/5/<device>/#
-mosquitto_sub -h public.cloud.shiftr.io -u public -P public -t "homie/5/esp32poeiso/#" -v
+# Homie 5.x uses topic format: ebus/5/<device>/#
+mosquitto_sub -h public.cloud.shiftr.io -u public -P public -t "ebus/5/esp32poeiso/#" -v
 ```
 
 ### 2. Run the Test
@@ -96,11 +96,11 @@ The test produces real-time logging followed by a summary report:
 
 ```
 [14:32:01] INFO  Config loaded: public.cloud.shiftr.io:1883 device=esp32poeiso
-[14:32:01] INFO  Homie version 5.0.1 -> base topic: homie/5
+[14:32:01] INFO  Homie version 5.0.1 -> base topic: ebus/5
 [14:32:01] INFO  Loaded 15 properties from 10 nodes
 [14:32:01] INFO  Connecting to public.cloud.shiftr.io:1883...
 [14:32:02] INFO  Connected to MQTT broker
-[14:32:02] INFO  Looking for devices at: homie/5/+/$description
+[14:32:02] INFO  Looking for devices at: ebus/5/+/$description
 [14:32:02] INFO  Discovering devices for 5 seconds...
 [14:32:03] INFO  Discovered device: 'esp32poeiso'
 [14:32:05] INFO  Discovered device: 'esp32cam'
@@ -109,7 +109,7 @@ The test produces real-time logging followed by a summary report:
 [14:32:07] INFO  ==================================================
 [14:32:07] INFO  Testing device: esp32poeiso
 [14:32:07] INFO  ==================================================
-[14:32:07] INFO  Subscribed to: homie/5/esp32poeiso/#
+[14:32:07] INFO  Subscribed to: ebus/5/esp32poeiso/#
 [14:32:07] PASS  Device 'esp32poeiso' validated
 [14:32:08] INFO  SET TEST: relay1/state <- true
 [14:32:08] PASS  SET TEST PASS: relay1/state = true
@@ -120,7 +120,7 @@ HOMIE DEVICE TEST REPORT
 ======================================================================
 
 Device: esp32poeiso
-Base Topic: homie/5/esp32poeiso
+Base Topic: ebus/5/esp32poeiso
 Homie Version: 5.0.1
 Device State: ready
 ...
@@ -277,7 +277,7 @@ nodes:
 ### No Devices Found
 
 ```
-ERROR: No Homie devices found at homie/5/+/$description
+ERROR: No Homie devices found at ebus/5/+/$description
 ERROR: Check that device is running and publishing to the correct broker/topic
 ```
 
@@ -290,10 +290,10 @@ This means no `$description` was found on the broker during the 5-second discove
 **Debug steps:**
 ```bash
 # Check if device is publishing anything
-mosquitto_sub -h YOUR_BROKER -t "homie/#" -v
+mosquitto_sub -h YOUR_BROKER -t "ebus/#" -v
 
 # Look specifically for your device
-mosquitto_sub -h YOUR_BROKER -t "homie/5/esp32poeiso/#" -v
+mosquitto_sub -h YOUR_BROKER -t "ebus/5/esp32poeiso/#" -v
 ```
 
 ### Connection Refused
@@ -316,7 +316,7 @@ Properties received: 0
 - Device may not be running
 - Device ID mismatch between `config.yml` and actual device
 - Device using different MQTT broker
-- Topic prefix mismatch (Homie 5.x uses `homie/5/`, Homie 4.x uses `homie/4/`)
+- Topic prefix mismatch (Homie 5.x uses `ebus/5/`, Homie 4.x uses `ebus/4/`)
 
 ### Settable Test Timeout
 
@@ -334,10 +334,10 @@ Check device is publishing:
 
 ```bash
 # Subscribe to all Homie 5.x topics
-mosquitto_sub -h YOUR_BROKER -t "homie/5/#" -v
+mosquitto_sub -h YOUR_BROKER -t "ebus/5/#" -v
 
 # Or all Homie topics (any version)
-mosquitto_sub -h YOUR_BROKER -t "homie/#" -v
+mosquitto_sub -h YOUR_BROKER -t "ebus/#" -v
 ```
 
 If nothing appears, the device isn't connected or isn't publishing.
