@@ -2087,9 +2087,21 @@ def get_monitor_speed(env_name: str, default: int = 115200) -> int:
     return default
 
 def cmd_envs(args) -> None:
-    for section in read_pio_config().sections():
-        if section.startswith("env:"):
-            print(section[4:])
+    selected = None
+    device_yml = Path(args.device_yml)
+    if yaml is not None and device_yml.exists():
+        device = load_yaml_file(device_yml).get("device") or {}
+        selected = device.get("environment") if isinstance(device, dict) else None
+    names = [s[4:] for s in read_pio_config().sections() if s.startswith("env:")]
+    width = max((len(n) for n in names), default=0)
+    for name in names:
+        notes = []
+        if name == selected:
+            notes.append(f"selected by {device_yml}")
+        if name.endswith("-arduino2"):
+            notes.append("legacy: arduino-esp32 2.0.17")
+        mark = "*" if name == selected else " "
+        print(f"{mark} {name:<{width}}  {', '.join(notes)}".rstrip())
 
 # ── compiledb / check ──────────────────────────────────────────────────────────
 
