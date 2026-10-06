@@ -2,19 +2,40 @@
 # Repo-local wrapper for PlatformIO Core.
 #
 # Forwards to ~/.platformio/penv/bin/pio (installed by the VSCode PlatformIO
-# extension or by `pipx install platformio`). Lets this repo's ./ebus-esp32 CLI and
-# CLI workflow stay self-contained — no global $PATH edits required.
+# extension), or else to the first `pio` on $PATH (pipx, Homebrew). Lets this
+# repo's ./ebus-esp32 CLI and CLI workflow stay self-contained, with no global
+# $PATH edits required. Same lookup order as find_pio() in ebus-esp32.
 
 set -e
 
 PIO="${HOME}/.platformio/penv/bin/pio"
 
 if [ ! -x "${PIO}" ]; then
-    echo "error: PlatformIO Core not found at ${PIO}" >&2
+    # Equivalent to `command -v pio`, except that it skips this script's own directory
+    # so a bin/ on $PATH cannot make the exec below call itself.
+    SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+    PIO=""
+    set -f
+    OLD_IFS="${IFS}"
+    IFS=:
+    for DIR in ${PATH}; do
+        [ -n "${DIR}" ] || DIR=.
+        if [ -x "${DIR}/pio" ] && [ ! -d "${DIR}/pio" ] \
+           && [ "$(cd "${DIR}" 2>/dev/null && pwd)" != "${SELF_DIR}" ]; then
+            PIO="${DIR}/pio"
+            break
+        fi
+    done
+    IFS="${OLD_IFS}"
+    set +f
+fi
+
+if [ -z "${PIO}" ]; then
+    echo "error: PlatformIO Core not found at ${HOME}/.platformio/penv/bin/pio or on \$PATH" >&2
     echo >&2
     echo "Install one of:" >&2
     echo "  - VSCode PlatformIO extension (puts it at the expected location)" >&2
-    echo "  - pipx install platformio  (then symlink ~/.local/bin/pio there)" >&2
+    echo "  - pipx install platformio" >&2
     echo "  - brew install platformio" >&2
     exit 1
 fi
