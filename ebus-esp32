@@ -1007,6 +1007,13 @@ def _upload(cfg, args, build: bool) -> None:
 # reboot, so both land in a single session and the board restarts once at the end.
 
 OTA_CHUNK = 4096
+# Once the whole image is sent, the device only has to write the last chunk and verify
+# the image before replying. Waiting the full upload timeout for that only delays the
+# reply-lost handling in _ota_push_image().
+OTA_REPLY_TIMEOUT = 20
+# How long a board gets to reboot and rejoin the network (DHCP alone takes ~30 s on
+# some LANs).
+OTA_COMEBACK_TIMEOUT = 120
 
 def _ota_unreachable(host: str, detail: str, unresolved: bool = False) -> None:
     """Exit with something actionable instead of a socket traceback. Every OTA call
@@ -1034,8 +1041,13 @@ def _ota_unreachable(host: str, detail: str, unresolved: bool = False) -> None:
     sys.exit(1)
 
 def _ota_request(host: str, path: str, passphrase: str, payload: bytes,
-                 content_type: str, label: str, timeout: int = 120):
+                 content_type: str, label: str, timeout: int = 120,
+                 reply_lost_ok: bool = False):
     """POST payload with pre-emptive Basic auth. Returns (status, body_text).
+
+    With reply_lost_ok, a failure while waiting for the reply AFTER the whole payload
+    was sent returns (None, detail) instead of exiting, so the caller can check whether
+    the device acted on it anyway.
 
     Pre-emptive matters: urllib's auth handler waits for a 401 and then RETRIES, which
     for a 1.3MB image means uploading it twice. Sending Authorization up front makes
@@ -1046,6 +1058,8 @@ def _ota_request(host: str, path: str, passphrase: str, payload: bytes,
     # No explicit port: HTTPConnection parses "host:port" when given one and defaults
     # to 80 otherwise, so --host accepts either form.
     conn = http.client.HTTPConnection(host, timeout=timeout)
+    waited = timeout
+    body_sent = False
     try:
         conn.putrequest("POST", path, skip_accept_encoding=True)
         conn.putheader("Authorization", "Basic " + auth)
@@ -1069,8 +1083,19 @@ def _ota_request(host: str, path: str, passphrase: str, payload: bytes,
                 print(f"\r  {label}: {pct:3d}%  ({sent}/{total} bytes)", end="", flush=True)
         if show_progress:
             print(f"\r  {label}: 100%  ({total}/{total} bytes)", flush=True)
-        resp = conn.getresponse()
-        return resp.status, resp.read().decode("utf-8", "replace").strip()
+        body_sent = True
+        if conn.sock is not None and timeout > OTA_REPLY_TIMEOUT:
+            waited = OTA_REPLY_TIMEOUT
+            conn.sock.settimeout(waited)
+        try:
+            resp = conn.getresponse()
+            return resp.status, resp.read().decode("utf-8", "replace").strip()
+        except (OSError, http.client.HTTPException) as e:
+            if not reply_lost_ok:
+                raise
+            if isinstance(e, (TimeoutError, socket.timeout)):
+                return None, f"no reply within {waited}s"
+            return None, f"{e.__class__.__name__}: {e}"
     # Ordered most specific first — gaierror, ConnectionError and timeout are all
     # OSError subclasses, so the catch-all has to come last.
     except socket.gaierror:
@@ -1079,15 +1104,31 @@ def _ota_request(host: str, path: str, passphrase: str, payload: bytes,
         _ota_unreachable(host, "connection refused — something is at that address, but "
                                "nothing is listening on the portal's port")
     except (TimeoutError, socket.timeout):
-        _ota_unreachable(host, f"timed out after {timeout}s — wrong address, or the board "
+        if body_sent:
+            _ota_unreachable(host, f"no reply within {waited}s after the {label} was sent; "
+                                   f"its state on the device is unknown")
+        _ota_unreachable(host, f"timed out after {waited}s — wrong address, or the board "
                                f"is not on the network")
     except ConnectionResetError:
         _ota_unreachable(host, "connection reset by the device mid-transfer — retry, and "
                                "watch the console (./ebus-esp32 monitor --net)")
     except OSError as e:
         _ota_unreachable(host, f"{e.__class__.__name__}: {e}")
+    except http.client.HTTPException as e:
+        _ota_unreachable(host, f"malformed reply ({e.__class__.__name__}: {e})")
     finally:
         conn.close()
+
+def _ota_wait_back(host: str, timeout: int):
+    """Poll GET /api/ota until the device answers. Returns its reply text, or None if it
+    did not answer within timeout seconds."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        reply = _ota_get(host, "/api/ota", "", timeout=3)
+        if reply is not None:
+            return reply[1]
+        time.sleep(2.0)
+    return None
 
 def _ota_push_image(host: str, path: str, passphrase: str, image: Path,
                     label: str, reboot: bool) -> None:
@@ -1095,15 +1136,33 @@ def _ota_push_image(host: str, path: str, passphrase: str, image: Path,
         print(f"ERROR: {image} not found — build first (ebus-esp32 build)", file=sys.stderr)
         sys.exit(1)
     url = path if reboot else path + "?reboot=0"
+    # A lost reply only has a checkable outcome when the push reboots the board: a
+    # staged (?reboot=0) image leaves nothing visible to confirm it by.
     status, body = _ota_request(host, url, passphrase, image.read_bytes(),
-                                "application/octet-stream", label)
+                                "application/octet-stream", label, reply_lost_ok=reboot)
+    if status is None:
+        print(f"  {label}: image sent, but the reply was lost ({body}).\n"
+              f"  waiting up to {OTA_COMEBACK_TIMEOUT}s for the device to come back...",
+              flush=True)
+        # The device reboots at most 5 s after replying (captive_portal.cpp); probing
+        # sooner could reach the old image before it restarts.
+        time.sleep(6)
+        if _ota_wait_back(host, OTA_COMEBACK_TIMEOUT) is not None:
+            print(f"  -> reply lost, device came back. It does not report which image it\n"
+                  f"     booted; check the version in its Homie $description, or watch the\n"
+                  f"     console: ./ebus-esp32 monitor --host {host.split(':')[0]}")
+            return
+        print(f"\n{label} FAILED: the reply was lost and the device did not answer again "
+              f"within {OTA_COMEBACK_TIMEOUT}s", file=sys.stderr)
+        sys.exit(1)
     if status != 200:
         print(f"\n{label} FAILED: HTTP {status} {body}", file=sys.stderr)
         sys.exit(1)
     print(f"  -> {body}")
 
 def _ota_get(host: str, path: str, passphrase: str, timeout: int = 10):
-    """GET with the same pre-emptive auth as _ota_request(). Returns (status, text)."""
+    """GET with the same pre-emptive auth as _ota_request(). Returns (status, text), or
+    None when the device does not answer: callers poll a board that may be rebooting."""
     auth = base64.b64encode(f"admin:{passphrase}".encode()).decode()
     conn = http.client.HTTPConnection(host, timeout=timeout)
     try:
@@ -1112,10 +1171,8 @@ def _ota_get(host: str, path: str, passphrase: str, timeout: int = 10):
         conn.endheaders()
         resp = conn.getresponse()
         return resp.status, resp.read().decode("utf-8", "replace").strip()
-    except socket.gaierror:
-        _ota_unreachable(host, "that name does not resolve", unresolved=True)
-    except OSError as e:
-        _ota_unreachable(host, f"{e.__class__.__name__}: {e}")
+    except (OSError, http.client.HTTPException):
+        return None
     finally:
         conn.close()
 
@@ -1166,13 +1223,13 @@ def _pull_watch(host: str, passphrase: str, timeout: int) -> int:
     deadline = time.time() + timeout
     last = None
     while time.time() < deadline:
-        try:
-            status, text = _ota_get(host, "/api/ota", passphrase, timeout=5)
-        except SystemExit:
+        reply = _ota_get(host, "/api/ota", passphrase, timeout=5)
+        if reply is None:
             # The device stopped answering. After a firmware pull that is the REBOOT,
             # i.e. the success case — the status endpoint dies with the old image.
             print("  device stopped answering — rebooting into the new image")
             return 0
+        status, text = reply
         state = ""
         try:
             state = (json.loads(text) or {}).get("status", "")
