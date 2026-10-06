@@ -85,7 +85,7 @@ The network console reads the firmware's serial-over-TCP log (`log.tcp_port` in 
 
 The generated `src/homie.cpp`, `data/homie.yml`, and `data/config.yml` are gitignored and rebuilt from `device.yml` before every `pio run` (a PlatformIO pre-build hook) — `device.yml` and the `lib/<bus>/*.yml` component definitions are the only tracked source. To keep real credentials out of the tracked `device.yml`, create a gitignored `config-overlay.yml` with just the keys you want to override, written in `device.yml`'s own sections and key names — see [GettingStartedCLI.md](doc/GettingStartedCLI.md). On Windows use `ebus-esp32.bat` (or `python ebus-esp32`).
 
-VSCode users: use the PlatformIO IDE's project-tasks pane for build/upload/monitor; the `./ebus-esp32` generate step runs automatically as a pre-build hook, so the IDE's Build/Upload buttons pick up `device.yml` changes too.
+VSCode users: run `./ebus-esp32` in the integrated terminal. The PlatformIO extension does not adopt this folder as a project, because the tracked config is `platformio/platformio.ini` rather than a root `platformio.ini`; [GettingStartedVSCode.md](doc/GettingStartedVSCode.md) explains why and how to opt back in.
 
 ## Documentation Index
 
@@ -124,8 +124,9 @@ Defined in [`platformio/platformio.ini`](platformio/platformio.ini). Run `./ebus
 | `esp32-poe-iso-wrover` | Same Olimex board with WROVER-E module (8 MB PSRAM) | NimBLE tuned for memory |
 | `esp32-poe-iso-16mb` | Same Olimex board, 16 MB flash variant | Larger partition table |
 | `esp32-s3-devkitc-1` | Espressif ESP32-S3-DevKitC | Native USB CDC |
-| `wesp32-poe`, `spiffs` | Silicognition wESP32; filesystem-only helper | See `platformio/platformio.ini` |
-| `*-arduino2` | Same boards on the legacy platform | arduino-esp32 2.0.17 / ESP-IDF 4.4.7, pinned. Kept for A/B until the 3.x port is verified on every board |
+| `wesp32-poe` | Silicognition wESP32 | Compile check only until it gets OTA partitions and LittleFS; see its `platformio/platformio.ini` comment |
+| `seeed_xiao_esp32s3` | Seeed XIAO ESP32-S3 | Native USB only; WiFi, no Ethernet. 3.x only (no `-arduino2` twin) |
+| `*-arduino2` | The boards above, except the XIAO, on the legacy platform | arduino-esp32 2.0.17 / ESP-IDF 4.4.7, pinned. Kept for A/B until the 3.x port is verified on every board |
 
 Envs are named after the **arduino-esp32 core** they build against, because that is what the firmware branches on (`ESP_ARDUINO_VERSION_MAJOR`). Unsuffixed = 3.x (the default); `-arduino2` = the 2.0.x line.
 

@@ -1,24 +1,18 @@
-// VSCode tasks for helpers that the PlatformIO IDE extension's "Project Tasks"
-// sidebar doesn't already expose.
+// VSCode tasks for helpers that are awkward to type.
 //
-// PIO IDE already gives you Build / Upload / Build Filesystem Image /
-// Upload Filesystem Image / Monitor / Clean — don't duplicate those here.
-//
-// The device.yml → firmware workflow (generate/build/run/push) lives in the
-// `./ebus-esp32` CLI; run it from the integrated terminal. The per-developer
-// config overlay (~/.config/eBus/config.yml) is bootstrapped once by copying
-// data/config.yml.example — see doc/GettingStarted_CLI.md — and merged into
-// data/config.yml automatically by `./ebus-esp32 generate`.
+// The device.yml -> firmware workflow (generate/build/run/push/monitor) lives in the
+// `./ebus-esp32` CLI; run it from the integrated terminal. See
+// doc/GettingStartedVSCode.md.
 //
 // Trigger via Cmd-Shift-P → "Tasks: Run Task" (or Ctrl-Shift-P on Win/Linux).
 {
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "LSP: Regenerate compile_commands.json (pio run -t compiledb)",
+            "label": "LSP: Regenerate compile_commands.json (ebus-esp32 compiledb)",
             "detail": "Run after a fresh clone, after lib_deps changes, or when IntelliSense / clangd gets confused. Produces a per-machine compilation database (gitignored).",
             "type": "shell",
-            "command": "./bin/pio run -t compiledb",
+            "command": "./ebus-esp32 compiledb",
             "problemMatcher": [],
             "presentation": {
                 "echo": true,
