@@ -595,10 +595,16 @@
           .then(function(r) {
             if (r.status === 401) { status.className = 'status err'; status.textContent = 'Wrong passphrase.'; }
             else if (r.status === 429) { status.className = 'status err'; status.textContent = 'Too many failed attempts. Try again later.'; }
-            else {
+            else if (r.status === 200) {
               status.className = 'status ok';
               status.textContent = 'Passphrase updated.';
               sessionToken = '';  // server invalidated sessions on passphrase change
+            }
+            else {
+              return r.json().then(function(j) {
+                status.className = 'status err';
+                status.textContent = (j && j.message) ? j.message : 'Not saved (HTTP ' + r.status + ').';
+              });
             }
           })
           .catch(function(err) { status.className = 'status err'; status.textContent = 'Error: ' + err.message; });

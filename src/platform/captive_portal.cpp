@@ -1168,6 +1168,24 @@ static void handleOtaToggle(AsyncWebServerRequest *request) {
     request->send(200, "application/json", resp);
 }
 
+// Returns why POST /api/passphrase refuses a new passphrase, or NULL to accept it.
+// Refuses what `ebus-esp32 generate` refuses (blank, or "changeme" in any case once
+// surrounding whitespace is trimmed) and anything longer than device_passphrase holds,
+// which would be stored truncated and then fail to match the passphrase as typed.
+static const char* passphraseRefusal(const char* p) {
+    size_t len = strlen(p);
+    if (len > sizeof(device_passphrase) - 1) return "Passphrase is longer than 63 bytes";
+    size_t start = 0;
+    while (start < len && isspace((unsigned char)p[start])) start++;
+    size_t end = len;
+    while (end > start && isspace((unsigned char)p[end - 1])) end--;
+    if (end == start) return "Passphrase is empty";
+    if (end - start == 8 && strncasecmp(p + start, "changeme", 8) == 0) {
+        return "Passphrase 'changeme' is a published placeholder; choose your own";
+    }
+    return NULL;
+}
+
 // Handle POST /api/passphrase - save device passphrase from JSON body
 static void handlePassphraseSave(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
@@ -1180,13 +1198,20 @@ static void handlePassphraseSave(AsyncWebServerRequest *request) {
         return;
     }
 
-    if (doc["passphrase"].is<const char*>()) {
-        strncpy(device_passphrase, doc["passphrase"].as<const char*>(), sizeof(device_passphrase) - 1);
-        device_passphrase[sizeof(device_passphrase) - 1] = '\0';
-    } else {
+    if (!doc["passphrase"].is<const char*>()) {
         request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing passphrase field\"}");
         return;
     }
+    const char* next = doc["passphrase"].as<const char*>();
+    const char* refusal = passphraseRefusal(next);
+    if (refusal) {
+        static char json_buf[160];
+        snprintf(json_buf, sizeof(json_buf), "{\"status\":\"error\",\"message\":\"%s\"}", refusal);
+        request->send(400, "application/json", json_buf);
+        return;
+    }
+    strncpy(device_passphrase, next, sizeof(device_passphrase) - 1);
+    device_passphrase[sizeof(device_passphrase) - 1] = '\0';
 
     portal_prefs_save_passphrase(device_passphrase);
     portal_session_clear();  // old sessions were authorized by the old passphrase

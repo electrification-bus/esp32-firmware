@@ -302,7 +302,9 @@ paths:
       summary: Change the device passphrase
       description: >
         Saves a new passphrase to NVS, where it overrides config.yml. It takes effect immediately
-        and ends the current session.
+        and ends the current session. A blank passphrase, "changeme" in any case after trimming
+        surrounding whitespace, or one longer than 63 bytes is refused with 400 and the old
+        passphrase stays in effect.
       security:
         - basicAuth: []
         - sessionAuth: []
@@ -317,7 +319,8 @@ paths:
               properties:
                 passphrase:
                   type: string
-                  description: Stored truncated to 63 bytes
+                  maxLength: 63
+                  description: At most 63 bytes
       responses:
         "200":
           description: Passphrase saved
@@ -329,11 +332,16 @@ paths:
                 status: ok
                 message: "Passphrase saved. Takes effect immediately."
         "400":
-          description: Empty body, invalid JSON, or missing passphrase field
+          description: >
+            Empty body, invalid JSON, missing passphrase field, or a refused passphrase (blank,
+            "changeme", or longer than 63 bytes)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              example:
+                status: error
+                message: "Passphrase 'changeme' is a published placeholder; choose your own"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "408":

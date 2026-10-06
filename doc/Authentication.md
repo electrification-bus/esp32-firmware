@@ -15,7 +15,7 @@ device:
   device_passphrase: a-passphrase-of-your-own
 ```
 
-`POST /api/passphrase` saves a new passphrase to NVS. The NVS value overrides the one in `config.yml` from then on, takes effect immediately, and ends the current session. `POST /api/reset-prefs` clears it (with the other portal settings) and ends the session; the `config.yml` value applies again after the next reboot.
+`POST /api/passphrase` saves a new passphrase to NVS. The NVS value overrides the one in `config.yml` from then on, takes effect immediately, and ends the current session. It answers `400` with a message, and keeps the old passphrase, when the new one is blank, is `changeme` in any case once surrounding whitespace is trimmed, or is longer than 63 bytes. `POST /api/reset-prefs` clears it (with the other portal settings) and ends the session; the `config.yml` value applies again after the next reboot.
 
 When no config can be loaded at boot, the firmware falls back to the passphrase saved in NVS through the portal, else to the passphrase the last successfully loaded config carried, so the OTA endpoints stay usable for recovery. If the passphrase is still empty, every protected endpoint answers `503 Service Unavailable`.
 
