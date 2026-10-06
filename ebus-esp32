@@ -1218,17 +1218,29 @@ _PULL_ERRORS = {
 }
 
 def _pull_watch(host: str, passphrase: str, timeout: int) -> int:
-    """Poll /api/ota until the device finishes, errors, or stops answering (which a
-    successful firmware update causes, since it reboots). Returns a process rc."""
+    """Poll /api/ota until the device reports complete or an error. Returns a process rc.
+
+    The device holds "complete" for 3 s before rebooting (ota_loop() in ota.cpp), so a
+    once-a-second poll sees it. Losing contact before that is NOT success: a crash or a
+    network drop looks the same from here as a reboot into the new image."""
     deadline = time.time() + timeout
     last = None
     while time.time() < deadline:
         reply = _ota_get(host, "/api/ota", passphrase, timeout=5)
         if reply is None:
-            # The device stopped answering. After a firmware pull that is the REBOOT,
-            # i.e. the success case — the status endpoint dies with the old image.
-            print("  device stopped answering — rebooting into the new image")
-            return 0
+            print(f"  device stopped answering before reporting completion; waiting up to "
+                  f"{OTA_COMEBACK_TIMEOUT}s for it to come back...", flush=True)
+            back = _ota_wait_back(host, OTA_COMEBACK_TIMEOUT)
+            if back is None:
+                print(f"\nOTA pull FAILED: lost contact with the device and it did not "
+                      f"answer again within {OTA_COMEBACK_TIMEOUT}s", file=sys.stderr)
+            else:
+                print(f"\nOTA pull UNCONFIRMED: the device answers again (it reports {back})\n"
+                      f"  but never reported completion. Older firmware can reboot before a\n"
+                      f"  poll sees it, so the update may have landed; check the version in\n"
+                      f"  its Homie $description, or watch the console:\n"
+                      f"  ./ebus-esp32 monitor --host {host.split(':')[0]}", file=sys.stderr)
+            return 1
         status, text = reply
         state = ""
         try:
