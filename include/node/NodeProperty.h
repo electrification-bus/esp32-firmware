@@ -94,8 +94,10 @@ class NodeProperty {
 
     private:
         void store(const char* text);
+        void report_unbound(const char* what);
 
         Property* _prop = nullptr;      // the one place this property's value lives
+        bool _unbound_reported = false; // report_unbound() has logged for this handle
         char _homie_property_id[32] = {0};
         char _topic[160] = {0};
 };

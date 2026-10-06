@@ -25,15 +25,29 @@ void NodeProperty::setup(const char* node_id, const char* property_id) {
 
     Node* n = dev->getNode(node_id);
     _prop = n ? n->getProperty(_homie_property_id) : nullptr;
+    _unbound_reported = false;
     if (!_prop) {
         // The generator registers a Property for everything declared in the component's
-        // yml, so this means the driver called setup() for an id that is not in its yml —
-        // a config error that would otherwise surface much later as a property that
-        // silently never publishes.
-        Serial.printf("NodeProperty: **ERROR -- no Homie property '%s' on node '%s' — "
-                      "declare it in the component yml, or this will never publish\n",
-                      _homie_property_id, node_id);
+        // yml, so this means the driver called setup() for an id that is not in its yml
+        // (or the node itself is missing). Every set and publish on this handle is then
+        // dropped, so say so at boot, and again on the first dropped write (report_unbound).
+        Serial.printf("\n"
+                      "NodeProperty: **ERROR ******************************************\n"
+                      "NodeProperty: **ERROR -- %s '%s' has no Homie property '%s'\n"
+                      "NodeProperty: **ERROR -- declare '%s' in the component yml; until then\n"
+                      "NodeProperty: **ERROR -- every value the driver sets on it is DROPPED\n"
+                      "NodeProperty: **ERROR ******************************************\n\n",
+                      n ? "node" : "MISSING node", node_id, _homie_property_id,
+                      _homie_property_id);
     }
+}
+
+// Once per handle, so a driver that sets the property every second does not flood the log.
+void NodeProperty::report_unbound(const char* what) {
+    if (_unbound_reported) return;
+    _unbound_reported = true;
+    Serial.printf("NodeProperty: **ERROR -- %s on '%s' DROPPED: property not declared in the "
+                  "component yml (see the setup error above)\n", what, _topic);
 }
 
 void NodeProperty::setup(const char* node_id, const char* property_id,
@@ -65,6 +79,7 @@ const char* NodeProperty::format() const { return _prop ? _prop->format()   : ""
 
 void NodeProperty::store(const char* text) {
     if (_prop) _prop->setValue(text);
+    else report_unbound("set");
 }
 
 // Rendering here (rather than calling Property's numeric overloads) preserves the exact
@@ -79,6 +94,7 @@ void NodeProperty::set(const char* value)  { store(value); }
 
 void NodeProperty::publish() {
     if (_prop) _prop->publish_queued();
+    else report_unbound("publish");
 }
 
 void NodeProperty::clearValue() {
