@@ -45,6 +45,14 @@ static volatile bool portal_ap_running = false;   // written on the main loop, r
 static volatile bool portal_ap_shutdown_pending = false;
 static volatile unsigned long portal_ap_shutdown_since = 0;
 
+// handleWifiSave() replies first and leaves the STA reconnect to captive_portal_loop():
+// over STA the reconnect drops the client's own connection, so it waits until the
+// server has closed the connection after the reply, or this long if it never does.
+#define PORTAL_WIFI_RECONNECT_FALLBACK_MS 1000UL
+#define PORTAL_WIFI_RECONNECT_GRACE_MS    100UL
+static volatile bool     portal_wifi_reconnect_pending = false;
+static volatile uint32_t portal_wifi_reconnect_at      = 0;
+
 static void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
     switch (event) {
         case ARDUINO_EVENT_WIFI_STA_CONNECTED:
@@ -464,6 +472,10 @@ static bool requireAuth(AsyncWebServerRequest *request);   // defined with the a
 // Unauthenticated while the setup AP is up: this is the first-time-setup path (user on
 // the captive AP joining the device to a network), before any passphrase workflow.
 // Once the AP has shut down it requires auth like the admin endpoints.
+static void portalWifiReconnectNow() {
+    portal_wifi_reconnect_at = millis() + PORTAL_WIFI_RECONNECT_GRACE_MS;
+}
+
 static void handleWifiSave(AsyncWebServerRequest *request) {
     if (!portal_ap_running && !requireAuth(request)) return;
     if (!claimPostBody(request)) return;
@@ -490,14 +502,14 @@ static void handleWifiSave(AsyncWebServerRequest *request) {
 
     Serial.printf("PORTAL: WiFi connecting to '%s'...\n", wifi_ssid);
 
-    // Reset connection state and STA radio
+    // Reset connection state; captive_portal_loop() resets the STA radio once the reply
+    // has gone out.
     wifi_connected = false;
     wifi_disconnect_reason = 0;
     wifi_connecting = true;
-    WiFi.disconnect(true);
-    delay(100);
-    WiFi.mode(portal_ap_running ? WIFI_AP_STA : WIFI_STA);
-    WiFi.begin(wifi_ssid, wifi_password);
+    portal_wifi_reconnect_at = millis() + PORTAL_WIFI_RECONNECT_FALLBACK_MS;
+    portal_wifi_reconnect_pending = true;
+    request->onDisconnect(portalWifiReconnectNow);
 
     request->send(200, "application/json", "{\"status\":\"connecting\"}");
 }
@@ -507,7 +519,10 @@ static void handleWifiStatus(AsyncWebServerRequest *request) {
     static char json_buf[192];
     uint8_t reason = wifi_disconnect_reason;
 
-    if (wifi_connected || WiFi.isConnected()) {
+    if (portal_wifi_reconnect_pending) {
+        // The old association is still up until captive_portal_loop() resets the radio.
+        snprintf(json_buf, sizeof(json_buf), "{\"status\":\"connecting\"}");
+    } else if (wifi_connected || WiFi.isConnected()) {
         IPAddress ip = WiFi.localIP();
         snprintf(json_buf, sizeof(json_buf),
             "{\"status\":\"connected\",\"ip\":\"%d.%d.%d.%d\",\"ssid\":\"%s\"}",
@@ -1223,6 +1238,17 @@ void captive_portal_loop() {
         dnsServer.stop();
         WiFi.softAPdisconnect(true);   // true: drop AP mode, keep STA
         Serial.println("PORTAL: setup AP shut down (STA has an address)");
+    }
+    // Deferred STA reconnect after POST /api/wifi; see handleWifiSave().
+    if (portal_wifi_reconnect_pending && (int32_t)(millis() - portal_wifi_reconnect_at) >= 0) {
+        portal_wifi_reconnect_pending = false;
+        wifi_connected = false;           // again: the old link may have dropped meanwhile
+        wifi_disconnect_reason = 0;
+        wifi_connecting = true;
+        WiFi.disconnect(true);
+        delay(100);
+        WiFi.mode(portal_ap_running ? WIFI_AP_STA : WIFI_STA);
+        WiFi.begin(wifi_ssid, wifi_password);
     }
 #endif
     ota_check_timeout();
