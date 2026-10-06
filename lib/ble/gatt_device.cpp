@@ -10,6 +10,24 @@ static int hex_nibble(char c) {
     return -1;
 }
 
+// NVS namespaces are capped at 15 chars (NVS_NS_NAME_MAX_SIZE - 1). A node id that fits
+// after "ble_" is used as is. A longer one gets "blh_", its first 3 chars, and a 32-bit
+// FNV-1a hash of the whole id, so ids sharing a long prefix ("battery-pack-1" and
+// "battery-pack-2") no longer truncate to the same namespace. The distinct prefix keeps
+// the two forms from ever colliding with each other.
+static void nvs_namespace_for(const char* node_id, char* out, size_t out_len) {
+    if (strlen(node_id) <= 11) {
+        snprintf(out, out_len, "ble_%s", node_id);
+        return;
+    }
+    uint32_t h = 2166136261u;
+    for (const char* p = node_id; *p; p++) {
+        h ^= (uint8_t)*p;
+        h *= 16777619u;
+    }
+    snprintf(out, out_len, "blh_%.3s%08lx", node_id, (unsigned long)h);
+}
+
 bool GattDevice::setup() {
     NodeEntity::setup();
 
@@ -27,10 +45,9 @@ bool GattDevice::setup() {
     _link.setUUIDs(_service_uuid, _notify_uuid, _write_uuid);
     _link.setNameFilter(_name_filter);
     // Per-node NVS namespace, so two GATT nodes on one board keep separate cached
-    // addresses. Node ids are unique (the generator enforces it), and Preferences
-    // namespaces are capped at 15 chars.
+    // addresses.
     char ns[16];
-    snprintf(ns, sizeof(ns), "ble_%.11s", getNodeId());
+    nvs_namespace_for(getNodeId(), ns, sizeof(ns));
     _link.setNVSNamespace(ns);
     if (_cfg_address && *_cfg_address) _link.setAddress(_cfg_address);
     _link.onNotify(&GattDevice::on_rx, this);
