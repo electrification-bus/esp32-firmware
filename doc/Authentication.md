@@ -105,7 +105,7 @@ These endpoints answer on every interface, not only on the setup AP. The serial-
 
 ## The setup AP
 
-On builds with `-DCONFIG_WIFI_AP` the device starts an open (passwordless) access point named after the device at every boot, with a DNS server that sends every name to the setup page. `POST /api/v1/wifi` is unauthenticated while this AP is up, so a user who joined the AP can give the device its WiFi credentials without the passphrase. The admin and OTA endpoints still require the passphrase over the AP.
+On builds with `-DCONFIG_WIFI_AP` the device starts an open (passwordless) access point at every boot, with a DNS server that sends every name to the setup page. The SSID is the resolved device id — the `device.id` template with `device.id_prefix` prepended when that is set, as described in [Configuration.md](Configuration.md). It is the same string that names the device's MQTT topic, and it is unique per board as long as `device.id` keeps a `${chip_id}`, where `device.name` alone would be identical on every unit flashed from one image. `POST /api/v1/wifi` is unauthenticated while this AP is up, so a user who joined the AP can give the device its WiFi credentials without the passphrase. The admin and OTA endpoints still require the passphrase over the AP.
 
 The AP shuts down 2 minutes after the STA side gets an address, which leaves time to read the new IP on the setup page; a disconnect before then cancels the shutdown. After that, `POST /api/v1/wifi` requires the passphrase or a session token, and the AP does not return until the next boot. If the STA side never gets an address (no credentials, or the network is gone), the AP stays up. `CONFIG_WIFI_AP` builds do not start Ethernet, so WiFi STA is the only other interface.
 

@@ -1352,6 +1352,28 @@ static void handleCaptiveRedirect(AsyncWebServerRequest *request) {
     Serial.printf("PORTAL: Redirecting %s %s -> %s\n", request->methodToString(), request->url().c_str(), redirect_url);
     request->redirect(redirect_url);
 }
+
+// The setup AP's SSID is the resolved device id, which is also what names the device's
+// MQTT topic (PORTAL_API's `topic` field included) — so the network a phone sees is the
+// name to look for on the broker.
+// NB mDNS and DHCP currently advertise a MANGLED form of this same id: sanitize_hostname()
+// in network.cpp drops a hyphen that is already in its input, so the id above claims
+// "bess80b54ec323bc.local". Pointing that function at sanitize_homie_id() makes the SSID,
+// the hostname and the topic one identifier on every interface.
+//
+// Only the length needs guarding: a device id may run to MAX_DEVICE_ID_CHARS, past the
+// SSID limit. Keep the TAIL, where ${chip_id} sits — a clipped name still identifies the
+// model, a clipped chip id stops identifying the board, and a collision is the one thing
+// this is here to prevent.
+#define PORTAL_SSID_MAX 32   // 802.11 SSID limit, in bytes
+static const char* ap_ssid() {
+    const char* id = getDeviceID();
+    size_t len = strlen(id);
+    if (len <= PORTAL_SSID_MAX) return id;
+    const char* tail = id + (len - PORTAL_SSID_MAX);
+    while (*tail == '-') tail++;   // don't open the SSID on a hyphen
+    return tail;
+}
 #endif // CONFIG_WIFI_AP
 
 void captive_portal_loop() {
@@ -1415,13 +1437,17 @@ void captive_portal_start() {
 
     // Start WiFi in AP+STA mode: AP serves portal, STA connects to user's network
     WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP(device_name);
+    const char* ssid = ap_ssid();
+    bool ap_up = WiFi.softAP(ssid);
     portal_ap_running = true;
     delay(500);  // Allow AP and STA radio to stabilize before scanning
 
     IPAddress ap_ip = WiFi.softAPIP();
-    Serial.printf("PORTAL: AP started, SSID='%s', IP=%d.%d.%d.%d\n",
-                   device_name, ap_ip[0], ap_ip[1], ap_ip[2], ap_ip[3]);
+    // Say so when softAP() refused: the IP then reads 0.0.0.0 and nothing else here
+    // fails, so a silent "AP started" would send you looking at the phone instead.
+    Serial.printf("PORTAL: AP %s, SSID='%s', IP=%d.%d.%d.%d\n",
+                   ap_up ? "started" : "**FAILED TO START**",
+                   ssid, ap_ip[0], ap_ip[1], ap_ip[2], ap_ip[3]);
 
     // Scan for available WiFi networks before starting web server
     performWifiScan();
