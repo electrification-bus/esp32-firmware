@@ -15,6 +15,7 @@
 #include <platform/network.h>
 #include <platform/broker_discovery.h>
 #include <homie/homie.h>
+#include <homie/homie_id.h>
 #include <platform/mdns_strings.h>
 #include <platform/log_stream.h>
 
@@ -98,21 +99,11 @@ const char* get_wlan_mac() {
   return wlan_mac_str;
 }
 
-// Convert a name to a valid mDNS hostname (lowercase, alphanumeric, hyphens)
+// Convert a name to a valid mDNS hostname. A Homie id (lowercase letters, digits, single
+// hyphens, no hyphen at either end) is already a valid DNS label, so the device id keeps
+// every character it has and the hostname, the DHCP name and the MQTT topic are one string.
 static void sanitize_hostname(const char* input, char* output, size_t max_len) {
-  size_t j = 0;
-  for (size_t i = 0; input[i] && j < max_len - 1; i++) {
-    char c = input[i];
-    if (c >= 'A' && c <= 'Z') {
-      output[j++] = c + 32;  // lowercase
-    } else if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
-      output[j++] = c;
-    } else if (c == ' ' || c == '_') {
-      output[j++] = '-';  // convert spaces/underscores to hyphens
-    }
-    // skip other characters
-  }
-  output[j] = '\0';
+  sanitize_homie_id(input, output, max_len);
 }
 
 // Helper function to add mDNS service TXT record (resolves overload ambiguity)
