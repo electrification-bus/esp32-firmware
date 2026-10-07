@@ -58,6 +58,8 @@ where `<board>` is an `[env:*]` from `platformio/platformio.ini`; the `-c` is re
 - `setup_homie()` — one-time setup of each node entity (called in `setup()`).
 - `loop_homie()` — per-iteration work for each node entity (called every `loop()`).
 
+Optionally, also define `uint16_t settable_table_capacity()`, the number of `/set` subscriptions the firmware makes room for: one per settable property, plus one for the device's watch on its own `$state`. Each entry is 160 bytes of heap. Without it the firmware uses 32; a registration past the limit is logged (`settable subscriber table full`) and refused.
+
 A complete `src/homie.cpp` for an SHT20 sensor + a relay on a GPIO — identical in shape to what the generator emits:
 
 ```cpp
