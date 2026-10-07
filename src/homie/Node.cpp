@@ -28,8 +28,11 @@ void Node::addProperty(Property* property, const char* id, const char* name, con
     // side, matching NodeProperty::setup() so the value lookup stays consistent.
     // (This is the explicit-id publisher path; the controller's from_dict path keeps
     // exact wire ids.)
-    char prop_id[32] = {0};
-    sanitize_homie_id(id, prop_id, sizeof(prop_id));
+    char prop_id[HOMIE_PROPERTY_ID_MAX + 1] = {0};
+    if (!sanitize_homie_id(id, prop_id, sizeof(prop_id))) {
+        Serial.printf("Node '%s': **ERROR -- property id '%s' is over %d chars; truncated to '%s'\n",
+                      _id, id, HOMIE_PROPERTY_ID_MAX, prop_id);
+    }
     property->setId(prop_id[0] ? prop_id : id);
     property->setName(name);
     property->setDatatype(datatype);
@@ -71,7 +74,10 @@ const char* Node::type() {
 }
 
 void Node::setId(const char* id) {
-    snprintf(_id, sizeof(_id), "%s", id);
+    if (snprintf(_id, sizeof(_id), "%s", id) >= (int)sizeof(_id)) {
+        Serial.printf("Node: **ERROR -- node id '%s' is over %d chars; truncated to '%s'\n",
+                      id, HOMIE_NODE_ID_MAX, _id);
+    }
 }
 
 const char* Node::id() {
@@ -87,7 +93,11 @@ Device* Node::device() {
 }
 
 void Node::setTopic(const char* top) {
-    snprintf(_topic, sizeof(_topic), "%s%s", top, _id);
+    int n = snprintf(_topic, sizeof(_topic), "%s%s", top, _id);
+    if (n >= (int)sizeof(_topic)) {
+        Serial.printf("Node: **ERROR -- topic '%s%s' is %d chars, over %d; truncated to '%s'\n",
+                      top, _id, n, (int)sizeof(_topic) - 1, _topic);
+    }
 }
 
 const char* Node::topic() {

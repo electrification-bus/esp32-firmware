@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <MQTT.h>
+#include <homie/homie_limits.h>
 // Property is used here ONLY as a pointer and in pointer-to-member typedefs, both of
 // which an incomplete type satisfies. Forward-declaring instead of including breaks a
 // real cycle: homie/Property.h includes this header, so including it back made
@@ -34,7 +35,7 @@ typedef bool (*settable_handler_t)(void* ctx, const char* value);
 // taken into a junk pointer-to-member. Three functions register entries here and each
 // sets only the fields it cares about, so whatever the others are is what dispatch sees.
 struct subscribed_settable_property_t {
-    char topic[128] = {0};
+    char topic[HOMIE_TOPIC_MAX + 1] = {0};
     property_settable_callback_t property_callback = nullptr;
     entity_settable_callback_t entity_callback = nullptr;
     Property* instance = nullptr; // store the instance to call the member function on

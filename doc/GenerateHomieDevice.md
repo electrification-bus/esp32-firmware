@@ -124,7 +124,7 @@ id: panel-main            # fixed literal — logs a warning (two units collide 
 | Field       | Required | Description |
 |-------------|----------|-------------|
 | `component` | yes | Path to the component: `<bus>/<name>` (matches `lib/<bus>/<name>.yml`) |
-| `id`        | no  | The instance's Homie node id — `a-z`, `0-9` and `-` only. Defaults to the component's own node id. The generated C++ object is named after it with `-` mapped to `_` (`display-gme12864` → `display_gme12864`) |
+| `id`        | no  | The instance's Homie node id — `a-z`, `0-9` and `-` only, at most 31 characters (see [Id and topic lengths](#id-and-topic-lengths)). Defaults to the component's own node id. The generated C++ object is named after it with `-` mapped to `_` (`display-gme12864` → `display_gme12864`) |
 | `config`    | no  | Key-value pairs substituted into the component's constructor template — per-device details such as an address, never bus pins |
 
 ### Components are types; `nodes:` entries are instances
@@ -203,13 +203,30 @@ children:
 
 | Field      | Required | Description |
 |------------|----------|-------------|
-| `id`       | yes | Child id **suffix**; the runtime device-id is `<parent-runtime-id>-<id>` (the parent id is MAC-derived at boot) |
+| `id`       | yes | Child id **suffix**; the runtime device-id is `<parent-runtime-id>-<id>` (the parent id is MAC-derived at boot), at most 63 characters in all (see [Id and topic lengths](#id-and-topic-lengths)) |
 | `name`     | no  | Human-readable child name (Homie `$name`) |
 | `type`     | no  | Child device `$type` (e.g. `energy.ebus.device.battery`) |
 | `nodes`    | no  | The child's own component nodes (same format as the root `nodes:`) |
 | `children` | no  | Further nested child devices (recursive) |
 
 The generator emits a `Device` object per child, wires the parent/child topology (`addChild`), binds each child node's entity to its device so its property values publish under the child's topic, and `main.cpp` publishes the whole tree at boot. The published result: the root `$description` lists `children`, and each child `$description` carries `root`/`parent` — a conformant Homie 5 nested tree.
+
+### Id and topic lengths
+
+The firmware holds ids and topics in fixed buffers sized in [`include/homie/homie_limits.h`](../include/homie/homie_limits.h). `generate` computes every id and topic the device will build and refuses a `device.yml` that exceeds them, naming the id or topic, its length and the limit.
+
+| What | Longest (chars) | Set by |
+|---|---:|---|
+| Device id, root or child | 63 | `HOMIE_DEVICE_ID_MAX` |
+| Node id | 31 | `HOMIE_NODE_ID_MAX` |
+| Property id | 31 | `HOMIE_PROPERTY_ID_MAX` |
+| Property topic, `<prefix>/<device-id>/<node-id>/<property-id>` | 119 | `HOMIE_TOPIC_MAX` (127) less 8 for `/$target` |
+| `device.id` template | 95 | `device_id_template[]` in `src/platform/config.cpp` |
+| `device.id_prefix` | 31 | `device_id_prefix[]` in `include/platform/config.h` |
+
+Lengths are measured as the firmware builds them. The root id is `device.id` after substitution (`${chip_id}` is 12 characters, `${chip_id_short}` 6), with `device.id_prefix` and a hyphen in front when set; both may come from `config-overlay.yml`. A child id is `<parent-runtime-id>-<id>`, so with the default `id: ${chip_id}` a top-level child's own `id` can be up to 50 characters. Node and property ids are measured after sanitizing, and a `registers:` entry's `id` is a property id. Topics are measured with the longer prefix, `homie/5`, so a `device.yml` that passes also fits the `ebus/5` build.
+
+A hand-coded `src/homie.cpp` is not checked. When the firmware has to cut a node or property id or a property topic to fit, it logs an `**ERROR` line naming it at boot.
 
 ### Lifecycle: the `lost` cascade
 

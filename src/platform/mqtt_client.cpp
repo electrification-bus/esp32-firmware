@@ -37,18 +37,17 @@ MQTTClient mqtt_client(MAX_DATA_LEN + MQTT_PACKET_HEADROOM);
 // call loop() and mqtt_connected() does not call connected().
 static bool _mqtt_begun = false;
 
-#define TOPIC_TOKEN_SIZ 80
-char topic_device[TOPIC_TOKEN_SIZ] = {0};
+char topic_device[HOMIE_DEVICE_TOPIC_MAX + 1] = {0};
 // Static LWT topic buffer - must persist after broker_connect() returns
 // (pointer corruption fix per arduino-mqtt issue #89)
-static char lwt_topic[64] = {0};
+static char lwt_topic[HOMIE_TOPIC_MAX + 1] = {0};
 int num_subscribers = 0;
 
 // ============================================================================
 // MQTT Publish Queue - for thread-safe publishing from other tasks/cores
 // ============================================================================
 #define MQTT_QUEUE_SIZE 16
-#define MQTT_TOPIC_MAX 128
+#define MQTT_TOPIC_MAX (HOMIE_TOPIC_MAX + 1)   // buffer size, NUL included
 // Sized to match Property::_value, so a value that fits in the property model also fits
 // through the queue. It was 64, which silently truncated anything longer — a JSON array
 // of cell voltages, an enum list, a long string — and drivers worked around it by
@@ -140,9 +139,22 @@ bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool
         return ok;
     }
 
+    size_t topic_len = strlen(topic);
+    if (topic_len >= MQTT_TOPIC_MAX) {
+        // A truncated topic would publish to some other topic, so refuse. Logged once: a
+        // driver publishing on a timer would otherwise repeat it every period.
+        static bool reported = false;
+        if (!reported) {
+            reported = true;
+            Serial.printf("MQTT: **ERROR -- topic is %u chars, over %d; publish refused: %s\n",
+                          (unsigned)topic_len, MQTT_TOPIC_MAX - 1, topic);
+        }
+        if (source) source->queued_publish_done(payload, length, false);
+        return false;
+    }
+
     MqttQueueItem item;
-    strncpy(item.topic, topic, MQTT_TOPIC_MAX - 1);
-    item.topic[MQTT_TOPIC_MAX - 1] = '\0';
+    memcpy(item.topic, topic, topic_len + 1);
     memcpy(item.payload, payload, length);
     item.length = length;
     item.retained = retained;
@@ -528,9 +540,9 @@ static bool call_settable_driver(subscribed_settable_property_t* s, const char* 
               const char* p = set_slash - 1;
               while (p > topic && *p != '/') p--;
               if (*p == '/') p++;
-              char pid[32];
+              char pid[HOMIE_PROPERTY_ID_MAX + 1];
               int plen = set_slash - p;
-              if (plen > 31) plen = 31;
+              if (plen > HOMIE_PROPERTY_ID_MAX) plen = HOMIE_PROPERTY_ID_MAX;
               strncpy(pid, p, plen);
               pid[plen] = '\0';
               Serial.printf("MQTT: Invoking entity callback '%s'='%s'\n", pid, value);

@@ -8,6 +8,7 @@
 // it, and NodeProperty.h reaches every driver through NodeEntity.h.
 // Those includes belong in NodeProperty.cpp, where they are actually used.
 #include <platform/mqtt_client.h>
+#include <homie/homie_limits.h>
 
 class NodeEntity;
 
@@ -108,6 +109,6 @@ class NodeProperty {
 
         Property* _prop = nullptr;      // the one place this property's value lives
         bool _unbound_reported = false; // report_unbound() has logged for this handle
-        char _homie_property_id[32] = {0};
-        char _topic[160] = {0};
+        char _homie_property_id[HOMIE_PROPERTY_ID_MAX + 1] = {0};
+        char _topic[HOMIE_PROPERTY_TOPIC_MAX + 1] = {0};
 };

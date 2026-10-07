@@ -60,6 +60,8 @@ where `<board>` is an `[env:*]` from `platformio/platformio.ini`; the `-c` is re
 
 Optionally, also define `uint16_t settable_table_capacity()`, the number of `/set` subscriptions the firmware makes room for: one per settable property, plus one for the device's watch on its own `$state`. Each entry is 160 bytes of heap. Without it the firmware uses 32; a registration past the limit is logged (`settable subscriber table full`) and refused.
 
+Keep ids and topics within the limits in [Id and topic lengths](GenerateHomieDevice.md#id-and-topic-lengths). `generate` enforces them for a `device.yml`; for a hand-coded file the firmware logs an `**ERROR` line at boot when it has to cut a node or property id or a property topic.
+
 A complete `src/homie.cpp` for an SHT20 sensor + a relay on a GPIO — identical in shape to what the generator emits:
 
 ```cpp

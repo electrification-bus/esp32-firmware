@@ -129,11 +129,11 @@ class Device {
     // (and length via out_len). Used to detect unchanged descriptions (A9).
     uint32_t buildDescription(size_t* out_len);
 
-    char _id[64] = {0};
+    char _id[HOMIE_DEVICE_ID_MAX + 1] = {0};
     char _name[32] = {0};
     char _type[HOMIE_TYPE_MAXLEN] = {0};   // eBus device types up to 41 chars
     char _version[16] = {0};
-    char _topic[96] = {0};
+    char _topic[HOMIE_DEVICE_TOPIC_MAX + 1] = {0};
     Node* _nodes[MAX_NODES] = {0};
     DeviceState _state = DEVICE_STATE_INIT;
     MQTTClient* _mqtt_client;

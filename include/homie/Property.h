@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <platform/mqtt_client.h>
+#include <homie/homie_limits.h>
 class Node;
 
 class Property {
@@ -151,11 +152,11 @@ private:
 
     bool _dirty_settable = false;
     bool _has_value = false;   // C3: false until setValue() — guards phantom retained-empty topics
-    char _id[32] = {0};
+    char _id[HOMIE_PROPERTY_ID_MAX + 1] = {0};
     char _name[32] = {0};
     char _value[VALUE_MAX + 1] = {0};
     char _datatype[16] = {0};
-    char _topic[64] = {0};
+    char _topic[HOMIE_PROPERTY_TOPIC_MAX + 1] = {0};
     char _format[64] = {0};   // enum/color formats (comma lists) need room (C1)
     bool _settable;
     void* _callback;
