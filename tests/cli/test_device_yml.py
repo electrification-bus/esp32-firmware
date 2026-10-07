@@ -243,6 +243,16 @@ def test_child_device_nodes_are_built_in_cpp_not_homie_yml(sandbox):
     assert [n["id"] for n in sandbox.homie_yml["nodes"]] == ["r1"]
 
 
+def test_child_device_state_is_left_to_publish_tree(sandbox):
+    # setState() publishes, so setting a child ready during registration put its $state
+    # on the wire before its $description. Device::publishTree() owns the lifecycle.
+    doc = device_doc([relay("r1", 14)])
+    doc["children"] = [{"id": "kid", "nodes": [relay("r2", 15)]}]
+    sandbox.generate(doc)
+    assert "addChild(&dev_kid);" in sandbox.homie_cpp
+    assert "setState(" not in sandbox.homie_cpp
+
+
 def test_mdns_section_is_omitted_when_device_yml_is_silent(sandbox):
     sandbox.generate(device_doc())
     assert "mdns" not in sandbox.config_yml
