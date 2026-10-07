@@ -113,7 +113,7 @@ Two caveats. The stream is **unauthenticated** — anyone on the LAN can read it
 
 ## Serial monitor — needs a real terminal
 
-`./ebus-esp32 monitor` runs `pio device monitor`, which is interactive (it puts the controlling terminal into raw mode to capture single keystrokes). It **requires a real PTY**: a true terminal window like Terminal.app / iTerm / a tmux pane / Windows Terminal.
+`./ebus-esp32 monitor` runs `pio device monitor`, which is interactive (it puts the controlling terminal into raw mode to capture single keystrokes). It **requires a real PTY**: a true terminal window like Terminal.app / iTerm / the VSCode integrated terminal / a tmux pane / Windows Terminal.
 
 It will *not* work if launched from:
 - A non-interactive `bash -c '...'` invocation
@@ -128,43 +128,34 @@ stty -f /dev/cu.usbserial-XXXX 115200 cs8 -cstopb -parenb raw -echo
 cat /dev/cu.usbserial-XXXX | tee /tmp/serial.log
 ```
 
-## Monitor ↔ flash port handoff (when monitor runs in tmux)
+## Monitor ↔ flash port handoff
 
-A serial monitor and a flash both need exclusive access to the same USB-serial port — while one holds it, the other can't open it. `./ebus-esp32` coordinates this automatically when the monitor runs **inside a tmux pane**: `./ebus-esp32 monitor` records which pane holds the port, and a later `./ebus-esp32 run` / `push` pauses it, flashes, and resumes it.
-
-When you start a monitor in a tmux pane, `bin/_monitor-record` drops a breadcrumb at `.run/monitor-<port>.state` recording which tmux pane holds which port (and which front-end started it). A subsequent flash then, via `bin/_flash-coord`, automatically:
-
-1. reads the breadcrumb,
-2. sends `Ctrl-C` to the monitor's tmux pane to release the port,
-3. runs the upload,
-4. relaunches the *same* `./ebus-esp32 monitor` back into that pane to resume.
-
-If you run the monitor **outside tmux** (or on Windows), no breadcrumb is recorded and there's nothing to coordinate — the flash will fail with "port busy" until you Ctrl-C the monitor yourself. `./ebus-esp32 monitors` lists the active monitor breadcrumbs.
-
-### Setting up the tmux session
+A serial monitor and a flash both need exclusive access to the same USB-serial port. `./ebus-esp32` hands the port over automatically: leave a USB monitor running in one terminal, flash from another, and the monitor prints `--- monitor paused: a flash is using <port> ---`, the flash runs, and the monitor prints `--- monitor resumed on <port> ---` and carries on with the same port and options. This works in any terminal (VSCode's integrated terminal, Terminal.app, iTerm, tmux, Linux terminals, Windows Terminal).
 
 ```sh
-tmux new -s ebus
-./ebus-esp32 monitor          # auto-detects the single attached USB-serial port
+# Terminal A
+./ebus-esp32 monitor --serial                         # pins the first USB serial port it finds
+# Terminal B
+./ebus-esp32 run                                      # or: push, push --fs-only, run --erase
 ```
 
-Multiple boards — one tmux session per device, pinning the port:
+Multiple boards: pin each monitor to its port, and name the port when flashing.
 
 ```sh
-# Terminal 1
-tmux new -s ebus-poe
-./ebus-esp32 monitor --port /dev/cu.usbserial-XXXX
-
-# Terminal 2
-tmux new -s ebus-s3
-./ebus-esp32 monitor --port /dev/cu.usbmodem14201
+./ebus-esp32 monitor --port /dev/cu.usbserial-XXXX    # terminal A
+./ebus-esp32 monitor --port /dev/cu.usbmodem14201     # terminal B
+./ebus-esp32 run --port /dev/cu.usbserial-XXXX        # terminal C: pauses only A
 ```
 
-Flash from any other shell, passing the same port — the monitor pane pauses and resumes on its own:
+`./ebus-esp32 monitors` lists the running monitors, their ports, and whether each is watching or paused.
 
-```sh
-./ebus-esp32 run --port /dev/cu.usbserial-XXXX
-```
+How it works: the USB monitor runs `pio device monitor` as a child process and writes `.run/monitor-<port>.state` with its PID. A flash writes `.run/flash-<port>.request`; the monitor, which checks for it every 0.2 s, stops its child and writes `.run/monitor-<port>.released`. The flash waits for that file, uploads, and removes its request, at which point the monitor waits for the port to reappear (a native-USB board re-enumerates after reset) and starts the child again. `/dev/cu.X` and `/dev/tty.X` count as the same port.
+
+- **No monitor running:** the flash proceeds immediately.
+- **Monitor crashed or its terminal closed:** its breadcrumb's PID is dead, so the flash removes it and proceeds. A request left by a flash that crashed is likewise ignored and the monitor resumes.
+- **Several monitors and no `--port` on the flash:** the flash stops with an error listing the ports.
+- **Monitor does not let go within 20 s:** the flash stops with an error naming the monitor's PID. Set `EBUS_HANDOFF_TIMEOUT=<seconds>` to wait longer.
+- **Network monitor (`--net`):** holds no serial port, so a flash leaves it alone.
 
 ## Config overlays — see Configuration.md
 
@@ -176,7 +167,7 @@ Two overlay files keep per-developer settings out of the shared repo: `config-ov
 
 - **Build with error navigation**: `M-x compile RET ./ebus-esp32 build RET` → `next-error` (`C-x `` ` ``) jumps to each warning/error in the source. The project's [`.dir-locals.el`](../.dir-locals.el) pre-fills the compile command.
 - **Quick rebuild**: `M-x recompile` re-runs the last compile command without re-prompting.
-- **Serial monitor**: do *not* use `M-x serial-term` for this — open a separate terminal (or tmux pane) and run `./ebus-esp32 monitor` there.
+- **Serial monitor**: do *not* use `M-x serial-term` for this — open a separate terminal and run `./ebus-esp32 monitor` there.
 
 ## Troubleshooting
 

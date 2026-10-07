@@ -181,22 +181,14 @@ def pio_run(env_name: str, targets: list, port: str = None) -> int:
         rc, _ = _pio_stream(cmd)
     return rc
 
-# ── tmux serial-port handoff ────────────────────────────────────────────────────
-# Coordinate the serial port with a monitor running in a tmux pane (via the bin/_*
-# helpers). `monitor` drops a breadcrumb; `run`/
-# `push` pause the monitor (Ctrl-C to release the port), upload, then resume it.
-# Everything is a graceful no-op outside tmux and on Windows, so it never gets in
-# the way of a plain CLI flash or a VSCode/PlatformIO IDE workflow.
+# ── serial-port handoff ─────────────────────────────────────────────────────────
+# `monitor` over USB runs pio's monitor under a supervisor that gives the port up when a
+# flash asks for it; `run`/`push` ask, upload, then let it resume. The protocol lives in
+# bin/serial_handoff.py (files under .run/, no tmux), so it works in any terminal.
 
-def _coord(*argv: str) -> int:
-    """Invoke a bin/ serial-coordination helper. No-op (rc 0) on Windows or if
-    the helper is missing; the helpers themselves no-op outside tmux."""
-    if sys.platform == "win32":
-        return 0
-    script = ROOT / "bin" / argv[0]
-    if not script.exists():
-        return 0
-    return subprocess.run([str(script), *argv[1:]], cwd=ROOT).returncode
+RUN_DIR = ROOT / ".run"
+sys.path.insert(0, str(ROOT / "bin"))
+import serial_handoff  # noqa: E402
 
 # ── yaml helpers ───────────────────────────────────────────────────────────────
 
@@ -1146,8 +1138,8 @@ def _upload(cfg, args, build: bool) -> None:
     env_name = get_environment(cfg)
     port  = getattr(args, "port", None)
 
-    # --ota replaces the USB upload entirely: no serial port, so none of the tmux
-    # port-handoff below applies. ota_push() only transports whatever images already
+    # --ota replaces the USB upload entirely: no serial port, so none of the serial
+    # port handoff below applies. ota_push() only transports whatever images already
     # sit in .pio/build/<board>/ — unlike the USB path, where `upload` and `buildfs`
     # compile as a side effect of flashing — so `run --ota` has to compile explicitly
     # first. `push --ota` deliberately does not: push means "flash what build made",
@@ -1172,10 +1164,12 @@ def _upload(cfg, args, build: bool) -> None:
             ota_push(cfg, args, *target)
         return
 
-    # Pause a tmux serial monitor holding the port (no-op if none / outside tmux).
-    # A non-zero rc means ambiguous monitors (multiple live, no port given) — abort
-    # so the user can disambiguate with --port.
-    if _coord("_flash-coord", "pause", port or "") != 0:
+    # Pause a serial monitor holding the port (no-op if none is running); it resumes
+    # when the upload ends, whether it succeeded or not.
+    try:
+        handoff = serial_handoff.flash_handoff(RUN_DIR, port).start()
+    except serial_handoff.HandoffError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
     try:
         # Optional full chip erase first. Use when the board boots stale firmware
@@ -1212,8 +1206,7 @@ def _upload(cfg, args, build: bool) -> None:
 
         print("\ndone.")
     finally:
-        # Resume the monitor in its tmux pane (no-op if nothing was paused).
-        _coord("_flash-coord", "restart", port or "")
+        handoff.finish()
 
 # ── OTA push over TCP ──────────────────────────────────────────────────────────
 #
@@ -2070,46 +2063,54 @@ def monitor_serial(cfg: dict, env_name: str, port: str, key: str, learn: bool = 
     """USB monitor. With learn=True the stream is relayed through this process so the
     device's IP can be scraped for the --net cache; that relay costs interactivity
     (keystrokes are no longer forwarded to the device), so --no-learn keeps pio
-    attached directly to the terminal."""
-    # Drop a tmux breadcrumb so a later `run`/`push` can pause
-    # and resume this monitor; tagged "ebus" so resume relaunches this CLI. No-op
-    # outside tmux. Cleared on exit whether the monitor quits normally or via Ctrl-C.
-    _coord("_monitor-record", env_name, port or "", "ebus")
+    attached directly to the terminal.
+
+    pio runs under a serial_handoff.Supervisor, which stops it while a `run`/`push`
+    from any terminal flashes this port and starts it again afterwards. The port is
+    pinned (detected once if not given) so the restart reopens the same board."""
+    port = port or serial_handoff.detect_serial_port(find_pio(), pio_env(), ROOT)
     cmd = _pio_monitor_cmd(env_name)
     if port:
         cmd += ["--port", port]
-    try:
+    else:
+        print("(no USB serial port detected; pio will choose one, and a flash cannot "
+              "pause this monitor)", flush=True)
+        return subprocess.run(cmd, cwd=ROOT, env=pio_env()).returncode
+
+    def spawn():
         if not learn:
-            return subprocess.run(cmd, cwd=ROOT, env=pio_env()).returncode
+            return subprocess.Popen(cmd, cwd=ROOT, env=pio_env())
         env = pio_env()
         env["PYTHONUNBUFFERED"] = "1"   # else pio's output block-buffers into the pipe
-        proc = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE,
+        return subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True,
                                 errors="replace", bufsize=1)
+
+    def drain(proc):
+        if not learn:
+            proc.wait()
+            return
         device_id = None   # from this boot's "Device ID:" line, printed before the IP
-        try:
-            for line in proc.stdout:
-                sys.stdout.write(line)
-                sys.stdout.flush()
-                m = _ID_LEARN_RE.search(line)
-                if m:
-                    device_id = m.group(1)
-                m = _IP_LEARN_RE.search(line)
-                if m:
-                    _host_learn(key, env_name, m.group(1), device_id)
-        except KeyboardInterrupt:
-            pass
-        finally:
-            if proc.poll() is None:
-                proc.terminate()
-            try:
-                rc = proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                rc = proc.wait()
-        return rc
-    finally:
-        _coord("_monitor-release", port or "")
+        for line in proc.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            m = _ID_LEARN_RE.search(line)
+            if m:
+                device_id = m.group(1)
+            m = _IP_LEARN_RE.search(line)
+            if m:
+                _host_learn(key, env_name, m.group(1), device_id)
+
+    resume = f"./ebus-esp32 monitor --port {port}" + ("" if learn else " --no-learn")
+    sup = serial_handoff.Supervisor(RUN_DIR, port, spawn, drain,
+                                    env_name=env_name, monitor_cmd=resume)
+    print(f"(a flash to {port} from any terminal pauses and resumes this monitor)",
+          flush=True)
+    try:
+        return sup.run()
+    except serial_handoff.HandoffError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
 
 def cmd_monitor(args) -> None:
     cfg   = load_device_yml(Path(args.device_yml))
@@ -2269,12 +2270,11 @@ def cmd_check(args) -> None:
         cmd += ["-c", str(GENERATED_INI)]
     sys.exit(subprocess.run(cmd, cwd=ROOT, env=pio_env()).returncode)
 
-# ── monitors (serial-port-sharing breadcrumbs) ──────────────────────────────────
+# ── monitors (serial-port handoff breadcrumbs) ──────────────────────────────────
 
 def cmd_monitors(args) -> None:
-    # List active serial-monitor sessions — part of the tmux flash-coordination
-    # (the port-sharing handoff). No-op summary outside tmux.
-    _coord("_monitors-list")
+    # List the running USB serial monitors that a flash would pause.
+    print(serial_handoff.format_monitors(RUN_DIR))
 
 # ── config overlay ───────────────────────────────────────────────────────────
 #

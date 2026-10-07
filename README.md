@@ -96,8 +96,8 @@ examples/                     Example device files and a copy/paste driver
   controller_example.cpp      Controller-mode sketch
 scripts/                      PlatformIO build hooks: generate_homie.py (pre-build generator),
                               add_project_include.py, lib_src_filter.py, littlefs_image.py
-bin/                          pio (repo-local PlatformIO shim) and the _monitor-* /
-                              _flash-coord helpers for tmux serial-port sharing
+bin/                          pio (repo-local PlatformIO shim) and serial_handoff.py
+                              (serial-port sharing between a monitor and a flash)
 test/                         Device-side Python test harness (device_test.py, Test_Guide.md)
 doc/                          Documentation (see the index below)
 ebus-esp32                    CLI entry point: generate, build, run, push, monitor, serve
