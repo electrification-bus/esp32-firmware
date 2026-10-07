@@ -344,6 +344,9 @@ void Device::mqttConnected() {
   for(int i=0;i<_num_nodes;i++) {
     _nodes[i]->mqttConnected();
   }
+  for (Device* c = _first_child; c; c = c->_next_sibling) {
+    c->mqttConnected();
+  }
 }
 
 const char* Device::topic() {
