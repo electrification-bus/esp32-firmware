@@ -28,7 +28,9 @@ public:
     void setValue(unsigned int value);
     const char* value() { return _value; };
     float getFloatValue() { return _floatValue; };
-    int getIntValue() { return (float)_intValue; };
+    // No float round-trip: that lost precision above 2^24, so getIntValue() could not
+    // return what setValue(int) stored (16777217 came back as 16777216).
+    int getIntValue() { return _intValue; };
     bool getBoolValue() { return _boolValue; };
     // Enum value is the selected string (one of the format options); color value is the
     // raw "type,c1,c2[,c3]" payload — use homie_parse_color() for the components (C1).

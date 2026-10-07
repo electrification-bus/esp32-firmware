@@ -1,6 +1,7 @@
 #include <homie/homie_datatype.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <ctype.h>
 #include <math.h>
 
@@ -211,6 +212,36 @@ bool homie_parse_number_format(const char* format, HomieNumberFormat* out) {
         if (nf.has_step && nf.step <= 0) return false;     // step must be > 0
     }
     if (out) *out = nf;
+    return true;
+}
+
+// --- numeric payloads -----------------------------------------------------------
+
+bool homie_parse_float_payload(const char* payload, double* out) {
+    if (!payload) return false;
+    // The same lexer the $format fields use, over the whole string. It already rejects
+    // '+', embedded spaces, hex, inf/nan and anything non-finite, so nothing here has to
+    // re-state the rules — and the format side and the payload side cannot drift apart.
+    double v = 0;
+    if (!parse_float_token(payload, payload + strlen(payload), &v)) return false;
+    if (out) *out = v;
+    return true;
+}
+
+bool homie_parse_integer_payload(const char* payload, int32_t* out) {
+    if (!payload) return false;
+    const char* p = payload;
+    if (*p == '-') p++;
+    if (*p == '\0') return false;                   // "-" alone, or an empty payload
+    for (const char* q = p; *q; ++q) {
+        if (*q < '0' || *q > '9') return false;      // no '.', no exponent, no '+', no space
+    }
+    // Digits only at this point, so the sign is the only thing strtoll can read besides
+    // them; it is used for the value and for the overflow report. errno is not consulted
+    // because the explicit int32_t bounds below are stricter than ERANGE on a 64-bit long.
+    long long v = strtoll(payload, nullptr, 10);
+    if (v < INT32_MIN || v > INT32_MAX) return false;   // refuse rather than wrap
+    if (out) *out = (int32_t)v;
     return true;
 }
 
