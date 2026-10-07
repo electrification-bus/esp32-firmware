@@ -1096,16 +1096,17 @@ def _generate(args) -> None:
             "tcp_port": get_log_port(cfg),
         },
     }
-    # mDNS is TRI-STATE. Emitting these keys unconditionally would defeat the firmware's
-    # build-conditional default (off for WiFi-AP builds, on for Ethernet-only ones — see
-    # config.cpp), because loadPlatformConfiguration() applies a key whenever it is present.
-    # So the whole section is omitted when device.yml says nothing about mdns; a present key
-    # — true OR false — always wins at runtime.
+    # mdns.* and wifi.enabled are TRI-STATE. Emitting them unconditionally would defeat the
+    # firmware's build-conditional defaults (see config.cpp), because
+    # loadPlatformConfiguration() applies a key whenever it is present. So a key is written
+    # only when device.yml sets it; a present key, true OR false, always wins at runtime.
+    # Types are checked once config-overlay.yml is merged in (_check_network_keys).
     mdns_cfg = cfg.get("mdns") or {}
-    mdns_out = {k: bool(mdns_cfg[k]) for k in ("enabled", "discovery", "advertise")
-                if mdns_cfg.get(k) is not None}
+    mdns_out = {k: mdns_cfg[k] for k in MDNS_KEYS if mdns_cfg.get(k) is not None}
     if mdns_out:
         config_doc["mdns"] = mdns_out
+    if wifi.get("enabled") is not None:
+        config_doc["wifi"]["enabled"] = wifi["enabled"]
 
     out_config = DATA_DIR / "config.yml"
     with open(out_config, "w", encoding="utf-8") as f:
@@ -1113,6 +1114,7 @@ def _generate(args) -> None:
     print(f"  generated: {out_config.relative_to(ROOT)}")
     _apply_overlay(out_config)
     _check_broker_discovery(out_config)
+    _check_network_keys(out_config, device.get("environment"))
     _warn_no_broker(out_config)
 
     env_name = device.get("environment", "<environment>")
@@ -2449,6 +2451,63 @@ def _warn_no_broker(config_path: Path) -> None:
         print("  WARNING: mqtt.host is empty and mqtt.mode is configured-only, so the device\n"
               "           has no broker to connect to (unless one is saved from its web portal).\n"
               f"           Set mqtt.host in {CONFIG_OVERLAY.name} (kept out of git) or the device file.")
+
+MDNS_KEYS = ("enabled", "discovery", "advertise")
+
+def env_is_wifi_ap(env_name) -> bool:
+    """True when the env's build_flags define CONFIG_WIFI_AP (a WiFi-only board with a
+    setup AP); False for Ethernet builds, and for an env not in platformio.ini."""
+    if not env_name:
+        return False
+    cfg = read_pio_config()
+    section = f"env:{env_name}"
+    if not cfg.has_option(section, "build_flags"):
+        return False
+    for line in cfg.get(section, "build_flags").splitlines():
+        if "-DCONFIG_WIFI_AP" in line.split(";", 1)[0].split():
+            return True
+    return False
+
+def _check_network_keys(config_path: Path, env_name) -> None:
+    """Once config-overlay.yml is merged in: refuse a non-boolean mdns.* or wifi.enabled,
+    and say what the device will do when the settings drop the .local hostname, leave
+    configured WiFi credentials unused, or contradict each other."""
+    doc = load_yaml_file(config_path, require_mapping=False) or {}
+    mdns = doc.get("mdns") if isinstance(doc.get("mdns"), dict) else {}
+    wifi = doc.get("wifi") if isinstance(doc.get("wifi"), dict) else {}
+    mqtt = doc.get("mqtt") if isinstance(doc.get("mqtt"), dict) else {}
+    problems = [f"mdns.{k} must be true or false (got {mdns[k]!r})"
+                for k in MDNS_KEYS if k in mdns and not isinstance(mdns[k], bool)]
+    if "enabled" in wifi and not isinstance(wifi["enabled"], bool):
+        problems.append(f"wifi.enabled must be true or false (got {wifi['enabled']!r})")
+    if problems:
+        print(f"ERROR: in the configuration merged from the device file and "
+              f"{CONFIG_OVERLAY.name}:", file=sys.stderr)
+        for p in problems:
+            print(f"  {p}", file=sys.stderr)
+        sys.exit(1)
+
+    if mdns.get("enabled") is False:
+        if mqtt.get("mode") in ("discovery-only", "discovery-with-fallback"):
+            print(f"  WARNING: mdns.enabled is false, but mqtt.mode {mqtt['mode']} needs the mDNS "
+                  f"querier, which wins: the device starts it and claims <device-id>.local, "
+                  f"with no service records.")
+        else:
+            print("  WARNING: mdns.enabled is false: the device will not claim <device-id>.local; "
+                  "`mdns: {advertise: false}` keeps the hostname while dropping the service records.")
+        overridden = [k for k in ("discovery", "advertise") if mdns.get(k) is True]
+        if overridden:
+            print(f"  WARNING: mdns.enabled false overrides "
+                  f"{' and '.join('mdns.' + k for k in overridden)} true.")
+
+    wifi_ap = env_is_wifi_ap(env_name)
+    enabled = wifi.get("enabled")
+    if not wifi_ap and wifi.get("ssid") and enabled is not True:
+        print(f"  NOTE: wifi.ssid is set, but {env_name} is an Ethernet build, where WiFi STA "
+              f"stays off unless wifi.enabled is true.")
+    if wifi_ap and enabled is False:
+        print(f"  WARNING: wifi.enabled is false on {env_name}, a WiFi-AP build: the device "
+              f"joins no network at boot and waits on its setup AP until one is chosen there.")
 
 def cmd_config_status(args) -> None:
     print(f"overlay path:    {CONFIG_OVERLAY}")

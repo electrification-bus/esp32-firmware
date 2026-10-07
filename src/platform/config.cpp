@@ -21,10 +21,12 @@ char wifi_password[64] = {0};
 char mqtt_host[64] = {0};
 uint16_t mqtt_port;
 uint8_t mqtt_qos = 2;   // QoS for retained Homie publications; Homie 5 recommends 2 (C4)
-// mDNS gates. The default is BUILD-CONDITIONAL; data/config.yml overrides
-// either gate at runtime, and omitting the keys there leaves these defaults in force.
-// On arduino-esp32 3.x the <device id>.local hostname is claimed regardless of either
-// gate (see setup_mdns()); the gates control only the querier and the service records.
+// mDNS. mdns_enabled is the master switch: false means no mDNS at all (no MDNS.begin(),
+// no <device id>.local claim, no querier, no service records). With it on, two gates
+// split the work, and their default is BUILD-CONDITIONAL; data/config.yml overrides any of
+// the three at runtime, and omitting the keys there leaves these defaults in force.
+// On arduino-esp32 3.x the <device id>.local hostname is claimed whenever mdns_enabled is
+// on, whatever the gates say (see setup_mdns()).
 //
 // The version test is NOT incidental. Per doc/MDNS.md the responder crash is a null-deref
 // inside the PRECOMPILED ESP-IDF mdns component shipped with arduino-esp32 2.0.x
@@ -33,6 +35,7 @@ uint8_t mqtt_qos = 2;   // QoS for retained Homie publications; Homie 5 recommen
 // env keeps both gates off, and every 3.x env advertises, WiFi-AP builds included.
 //
 // Discovery defaults ON for 3.x Ethernet builds and OFF for WiFi-AP builds.
+bool mdns_enabled = true;
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
 #ifdef CONFIG_WIFI_AP
 bool mdns_discovery = false;
@@ -43,6 +46,14 @@ bool mdns_advertise = true;
 #else
 bool mdns_discovery = false;
 bool mdns_advertise = false;
+#endif
+// WiFi STA (config.yml wifi.enabled). WiFi-AP builds have no other uplink, so STA is on;
+// Ethernet builds leave the WiFi stack (about 34 KB of heap) down unless asked for it,
+// even when wifi.ssid is set. See setup_wifi_sta().
+#ifdef CONFIG_WIFI_AP
+bool wifi_sta_enabled = true;
+#else
+bool wifi_sta_enabled = false;
 #endif
 uint16_t log_tcp_port = LOG_TCP_PORT_DEFAULT;   // serial-over-TCP console; 0 = off
 char mqtt_username[64] = {0};
@@ -335,10 +346,17 @@ bool loadPlatformConfiguration() {
     else Serial.printf("CONFIG: ignoring invalid mqtt_qos=%d (must be 0-2)\n", q);
   }
 
-  // mDNS gates. Legacy `mdns_enabled` sets BOTH; granular keys override.
+  JsonVariant v_wifi_enabled = cfg_value("wifi", "enabled", "wifi_enabled");
+  if (v_wifi_enabled.is<bool>()) {
+    wifi_sta_enabled = v_wifi_enabled.as<bool>();
+  }
+
+  // mDNS. `enabled` sets the master switch and both gates; the granular keys then override
+  // the gates, except that enabled=false wins over them: no mDNS at all.
   JsonVariant v_mdns_enabled = cfg_value("mdns", "enabled", "mdns_enabled");
   if (v_mdns_enabled.is<bool>()) {
     bool en = v_mdns_enabled.as<bool>();
+    mdns_enabled = en;
     mdns_discovery = en;
     mdns_advertise = en;
   }
@@ -349,6 +367,11 @@ bool loadPlatformConfiguration() {
   JsonVariant v_mdns_advertise = cfg_value("mdns", "advertise", "mdns_advertise");
   if (v_mdns_advertise.is<bool>()) {
     mdns_advertise = v_mdns_advertise.as<bool>();
+  }
+  if (!mdns_enabled && (mdns_discovery || mdns_advertise)) {
+    Serial.println("CONFIG: mdns.enabled=false overrides mdns.discovery/mdns.advertise; mDNS stays off");
+    mdns_discovery = false;
+    mdns_advertise = false;
   }
 
   // Serial-over-TCP console port; 0 disables the listener (see log_stream.h).
@@ -431,9 +454,17 @@ bool loadPlatformConfiguration() {
   // Coherence: a discovery mqtt_mode locates the broker via mDNS, so it
   // needs the querier. If discovery is requested but mdns_discovery is off, enable it —
   // otherwise no broker can ever be found and the device never connects.
+  // A discovery mode also wins over mdns.enabled=false: the querier starts (and with it,
+  // through the Arduino MDNS API, the hostname claim), but no service records.
   if (mqtt_mode != MQTT_MODE_CONFIGURED_ONLY && !mdns_discovery) {
+    if (!mdns_enabled) {
+      mdns_enabled = true;
+      Serial.println("CONFIG: mqtt_mode needs discovery, which overrides mdns.enabled=false: "
+                     "starting the mDNS querier (claims the .local hostname, no service records)");
+    } else {
+      Serial.println("CONFIG: mqtt_mode needs discovery — enabling mdns_discovery");
+    }
     mdns_discovery = true;
-    Serial.println("CONFIG: mqtt_mode needs discovery — enabling mdns_discovery");
   }
 
   return true;

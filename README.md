@@ -173,7 +173,7 @@ VSCode users: run `./ebus-esp32` in the integrated terminal. The PlatformIO exte
 
 ## Hardware Targets
 
-Defined in [`platformio/platformio.ini`](platformio/platformio.ini). Run `./ebus-esp32 envs` to list them, or `./ebus-esp32 devices` to see what's currently attached via USB. Every build also joins WiFi as a station when `wifi.ssid` is set.
+Defined in [`platformio/platformio.ini`](platformio/platformio.ini). Run `./ebus-esp32 envs` to list them, or `./ebus-esp32 devices` to see what's currently attached via USB. WiFi-AP builds also join WiFi as a station when `wifi.ssid` is set; Ethernet builds do so only with `wifi.enabled: true` (see [Configuration.md](doc/Configuration.md#variables-youll-commonly-set)).
 
 | Env | Board | Notes |
 |---|---|---|

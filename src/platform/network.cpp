@@ -249,9 +249,9 @@ bool mdns_has_broker() {
   return mdns_broker_host[0] != '\0';
 }
 
-// arduino-esp32 3.x always claims <device id>.local; the gates control only the querier
-// and the service records. The 2.0.x responder has a crash bug (doc/MDNS.md), so on
-// 2.0.x nothing starts unless a gate asks for it.
+// With mdns_enabled on, arduino-esp32 3.x always claims <device id>.local; the gates
+// control only the querier and the service records. The 2.0.x responder has a crash bug
+// (doc/MDNS.md), so on 2.0.x nothing starts unless a gate asks for it.
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
 static const bool MDNS_HOSTNAME_ALWAYS = true;
 #else
@@ -259,6 +259,16 @@ static const bool MDNS_HOSTNAME_ALWAYS = false;
 #endif
 
 bool setup_mdns() {
+  // The hostname is the resolved device id, so one image gives every board its own name.
+  char base_hostname[48] = {0};
+  sanitize_hostname(getDeviceID(), base_hostname, sizeof(base_hostname));
+
+  // mdns_enabled=false: nothing at all. The DHCP hostname (setup_ethernet()) is unaffected.
+  if (!mdns_enabled) {
+    Serial.printf("mDNS: disabled by config; not claiming %s.local\n", base_hostname);
+    return false;
+  }
+
   // Two independent gates: mdns_discovery (querier: find the broker) and mdns_advertise
   // (responder: register service records). Defaults are build-conditional; see the #if
   // in config.cpp.
@@ -267,9 +277,6 @@ bool setup_mdns() {
     return false;
   }
 
-  // The hostname is the resolved device id, so one image gives every board its own name.
-  char base_hostname[48] = {0};
-  sanitize_hostname(getDeviceID(), base_hostname, sizeof(base_hostname));
   strncpy(mdns_hostname, base_hostname, sizeof(mdns_hostname) - 1);
 
   // The Arduino MDNS API couples mdns_init() with a hostname claim, so MDNS.begin()
@@ -728,12 +735,22 @@ void testClient(const char * host, uint16_t port)
 // Pressing the button will pull down the input (it has a 10k pullup resistor)
 #define BUTTON_PRESSED()  (!digitalRead (34))
 
-// Start WiFi STA using saved credentials from config/captive portal
-// Returns true if WiFi.begin() was called (credentials exist)
+// Start WiFi STA using saved credentials from config/captive portal.
+// Returns true if WiFi.begin() was called (credentials exist and STA is enabled).
+// wifi_sta_enabled (config.yml wifi.enabled) gates it once a configuration has loaded.
+// Recovery mode (no configuration) joins NVS-saved WiFi whatever the build default, so a
+// board whose only working uplink is WiFi can still be reached and re-flashed.
 bool setup_wifi_sta() {
   if (wifi_ssid[0] == '\0') {
     Serial.println("WiFi STA: No SSID configured, skipping");
     return false;
+  }
+  if (!wifi_sta_enabled) {
+    if (config_loaded) {
+      Serial.printf("WiFi STA: off (wifi.enabled=false); not joining '%s'\n", wifi_ssid);
+      return false;
+    }
+    Serial.println("WiFi STA: recovery mode, joining the NVS-saved network although wifi.enabled is off");
   }
 
   // If already connected (e.g., from captive portal), just log and return
