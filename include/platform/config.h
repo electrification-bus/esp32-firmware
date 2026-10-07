@@ -3,6 +3,7 @@
 #include <util/jsonUtils.h>
 #include <homie/homie.h>
 #include <homie/Device.h>
+#include <platform/broker_discovery.h>
 
 
 #define MAX_DEVICE_ID_CHARS   64 // <device_name>_<6 hex MAC chars>
@@ -59,6 +60,10 @@ enum MqttMode {
 // load, so the mode and the querier gate can't be set incoherently.
 
 extern MqttMode mqtt_mode;
+
+// Broker service types the mDNS querier browses, in priority order (config.yml
+// mqtt.discover; default secure-mqtt, then mqtt).
+extern BrokerDiscoveryList mqtt_discover;
 
 // mDNS is split into two independent gates; their default depends on the build (see
 // config.cpp):

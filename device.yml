@@ -71,6 +71,11 @@ mqtt:
   #   discovery-with-fallback - try mDNS discovery first, fall back to config if none found
   #   discovery-only          - use only mDNS discovery, ignore configured mqtt_host/port
   mode: configured-only
+  # discover: broker service types the discovery modes browse via mDNS, in priority
+  # order; the first with a resolvable broker wins. secure-mqtt (_secure-mqtt._tcp, TLS)
+  # and mqtt (_mqtt._tcp, plain). mqtt-ws/mqtt-wss are refused: the MQTT client has no
+  # WebSocket transport. [secure-mqtt] makes discovery TLS-only. See doc/MDNS.md.
+  discover: [secure-mqtt, mqtt]
   host: ''
   port: 1883
   username: ''

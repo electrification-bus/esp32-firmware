@@ -624,7 +624,27 @@ static bool broker_connect() {
   return true;
 }
 
+// True while mqtt_host is the mDNS-discovered broker's address, which loop_mqtt() may
+// re-resolve; false for a configured broker.
+static bool _broker_from_mdns = false;
+static BrokerReconnect _reconnect_state = {0};
+
+// Point mqtt_host/mqtt_port at the mDNS-discovered broker. Discovered brokers are used
+// anonymously (temporary until credential negotiation), and the CA cert is re-read for
+// the new host.
+static void use_discovered_broker() {
+  strncpy(mqtt_host, mdns_get_broker_host(), sizeof(mqtt_host) - 1);
+  mqtt_host[sizeof(mqtt_host) - 1] = '\0';
+  mqtt_port = mdns_get_broker_port();
+  mqtt_invalidate_ca_cert();
+  mqtt_username[0] = '\0';
+  mqtt_password[0] = '\0';
+  _broker_from_mdns = true;
+}
+
 void setup_mqtt() {
+  _broker_from_mdns = false;
+  broker_reconnect_succeeded(&_reconnect_state);
   // Resolve broker based on mqtt_mode
   if (mqtt_mode == MQTT_MODE_CONFIGURED_ONLY) {
     // Use only the configured broker
@@ -636,14 +656,7 @@ void setup_mqtt() {
   } else if (mqtt_mode == MQTT_MODE_DISCOVERY_WITH_FALLBACK) {
     // Prefer mDNS-discovered broker, fall back to config
     if (mdns_has_broker()) {
-      strncpy(mqtt_host, mdns_get_broker_host(), sizeof(mqtt_host) - 1);
-      mqtt_host[sizeof(mqtt_host) - 1] = '\0';
-      mqtt_port = mdns_get_broker_port();
-      mqtt_invalidate_ca_cert();
-      // Discovered brokers use anonymous connection, ignore config credentials
-      //(temporary until credential negotiation)
-      mqtt_username[0] = '\0';
-      mqtt_password[0] = '\0';
+      use_discovered_broker();
       Serial.printf("MQTT: Using mDNS broker %s:%u anonymous (mqtt_mode=discovery-with-fallback)\n",
                      mqtt_host, mqtt_port);
     } else if (has_mqtt_broker()) {
@@ -655,13 +668,7 @@ void setup_mqtt() {
   } else {
     // MQTT_MODE_DISCOVERY_ONLY (default) - only mDNS, ignore config
     if (mdns_has_broker()) {
-      strncpy(mqtt_host, mdns_get_broker_host(), sizeof(mqtt_host) - 1);
-      mqtt_host[sizeof(mqtt_host) - 1] = '\0';
-      mqtt_port = mdns_get_broker_port();
-      mqtt_invalidate_ca_cert();
-      // Discovered brokers use anonymous connection, ignore config credentials
-      mqtt_username[0] = '\0';
-      mqtt_password[0] = '\0';
+      use_discovered_broker();
       Serial.printf("MQTT: Using mDNS broker %s:%u anonymous (mqtt_mode=discovery-only)\n",
                      mqtt_host, mqtt_port);
     } else {
@@ -726,7 +733,19 @@ void loop_mqtt() {
       last_attempt_ms = now;
       Serial.printf("MQTT: not connected (error %d), reconnecting to %s\n",
                     (int)mqtt_client.lastError(), mqtt_host);
-      broker_connect();
+      if (broker_connect()) {
+        broker_reconnect_succeeded(&_reconnect_state);
+      } else if (_broker_from_mdns && broker_reconnect_failed(&_reconnect_state)) {
+        // The discovered broker may have a new DHCP lease: ask for its .local name again.
+        Serial.printf("MQTT: %d reconnects to %s failed, re-resolving the broker\n",
+                      BROKER_RERESOLVE_AFTER_FAILURES, mqtt_host);
+        if (mdns_reresolve_broker()) {
+          use_discovered_broker();
+          transportClient = nullptr;   // re-select the transport and CA for the new address
+          Serial.printf("MQTT: reconnecting to re-resolved broker %s:%u\n", mqtt_host, mqtt_port);
+          if (broker_connect()) broker_reconnect_succeeded(&_reconnect_state);
+        }
+      }
     }
   }
 

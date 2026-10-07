@@ -13,6 +13,7 @@
 #include <time.h>
 #include <platform/config.h>
 #include <platform/network.h>
+#include <platform/broker_discovery.h>
 #include <homie/homie.h>
 #include <platform/mdns_strings.h>
 #include <platform/log_stream.h>
@@ -122,17 +123,26 @@ static void mdns_add_txt(const char* service, const char* proto, const char* key
 // Forward declaration - registers all mDNS services
 void mdns_register_services();
 
-// mDNS-discovered MQTT broker (separate from config broker)
+// mDNS-discovered MQTT broker (separate from config broker). The connection goes to the
+// resolved IP address; the host name is kept so the address can be resolved again when
+// the broker stops answering there (mdns_reresolve_broker()).
 static char mdns_broker_host[64] = {0};
+static char mdns_broker_hostname[64] = {0};   // bare mDNS name, without ".local"
 static uint16_t mdns_broker_port = 0;
 
 #define MDNS_DISCOVERY_ATTEMPTS 3
 #define MDNS_DISCOVERY_DELAY_MS 3000
+#define MDNS_RERESOLVE_TIMEOUT_MS 2000
+
+static void format_ip(IPAddress ip, char* out, size_t out_size) {
+  snprintf(out, out_size, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+}
 
 // Browse one DNS-SD service type; on the first result with a resolvable IP, store the
-// broker in mdns_broker_host/port and return true. default_port is used when the SRV
-// record carries no port. Does not modify mqtt_host/mqtt_port globals.
-static bool mdns_query_one_service(const char* service, uint16_t default_port) {
+// broker in mdns_broker_host/hostname/port and return true. The service's default port
+// is used when the SRV record carries none. Does not modify mqtt_host/mqtt_port globals.
+static bool mdns_query_one_service(uint8_t svc) {
+  const char* service = broker_service_name(svc);
   int num_found = MDNS.queryService(service, MDNS_QUERY_TCP);
   if (num_found <= 0) {
     Serial.printf("mDNS: No _%s._tcp services found\n", service);
@@ -142,6 +152,7 @@ static bool mdns_query_one_service(const char* service, uint16_t default_port) {
   Serial.printf("mDNS: Found %d _%s._tcp broker(s)\n", num_found, service);
 
   for (int i = 0; i < num_found; i++) {
+    // Copied within the statement, while the String temporary is still alive.
     char hostname[64];
     snprintf(hostname, sizeof(hostname), "%s", MDNS.hostname(i).c_str());
     uint16_t svc_port = MDNS.port(i);
@@ -166,24 +177,33 @@ static bool mdns_query_one_service(const char* service, uint16_t default_port) {
       continue;
     }
 
-    snprintf(mdns_broker_host, sizeof(mdns_broker_host), "%d.%d.%d.%d",
-             broker_ip[0], broker_ip[1], broker_ip[2], broker_ip[3]);
-    mdns_broker_port = svc_port > 0 ? svc_port : default_port;
+    format_ip(broker_ip, mdns_broker_host, sizeof(mdns_broker_host));
+    mdns_broker_port = svc_port > 0 ? svc_port : broker_service_default_port(svc);
+    if (!broker_copy_hostname(hostname, mdns_broker_hostname, sizeof(mdns_broker_hostname))) {
+      Serial.printf("mDNS:   [%d] Host name '%s' unusable, the address cannot be re-resolved\n",
+                     i, hostname);
+    }
 
-    Serial.printf("mDNS: Discovered %s broker: %s:%u (host=%s)\n",
-                   mdns_broker_port == MQTT_SECURE_PORT ? "MQTTS" : "MQTT",
+    Serial.printf("mDNS: Discovered %s broker via _%s._tcp: %s:%u (host=%s)\n",
+                   mdns_broker_port == MQTT_SECURE_PORT ? "MQTTS" : "MQTT", service,
                    mdns_broker_host, mdns_broker_port, hostname);
     return true;
   }
   return false;
 }
 
-// Discover an MQTT broker via mDNS, storing the result in mdns_broker_host/port.
-// Prefers _secure-mqtt._tcp (TLS, 8883) — the eBus-primary form that TLS-only brokers
-// (e.g. SPAN) advertise — and falls back to _mqtt._tcp (plain, 1883), which the eBus
-// spec only expects when TLS isn't feasible.
+// Discover an MQTT broker via mDNS, storing the result in mdns_broker_host/port. Browses
+// the service types in mqtt_discover (config.yml mqtt.discover) in order; the default is
+// _secure-mqtt._tcp (TLS, 8883), the form TLS-only brokers (e.g. SPAN) advertise, then
+// _mqtt._tcp (plain, 1883), which the eBus spec only expects when TLS isn't feasible.
 static bool mdns_query_mqtt_broker() {
-  Serial.println("mDNS: Searching for MQTT brokers (_secure-mqtt._tcp, then _mqtt._tcp)...");
+  char order[96] = {0};
+  size_t pos = 0;
+  for (uint8_t k = 0; k < mqtt_discover.count && pos < sizeof(order); k++) {
+    pos += snprintf(order + pos, sizeof(order) - pos, "%s_%s._tcp", k == 0 ? "" : ", then ",
+                    broker_service_name(mqtt_discover.services[k]));
+  }
+  Serial.printf("mDNS: Searching for MQTT brokers (%s)...\n", order);
 
   for (int attempt = 0; attempt < MDNS_DISCOVERY_ATTEMPTS; attempt++) {
     if (attempt > 0) {
@@ -191,12 +211,39 @@ static bool mdns_query_mqtt_broker() {
       delay(MDNS_DISCOVERY_DELAY_MS);
     }
 
-    if (mdns_query_one_service(MDNS_QUERY_SECURE_MQTT, MQTT_SECURE_PORT)) return true;
-    if (mdns_query_one_service(MDNS_QUERY_MQTT, 1883)) return true;
+    for (uint8_t k = 0; k < mqtt_discover.count; k++) {
+      if (mdns_query_one_service(mqtt_discover.services[k])) return true;
+    }
   }
 
   Serial.println("mDNS: No MQTT broker found via mDNS");
   return false;
+}
+
+bool mdns_reresolve_broker() {
+  if (mdns_broker_hostname[0] == '\0') {
+    Serial.println("mDNS: Broker has no host name to re-resolve");
+    return false;
+  }
+  Serial.printf("mDNS: Re-resolving broker %s.local (last at %s)\n",
+                 mdns_broker_hostname, mdns_broker_host);
+  IPAddress ip = MDNS.queryHost(mdns_broker_hostname, MDNS_RERESOLVE_TIMEOUT_MS);
+  if (ip == IPAddress(0, 0, 0, 0)) {
+    Serial.printf("mDNS: No answer for %s.local, keeping %s\n",
+                   mdns_broker_hostname, mdns_broker_host);
+    return false;
+  }
+  char ip_str[sizeof(mdns_broker_host)];
+  format_ip(ip, ip_str, sizeof(ip_str));
+  if (strcmp(ip_str, mdns_broker_host) == 0) {
+    Serial.printf("mDNS: %s.local is still at %s\n", mdns_broker_hostname, mdns_broker_host);
+    return false;
+  }
+  Serial.printf("mDNS: %s.local moved from %s to %s\n",
+                 mdns_broker_hostname, mdns_broker_host, ip_str);
+  strncpy(mdns_broker_host, ip_str, sizeof(mdns_broker_host) - 1);
+  mdns_broker_host[sizeof(mdns_broker_host) - 1] = '\0';
+  return true;
 }
 
 const char* mdns_get_broker_host() {

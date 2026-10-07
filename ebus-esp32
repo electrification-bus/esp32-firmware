@@ -255,6 +255,51 @@ def get_log_port(cfg: dict) -> int:
         print("ERROR: device.yml log.tcp_port must be an integer", file=sys.stderr)
         sys.exit(1)
 
+# Broker service types for mqtt.discover: the DNS-SD names from the eBus specification
+# (framework.md, "Broker Discovery"), without the leading underscore and ._tcp.
+BROKER_SERVICES = ("secure-mqtt", "mqtt", "mqtt-ws", "mqtt-wss")
+# The firmware's MQTT client is a TCP/TLS client (src/platform/mqtt_client.cpp), so it
+# cannot use the WebSocket transports.
+BROKER_SERVICES_UNSUPPORTED = ("mqtt-ws", "mqtt-wss")
+DEFAULT_BROKER_DISCOVERY = ["secure-mqtt", "mqtt"]
+
+def broker_discovery_list(value, where: str) -> list:
+    """mqtt.discover as the firmware will read it: the broker service types the mDNS
+    querier browses, in priority order. None (key absent) is the default. Any problem
+    is reported, naming `where`, and generate stops."""
+    if value is None:
+        return list(DEFAULT_BROKER_DISCOVERY)
+    problems = []
+    if not isinstance(value, list):
+        problems.append(f"must be a list, e.g. [secure-mqtt, mqtt] (got {value!r})")
+    elif not value:
+        problems.append("is empty; list at least one service, or remove the key for the "
+                        "default [secure-mqtt, mqtt]")
+    else:
+        seen = set()
+        for item in value:
+            if not isinstance(item, str) or item not in BROKER_SERVICES:
+                problems.append(f"{item!r} is not a broker service; valid: "
+                                f"{', '.join(BROKER_SERVICES)}")
+            elif item in BROKER_SERVICES_UNSUPPORTED:
+                problems.append(f"{item!r} is MQTT over WebSocket, which this firmware's MQTT "
+                                f"client (TCP/TLS only) cannot use; use secure-mqtt or mqtt")
+            elif item in seen:
+                problems.append(f"{item!r} is listed more than once")
+            else:
+                seen.add(item)
+    if problems:
+        print(f"ERROR: mqtt.discover in {where}:", file=sys.stderr)
+        for p in problems:
+            print(f"  {p}", file=sys.stderr)
+        sys.exit(1)
+    return list(value)
+
+def _check_broker_discovery(config_path: Path) -> None:
+    """Validate mqtt.discover again once config-overlay.yml has been merged in."""
+    mqtt = (load_yaml_file(config_path) or {}).get("mqtt") or {}
+    broker_discovery_list(mqtt.get("discover"), CONFIG_OVERLAY.name)
+
 # ── generate ───────────────────────────────────────────────────────────────────
 
 _HOMIE_CPP_HEADER = """\
@@ -701,6 +746,8 @@ def _generate(args) -> None:
               f"'./ebus-esp32 envs').", file=sys.stderr)
         sys.exit(1)
     _require_passphrase(cfg, device_yml)
+    broker_discovery = broker_discovery_list((cfg.get("mqtt") or {}).get("discover"),
+                                             str(device_yml))
 
     includes          = []
     decls             = []   # entity object declarations
@@ -1026,6 +1073,8 @@ def _generate(args) -> None:
             "qos":      mqtt_cfg.get("qos") if mqtt_cfg.get("qos") is not None else 2,
             "username": mqtt_cfg.get("username") or "",
             "password": mqtt_cfg.get("password") or "",
+            # Broker service types the mDNS querier browses, in priority order.
+            "discover": broker_discovery,
         },
         "log": {
             # Serial-over-TCP console port (device.yml: log.tcp_port); 0 disables.
@@ -1048,6 +1097,7 @@ def _generate(args) -> None:
         yaml.dump(config_doc, f, allow_unicode=True, sort_keys=False)
     print(f"  generated: {out_config.relative_to(ROOT)}")
     _apply_overlay(out_config)
+    _check_broker_discovery(out_config)
     _warn_no_broker(out_config)
 
     env_name = device.get("environment", "<environment>")

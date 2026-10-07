@@ -37,3 +37,8 @@ const char* get_mdns_hostname();
 bool mdns_has_broker();
 const char* mdns_get_broker_host();
 uint16_t mdns_get_broker_port();
+// Resolve the discovered broker's .local host name again (one mDNS query, no browsing).
+// Returns true when it answered from a new address, which mdns_get_broker_host() then
+// returns; false when it did not answer, answered from the same address, or no broker
+// host name is known.
+bool mdns_reresolve_broker();

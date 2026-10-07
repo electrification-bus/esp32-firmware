@@ -78,6 +78,9 @@ static unsigned long _ota_enabled_at = 0;
 // needed. A discovery mode auto-enables the querier (see parse_config coherence check).
 MqttMode mqtt_mode = MQTT_MODE_CONFIGURED_ONLY;
 
+// Default secure-mqtt, then mqtt; overridden by mqtt.discover in config.yml.
+BrokerDiscoveryList mqtt_discover = {2, {BROKER_SVC_SECURE_MQTT, BROKER_SVC_MQTT}};
+
 const char* UNIQUE_ID = "";
 char device_id[MAX_DEVICE_ID_CHARS] = {0};
 
@@ -399,6 +402,30 @@ bool loadPlatformConfiguration() {
       mqtt_mode = MQTT_MODE_DISCOVERY_ONLY;
     }
     Serial.printf("CONFIG: mqtt_mode=%s\n", mode_str);
+  }
+
+  // Broker service types to browse, in priority order. generate validates the list; a
+  // hand-written config.yml gets each bad entry skipped, and the default if none is left.
+  JsonVariant v_discover = cfg_value("mqtt", "discover", "mqtt_discover");
+  if (v_discover.is<JsonArray>()) {
+    BrokerDiscoveryList list;
+    broker_discovery_clear(&list);
+    for (JsonVariant e : v_discover.as<JsonArray>()) {
+      const char* name = e.is<const char*>() ? e.as<const char*>() : "";
+      BrokerDiscoveryAdd r = broker_discovery_add(&list, name);
+      if (r == BROKER_ADD_UNKNOWN) {
+        Serial.printf("CONFIG: mqtt.discover: ignoring unknown service '%s'\n", name);
+      } else if (r == BROKER_ADD_UNSUPPORTED) {
+        Serial.printf("CONFIG: mqtt.discover: ignoring '%s' (WebSocket transport not supported)\n", name);
+      } else if (r == BROKER_ADD_DUPLICATE) {
+        Serial.printf("CONFIG: mqtt.discover: ignoring duplicate '%s'\n", name);
+      }
+    }
+    if (list.count > 0) {
+      mqtt_discover = list;
+    } else {
+      Serial.println("CONFIG: mqtt.discover has no usable service, keeping secure-mqtt, mqtt");
+    }
   }
 
   // Coherence: a discovery mqtt_mode locates the broker via mDNS, so it

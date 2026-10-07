@@ -36,7 +36,24 @@ The precompiled ESP-IDF mDNS component in arduino-esp32 2.0.x can crash on certa
 
 ## Broker discovery
 
-`setup_mdns()` in [`src/platform/network.cpp`](../src/platform/network.cpp) browses `_secure-mqtt._tcp` first and then `_mqtt._tcp`, up to three attempts 3 seconds apart. The first result with a resolved address is used, by IP address, on the advertised port (8883 or 1883 if the SRV record has none). Until a broker is found, `loop_mdns()` repeats the browse every 30 seconds; it stops once a broker is found, or in `discovery-with-fallback` mode once the configured broker is connected.
+`setup_mdns()` in [`src/platform/network.cpp`](../src/platform/network.cpp) browses the service types in `mqtt.discover`, in order, up to three attempts 3 seconds apart. The default is `_secure-mqtt._tcp` and then `_mqtt._tcp`. The first result with a resolved address is used, by IP address, on the advertised port (the service's standard port, 8883 or 1883, if the SRV record has none). Until a broker is found, `loop_mdns()` repeats the browse every 30 seconds; it stops once a broker is found, or in `discovery-with-fallback` mode once the configured broker is connected.
+
+```yaml
+mqtt:
+  mode: discovery-only
+  discover: [secure-mqtt]   # TLS-only: never pick a plain _mqtt._tcp broker
+```
+
+| `mqtt.discover` value | Service browsed | Supported |
+|---|---|---|
+| `secure-mqtt` | `_secure-mqtt._tcp` (TLS, 8883) | yes |
+| `mqtt` | `_mqtt._tcp` (plain, 1883) | yes |
+| `mqtt-ws` | `_mqtt-ws._tcp` (WebSocket, 9001) | no |
+| `mqtt-wss` | `_mqtt-wss._tcp` (secure WebSocket, 9002) | no |
+
+The eBus specification's preference order is `_secure-mqtt._tcp`, `_mqtt-wss._tcp`, `_mqtt-ws._tcp`, `_mqtt._tcp`. The firmware's MQTT client connects over TCP or TLS only, so `generate` refuses the two WebSocket values, as well as an empty list, a duplicate or an unknown name. A hand-written `data/config.yml` with a bad entry has it skipped at boot, and the default is used if nothing usable is left.
+
+The broker's `.local` host name is kept alongside its address. When three consecutive reconnects to the address fail (the reconnect interval is 10 seconds), the firmware sends one mDNS query for the host name. If the broker answers from a new address, the firmware switches to it, re-selects the transport and CA certificate for it, and reconnects at once; otherwise it keeps the old address and asks again after three more failures. This covers a broker whose DHCP lease changed. It is a single host query, not a new browse. A configured broker (`mqtt.host`) is never re-resolved.
 
 mDNS is unauthenticated LAN multicast, and any host can advertise an MQTT service. A discovered broker is verified only when a CA certificate for it is already on the device: `/certs/<Host>.ca` named from the broker's IP address, or `/certs/uploaded-cert.ca` (see [Configuration.md](Configuration.md#broker-ca-certificate-tls)). Otherwise envs built without `-DESP32_POE_ISO` trust whatever root certificate the broker presents (or skip verification if fetching it fails), and `-DESP32_POE_ISO` envs connect in plaintext on port 1883. A broker on any port other than 8883, normally a `_mqtt._tcp` result, gets plain MQTT with no TLS.
 
