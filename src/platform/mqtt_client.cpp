@@ -231,7 +231,7 @@ static bool mqtt_fetch_and_save_root_cert() {
   mqtt_build_cert_path(mqtt_host, cert_path, sizeof(cert_path));
 
   Serial.printf("TLS: Fetching root CA from %s:%u\n", mqtt_host, mqtt_port);
-  Serial.printf("TLS: Free heap before probe: %u bytes\n", ESP.getFreeHeap());
+  Serial.printf("TLS: Free heap before probe: %u bytes\n", (unsigned)ESP.getFreeHeap());
 
   // Reuse global secureClient for the probe to avoid allocating a second
   // TLS context (~40KB heap). We set it insecure for the probe, then
