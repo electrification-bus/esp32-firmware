@@ -975,7 +975,6 @@ def _generate(args) -> None:
             prop_reg_body.append(f'    {cvar}.init("{cname}", {cidbuf}, "{ctype}", {dev_access}mqttClient());')
             prop_reg_body.append(f"    {dev_access}addChild(&{cvar});")
             emit_device(child, f"{cvar}.", f"&{cvar}", cidbuf, is_root=False)
-            prop_reg_body.append(f"    {cvar}.setState(DeviceState::DEVICE_STATE_READY);")
 
     emit_device(cfg, "device->", "device", "device->getId()", is_root=True)
     check_gpio_conflicts(pin_uses)

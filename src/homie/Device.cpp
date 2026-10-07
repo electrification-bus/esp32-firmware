@@ -148,16 +148,16 @@ const char* Device::rootId() {
   return _parent ? root()->getId() : nullptr;
 }
 
-// Publish this device and every descendant: each emits its own $state +
-// $description + node values over the shared (root) MQTT connection. Depth-first,
-// parents before children. (The ordered Homie add-child INIT/READY protocol is
-// A6; this is the straight whole-tree publish.)
+// Boot publish of this device and every descendant over the shared (root) MQTT
+// connection, in the Homie 5 "Adding children" order: each child is published fully
+// (init -> $description + node values -> ready) before its parent goes init ->
+// $description listing it -> ready. Post-order, so the root, whose Last Will cascades
+// "lost" to the whole tree, leaves "lost" only once every child is already ready.
 void Device::publishTree() {
-  publishState();
-  publish();
   for (Device* c = _first_child; c; c = c->_next_sibling) {
     c->publishTree();
   }
+  StateTransition t(this);   // init now; $description + values, then ready, at scope exit
 }
 
 // Republish $state for this device and every descendant. Used on MQTT reconnect:
