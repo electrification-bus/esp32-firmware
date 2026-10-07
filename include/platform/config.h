@@ -16,6 +16,12 @@
 
 extern char wifi_ssid[33];
 extern char wifi_password[64];
+// WiFi STA on/off (config.yml wifi.enabled): default true on CONFIG_WIFI_AP builds, false
+// on Ethernet builds. Applies only once a configuration has loaded; recovery mode joins
+// NVS-saved WiFi regardless (see setup_wifi_sta()).
+extern bool wifi_sta_enabled;
+// True once loadConfiguration() succeeded; false in recovery mode.
+extern bool config_loaded;
 
 extern char mqtt_host[64];
 extern uint16_t mqtt_port;
@@ -65,22 +71,25 @@ extern MqttMode mqtt_mode;
 // mqtt.discover; default secure-mqtt, then mqtt).
 extern BrokerDiscoveryList mqtt_discover;
 
-// mDNS is split into two independent gates; their default depends on the build (see
-// config.cpp):
+// mDNS master switch (config.yml mdns.enabled, default true). false means no mDNS at all:
+// no MDNS.begin(), no <device id>.local claim, no querier, no service records. A discovery
+// MqttMode turns it back on for the querier at config load (see config.cpp).
+extern bool mdns_enabled;
+
+// With mdns_enabled on, mDNS is split into two independent gates; their default depends
+// on the build (see config.cpp):
 //   mdns_discovery — querier: browse for the MQTT broker (_mqtt._tcp / _secure-mqtt._tcp)
 //                    and resolve .local names. The crash-safe client side; this is the
 //                    high-value path (find the broker) and is what discovery MqttModes need.
-//   mdns_advertise — responder: register the _device-info / _http / _homie / _ebus service
+//   mdns_advertise — responder: register the _device-info / _http / _telnet / _ebus service
 //                    records (TXT-heavy) so other hosts can find this device. This is where
 //                    the bundled ESP-IDF responder in arduino-esp32 2.0.x can crash on
 //                    certain inbound packets.
-// On arduino-esp32 3.x the <device id>.local hostname is claimed whatever the gates say,
-// so `mdns_enabled: false` there leaves the hostname up with no querier and no services.
+// On arduino-esp32 3.x the <device id>.local hostname is claimed whenever mdns_enabled is
+// on, so `mdns: {advertise: false}` there keeps the hostname and drops the service records.
 // NOTE (Level-1 limitation): the Arduino MDNS API couples mdns_init() with a hostname
 // claim, so mdns_discovery still brings up a *minimal* hostname responder; only the
-// heavy service/TXT advertising is gated by mdns_advertise. A pure query-only path (no
-// responder at all) needs the ESP-IDF C API — tracked separately.
-// Legacy: a `mdns_enabled` config key sets BOTH gates (old single-flag behavior).
+// heavy service/TXT advertising is gated by mdns_advertise.
 extern bool mdns_discovery;
 extern bool mdns_advertise;
 

@@ -61,9 +61,14 @@ device:
   homie_role: device  # "device" or "controller"
   device_passphrase: ""  # set it in config-overlay.yml; generate refuses an empty or "changeme" value
 
+# WiFi station. WiFi-AP builds (CONFIG_WIFI_AP, e.g. esp32-s3-devkitc-1) join ssid when it
+# is set. Ethernet builds (esp32-poe-iso and the like) leave WiFi off even with an ssid, which
+# saves about 34 KB of heap; enabled: true starts WiFi STA alongside Ethernet, which stays
+# the preferred route. Omit enabled to keep the build default.
 wifi:
   ssid: ''
   password: ''
+  #enabled: true
 
 mqtt:
   # mqtt_mode controls how the MQTT broker is resolved:
@@ -85,20 +90,24 @@ mqtt:
   # always QoS 0 per spec. Valid: 0, 1, 2.
   qos: 2
 
-# mDNS. arduino-esp32 3.x builds always claim <device id>.local (the resolved
-# device.id, e.g. b0b21c90f570.local; not device.name), whatever this block says.
-# These keys gate only the querier (discovery) and the service records (advertise):
+# mDNS. arduino-esp32 3.x builds claim <device id>.local (the resolved device.id, e.g.
+# b0b21c90f570.local; not device.name). Two keys gate the querier (discovery) and the
+# service records (advertise):
 #   3.x Ethernet (the default, unsuffixed envs)   advertise ON,  discovery ON
 #   3.x WiFi-AP                                   advertise ON,  discovery OFF
 #   every -arduino2 env                           both OFF, and no hostname claim
 # The 2.0.x exclusion is deliberate: its precompiled mDNS responder has an upstream
 # null-deref on inbound packets (doc/MDNS.md). 3.x carries the rewrite.
-# On 3.x, `enabled: false` turns off discovery and advertising; the hostname stays.
 #
-# COMMENT THIS BLOCK OUT to accept the build default. Setting it — true or false —
-# pins the behavior for every build of this device.
+# To save heap, `advertise: false` is the lighter option: it keeps <device id>.local and
+# drops the service records. `enabled: false` is the full opt-out: no mDNS at all, so the
+# device no longer answers at <device id>.local (generate warns). A discovery mqtt.mode
+# still starts the querier, which claims the hostname.
+#
+# COMMENT THIS BLOCK OUT to accept the build default. Setting a key, true or false,
+# pins it for every build of this device.
 #mdns:
-#  enabled: false
+#  advertise: false
 
 # Serial console over TCP. The firmware tees every Serial.printf() to this port as
 # well as the UART, so an installed board can be watched without a USB cable:

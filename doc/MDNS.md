@@ -1,6 +1,6 @@
 # mDNS
 
-On arduino-esp32 3.x builds the firmware always claims `<device-id>.local` (see [Hostname](#hostname)). Two further jobs each sit behind their own gate:
+On arduino-esp32 3.x builds the firmware claims `<device-id>.local` (see [Hostname](#hostname)) unless mDNS is turned off entirely. Two further jobs each sit behind their own gate:
 
 - **Discovery** (querier, `mdns.discovery`): browse the LAN for an MQTT broker. Outbound queries only.
 - **Advertising** (responder, `mdns.advertise`): advertise the `_ebus._tcp`, `_http._tcp`, `_telnet._tcp` and `_device-info._tcp` services.
@@ -11,8 +11,8 @@ Homie device discovery itself runs over MQTT and needs neither.
 
 | Build | Hostname claim | `mdns.advertise` default | `mdns.discovery` default |
 |---|---|---|---|
-| arduino-esp32 3.x, Ethernet (default, unsuffixed envs) | always | on | on |
-| arduino-esp32 3.x, WiFi-AP (`CONFIG_WIFI_AP`) | always | on | off |
+| arduino-esp32 3.x, Ethernet (default, unsuffixed envs) | yes | on | on |
+| arduino-esp32 3.x, WiFi-AP (`CONFIG_WIFI_AP`) | yes | on | off |
 | `-arduino2` (arduino-esp32 2.0.x) | only when a gate is on | off | off |
 
 The defaults are the `#if` above `mdns_discovery` in [`src/platform/config.cpp`](../src/platform/config.cpp).
@@ -21,14 +21,22 @@ Override the build default in the `mdns:` section of `device.yml` or `config-ove
 
 ```yaml
 mdns:
-  enabled: true      # sets both gates
-  discovery: true    # querier; overrides `enabled`
-  advertise: false   # responder; overrides `enabled`
+  advertise: false   # responder; keeps <device-id>.local, drops the service records
+  discovery: true    # querier
 ```
 
-`mqtt.mode` decides whether discovery is used to find the broker: `configured-only` (the default) never queries, `discovery-with-fallback` tries mDNS first and then the configured `mqtt.host`, and `discovery-only` ignores the configured host. A discovery mode turns `mdns.discovery` on even when the configuration turns it off.
+To save heap, `advertise: false` is the lighter option: on 3.x the device keeps answering at `<device-id>.local` and stops advertising its services. Note that the eBus specification requires `_ebus._tcp` and `_device-info._tcp` (see [Advertised services](#advertised-services)).
 
-On 3.x builds the gates do not affect the hostname: `enabled: false` stops discovery and advertising, and `<device-id>.local` is still claimed.
+`enabled: false` is the full opt-out: no mDNS at all on every build. The firmware does not call `MDNS.begin()`, claims no hostname, registers no services and runs no querier, and it overrides `discovery` and `advertise`. The device is then reachable only by IP address. `generate` prints a warning when the merged configuration sets it, and the device logs `mDNS: disabled by config; not claiming <device-id>.local` at boot. `enabled: true` turns both gates on. The DHCP hostname is independent of mDNS and is sent either way.
+
+| Configuration | 3.x hostname | 3.x advertise | 3.x discovery | `-arduino2` |
+|---|---|---|---|---|
+| no `mdns:` section | yes | on | on (Ethernet), off (WiFi-AP) | nothing starts |
+| `advertise: false` | yes | off | as the default | nothing starts |
+| `enabled: false` | no | off | off | nothing starts |
+| `enabled: false` with a discovery `mqtt.mode` | yes | off | on | querier and hostname |
+
+`mqtt.mode` decides whether discovery is used to find the broker: `configured-only` (the default) never queries, `discovery-with-fallback` tries mDNS first and then the configured `mqtt.host`, and `discovery-only` ignores the configured host. A discovery mode turns `mdns.discovery` on even when the configuration turns it off, and it wins over `enabled: false`, since the device could not find its broker otherwise: the querier starts, which through the Arduino `MDNS.begin()` call also claims the hostname, but no services are advertised. Both `generate` and the boot log (`CONFIG: mqtt_mode needs discovery, which overrides mdns.enabled=false`) say so.
 
 ### Responder crash on arduino-esp32 2.0.x
 

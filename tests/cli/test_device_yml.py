@@ -248,9 +248,9 @@ def test_mdns_section_is_omitted_when_device_yml_is_silent(sandbox):
     assert "mdns" not in sandbox.config_yml
 
 
-def test_mdns_keys_present_in_device_yml_are_emitted_as_bools(sandbox):
+def test_mdns_keys_present_in_device_yml_are_emitted(sandbox):
     doc = device_doc()
-    doc["mdns"] = {"enabled": False, "advertise": 1}
+    doc["mdns"] = {"enabled": False, "advertise": True}
     sandbox.generate(doc)
     assert sandbox.config_yml["mdns"] == {"enabled": False, "advertise": True}
 
