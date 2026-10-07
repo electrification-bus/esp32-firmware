@@ -169,8 +169,6 @@ def test_node_ids_are_unique_across_child_devices(sandbox, capsys):
     assert "node id 'r' is used by more than one node" in generate_error(sandbox, capsys, doc)
 
 
-@pytest.mark.xfail(strict=True, reason="two child devices with the same id both emit "
-                   "`static Device dev_<id>;`, a C++ redefinition; generate does not check")
 def test_duplicate_child_device_ids_are_rejected(sandbox):
     doc = device_doc()
     doc["children"] = [{"id": "kid"}, {"id": "kid"}]
@@ -178,8 +176,6 @@ def test_duplicate_child_device_ids_are_rejected(sandbox):
         sandbox.generate(doc)
 
 
-@pytest.mark.xfail(strict=True, reason="ids differing only in '-' vs '_' map to the same C++ "
-                   "variable, a redefinition; the duplicate check compares raw ids only")
 def test_ids_colliding_as_cpp_names_are_rejected(sandbox):
     with pytest.raises(SystemExit):
         sandbox.generate(device_doc([relay("pump-1", 14), relay("pump_1", 15)]))

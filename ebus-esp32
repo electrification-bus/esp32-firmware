@@ -597,6 +597,10 @@ def registers_to_properties(regs, node_id, comp_path):
         if not rid:
             print(f"ERROR: {where}: missing required 'id'", file=sys.stderr)
             sys.exit(1)
+        if not isinstance(rid, str):
+            print(f"ERROR: {where}: id must be a string, got {rid!r} (quote it in the "
+                  f"yml if it looks like a number)", file=sys.stderr)
+            sys.exit(1)
         if rid in seen:
             print(f"ERROR: {where}: duplicate register id '{rid}' — ids become property "
                   f"topics and must be unique within the node", file=sys.stderr)
@@ -606,7 +610,7 @@ def registers_to_properties(regs, node_id, comp_path):
             print(f"ERROR: {where} ('{rid}'): missing required 'reg' (the register "
                   f"address, e.g. 1 or 0x0001)", file=sys.stderr)
             sys.exit(1)
-        if not isinstance(r["reg"], int):
+        if isinstance(r["reg"], bool) or not isinstance(r["reg"], int):
             print(f"ERROR: {where} ('{rid}'): reg must be an integer, got {r['reg']!r}. "
                   f"YAML reads 0x0001 as an int but \"0x0001\" as a string.", file=sys.stderr)
             sys.exit(1)
@@ -700,6 +704,8 @@ def _generate(args) -> None:
     loops             = []
     homie_nodes       = []   # ROOT device's nodes only (data/homie.yml)
     seen_node_ids     = {}   # node_id -> component that first used it (duplicate-id check)
+    seen_node_cvars   = {}   # C++ name -> node_id, so ids that differ only in '-' vs '_' are caught
+    seen_child_ids    = {}   # C++ name -> child id (duplicate child-device check)
     used_lib_deps     = []   # lib_deps strings from every used component's generator block (dedup, ordered)
     used_components   = []   # 'bus/name' of every used component (dedup, ordered)
     pin_uses          = {}   # label -> GPIO, for every bus and node pin in use (conflict check)
@@ -782,6 +788,13 @@ def _generate(args) -> None:
                   f"'{component}'{hint}. Every node needs a unique id.", file=sys.stderr)
             sys.exit(1)
         seen_node_ids[node_id] = component
+        cv = _cvar(node_id)
+        if cv in seen_node_cvars:
+            print(f"ERROR: node ids '{seen_node_cvars[cv]}' and '{node_id}' both become the "
+                  f"C++ name '{cv}'. Change one so they differ by more than '-' versus '_'.",
+                  file=sys.stderr)
+            sys.exit(1)
+        seen_node_cvars[cv] = node_id
         check_config_keys(node_id, component, comp_path, ctor_tmpl, node_cfg)
         check_bus_keys(node_id, component, comp_path, ctor_tmpl, buses_cfg)
         for bus, key in required_bus_keys(ctor_tmpl):
@@ -882,6 +895,12 @@ def _generate(args) -> None:
                       f"(got {child!r})", file=sys.stderr)
                 sys.exit(1)
             cid    = child["id"]                 # suffix; runtime id = <parent>-<cid>
+            if _cvar(cid) in seen_child_ids:
+                print(f"ERROR: child device ids '{seen_child_ids[_cvar(cid)]}' and '{cid}' "
+                      f"collide (the same id, or ids that become the same C++ name). Every "
+                      f"child device needs a unique id.", file=sys.stderr)
+                sys.exit(1)
+            seen_child_ids[_cvar(cid)] = cid
             cvar   = "dev_" + _cvar(cid)
             cidbuf = "childId_" + _cvar(cid)
             cname  = child.get("name", cid)
@@ -1431,7 +1450,8 @@ def _pull_watch(host: str, passphrase: str, timeout: int) -> int:
         status, text = reply
         state = ""
         try:
-            state = (json.loads(text) or {}).get("status", "")
+            doc = json.loads(text)
+            state = doc.get("status", "") if isinstance(doc, dict) else ""
         except ValueError:
             state = text
         if state != last:

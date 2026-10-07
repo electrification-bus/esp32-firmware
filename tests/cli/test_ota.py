@@ -212,3 +212,8 @@ def test_pull_non_json_reply_is_shown_as_the_state(cli, device, capsys):
     device(["busy", status("complete")])
     assert cli._pull_watch(HOST, "p", 300) == 0
     assert "device: busy" in capsys.readouterr().out
+
+
+def test_pull_json_reply_that_is_not_an_object_does_not_crash(cli, device):
+    device(['"5"', "[1, 2]", status("complete")])
+    assert cli._pull_watch(HOST, "p", 300) == 0

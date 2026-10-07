@@ -59,16 +59,11 @@ def test_duplicate_register_id_is_rejected(cli, sandbox, capsys):
     assert "duplicate register id 't'" in err
 
 
-@pytest.mark.xfail(strict=True, reason="bool is an int subclass, so `reg: true` passes the "
-                   "integer check and emits `True` into the C++ descriptor table")
 def test_boolean_reg_is_rejected(cli, sandbox):
     with pytest.raises(SystemExit):
         cli.registers_to_properties([{"id": "t", "reg": True}], "env1", COMP)
 
 
-@pytest.mark.xfail(strict=True, raises=AttributeError,
-                   reason="a numeric register id (`id: 1`) crashes with AttributeError on "
-                          "rid.replace() instead of a clean error")
 def test_numeric_register_id_is_reported_not_a_traceback(cli, sandbox):
     with pytest.raises(SystemExit):
         cli.registers_to_properties([{"id": 1, "reg": 1}], "env1", COMP)
