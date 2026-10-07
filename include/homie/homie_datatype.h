@@ -1,11 +1,12 @@
 #pragma once
 #include <stddef.h>
+#include <stdint.h>
 
 // Homie 5 payload validation for the datatypes that need structural checks —
 // enum, color, datetime, duration (convention §"Payloads"). Pure functions; the
 // device uses them to validate settable payloads and reject invalid ones (C1).
-// boolean/integer/float/string are validated inline in Property (range/format
-// enforcement for numeric types is C2).
+// boolean/string are validated inline in Property; integer and float get their payload
+// SYNTAX checked here (range/format enforcement for numeric types is C2, below).
 
 // enum: payload must EXACTLY equal one of the comma-separated values in `format`
 // (case-sensitive, leading/trailing whitespace significant). An empty payload or an
@@ -38,6 +39,25 @@ struct HomieColor {
     float c[3];        // rgb: r,g,b | hsv: h,s,v | xyz: x,y,(z derived)
 };
 bool homie_parse_color(const char* payload, const char* format, HomieColor* out);
+
+// --- numeric payloads (convention §"Payloads") ---
+
+// Parse a whole float payload. The spec allows an optional '-', digits with at most one
+// '.', at least one digit, then an optional 'e'/'E' exponent with an optional '-'. A
+// leading '+' is NOT part of the format, and neither are surrounding spaces, hex, `inf`
+// or `nan` — all of which strtod()/atof() would otherwise accept, silently turning a
+// malformed command into a number. Returns false, writing nothing, for anything else.
+bool homie_parse_float_payload(const char* payload, double* out);
+
+// Parse a whole integer payload: an optional '-' then digits, nothing else. Rejects the
+// float spellings ('.', exponent) that the spec allows only for floats, and rejects a
+// value outside int32_t rather than wrapping it. Returns false, writing nothing, for
+// anything else.
+//
+// int32_t, not int64_t, because Property stores an integer in an `int`. Homie 5 integers
+// are 64-bit, so a payload between 2^31 and 2^63 is spec-legal and refused here; see
+// the issue tracking the widening.
+bool homie_parse_integer_payload(const char* payload, int32_t* out);
 
 // --- numeric format: float/integer "[min]:[max][:step]" (C2) ---
 

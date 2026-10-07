@@ -287,14 +287,24 @@ bool Property::store_set_payload(const char* payload) {
         setValue(payload);
         isValid = true;
     } else if (strcmp(datatype(), HOMIE_DATATYPE_INTEGER) == 0) {
-        // Enforce the format's [min]:[max][:step] (C2). No format => accept as-is.
+        // Check the payload's SYNTAX before its range. atoi() reported no failure, so
+        // "abc" became 0 and was then range-checked as if the controller had sent 0,
+        // while "+5" and "1.5" (read as 1) were accepted though the spec allows neither
+        // for an integer. Then enforce the format's [min]:[max][:step] (C2); no format
+        // => accept any value.
+        int32_t parsed;
         double coerced;
-        if (homie_validate_number((double)atoi(payload), _format, &coerced)) {
+        if (homie_parse_integer_payload(payload, &parsed) &&
+            homie_validate_number((double)parsed, _format, &coerced)) {
             setValue((int)coerced); isValid = true;
         }
     } else if (strcmp(datatype(), HOMIE_DATATYPE_FLOAT) == 0) {
+        // Same: atof() turned "abc" into 0.0, and would also have taken "0x10", "inf"
+        // and "nan", none of which are Homie float payloads.
+        double parsed;
         double coerced;
-        if (homie_validate_number(atof(payload), _format, &coerced)) {
+        if (homie_parse_float_payload(payload, &parsed) &&
+            homie_validate_number(parsed, _format, &coerced)) {
             setValue((float)coerced); isValid = true;
         }
     } else if (strcmp(datatype(), HOMIE_DATATYPE_ENUM) == 0) {

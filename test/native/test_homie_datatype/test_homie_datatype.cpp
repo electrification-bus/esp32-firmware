@@ -8,6 +8,107 @@
 void setUp(void) {}
 void tearDown(void) {}
 
+// --- integer payload syntax (Payloads/Integer) ----------------------------------
+
+static void test_integer_payload_accepts_digits_and_leading_minus(void) {
+    int32_t v = 0;
+    TEST_ASSERT_TRUE(homie_parse_integer_payload("5", &v));
+    TEST_ASSERT_EQUAL_INT32(5, v);
+    TEST_ASSERT_TRUE(homie_parse_integer_payload("-42", &v));
+    TEST_ASSERT_EQUAL_INT32(-42, v);
+    TEST_ASSERT_TRUE(homie_parse_integer_payload("0", &v));
+    TEST_ASSERT_EQUAL_INT32(0, v);
+}
+
+static void test_integer_payload_leading_plus_is_rejected(void) {
+    int32_t v = 0;                       // '+' is not in the integer payload format
+    TEST_ASSERT_FALSE(homie_parse_integer_payload("+5", &v));
+}
+
+static void test_integer_payload_with_fraction_is_rejected(void) {
+    int32_t v = 0;                       // atoi() read this as 1
+    TEST_ASSERT_FALSE(homie_parse_integer_payload("1.5", &v));
+    TEST_ASSERT_FALSE(homie_parse_integer_payload("1.", &v));
+}
+
+static void test_integer_payload_with_exponent_is_rejected(void) {
+    int32_t v = 0;                       // exponents are float-only
+    TEST_ASSERT_FALSE(homie_parse_integer_payload("1e3", &v));
+}
+
+static void test_integer_payload_non_numeric_is_rejected(void) {
+    int32_t v = 0;                       // atoi() read each of these as 0
+    TEST_ASSERT_FALSE(homie_parse_integer_payload("abc", &v));
+    TEST_ASSERT_FALSE(homie_parse_integer_payload("", &v));
+    TEST_ASSERT_FALSE(homie_parse_integer_payload("-", &v));
+    TEST_ASSERT_FALSE(homie_parse_integer_payload("5abc", &v));
+}
+
+static void test_integer_payload_surrounding_space_is_rejected(void) {
+    int32_t v = 0;                       // atoi() skipped leading whitespace
+    TEST_ASSERT_FALSE(homie_parse_integer_payload(" 5", &v));
+    TEST_ASSERT_FALSE(homie_parse_integer_payload("5 ", &v));
+}
+
+static void test_integer_payload_at_int32_bounds_is_accepted(void) {
+    int32_t v = 0;
+    TEST_ASSERT_TRUE(homie_parse_integer_payload("2147483647", &v));
+    TEST_ASSERT_EQUAL_INT32(2147483647, v);
+    TEST_ASSERT_TRUE(homie_parse_integer_payload("-2147483648", &v));
+    TEST_ASSERT_EQUAL_INT32(-2147483648, v);
+}
+
+static void test_integer_payload_beyond_int32_is_rejected_not_wrapped(void) {
+    int32_t v = 0;                       // spec-legal 64-bit values this build cannot hold
+    TEST_ASSERT_FALSE(homie_parse_integer_payload("2147483648", &v));
+    TEST_ASSERT_FALSE(homie_parse_integer_payload("-2147483649", &v));
+    TEST_ASSERT_FALSE(homie_parse_integer_payload("99999999999999999999", &v));
+}
+
+// --- float payload syntax (Payloads/Float) --------------------------------------
+
+static void test_float_payload_accepts_spec_spellings(void) {
+    double v = 0;
+    TEST_ASSERT_TRUE(homie_parse_float_payload("5", &v));
+    TEST_ASSERT_EQUAL_DOUBLE(5.0, v);
+    TEST_ASSERT_TRUE(homie_parse_float_payload("-1.5", &v));
+    TEST_ASSERT_EQUAL_DOUBLE(-1.5, v);
+    TEST_ASSERT_TRUE(homie_parse_float_payload("1e3", &v));
+    TEST_ASSERT_EQUAL_DOUBLE(1000.0, v);
+    TEST_ASSERT_TRUE(homie_parse_float_payload("1.5E-3", &v));
+    TEST_ASSERT_EQUAL_DOUBLE(0.0015, v);
+}
+
+static void test_float_payload_leading_plus_is_rejected(void) {
+    double v = 0;
+    TEST_ASSERT_FALSE(homie_parse_float_payload("+5", &v));
+}
+
+static void test_float_payload_non_numeric_is_rejected(void) {
+    double v = 0;                        // atof() read each of these as 0.0
+    TEST_ASSERT_FALSE(homie_parse_float_payload("abc", &v));
+    TEST_ASSERT_FALSE(homie_parse_float_payload("", &v));
+    TEST_ASSERT_FALSE(homie_parse_float_payload(".", &v));
+}
+
+static void test_float_payload_strtod_extensions_are_rejected(void) {
+    double v = 0;                        // all three are things atof() would have taken
+    TEST_ASSERT_FALSE(homie_parse_float_payload("0x10", &v));
+    TEST_ASSERT_FALSE(homie_parse_float_payload("inf", &v));
+    TEST_ASSERT_FALSE(homie_parse_float_payload("nan", &v));
+}
+
+static void test_float_payload_surrounding_space_is_rejected(void) {
+    double v = 0;
+    TEST_ASSERT_FALSE(homie_parse_float_payload(" 5", &v));
+    TEST_ASSERT_FALSE(homie_parse_float_payload("5 ", &v));
+}
+
+static void test_float_payload_two_dots_is_rejected(void) {
+    double v = 0;
+    TEST_ASSERT_FALSE(homie_parse_float_payload("1.2.3", &v));
+}
+
 // --- number: no format ---------------------------------------------------------
 
 static void test_number_without_format_accepts_any_value(void) {
@@ -557,6 +658,22 @@ static void test_duration_repeated_component_is_rejected(void) {
 
 int main(int, char**) {
     UNITY_BEGIN();
+
+    RUN_TEST(test_integer_payload_accepts_digits_and_leading_minus);
+    RUN_TEST(test_integer_payload_leading_plus_is_rejected);
+    RUN_TEST(test_integer_payload_with_fraction_is_rejected);
+    RUN_TEST(test_integer_payload_with_exponent_is_rejected);
+    RUN_TEST(test_integer_payload_non_numeric_is_rejected);
+    RUN_TEST(test_integer_payload_surrounding_space_is_rejected);
+    RUN_TEST(test_integer_payload_at_int32_bounds_is_accepted);
+    RUN_TEST(test_integer_payload_beyond_int32_is_rejected_not_wrapped);
+
+    RUN_TEST(test_float_payload_accepts_spec_spellings);
+    RUN_TEST(test_float_payload_leading_plus_is_rejected);
+    RUN_TEST(test_float_payload_non_numeric_is_rejected);
+    RUN_TEST(test_float_payload_strtod_extensions_are_rejected);
+    RUN_TEST(test_float_payload_surrounding_space_is_rejected);
+    RUN_TEST(test_float_payload_two_dots_is_rejected);
 
     RUN_TEST(test_number_without_format_accepts_any_value);
     RUN_TEST(test_number_fully_open_format_accepts_any_value);
