@@ -55,15 +55,50 @@ int num_subscribers = 0;
 // direct mqtt_client.publish for exactly this reason).
 #define MQTT_PAYLOAD_MAX 256
 
+// What a queued item asks for once it is drained, which is the point: both kinds of work
+// have to happen OUTSIDE the MQTT receive callback, and this is the one place that runs
+// after mqtt_client.loop() has returned.
+enum MqttQueueKind : uint8_t {
+    MQTT_QUEUE_PUBLISH = 0,   // send `payload` to `topic`
+    MQTT_QUEUE_SET,           // dispatch `payload` as a /set on `topic`
+};
+
 struct MqttQueueItem {
     char topic[MQTT_TOPIC_MAX];
     char payload[MQTT_PAYLOAD_MAX];
     int  length;        // explicit byte count — carries 0x00 (empty-string value, C3)
     bool retained;
     Property* source;   // told when this is sent or dropped (publish-on-change memo), or null
+    MqttQueueKind kind = MQTT_QUEUE_PUBLISH;   // every producer sets it; see the note below
 };
 
+// ── Why an inbound /set is queued here ──────────────────────────────────────────────
+// A /set must not be ACTED ON from inside subscriber_callback(). Two reasons:
+//
+//  - Dispatch publishes. Property::publish_set() sends $target and the value, and a
+//    retained publish is QoS 2 by default (C4), so the client waits for its PUBREC/
+//    PUBCOMP by pumping its own receive loop — which delivers the next message into the
+//    same handler, one frame deeper. The controller's subscribe path went down exactly
+//    that way (26b9dc4): six frames before a large $description copy overflowed the stack.
+//  - Drivers actuate relays, Modbus and BLE. Running that inside the receive callback
+//    holds the client mid-packet for as long as the hardware takes.
+//
+// The DISPATCH is deferred, not its publishes. Queueing the publishes instead would leave
+// them droppable when the queue is full, and the settable contract
+// (doc/WritingADriver.md) makes dispatch the thing that COVERS for a dropped publish —
+// it names a full queue as the case where "dispatch publishes the value itself". Running
+// the dispatch out here keeps its publishes direct, so nothing on the /set path can be
+// dropped once it is queued. Drivers already publish through this queue
+// (NodeProperty::publish -> Property::publish_queued), so they need no change.
+//
+// A /set occupies one slot and enqueues nothing, so it cannot crowd out telemetry; a
+// message arriving while the queue drains can only add another item, so dispatch never
+// nests.
+
 static QueueHandle_t mqtt_publish_queue = nullptr;
+
+// Defined below, next to the settable table it walks; mqtt_process_queue() runs it.
+static bool dispatch_settable(const char* topic, const char* value);
 
 // Initialize the MQTT publish queue (call from setup)
 void mqtt_queue_init() {
@@ -111,6 +146,7 @@ bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool
     item.length = length;
     item.retained = retained;
     item.source = source;
+    item.kind = MQTT_QUEUE_PUBLISH;
 
     // Non-blocking queue send (don't wait if queue is full)
     if (xQueueSend(mqtt_publish_queue, &item, 0) != pdTRUE) {
@@ -126,9 +162,27 @@ void mqtt_process_queue() {
     if (mqtt_publish_queue == nullptr) return;
 
     MqttQueueItem item;
-    // Process up to 4 messages per loop iteration to avoid blocking
+    // Process up to 4 items per loop iteration to avoid blocking
     int processed = 0;
     while (processed < 4 && xQueueReceive(mqtt_publish_queue, &item, 0) == pdTRUE) {
+        processed++;
+        if (item.kind == MQTT_QUEUE_SET) {
+            // Runs the full settable contract — validate, store, driver, publish — here
+            // rather than in the receive callback. dispatch_settable() publishes directly,
+            // which is safe and required; see the note on MqttQueueKind.
+            // NUL-terminated into a local because the queue carries an explicit length
+            // and a 256-byte payload fills item.payload with no room for a terminator.
+            char value[MQTT_PAYLOAD_MAX + 1];
+            memcpy(value, item.payload, item.length);
+            value[item.length] = '\0';
+            if (!dispatch_settable(item.topic, value)) {
+                // The property was registered when the message arrived, so losing it in
+                // between means it was torn down — worth saying, not worth retrying.
+                Serial.printf("MQTT: queued /set '%s' no longer has a settable property\n",
+                              item.topic);
+            }
+            continue;
+        }
         bool ok = false;
         if (mqtt_client.connected()) {
             // Length-aware publish so an empty-string value (single 0x00 byte) is sent
@@ -137,7 +191,6 @@ void mqtt_process_queue() {
             ok = mqtt_client.publish(item.topic, item.payload, item.length, item.retained, homie_qos(item.retained));
         }
         if (item.source) item.source->queued_publish_done(item.payload, item.length, ok);
-        processed++;
     }
 }
 
@@ -488,6 +541,54 @@ static bool dispatch_settable(const char* topic, const char* value) {
   return handled;
 }
 
+// Is a settable property registered for this topic? subscriber_callback() defers the
+// dispatch but must still decide NOW whether the message is ours or the fallback's,
+// because the payload buffer is only valid until it returns.
+static bool is_settable_topic(const char* topic) {
+  for (int i = 0; i < num_subscribers; i++) {
+    if (strcmp(settable_properties[i].topic, topic) == 0) return true;
+  }
+  return false;
+}
+
+// Record an inbound /set on the publish queue for mqtt_process_queue() to dispatch.
+// Called from the receive callback, so it only copies: no publish, no driver, no client
+// call. A refusal here is logged and the command is dropped — dispatching it from the
+// callback is the very thing the queue exists to avoid.
+static bool mqtt_queue_set(const char* topic, const char* payload, int length) {
+  if (strlen(topic) >= MQTT_TOPIC_MAX) {
+    Serial.printf("MQTT: /set topic is %u chars, over the %d queued; refused: %s\n",
+                  (unsigned)strlen(topic), MQTT_TOPIC_MAX - 1, topic);
+    return false;
+  }
+  if (length < 0 || length > MQTT_PAYLOAD_MAX) {
+    // store_set_payload() would refuse it anyway rather than store half a value, and
+    // queueing a truncated payload would hand a plausible-looking wrong value to the
+    // hardware. Say so instead.
+    Serial.printf("MQTT: /set payload for '%s' is %d bytes, over the %d a property holds; "
+                  "refused\n", topic, length, MQTT_PAYLOAD_MAX);
+    return false;
+  }
+  if (mqtt_publish_queue == nullptr) {
+    Serial.printf("MQTT: queue not initialized, /set '%s' refused\n", topic);
+    return false;
+  }
+
+  MqttQueueItem item;
+  memcpy(item.topic, topic, strlen(topic) + 1);
+  memcpy(item.payload, payload, (size_t)length);
+  item.length = length;
+  item.retained = false;      // unused for a set
+  item.source = nullptr;      // no publish-on-change memo to report back to
+  item.kind = MQTT_QUEUE_SET;
+
+  if (xQueueSend(mqtt_publish_queue, &item, 0) != pdTRUE) {
+    Serial.printf("MQTT: queue full, /set '%s' = '%s' DROPPED\n", topic, payload);
+    return false;
+  }
+  return true;
+}
+
 // Set a property from INSIDE the firmware — no broker, no network, no loopback publish.
 // Anything that needs to actuate another node by topic uses this, and it keeps working
 // with the broker unreachable. The property's own publish() (called by the driver's
@@ -533,12 +634,14 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
   payload_buf[length] = '\0'; //ensure null-termination
   Serial.printf("\n***MQTT CALLBACK: topic '%s', payload '%s'\n", topic, payload_buf);
 
-  //route to subscriber property
-  bool handled = dispatch_settable(topic, payload_buf);
-
-  // If no property handler matched, forward to fallback callback (e.g., controller)
-  // Pass the already null-terminated payload_buf to avoid duplicate buffer allocation
-  if (!handled && _fallback_callback) {
+  // Route to a subscriber property by RECORDING the message, not by dispatching it: the
+  // dispatch publishes and runs driver code, and neither may happen inside this callback.
+  // mqtt_process_queue() does it from loop_mqtt(). See the note on MqttQueueKind.
+  if (is_settable_topic(topic)) {
+    mqtt_queue_set(topic, payload_buf, length);
+  } else if (_fallback_callback) {
+    // No property owns this topic: hand it to the fallback (e.g. the controller). Pass
+    // the already null-terminated payload_buf to avoid a second buffer.
     _fallback_callback(topic, (uint8_t*)payload_buf, length);
   }
 }
