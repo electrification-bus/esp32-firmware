@@ -409,8 +409,19 @@ void generateTopics() {
   snprintf(topic_device, sizeof(topic_device), "%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID());
 }
 
+// A table entry holds the topic in a fixed char[]; refuse one that does not fit rather
+// than truncate it (a truncated key never matches an inbound /set).
+static bool settable_topic_fits(const char* topic) {
+  size_t len = strlen(topic);
+  if (len < sizeof(settable_properties[0].topic)) return true;
+  Serial.printf("MQTT: /set topic is %u bytes, over the %u-byte limit; not registered: %s\n",
+                (unsigned)len, (unsigned)(sizeof(settable_properties[0].topic) - 1), topic);
+  return false;
+}
+
 void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb, Property* instance) {
    ensure_settable_properties();
+   if (!settable_topic_fits(topic)) return;
    // Check if topic already registered (avoid duplicates on reconnection)
    for(int i=0; i<num_subscribers; i++) {
      if (strcmp(settable_properties[i].topic, topic) == 0) {
@@ -426,7 +437,7 @@ void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb,
    }
    // New subscription. Null the entity fields explicitly: an entry created here may
    // never be visited by entity_subscribe_for_callbacks(), and dispatch branches on them.
-   strcpy(settable_properties[num_subscribers].topic, topic);
+   strlcpy(settable_properties[num_subscribers].topic, topic, sizeof(settable_properties[0].topic));
    settable_properties[num_subscribers].property_callback = cb;
    settable_properties[num_subscribers].instance = instance;
    settable_properties[num_subscribers].entity_callback = nullptr;
@@ -438,6 +449,7 @@ void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb,
 // existing entry's handler in place (reconnect-safe), else appends a new subscriber.
 void subscribe_settable_handler(const char* topic, settable_handler_t handler, void* ctx) {
    ensure_settable_properties();
+   if (!settable_topic_fits(topic)) return;
    for (int i = 0; i < num_subscribers; i++) {
      if (strcmp(settable_properties[i].topic, topic) == 0) {
        settable_properties[i].handler = handler;
@@ -452,7 +464,7 @@ void subscribe_settable_handler(const char* topic, settable_handler_t handler, v
    // Null the property/entity fields explicitly. A topic registered ONLY here — a
    // NodeProperty::on_set() handler, or a watch on a device attribute like $state — has
    // no Property or NodeEntity behind it, and dispatch tests both before calling.
-   strcpy(settable_properties[num_subscribers].topic, topic);
+   strlcpy(settable_properties[num_subscribers].topic, topic, sizeof(settable_properties[0].topic));
    settable_properties[num_subscribers].handler = handler;
    settable_properties[num_subscribers].handler_ctx = ctx;
    settable_properties[num_subscribers].property_callback = nullptr;
@@ -465,6 +477,7 @@ void subscribe_settable_handler(const char* topic, settable_handler_t handler, v
 
 void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_t cb, NodeEntity* entity) {
    ensure_settable_properties();
+   if (!settable_topic_fits(topic)) return;
    for(int i=0;i<num_subscribers;i++) {
      if (strcmp(settable_properties[i].topic, topic) == 0) {
        //add entity pointer
@@ -477,7 +490,7 @@ void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_
    // Topic not found — create entry (Property::subscribe may not have run yet)
    if (num_subscribers < settable_capacity) {
      Serial.printf("ENTITY: Callback Subscription: %s CREATED NEW\n", topic);
-     strcpy(settable_properties[num_subscribers].topic, topic);
+     strlcpy(settable_properties[num_subscribers].topic, topic, sizeof(settable_properties[0].topic));
      settable_properties[num_subscribers].property_callback = nullptr;
      settable_properties[num_subscribers].instance = nullptr;
      settable_properties[num_subscribers].entity_callback = cb;
