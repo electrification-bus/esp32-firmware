@@ -1356,10 +1356,8 @@ static void handleCaptiveRedirect(AsyncWebServerRequest *request) {
 // The setup AP's SSID is the resolved device id, which is also what names the device's
 // MQTT topic (PORTAL_API's `topic` field included) — so the network a phone sees is the
 // name to look for on the broker.
-// NB mDNS and DHCP currently advertise a MANGLED form of this same id: sanitize_hostname()
-// in network.cpp drops a hyphen that is already in its input, so the id above claims
-// "bess80b54ec323bc.local". Pointing that function at sanitize_homie_id() makes the SSID,
-// the hostname and the topic one identifier on every interface.
+// sanitize_hostname() in network.cpp uses sanitize_homie_id() too, so the mDNS and DHCP
+// hostname is this same identifier.
 //
 // Only the length needs guarding: a device id may run to MAX_DEVICE_ID_CHARS, past the
 // SSID limit. Keep the TAIL, where ${chip_id} sits — a clipped name still identifies the
