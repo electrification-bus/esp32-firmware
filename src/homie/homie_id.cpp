@@ -17,7 +17,7 @@ void sanitize_homie_id(const char* in, char* out, size_t out_size) {
     bool keep = (lc >= 'a' && lc <= 'z') || (lc >= '0' && lc <= '9');
     if (keep) {
       if (pending_hyphen && emitted) {
-        if (w >= out_size - 1) break;
+        if (w + 1 >= out_size - 1) break;  // no room for the hyphen AND a char after it
         out[w++] = '-';
       }
       pending_hyphen = false;
@@ -30,6 +30,12 @@ void sanitize_homie_id(const char* in, char* out, size_t out_size) {
     // any other character is dropped
   }
   out[w] = '\0';
+}
+
+// Drop hyphens left at the end of `s` when a "%s-%s" join was truncated.
+static void strip_trailing_hyphens(char* s) {
+  size_t n = strlen(s);
+  while (n > 0 && s[n - 1] == '-') s[--n] = '\0';
 }
 
 void format_mac_as_id(const uint8_t* mac, size_t n, char* out, size_t out_size) {
@@ -50,6 +56,7 @@ void make_homie_device_id(const char* name, const uint8_t* mac, size_t n,
   format_mac_as_id(mac, n, mac_id, sizeof(mac_id));
   if (name_id[0] != '\0') {
     snprintf(out, out_size, "%s-%s", name_id, mac_id);
+    strip_trailing_hyphens(out);
   } else {
     // No usable name — fall back to a bare MAC id rather than a leading hyphen.
     snprintf(out, out_size, "%s", mac_id);
@@ -90,6 +97,7 @@ void make_homie_child_id(const char* parent_id, const char* suffix,
   sanitize_homie_id(suffix, suffix_id, sizeof(suffix_id));   // sanitize the new segment only
   if (parent_id && parent_id[0] != '\0' && suffix_id[0] != '\0') {
     snprintf(out, out_size, "%s-%s", parent_id, suffix_id);
+    strip_trailing_hyphens(out);
   } else if (parent_id && parent_id[0] != '\0') {
     snprintf(out, out_size, "%s", parent_id);               // empty suffix -> just the parent
   } else {

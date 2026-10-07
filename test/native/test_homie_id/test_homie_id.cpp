@@ -94,10 +94,6 @@ static void test_sanitize_truncates_to_buffer_size(void) {
 }
 
 static void test_sanitize_truncation_does_not_leave_trailing_hyphen(void) {
-    TEST_IGNORE_MESSAGE("BUG: (\"ab-cd\", size 4) yields \"ab-\"; the hyphen is written "
-                        "before checking room for the next character, contradicting the "
-                        "header's 'strip leading/trailing hyphens' (Homie-legal, but not "
-                        "the documented contract)");
     char out[4];
     sanitize_homie_id("ab-cd", out, sizeof(out));
     TEST_ASSERT_EQUAL_STRING("ab", out);
@@ -162,6 +158,12 @@ static void test_device_id_without_usable_name_is_bare_mac(void) {
     TEST_ASSERT_EQUAL_STRING("90f570", out);
     make_homie_device_id(nullptr, MAC3, 3, out, sizeof(out));
     TEST_ASSERT_EQUAL_STRING("90f570", out);
+}
+
+static void test_device_id_truncation_does_not_leave_trailing_hyphen(void) {
+    char out[6];
+    make_homie_device_id("EBUS", MAC3, 3, out, sizeof(out));   // "ebus-" cut at the joiner
+    TEST_ASSERT_EQUAL_STRING("ebus", out);
 }
 
 // --- resolve_device_id -------------------------------------------------------------
@@ -238,6 +240,12 @@ static void test_template_result_truncates_to_buffer_size(void) {
     TEST_ASSERT_EQUAL_STRING("a1b2c3", out);
 }
 
+static void test_template_truncation_does_not_leave_trailing_hyphen(void) {
+    char out[6];
+    resolve_device_id("ebus-${chip_id}", MAC6, nullptr, out, sizeof(out));
+    TEST_ASSERT_EQUAL_STRING("ebus", out);
+}
+
 static void test_template_longer_than_working_buffer_is_truncated_safely(void) {
     char templ[201];
     memset(templ, 'a', 200);
@@ -272,10 +280,18 @@ static void test_child_id_empty_parent_yields_suffix(void) {
 }
 
 static void test_child_id_truncates_to_buffer_size(void) {
-    char out[8];
+    char out[10];
     make_homie_child_id("ebus-1", "phase", out, sizeof(out));
-    TEST_ASSERT_EQUAL_size_t(7, strlen(out));
-    TEST_ASSERT_EQUAL_STRING_LEN("ebus-1", out, 6);
+    TEST_ASSERT_EQUAL_STRING("ebus-1-ph", out);
+}
+
+static void test_child_id_truncation_does_not_leave_trailing_hyphen(void) {
+    char out[8];
+    make_homie_child_id("ebus-1", "phase", out, sizeof(out));   // "ebus-1-" cut at the joiner
+    TEST_ASSERT_EQUAL_STRING("ebus-1", out);
+    char out5[6];
+    make_homie_child_id("ebus-1", "phase", out5, sizeof(out5)); // "ebus-" cut inside the parent
+    TEST_ASSERT_EQUAL_STRING("ebus", out5);
 }
 
 int main(int, char**) {
@@ -305,6 +321,7 @@ int main(int, char**) {
     RUN_TEST(test_device_id_joins_sanitized_name_and_mac);
     RUN_TEST(test_device_id_sanitizes_name);
     RUN_TEST(test_device_id_without_usable_name_is_bare_mac);
+    RUN_TEST(test_device_id_truncation_does_not_leave_trailing_hyphen);
 
     RUN_TEST(test_template_null_defaults_to_chip_id);
     RUN_TEST(test_template_empty_defaults_to_chip_id);
@@ -318,12 +335,14 @@ int main(int, char**) {
     RUN_TEST(test_template_unknown_placeholder_is_sanitized_as_literal);
     RUN_TEST(test_template_unterminated_placeholder_is_sanitized_as_literal);
     RUN_TEST(test_template_result_truncates_to_buffer_size);
+    RUN_TEST(test_template_truncation_does_not_leave_trailing_hyphen);
     RUN_TEST(test_template_longer_than_working_buffer_is_truncated_safely);
 
     RUN_TEST(test_child_id_appends_sanitized_suffix);
     RUN_TEST(test_child_id_empty_suffix_yields_parent);
     RUN_TEST(test_child_id_empty_parent_yields_suffix);
     RUN_TEST(test_child_id_truncates_to_buffer_size);
+    RUN_TEST(test_child_id_truncation_does_not_leave_trailing_hyphen);
 
     return UNITY_END();
 }

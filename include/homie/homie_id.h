@@ -15,6 +15,7 @@
 //   5. strip leading/trailing hyphens
 //
 // Writes the sanitized id (null-terminated, truncated to out_size) into `out`.
+// Truncation never leaves a trailing hyphen.
 // An all-illegal or empty input yields an empty string — the caller decides how to
 // handle that (keep a fallback id, warn, etc.). Note the node `$type` is NOT an id
 // and keeps its dotted reverse-domain form (energy.ebus.capability.*) — only ids are
@@ -33,6 +34,7 @@ void format_mac_as_id(const uint8_t* mac, size_t n, char* out, size_t out_size);
 //   sanitize_homie_id(name) + "-" + format_mac_as_id(mac, n)
 // e.g. ("EBUS", {..,0x90,0xF5,0x70}, 3) -> "ebus-90f570". This is the canonical
 // "stable name + per-unit hardware suffix" pattern — use it instead of hardcoding.
+// Truncation to out_size never leaves a trailing hyphen.
 void make_homie_device_id(const char* name, const uint8_t* mac, size_t n,
                           char* out, size_t out_size);
 
@@ -53,6 +55,7 @@ void resolve_device_id(const char* templ, const uint8_t* mac6, const char* name,
 // that share the parent's chip-id, e.g. ("ebus-a1b2c3d4e5f6", "phase a") ->
 // "ebus-a1b2c3d4e5f6-phase-a". Each segment is sanitized independently (joining first
 // then sanitizing is NOT equivalent — a hyphen joiner can be collapsed). `parent_id`
-// is assumed already Homie-legal and is copied verbatim.
+// is assumed already Homie-legal and is copied verbatim. Truncation to out_size never
+// leaves a trailing hyphen.
 void make_homie_child_id(const char* parent_id, const char* suffix,
                          char* out, size_t out_size);
