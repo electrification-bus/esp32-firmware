@@ -72,3 +72,7 @@ platformio_local.ini
 # Runtime coordination state for the tmux serial-port handoff between a monitor
 # and a flash. Breadcrumb files written by bin/_monitor-record and bin/_flash-coord.
 .run/
+
+# Python bytecode and test caches
+__pycache__/
+.pytest_cache/
