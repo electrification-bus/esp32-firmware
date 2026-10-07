@@ -16,6 +16,7 @@ ebus-esp32 — eBus ESP32 firmware CLI
   ./ebus-esp32 clean                     Clean build artifacts
   ./ebus-esp32 devices                   List attached serial devices
   ./ebus-esp32 envs                      List available PlatformIO board environments
+  ./ebus-esp32 test                      Run the host-side unit tests (pio test -e native)
 
 On Windows, invoke via the wrapper: `ebus-esp32.bat run` (or `python ebus-esp32 run`).
 """
@@ -64,6 +65,8 @@ DATA_DIR     = ROOT / "data"
 INCLUDE_DIR  = ROOT / "include"
 BUILD_DIR    = ROOT / "build"   # gitignored — generator scratch space, e.g. platformio.ini
 PLATFORMIO_INI = ROOT / "platformio" / "platformio.ini"
+NATIVE_TEST_DIR = ROOT / "test" / "native"   # Unity suites for [env:native]
+NATIVE_ENV     = "native"                     # host unit tests, not a board
 
 # The CLI builds into .pio/cli, never the .pio/build + .pio/libdeps the VSCode
 # PlatformIO extension uses. Moving platformio.ini out of the repo root was not enough
@@ -234,6 +237,10 @@ def get_environment(cfg: dict) -> str:
     env_name = cfg.get("device", {}).get("environment")
     if not env_name:
         print("ERROR: device.yml missing device.environment", file=sys.stderr)
+        sys.exit(1)
+    if env_name == NATIVE_ENV:
+        print(f"ERROR: device.environment '{NATIVE_ENV}' is the host unit-test env, not a "
+              "board; run its tests with ./ebus-esp32 test", file=sys.stderr)
         sys.exit(1)
     return env_name
 
@@ -2130,8 +2137,40 @@ def cmd_envs(args) -> None:
             notes.append(f"selected by {device_yml}")
         if name.endswith("-arduino2"):
             notes.append("legacy: arduino-esp32 2.0.17")
+        if name == NATIVE_ENV:
+            notes.append("host unit tests, not a board: ./ebus-esp32 test")
         mark = "*" if name == selected else " "
         print(f"{mark} {name:<{width}}  {', '.join(notes)}".rstrip())
+
+# ── test ───────────────────────────────────────────────────────────────────────
+#
+# One `pio test` per suite, not one for all of them. With -c, PlatformIO 6 runs the
+# first suite and then fails the next with "Please specify platform for 'native'
+# environment": its `run` step clears the custom config path on exit, and the next
+# suite's runner looks the platform up from the default ./platformio.ini, which this
+# repo deliberately does not have.
+
+def native_test_suites() -> list:
+    """Names of the Unity suites under test/native/, as `pio test -f` filters."""
+    if not NATIVE_TEST_DIR.is_dir():
+        return []
+    return [f"native/{d.name}" for d in sorted(NATIVE_TEST_DIR.iterdir())
+            if d.is_dir() and d.name.startswith("test_")]
+
+def cmd_test(args) -> None:
+    suites = native_test_suites()
+    if not suites:
+        sys.exit(f"ERROR: no test suites under {NATIVE_TEST_DIR.relative_to(ROOT)}")
+    pio = find_pio()
+    failed = []
+    for suite in suites:
+        cmd = [pio, "test", "-e", NATIVE_ENV, "-c", str(PLATFORMIO_INI), "-f", suite]
+        if subprocess.run(cmd, cwd=ROOT, env=pio_env()).returncode != 0:
+            failed.append(suite)
+    print(f"\n--- {len(suites) - len(failed)}/{len(suites)} native test suites passed ---")
+    for suite in failed:
+        print(f"  FAILED: {suite}")
+    sys.exit(1 if failed else 0)
 
 # ── compiledb / check ──────────────────────────────────────────────────────────
 
@@ -2332,6 +2371,7 @@ def main():
             "  ./ebus-esp32 run --monitor                      (flash, then watch over the network)",
             "  ./ebus-esp32 run --ota --monitor                (build, flash over TCP, then watch)",
             "  ./ebus-esp32 run --port COM3",
+            "  ./ebus-esp32 test                               (host unit tests, no board)",
         ]),
     )
 
@@ -2448,6 +2488,8 @@ def main():
                    help="hostname to print in the URLs (default: this machine's address "
                         "on the default route) — use it when the device reaches you by name")
 
+    sub.add_parser("test", help="Run the host-side unit tests (Unity, PlatformIO native env)")
+
     args = parser.parse_args()
 
     # Every `pio run` re-runs generate from scripts/generate_homie.py; this tells that
@@ -2469,6 +2511,7 @@ def main():
         "push":          cmd_push,
         "run":           cmd_run,
         "serve":         cmd_serve,
+        "test":          cmd_test,
     }
     dispatch[args.command](args)
 
