@@ -9,6 +9,12 @@
 #include <node/NodeEntity.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+
+// Fetching the broker's root CA needs a TLS handshake (~50 KB of heap). The POE-ISO
+// has no PSRAM; on arduino-esp32 2.0.x that was too tight, on 3.x it leaves room.
+#if !defined(ESP32_POE_ISO) || ESP_ARDUINO_VERSION_MAJOR >= 3
+#define MQTT_FETCH_ROOT_CA 1
+#endif
 #include <LittleFS.h>
 #include <mbedtls/base64.h>
 
@@ -162,7 +168,7 @@ void mqtt_set_reconnect_callback(mqtt_reconnect_callback_t callback) {
     _reconnect_callback = callback;
 }
 
-#ifndef ESP32_POE_ISO
+#ifdef MQTT_FETCH_ROOT_CA
 // Fetch root CA cert from broker via TLS on port 443 and save to SPIFFS
 // Connects insecurely, extracts cert chain, finds root, saves as PEM.
 // The PEM is encoded one 64-character line at a time into a stack buffer, so a
@@ -259,16 +265,16 @@ static bool mqtt_fetch_and_save_root_cert() {
 
   certFile.print("-----END CERTIFICATE-----\n");
 
-  size_t file_size = certFile.size();
+  size_t file_size = certFile.position();   // size() reads 0 until the file is closed
   certFile.close();
 
   // Done with TLS probe - disconnect and free TLS resources
   secureClient.stop();
 
-  Serial.printf("TLS: Root CA saved (%d bytes) to '%s'\n", file_size, cert_path);
+  Serial.printf("TLS: Root CA saved (%u bytes) to '%s'\n", (unsigned)file_size, cert_path);
   return true;
 }
-#endif // ESP32_POE_ISO
+#endif // MQTT_FETCH_ROOT_CA
 
 // Initialize transport client (secure or insecure based on port)
 bool mqtt_init_transport() {
@@ -279,8 +285,8 @@ bool mqtt_init_transport() {
 
     // Load CA certificate from SPIFFS
     const char* caCert = mqtt_load_ca_cert();
-#ifndef ESP32_POE_ISO
-    // On boards with enough heap, auto-fetch the root CA cert if not cached
+#ifdef MQTT_FETCH_ROOT_CA
+    // Auto-fetch the root CA cert if not cached
     if (caCert == nullptr) {
       Serial.println("TLS: No cached cert found, auto-fetching from broker...");
       if (mqtt_fetch_and_save_root_cert()) {
@@ -296,8 +302,8 @@ bool mqtt_init_transport() {
       secureClient.setTimeout(15);  // 15 seconds for TLS handshake
       transportClient = &secureClient;
     } else {
-#ifdef ESP32_POE_ISO
-      // POE-ISO: insufficient heap for TLS probe; fall back to plain MQTT
+#ifndef MQTT_FETCH_ROOT_CA
+      // No root-CA fetch on this build; fall back to plain MQTT
       Serial.println("TLS: WARNING - No CA cert found in /certs/ SPIFFS folder");
       Serial.println("TLS: To fix: place cert in data/certs/ and upload filesystem");
       Serial.println("TLS: Falling back to insecure MQTT on port 1883");
