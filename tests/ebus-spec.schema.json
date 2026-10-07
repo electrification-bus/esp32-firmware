@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ebus.energy/schemas/ebus-spec.json",
+  "title": "eBus specification provenance lockfile",
+  "type": "object",
+  "required": [
+    "spec_repo",
+    "synced_commit",
+    "synced_date"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "spec_repo": {
+      "type": "string"
+    },
+    "synced_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
+    "synced_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "framework": {
+      "type": "string"
+    },
+    "supports": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "publisher",
+        "controller",
+        "library",
+        "mixed"
+      ]
+    },
+    "implements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "devices": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "registries": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://ebus.energy/schemas/ebus-spec.json",
+  "spec_repo": "https://github.com/electrification-bus/specification",
+  "synced_commit": "7ee7ca93b19c3de3d61be44f01887ba9557dd803",
+  "synced_date": "2026-08-20",
+  "role": "library",
+  "framework": "0.9",
+  "supports": [
+    "parent-child-model",
+    "node-capability-structure",
+    "device-type-discriminator",
+    "capability-type-identifiers",
+    "scalar-datatypes",
+    "json-datatype",
+    "settable-properties",
+    "empty-string-encoding",
+    "mqtt-homie-transport",
+    "mdns-discovery",
+    "proxy-publishers"
+  ],
+  "implements": {},
+  "notes": "Partial, so not listed: rest-configuration (REST API with OpenAPI at /api/openapi.yml, but no ebus:* tags and no registration endpoint) and jsonschema-format ($format is stored in 64 bytes and json payloads are not checked against it). Not implemented: broker-hosting, tls (no HTTPS server; MQTT is a TLS client only), mtls-client-auth, device-topology (no connection capability)."
+}

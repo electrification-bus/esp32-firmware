@@ -6,6 +6,8 @@ eBus on the ESP32. This SDK (the `esp32-sdk` repository) lets ESP32-class hardwa
 
 Working firmware with Homie 5 device representation, Modbus RTU, captive-portal HTTP OTA, LittleFS-based config, and the start of a CLI developer-experience layer. See [doc/](doc/) for design notes and proposals.
 
+[`.ebus-spec.json`](.ebus-spec.json) records the specification commit, `framework.md` version, and framework features this SDK implements.
+
 ## Quick start
 
 You need:
