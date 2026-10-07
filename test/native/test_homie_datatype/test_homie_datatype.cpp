@@ -69,15 +69,10 @@ static void test_number_missing_minimum_is_open_ended(void) {
 
 static void test_number_large_integer_maximum_keeps_full_precision(void) {
     // Integer formats are 64-bit; 100000001 is not representable as a 32-bit float.
-    TEST_IGNORE_MESSAGE("BUG: format min/max/step are parsed through a 32-bit float, so "
-                        "\"0:100000001\" becomes max 100000000 and rejects 100000001 "
-                        "(spec: integer/float are 64-bit, Formats: min/max inclusive)");
     TEST_ASSERT_TRUE(homie_validate_number(100000001, "0:100000001", nullptr));
 }
 
 static void test_number_format_accepts_exponent_notation(void) {
-    TEST_IGNORE_MESSAGE("BUG: \"0:1e3\" is reported malformed; spec Formats says min/max "
-                        "are in the float format, and Payloads/Float allows 'e' and 'E'");
     TEST_ASSERT_TRUE(homie_validate_number(500, "0:1e3", nullptr));
 }
 
@@ -145,6 +140,23 @@ static void test_number_format_without_colon_is_malformed(void) {
 static void test_number_format_with_non_numeric_field_is_malformed(void) {
     TEST_ASSERT_FALSE(homie_validate_number(5, "a:10", nullptr));
     TEST_ASSERT_FALSE(homie_validate_number(5, "0:ten", nullptr));
+}
+
+static void test_number_format_field_with_plus_sign_is_malformed(void) {
+    TEST_ASSERT_FALSE(homie_validate_number(5, "+0:10", nullptr));
+    TEST_ASSERT_FALSE(homie_validate_number(5, "0:1e+3", nullptr));
+}
+
+static void test_number_format_negative_exponent_is_accepted(void) {
+    TEST_ASSERT_TRUE(homie_validate_number(0.0015, "1E-3:2e-3", nullptr));
+    TEST_ASSERT_FALSE(homie_validate_number(0.0025, "1E-3:2e-3", nullptr));
+}
+
+static void test_number_format_incomplete_or_overflowing_exponent_is_malformed(void) {
+    TEST_ASSERT_FALSE(homie_validate_number(5, "0:1e", nullptr));
+    TEST_ASSERT_FALSE(homie_validate_number(5, "0:1e-", nullptr));
+    TEST_ASSERT_FALSE(homie_validate_number(5, "0:e3", nullptr));
+    TEST_ASSERT_FALSE(homie_validate_number(5, "0:1e999", nullptr));
 }
 
 static void test_number_zero_step_is_malformed(void) {
@@ -325,14 +337,10 @@ static void test_color_empty_payload_is_rejected(void) {
 }
 
 static void test_color_component_with_exponent_is_accepted(void) {
-    TEST_IGNORE_MESSAGE("BUG: \"rgb,1e2,0,0\" is rejected; spec Payloads/Color says the "
-                        "numbers conform to the float format, which allows 'e' and 'E'");
     TEST_ASSERT_TRUE(homie_validate_color("rgb,1e2,0,0", "rgb"));
 }
 
 static void test_color_component_with_plus_sign_is_rejected(void) {
-    TEST_IGNORE_MESSAGE("BUG: \"rgb,+1,0,0\" is accepted; spec Payloads/Float permits only "
-                        "digits, '-', 'e'/'E' and '.', so a leading '+' is not a float");
     TEST_ASSERT_FALSE(homie_validate_color("rgb,+1,0,0", "rgb"));
 }
 
@@ -408,11 +416,16 @@ static void test_datetime_day_out_of_range_is_rejected(void) {
 }
 
 static void test_datetime_day_past_end_of_month_is_rejected(void) {
-    TEST_IGNORE_MESSAGE("BUG (documented limitation): \"2023-02-29\" and \"2024-04-31\" "
-                        "are accepted; they are not ISO 8601 calendar dates (spec "
-                        "Payloads/DateTime: must use the ISO 8601 format)");
     TEST_ASSERT_FALSE(homie_validate_datetime("2023-02-29"));
     TEST_ASSERT_FALSE(homie_validate_datetime("2024-04-31"));
+}
+
+static void test_datetime_leap_day_follows_gregorian_rule(void) {
+    TEST_ASSERT_TRUE(homie_validate_datetime("2024-02-29"));
+    TEST_ASSERT_TRUE(homie_validate_datetime("2000-02-29"));
+    TEST_ASSERT_FALSE(homie_validate_datetime("1900-02-29"));
+    TEST_ASSERT_TRUE(homie_validate_datetime("2024-04-30"));
+    TEST_ASSERT_TRUE(homie_validate_datetime("2024-12-31"));
 }
 
 static void test_datetime_hour_out_of_range_is_rejected(void) {
@@ -530,21 +543,15 @@ static void test_duration_spaces_are_rejected(void) {
 }
 
 static void test_duration_without_time_designator_is_rejected(void) {
-    TEST_IGNORE_MESSAGE("DEVIATION: \"P3D\" is accepted (header documents PnYnMnWnD as "
-                        "intended); spec Payloads/Duration says the format is PTxHxMxS "
-                        "with 'T' required");
     TEST_ASSERT_FALSE(homie_validate_duration("P3D"));
+    TEST_ASSERT_FALSE(homie_validate_duration("P1DT2H"));
 }
 
 static void test_duration_components_out_of_order_are_rejected(void) {
-    TEST_IGNORE_MESSAGE("BUG: \"PT5S5H\" is accepted; spec Payloads/Duration gives the "
-                        "order PTxHxMxS (hours, then minutes, then seconds)");
     TEST_ASSERT_FALSE(homie_validate_duration("PT5S5H"));
 }
 
 static void test_duration_repeated_component_is_rejected(void) {
-    TEST_IGNORE_MESSAGE("BUG: \"PT1H2H\" is accepted; spec Payloads/Duration PTxHxMxS has "
-                        "each of H, M and S at most once");
     TEST_ASSERT_FALSE(homie_validate_duration("PT1H2H"));
 }
 
@@ -574,6 +581,9 @@ int main(int, char**) {
     RUN_TEST(test_number_fractional_step_rounds);
     RUN_TEST(test_number_format_without_colon_is_malformed);
     RUN_TEST(test_number_format_with_non_numeric_field_is_malformed);
+    RUN_TEST(test_number_format_field_with_plus_sign_is_malformed);
+    RUN_TEST(test_number_format_negative_exponent_is_accepted);
+    RUN_TEST(test_number_format_incomplete_or_overflowing_exponent_is_malformed);
     RUN_TEST(test_number_zero_step_is_malformed);
     RUN_TEST(test_number_negative_step_is_malformed);
     RUN_TEST(test_number_format_with_extra_field_is_malformed);
@@ -628,6 +638,7 @@ int main(int, char**) {
     RUN_TEST(test_datetime_month_out_of_range_is_rejected);
     RUN_TEST(test_datetime_day_out_of_range_is_rejected);
     RUN_TEST(test_datetime_day_past_end_of_month_is_rejected);
+    RUN_TEST(test_datetime_leap_day_follows_gregorian_rule);
     RUN_TEST(test_datetime_hour_out_of_range_is_rejected);
     RUN_TEST(test_datetime_minute_out_of_range_is_rejected);
     RUN_TEST(test_datetime_second_out_of_range_is_rejected);

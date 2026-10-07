@@ -6,27 +6,37 @@
 
 // --- helpers ------------------------------------------------------------------
 
-// Strict float lexer over [begin,end): optional sign, digits, one optional '.', more
-// digits; at least one digit overall. No exponent (Homie float format is plain). On
-// success writes the value and returns true. Rejects spaces and stray characters —
-// the caller has already split on ',' so a token must be a bare number.
-static bool parse_float_token(const char* begin, const char* end, float* out) {
+// Strict lexer for the Homie float format over [begin,end): an optional '-', digits
+// with at most one '.', at least one digit, then an optional exponent 'e'/'E' with an
+// optional '-' and at least one digit. A leading '+' is not part of the format
+// (Payloads/Float). On success writes the 64-bit value and returns true. Rejects
+// spaces and stray characters: the caller has already split on ',' or ':' so a token
+// must be a bare number. Values that overflow a double are rejected.
+static bool parse_float_token(const char* begin, const char* end, double* out) {
     if (begin >= end) return false;
     const char* p = begin;
     bool any_digit = false, dot = false;
-    if (*p == '+' || *p == '-') p++;
-    for (; p < end; ++p) {
+    if (*p == '-') p++;
+    for (; p < end && *p != 'e' && *p != 'E'; ++p) {
         if (*p >= '0' && *p <= '9') { any_digit = true; }
         else if (*p == '.' && !dot) { dot = true; }
         else return false;
     }
     if (!any_digit) return false;
-    char buf[40];
+    if (p < end) {                                      // exponent
+        p++;
+        if (p < end && *p == '-') p++;
+        if (p >= end) return false;
+        for (; p < end; ++p) if (*p < '0' || *p > '9') return false;
+    }
+    char buf[64];
     size_t n = (size_t)(end - begin);
     if (n >= sizeof(buf)) return false;
     memcpy(buf, begin, n);
     buf[n] = '\0';
-    *out = (float)atof(buf);
+    double v = strtod(buf, nullptr);
+    if (!isfinite(v)) return false;
+    *out = v;
     return true;
 }
 
@@ -72,7 +82,7 @@ bool homie_parse_color(const char* payload, const char* format, HomieColor* out)
     if (format && format[0] != '\0' && !csv_contains(format, payload, tlen)) return false;
 
     int want = (type == 2) ? 2 : 3;                     // xyz has 2 numbers, rgb/hsv have 3
-    float vals[3];
+    double vals[3];
     const char* p = first_comma + 1;
     for (int i = 0; i < want; ++i) {
         const char* comma = strchr(p, ',');
@@ -100,9 +110,9 @@ bool homie_parse_color(const char* payload, const char* format, HomieColor* out)
     if (!ok) return false;
     if (out) {
         out->type = type;
-        out->c[0] = vals[0];
-        out->c[1] = vals[1];
-        out->c[2] = (want == 3) ? vals[2] : 0.0f;
+        out->c[0] = (float)vals[0];
+        out->c[1] = (float)vals[1];
+        out->c[2] = (want == 3) ? (float)vals[2] : 0.0f;
     }
     return true;
 }
@@ -118,15 +128,23 @@ static bool digits(const char* s, int n) {
     return true;
 }
 
+// Days in `month` (1..12) of `year`, Gregorian leap-year rule.
+static int days_in_month(int year, int month) {
+    static const int days[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (month == 2 && ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0)) return 29;
+    return days[month - 1];
+}
+
 bool homie_validate_datetime(const char* payload) {
     if (!payload) return false;
     const char* p = payload;
     // Calendar date: YYYY-MM-DD (required).
     if (!digits(p, 4) || p[4] != '-' || !digits(p + 5, 2) || p[7] != '-' || !digits(p + 8, 2))
         return false;
+    int year  = (p[0] - '0') * 1000 + (p[1] - '0') * 100 + (p[2] - '0') * 10 + (p[3] - '0');
     int month = (p[5] - '0') * 10 + (p[6] - '0');
     int day   = (p[8] - '0') * 10 + (p[9] - '0');
-    if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+    if (month < 1 || month > 12 || day < 1 || day > days_in_month(year, month)) return false;
     p += 10;
     if (*p == '\0') return true;                        // date-only is acceptable
 
@@ -169,10 +187,8 @@ bool homie_validate_datetime(const char* payload) {
 // Parse a possibly-empty numeric field [begin,end) into *out; empty => not present.
 static bool parse_opt_number(const char* begin, const char* end, bool* present, double* out) {
     if (begin >= end) { *present = false; return true; }   // empty field = open-ended
-    float f;
-    if (!parse_float_token(begin, end, &f)) return false;
+    if (!parse_float_token(begin, end, out)) return false;
     *present = true;
-    *out = (double)f;
     return true;
 }
 
@@ -214,31 +230,25 @@ bool homie_validate_number(double value, const char* format, double* coerced) {
 }
 
 bool homie_validate_duration(const char* payload) {
-    if (!payload || payload[0] != 'P') return false;
-    const char* p = payload + 1;
+    // Homie 5 Payloads/Duration: PTxHxMxS. 'P' and 'T' are required; each of H, M, S
+    // is optional but appears at most once and in that order.
+    if (!payload || payload[0] != 'P' || payload[1] != 'T') return false;
+    const char* p = payload + 2;
+    const char* units = "HMS";
+    int next = 0;           // index in `units` of the earliest unit still allowed
     bool any = false;       // saw at least one component
-    bool in_time = false;   // past the 'T' separator
-
-    // Date part: <number>(Y|M|W|D)... then optional 'T' time part: <number>(H|M|S)...
     while (*p) {
-        if (*p == 'T') {
-            if (in_time) return false;                  // only one 'T'
-            in_time = true;
-            p++;
-            if (*p == '\0') return false;               // 'T' must be followed by a time component
-            continue;
-        }
         if (!isdigit((unsigned char)*p)) return false;
         while (isdigit((unsigned char)*p)) p++;         // a run of digits...
-        if (*p == '.' ) {                               // fractional (allowed on the smallest unit)
+        if (*p == '.') {                                // ...with an optional fraction
             p++;
             if (!isdigit((unsigned char)*p)) return false;
             while (isdigit((unsigned char)*p)) p++;
         }
-        char unit = *p;
-        bool ok_unit = in_time ? (unit == 'H' || unit == 'M' || unit == 'S')
-                               : (unit == 'Y' || unit == 'M' || unit == 'W' || unit == 'D');
-        if (!ok_unit) return false;
+        int u = next;
+        while (u < 3 && units[u] != *p) u++;
+        if (u == 3) return false;                       // unknown, repeated, or out of order
+        next = u + 1;
         any = true;
         p++;
     }
