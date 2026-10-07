@@ -1035,6 +1035,7 @@ static volatile uint32_t ota_push_reboot_at      = 0;
 #define OTA_PUSH_REBOOT_FALLBACK_MS 5000
 // Grace after the disconnect, so the TCP close completes before the restart.
 #define OTA_PUSH_REBOOT_GRACE_MS    100
+#define OTA_PUSH_RX_TIMEOUT_S       30   // receive timeout for an upload in progress
 
 static void ota_push_fail(const char* msg) {
     ota_push_failed = true;
@@ -1086,6 +1087,11 @@ static void otaPushBody(AsyncWebServerRequest *request, uint8_t *data, size_t le
 
         ota_push_owner   = request;
         request->onDisconnect(otaPushOwnerDisconnected);
+        // The server gives every connection a 3 s receive timeout that stays armed until
+        // the reply is sent. Flash writes run on the same task, so a slow erase can let
+        // 3 s pass between packets and the server drops a healthy upload. Allow 30 s,
+        // which still ends a client that has stopped sending.
+        request->client()->setRxTimeout(OTA_PUSH_RX_TIMEOUT_S);
         ota_push_failed  = false;
         ota_push_done    = false;
         ota_push_written = 0;
