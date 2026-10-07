@@ -6,6 +6,7 @@
 #include <platform/mqtt_client.h>
 #include <util/jsonUtils.h>
 #include <ctype.h>
+#include <math.h>          // llround(): nearest-step rounding, not truncation
 
 Property::Property() {
     _parent_node = nullptr;
@@ -58,8 +59,13 @@ const char* Property::name() const {
 }
 
 void Property::setValue(int value) {
+    setValue((int64_t)value);
+}
+void Property::setValue(int64_t value) {
     _intValue = value;
-    snprintf(_value, sizeof(_value), "%d", value);
+    // %lld, not %d: PRId64 would need <inttypes.h> and on this toolchain int64_t is
+    // long long, so the cast makes the conversion exact on both the device and the host.
+    snprintf(_value, sizeof(_value), "%lld", (long long)value);
     _has_value = true;
 }
 void Property::setValue(float value) {
@@ -292,11 +298,25 @@ bool Property::store_set_payload(const char* payload) {
         // while "+5" and "1.5" (read as 1) were accepted though the spec allows neither
         // for an integer. Then enforce the format's [min]:[max][:step] (C2); no format
         // => accept any value.
-        int32_t parsed;
+        int64_t parsed;
         double coerced;
         if (homie_parse_integer_payload(payload, &parsed) &&
             homie_validate_number((double)parsed, _format, &coerced)) {
-            setValue((int)coerced); isValid = true;
+            // Store the PARSED integer, not the validator's double, unless a step
+            // actually rounded it. homie_validate_number() returns the value unchanged
+            // when the format has no step, and the double round-trip would then be the
+            // only thing losing an integer above 2^53. With a step the rounding is
+            // genuinely double arithmetic and that limit applies; it is documented on
+            // homie_validate_number() in homie_datatype.h.
+            //
+            // llround, not a cast: a cast truncates toward zero, so a coerced value that
+            // lands a hair under its step (2.9999999999 for 3) would store 2 — not the
+            // "nearest step" the spec asks for. Exact for an integer step either way;
+            // this makes it exact for the inexact cases too.
+            HomieNumberFormat nf;
+            bool stepped = homie_parse_number_format(_format, &nf) && nf.has_step;
+            setValue(stepped ? (int64_t)llround(coerced) : parsed);
+            isValid = true;
         }
     } else if (strcmp(datatype(), HOMIE_DATATYPE_FLOAT) == 0) {
         // Same: atof() turned "abc" into 0.0, and would also have taken "0x10", "inf"

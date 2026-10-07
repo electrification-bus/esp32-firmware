@@ -61,6 +61,7 @@ class NodeProperty {
 
         // ---- setters: render text, then store once on the Property ----------------
         void set(int value);
+        void set(int64_t value);      // Homie 5 integers are 64-bit signed
         void set(unsigned int value);
         void set(float value);
         void set(double value);
@@ -77,6 +78,7 @@ class NodeProperty {
         void clearValue();
 
         void set_value_and_publish(int value);
+        void set_value_and_publish(int64_t value);
         void set_value_and_publish(unsigned int value);
         void set_value_and_publish(float value);
         void set_value_and_publish(double value);

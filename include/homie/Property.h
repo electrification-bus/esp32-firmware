@@ -21,7 +21,11 @@ public:
     void setName(const char* name);
     const char* name() const;
 
+    // Homie 5 integers are 64-bit signed. The int overload is kept so existing call
+    // sites and integer literals still bind exactly (dropping it would make setValue(5)
+    // ambiguous against the unsigned/float/bool overloads); it widens and delegates.
     void setValue(int value);
+    void setValue(int64_t value);
     void setValue(float value);
     void setValue(const char* value);
     void setValue(bool value);
@@ -29,8 +33,8 @@ public:
     const char* value() { return _value; };
     float getFloatValue() { return _floatValue; };
     // No float round-trip: that lost precision above 2^24, so getIntValue() could not
-    // return what setValue(int) stored (16777217 came back as 16777216).
-    int getIntValue() { return _intValue; };
+    // return what setValue() stored (16777217 came back as 16777216).
+    int64_t getIntValue() { return _intValue; };
     bool getBoolValue() { return _boolValue; };
     // Enum value is the selected string (one of the format options); color value is the
     // raw "type,c1,c2[,c3]" payload — use homie_parse_color() for the components (C1).
@@ -94,7 +98,7 @@ public:
         bool bool_value;
         float float_value;
         uint64_t unsigned_value;
-        int int_value;
+        int64_t int_value;
     };
     void save_value(ValueSnapshot* s) const;
     void restore_value(const ValueSnapshot* s);
@@ -160,5 +164,5 @@ private:
     bool _boolValue;
     float _floatValue;
     uint64_t _unsignedValue;
-    int _intValue;
+    int64_t _intValue;
 };
