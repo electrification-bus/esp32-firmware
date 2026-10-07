@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include <platform/mqtt_client.h>
+#include <homie.h>
 #include <TimeLib.h>
 #include <WiFiClient.h>
 #include <WiFiClientSecure.h>
@@ -194,17 +195,42 @@ void mqtt_process_queue() {
     }
 }
 
-// Heap-allocated on first subscription (not a static array — see Device.cpp's
+// Heap-allocated on first subscription (not a static array: see Device.cpp's
 // _description_json comment). settable_properties[i] indexing works unchanged
 // since a pointer subscripts identically to an array.
-#define MAX_SETTABLE_SUBSCRIBERS 128
+//
+// Sized to the device rather than to a constant. settable_table_capacity() is emitted
+// into src/homie.cpp by ./ebus-esp32 generate (every settable property in device.yml,
+// children included, plus the $state watch and a margin). A hand-coded src/homie.cpp
+// may define it too; one that does not gets the weak default below.
+// -DMAX_SETTABLE_SUBSCRIBERS=<n> in build_src_flags overrides both, for entries the
+// generator cannot see.
+#define SETTABLE_TABLE_DEFAULT 32
+__attribute__((weak)) uint16_t settable_table_capacity() { return SETTABLE_TABLE_DEFAULT; }
+
+static int settable_capacity = 0;
 static subscribed_settable_property_t* settable_properties = nullptr;
 static subscribed_settable_property_t* ensure_settable_properties() {
   if (settable_properties == nullptr) {
+#ifdef MAX_SETTABLE_SUBSCRIBERS
+    settable_capacity = MAX_SETTABLE_SUBSCRIBERS;
+#else
+    settable_capacity = settable_table_capacity();
+#endif
     // (): value-initialise. Belt-and-braces with the struct's member initializers.
-    settable_properties = new subscribed_settable_property_t[MAX_SETTABLE_SUBSCRIBERS]();
+    settable_properties = new subscribed_settable_property_t[settable_capacity]();
+    Serial.printf("MQTT: settable subscriber table: %d entries (%u bytes)\n", settable_capacity,
+                  (unsigned)(settable_capacity * sizeof(subscribed_settable_property_t)));
   }
   return settable_properties;
+}
+
+// Every registration path refuses a topic once the table is full; this says how to fix it.
+static void report_settable_table_full(const char* topic) {
+  Serial.printf("MQTT: **ERROR -- settable subscriber table full (%d); /set for '%s' NOT "
+                "registered. ./ebus-esp32 generate sizes it from the settable properties in "
+                "device.yml; for entries added at runtime, build with "
+                "-DMAX_SETTABLE_SUBSCRIBERS=<n> in build_src_flags\n", settable_capacity, topic);
 }
 
 // Fallback callback for unhandled messages (used by controller)
@@ -394,9 +420,8 @@ void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb,
        return;
      }
    }
-   if (num_subscribers >= MAX_SETTABLE_SUBSCRIBERS) {
-     Serial.printf("MQTT: **ERROR -- settable subscriber table full (%d); /set for '%s' NOT "
-                   "registered (raise MAX_SETTABLE_SUBSCRIBERS)\n", MAX_SETTABLE_SUBSCRIBERS, topic);
+   if (num_subscribers >= settable_capacity) {
+     report_settable_table_full(topic);
      return;
    }
    // New subscription. Null the entity fields explicitly: an entry created here may
@@ -420,8 +445,8 @@ void subscribe_settable_handler(const char* topic, settable_handler_t handler, v
        return;
      }
    }
-   if (num_subscribers >= MAX_SETTABLE_SUBSCRIBERS) {
-     Serial.printf("MQTT: settable subscriber table full — handler for '%s' NOT registered\n", topic);
+   if (num_subscribers >= settable_capacity) {
+     report_settable_table_full(topic);
      return;
    }
    // Null the property/entity fields explicitly. A topic registered ONLY here — a
@@ -450,7 +475,7 @@ void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_
      }
    }
    // Topic not found — create entry (Property::subscribe may not have run yet)
-   if (num_subscribers < MAX_SETTABLE_SUBSCRIBERS) {
+   if (num_subscribers < settable_capacity) {
      Serial.printf("ENTITY: Callback Subscription: %s CREATED NEW\n", topic);
      strcpy(settable_properties[num_subscribers].topic, topic);
      settable_properties[num_subscribers].property_callback = nullptr;
@@ -462,7 +487,7 @@ void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_
        mqtt_client.subscribe(topic);
      }
    } else {
-     Serial.printf("ENTITY: Callback Subscription: FAIL - table full\n");
+     report_settable_table_full(topic);
    }
 }
 

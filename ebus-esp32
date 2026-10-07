@@ -709,6 +709,19 @@ def registers_to_desc_table(regs, node_id):
 def _cvar_global(s):
     return "".join(c if (c.isalnum() or c == "_") else "_" for c in str(s))
 
+# The firmware's settable subscriber table (src/platform/mqtt_client.cpp) holds one entry
+# per distinct /set topic plus the device's watch on its own $state, which goes through
+# the same table. Drivers register their /set topics against properties their yml
+# declares settable, so the yml count bounds the table; the margin absorbs a driver that
+# registers a /set on a property its yml leaves read-only.
+_SETTABLE_TABLE_WATCHES = 1   # the root device's $state watch (main.cpp watch_own_state)
+_SETTABLE_TABLE_MARGIN  = 4
+_SETTABLE_TABLE_FLOOR   = 8
+
+def settable_table_capacity(settable_count: int) -> int:
+    return max(_SETTABLE_TABLE_FLOOR,
+               settable_count + _SETTABLE_TABLE_WATCHES + _SETTABLE_TABLE_MARGIN)
+
 # Set once this process has generated, and inherited by every `pio run` it starts. The
 # pre-build hook (scripts/generate_homie.py) re-runs generate inside each of those runs;
 # with this set, that run's stdout is discarded so a build prints the generator output
@@ -755,6 +768,7 @@ def _generate(args) -> None:
     used_lib_deps     = []   # lib_deps strings from every used component's generator block (dedup, ordered)
     used_components   = []   # 'bus/name' of every used component (dedup, ordered)
     pin_uses          = {}   # label -> GPIO, for every bus and node pin in use (conflict check)
+    settable_count    = [0]  # settable properties across the whole device tree
 
     def _cvar(s):
         return "".join(c if (c.isalnum() or c == "_") else "_" for c in str(s))
@@ -894,6 +908,8 @@ def _generate(args) -> None:
                     prop_var  = f"_prop_{_cvar(effective_node_id)}_{_cvar(prop_id)}"
                     unit      = prop.get("unit", "")
                     settable  = prop.get("settable", False)
+                    if settable:
+                        settable_count[0] += 1
                     retained  = prop.get("retained", True)
                     prop_format = prop.get("format", "")
                     # numeric (physical-measurement) properties should carry a
@@ -982,6 +998,13 @@ def _generate(args) -> None:
         lines.append("    Node* _node;")
         lines += prop_reg_body
     lines += ["}"]
+    capacity = settable_table_capacity(settable_count[0])
+    lines += ["", f"// {settable_count[0]} settable propert{'y' if settable_count[0] == 1 else 'ies'} "
+                  f"+ {_SETTABLE_TABLE_WATCHES} $state watch + {_SETTABLE_TABLE_MARGIN} spare "
+                  f"(at least {_SETTABLE_TABLE_FLOOR})",
+              "uint16_t settable_table_capacity() {",
+              f"    return {capacity};",
+              "}"]
     lines += ["", "void setup_homie() {"] + (setups or ["    // no nodes configured"]) + ["}"]
     lines += ["", "void loop_homie() {"] + (loops or ["    // no nodes configured"]) + ["}", ""]
 

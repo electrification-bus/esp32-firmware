@@ -223,6 +223,8 @@ The whole tree shares one MQTT connection, so there is exactly one **Last Will**
 
 Static C++ object declarations, `register_homie_properties()`, `setup_homie()`, and `loop_homie()`.  `main.cpp` calls these functions at the appropriate points in the Arduino lifecycle.  All objects are statically allocated — no heap allocations, no null-pointer risk, constructors fire before `setup()`.
 
+`settable_table_capacity()` sizes the firmware's table of `/set` subscriptions: one entry per settable property in the whole device tree (child devices included), one for the device's watch on its own `$state`, and 4 spare, with a floor of 8. Each entry is 160 bytes of heap. A driver that registers `/set` topics the ymls do not declare settable can outgrow it; the firmware then logs `settable subscriber table full` and refuses the topic. Raise the limit with `-DMAX_SETTABLE_SUBSCRIBERS=<n>` in `build_src_flags` (in `platformio_local.ini`), which overrides the generated value.
+
 Example output for the quickstart config above:
 
 ```cpp
@@ -260,6 +262,11 @@ void register_homie_properties(Device* device) {
         // ...
     }
     // ... one block per node ...
+}
+
+// 1 settable property + 1 $state watch + 4 spare (at least 8)
+uint16_t settable_table_capacity() {
+    return 8;
 }
 
 void setup_homie() {
