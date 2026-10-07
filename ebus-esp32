@@ -722,6 +722,139 @@ def settable_table_capacity(settable_count: int) -> int:
     return max(_SETTABLE_TABLE_FLOOR,
                settable_count + _SETTABLE_TABLE_WATCHES + _SETTABLE_TABLE_MARGIN)
 
+# ── id and topic lengths ───────────────────────────────────────────────────────
+#
+# The firmware holds ids and topics in fixed buffers sized from include/homie/homie_limits.h
+# and truncates anything longer, which publishes and subscribes on topics that are not the
+# property's own. generate computes every id and topic the firmware will build and refuses
+# one that does not fit. Not patched by the test sandbox: these read the real sources.
+_HOMIE_LIMITS_HEADER = ROOT / "include" / "homie" / "homie_limits.h"
+_CONFIG_H            = ROOT / "include" / "platform" / "config.h"
+_CONFIG_CPP          = ROOT / "src" / "platform" / "config.cpp"
+_HOMIE_LIMIT_NAMES   = ("HOMIE_DEVICE_ID_MAX", "HOMIE_NODE_ID_MAX", "HOMIE_PROPERTY_ID_MAX",
+                        "HOMIE_TOPIC_MAX")
+# Topics are measured with the longer of the two prefixes (HOMIE_TOPIC_PREFIX in
+# include/homie/homie.h), so a device.yml that passes fits either build.
+_TOPIC_PREFIX        = "homie/5"
+_TARGET_SUFFIX       = "/$target"    # the longest suffix the firmware appends to a property topic
+_CHIP_ID_STANDIN     = "0" * 12      # ${chip_id}: the 6-byte eFuse MAC as 12 hex chars
+_CHIP_ID_SHORT_STANDIN = "0" * 6     # ${chip_id_short}: its last 3 bytes
+_HOMIE_SEPARATORS    = frozenset("_.- \t\n\v\f\r")
+
+def _read_int(path: Path, pattern: str, what: str) -> int:
+    m = re.search(pattern, path.read_text(encoding="utf-8"), re.MULTILINE)
+    if not m:
+        print(f"ERROR: {what} not found in {path.relative_to(ROOT)}", file=sys.stderr)
+        sys.exit(1)
+    return int(m.group(1))
+
+def homie_limits() -> dict:
+    """The id and topic limits, in characters, read from the firmware's own sources."""
+    limits = {name: _read_int(_HOMIE_LIMITS_HEADER, rf"^#define\s+{name}\s+(\d+)\b", name)
+              for name in _HOMIE_LIMIT_NAMES}
+    limits["HOMIE_PROPERTY_TOPIC_MAX"] = limits["HOMIE_TOPIC_MAX"] - len(_TARGET_SUFFIX)
+    # Buffer sizes, NUL included, so one less is the longest value they keep.
+    limits["id_prefix"] = _read_int(_CONFIG_H, r"^extern char device_id_prefix\[(\d+)\]",
+                                    "device_id_prefix[]") - 1
+    limits["id_template"] = _read_int(_CONFIG_CPP, r"^static char device_id_template\[(\d+)\]",
+                                      "device_id_template[]") - 1
+    limits["device_name"] = _read_int(_CONFIG_H, r"^extern char device_name\[(\d+)\]",
+                                      "device_name[]") - 1
+    return limits
+
+def sanitize_homie_id(value) -> str:
+    """sanitize_homie_id() in src/homie/homie_id.cpp, without its buffer limit: lowercase,
+    keep a-z 0-9, turn runs of '_' '.' '-' and whitespace into one '-' between kept
+    characters, drop everything else (non-ASCII bytes included)."""
+    out, pending = [], False
+    for b in str(value).encode("utf-8"):
+        c = chr(b).lower() if b < 128 else ""
+        if c and (("a" <= c <= "z") or ("0" <= c <= "9")):
+            if pending and out:
+                out.append("-")
+            pending = False
+            out.append(c)
+        elif c and c in _HOMIE_SEPARATORS:
+            pending = True
+    return "".join(out)
+
+def _utf8_head(value, n: int) -> str:
+    """The first n bytes of value, as strncpy into an n+1-byte buffer keeps them."""
+    return str(value).encode("utf-8")[:n].decode("utf-8", errors="ignore")
+
+def runtime_root_id(template, prefix, name, limits) -> str:
+    """The root device id generateDeviceID() (src/platform/config.cpp) resolves at boot,
+    with stand-ins of the right length for the chip id, which only the device knows."""
+    templ = str(template or "") or "${chip_id}"
+    name_id = sanitize_homie_id(_utf8_head(name, limits["device_name"]))
+    raw, i = [], 0
+    while i < len(templ):
+        if templ.startswith("${chip_id_short}", i):
+            raw.append(_CHIP_ID_SHORT_STANDIN); i += len("${chip_id_short}")
+        elif templ.startswith("${chip_id}", i):
+            raw.append(_CHIP_ID_STANDIN); i += len("${chip_id}")
+        elif templ.startswith("${name}", i):
+            raw.append(name_id); i += len("${name}")
+        else:
+            raw.append(templ[i]); i += 1
+    resolved = sanitize_homie_id("".join(raw))
+    prefix_id = sanitize_homie_id(str(prefix or ""))
+    return f"{prefix_id}-{resolved}" if prefix_id else resolved
+
+def _merged_device_section(cfg: dict) -> dict:
+    """device.yml's device: section with config-overlay.yml's merged over it, as
+    _apply_overlay() merges them into data/config.yml."""
+    device = cfg.get("device") if isinstance(cfg.get("device"), dict) else {}
+    device = json.loads(json.dumps(device, default=str))   # a copy _deep_merge may write to
+    if CONFIG_OVERLAY.exists():
+        overlay = load_yaml_file(CONFIG_OVERLAY, require_mapping=False) or {}
+        overlay_device = overlay.get("device") if isinstance(overlay, dict) else None
+        if isinstance(overlay_device, dict):
+            _deep_merge(device, overlay_device)
+    return device
+
+class IdLimits:
+    """Collects every id and topic over its firmware limit, so generate reports them all."""
+
+    def __init__(self, limits: dict):
+        self.limits = limits
+        self.errors = []
+
+    def check_id(self, kind: str, value: str, limit_name: str, where: str = "") -> None:
+        limit = self.limits[limit_name]
+        if len(value) > limit:
+            self.errors.append(f"{kind} id '{value}'{where} is {len(value)} chars; the "
+                               f"firmware holds at most {limit} ({limit_name} in "
+                               f"include/homie/homie_limits.h)")
+
+    def check_setting(self, key: str, value: str, limit_key: str, source: str) -> None:
+        limit = self.limits[limit_key]
+        if len(value) > limit:
+            self.errors.append(f"{key} '{value}' is {len(value)} chars; the firmware keeps "
+                               f"at most {limit} ({source})")
+
+    def check_property_topic(self, topic: str, where: str) -> None:
+        limit = self.limits["HOMIE_PROPERTY_TOPIC_MAX"]
+        if len(topic) > limit:
+            self.errors.append(f"property topic '{topic}' ({where}) is {len(topic)} chars; "
+                               f"the firmware holds at most {limit} (HOMIE_TOPIC_MAX "
+                               f"{self.limits['HOMIE_TOPIC_MAX']} in "
+                               f"include/homie/homie_limits.h, less {len(_TARGET_SUFFIX)} "
+                               f"for '{_TARGET_SUFFIX}')")
+
+    def exit_if_any(self, uses_chip_id: bool) -> None:
+        if not self.errors:
+            return
+        for e in self.errors:
+            print(f"ERROR: {e}", file=sys.stderr)
+        notes = [f"topics are measured with the longer prefix '{_TOPIC_PREFIX}'"]
+        if uses_chip_id:
+            notes.insert(0, f"${{chip_id}} is counted as its {len(_CHIP_ID_STANDIN)} hex "
+                            f"chars, shown as {_CHIP_ID_STANDIN}")
+        print(f"       ({'; '.join(notes)}.) Shorten the ids named above; see "
+              f"doc/GenerateHomieDevice.md, 'Id and topic lengths'.", file=sys.stderr)
+        sys.exit(1)
+
 # Set once this process has generated, and inherited by every `pio run` it starts. The
 # pre-build hook (scripts/generate_homie.py) re-runs generate inside each of those runs;
 # with this set, that run's stdout is discarded so a build prints the generator output
@@ -754,6 +887,23 @@ def _generate(args) -> None:
     broker_discovery = broker_discovery_list((cfg.get("mqtt") or {}).get("discover"),
                                              str(device_yml))
 
+    # The root device id as the firmware resolves it: device.id and device.id_prefix may
+    # come from config-overlay.yml; ${name} reads the homie.yml name, which only device.yml
+    # sets. Every child id and topic below is built on it.
+    id_limits = IdLimits(homie_limits())
+    merged_device = _merged_device_section(cfg)
+    id_template = str(merged_device.get("id") or "")
+    id_prefix = str(merged_device.get("id_prefix") or "")
+    id_limits.check_setting("device.id", id_template, "id_template",
+                            "device_id_template[] in src/platform/config.cpp")
+    id_limits.check_setting("device.id_prefix", id_prefix, "id_prefix",
+                            "device_id_prefix[] in include/platform/config.h")
+    root_id = runtime_root_id(id_template, id_prefix,
+                              device.get("name", "Homie Device") if isinstance(device, dict)
+                              else "Homie Device", id_limits.limits)
+    id_limits.check_id("device", root_id, "HOMIE_DEVICE_ID_MAX",
+                       " (the root device: device.id_prefix + device.id, resolved)")
+
     includes          = []
     decls             = []   # entity object declarations
     child_dev_decls   = []   # static Device dev_<child>;
@@ -773,9 +923,10 @@ def _generate(args) -> None:
     def _cvar(s):
         return "".join(c if (c.isalnum() or c == "_") else "_" for c in str(s))
 
-    def emit_node(entry, dev_access, setdev_addr, is_root):
+    def emit_node(entry, dev_access, setdev_addr, is_root, dev_id, dev_label):
         # dev_access: C++ device access prefix — "device->" (root) or "dev_x." (child)
         # setdev_addr: entity's device address ("&dev_x") for a child; None for root
+        # dev_id: the device's runtime id; dev_label: how errors name the device
         if not isinstance(entry, dict):
             print(f"ERROR: device.yml has incorrect YAML under nodes: — check the "
                   f"indentation and syntax of that entry", file=sys.stderr)
@@ -855,6 +1006,10 @@ def _generate(args) -> None:
                   file=sys.stderr)
             sys.exit(1)
         seen_node_cvars[cv] = node_id
+        # The entity sanitizes its id (NodeEntity::setHomieNodeId), keeping the raw one if
+        # nothing is left.
+        entity_node_id = sanitize_homie_id(node_id) or str(node_id)
+        id_limits.check_id("node", entity_node_id, "HOMIE_NODE_ID_MAX", f" ({dev_label})")
         check_config_keys(node_id, component, comp_path, ctor_tmpl, node_cfg)
         check_bus_keys(node_id, component, comp_path, ctor_tmpl, buses_cfg)
         for bus, key in required_bus_keys(ctor_tmpl):
@@ -896,6 +1051,14 @@ def _generate(args) -> None:
             properties = n.get("properties", [])
             node_name  = n.get("name", effective_node_id)
             node_type  = n.get("type", "generic")
+            # A single-node component's node takes the entity's id (getNodeId() below); a
+            # multi-node component passes each node id to addNode() as written.
+            if single:
+                fw_node_id = entity_node_id
+            else:
+                fw_node_id = str(effective_node_id)
+                id_limits.check_id("node", fw_node_id, "HOMIE_NODE_ID_MAX",
+                                   f" (component {comp_name}, {dev_label})")
             if properties:
                 prop_reg_body.append("")
                 id_expr = f'{node_var}.getNodeId()' if single else f'"{effective_node_id}"'
@@ -906,6 +1069,14 @@ def _generate(args) -> None:
                     # Sanitize the C++ variable name (Homie ids allow hyphens, C++ names
                     # don't) while the addProperty() arg below keeps the real id string.
                     prop_var  = f"_prop_{_cvar(effective_node_id)}_{_cvar(prop_id)}"
+                    # Node::addProperty() sanitizes the id, keeping the raw one if nothing
+                    # is left; the topic is the node's plus that id.
+                    fw_prop_id = sanitize_homie_id(prop_id) or str(prop_id)
+                    where = f"node '{fw_node_id}', {dev_label}"
+                    id_limits.check_id("property", fw_prop_id, "HOMIE_PROPERTY_ID_MAX",
+                                       f" ({where})")
+                    id_limits.check_property_topic(
+                        f"{_TOPIC_PREFIX}/{dev_id}/{fw_node_id}/{fw_prop_id}", where)
                     unit      = prop.get("unit", "")
                     settable  = prop.get("settable", False)
                     if settable:
@@ -935,8 +1106,9 @@ def _generate(args) -> None:
                         prop_reg_body.append(f'        {prop_var}.setSupportsTarget(true);')
                 prop_reg_body.append('    }')
 
-    def emit_device(dev_cfg, dev_access, dev_addr, runtime_id_expr, is_root):
-        # Emit this device's nodes, then recurse into nested child devices.
+    def emit_device(dev_cfg, dev_access, dev_addr, runtime_id_expr, is_root, dev_id, dev_label):
+        # Emit this device's nodes, then recurse into nested child devices. dev_id is the
+        # runtime id runtime_id_expr evaluates to on the device.
         nodes_list = dev_cfg.get("nodes") or []
         if not isinstance(nodes_list, list):
             print(f"ERROR: device.yml nodes: value isn't a list (got "
@@ -944,7 +1116,8 @@ def _generate(args) -> None:
                   f"'- component: ...' entries", file=sys.stderr)
             sys.exit(1)
         for entry in nodes_list:
-            emit_node(entry, dev_access, None if is_root else dev_addr, is_root)
+            emit_node(entry, dev_access, None if is_root else dev_addr, is_root, dev_id,
+                      dev_label)
         children_list = dev_cfg.get("children") or []
         if not isinstance(children_list, list):
             print(f"ERROR: device.yml children: value isn't a list (got "
@@ -967,17 +1140,24 @@ def _generate(args) -> None:
             cidbuf = "childId_" + _cvar(cid)
             cname  = child.get("name", cid)
             ctype  = child.get("type", "generic")
+            # The generated snprintf below joins the parent's runtime id and the child id
+            # as written; Device::setId() keeps HOMIE_DEVICE_ID_MAX of it.
+            child_id = f"{dev_id}-{cid}"
+            child_label = f"child '{cid}'"
+            id_limits.check_id("device", child_id, "HOMIE_DEVICE_ID_MAX",
+                               f" ({child_label}: parent id + '-' + child id)")
             child_dev_decls.append(f"static Device {cvar};")
             prop_reg_body.append("")
             prop_reg_body.append(f"    // nested child device: {cid}")
-            prop_reg_body.append(f"    char {cidbuf}[96];")
+            prop_reg_body.append(f"    char {cidbuf}[HOMIE_DEVICE_ID_MAX + 1];")
             prop_reg_body.append(f'    snprintf({cidbuf}, sizeof({cidbuf}), "%s-{cid}", {runtime_id_expr});')
             prop_reg_body.append(f'    {cvar}.init("{cname}", {cidbuf}, "{ctype}", {dev_access}mqttClient());')
             prop_reg_body.append(f"    {dev_access}addChild(&{cvar});")
-            emit_device(child, f"{cvar}.", f"&{cvar}", cidbuf, is_root=False)
+            emit_device(child, f"{cvar}.", f"&{cvar}", cidbuf, False, child_id, child_label)
 
-    emit_device(cfg, "device->", "device", "device->getId()", is_root=True)
+    emit_device(cfg, "device->", "device", "device->getId()", True, root_id, "root device")
     check_gpio_conflicts(pin_uses)
+    id_limits.exit_if_any("${chip_id" in (id_template or "${chip_id}"))
 
     # src/homie.cpp
     lines = [_HOMIE_CPP_HEADER]
