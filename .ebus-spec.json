@@ -16,8 +16,9 @@
     "empty-string-encoding",
     "mqtt-homie-transport",
     "mdns-discovery",
+    "rest-configuration",
     "proxy-publishers"
   ],
   "implements": {},
-  "notes": "Partial, so not listed: rest-configuration (REST API with OpenAPI at /api/openapi.yml, but no ebus:* tags and no registration endpoint) and jsonschema-format ($format is stored in 64 bytes and json payloads are not checked against it). Not implemented: broker-hosting, tls (no HTTPS server; MQTT is a TLS client only), mtls-client-auth, device-topology (no connection capability)."
+  "notes": "Partial, so not listed: jsonschema-format ($format is stored in 64 bytes and json payloads are not checked against it). Not implemented: broker-hosting, tls (no HTTPS server; MQTT is a TLS client only), mtls-client-auth, device-topology (no connection capability)."
 }
