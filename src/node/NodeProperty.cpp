@@ -86,6 +86,7 @@ void NodeProperty::store(const char* text) {
 // payloads drivers have always published — notably %.4f for float, where
 // Property::setValue(float) would emit %f.
 void NodeProperty::set(int value)          { char b[32]; snprintf(b, sizeof(b), "%d", value);   store(b); }
+void NodeProperty::set(int64_t value)      { char b[32]; snprintf(b, sizeof(b), "%lld", (long long)value); store(b); }
 void NodeProperty::set(unsigned int value) { char b[32]; snprintf(b, sizeof(b), "%u", value);   store(b); }
 void NodeProperty::set(float value)        { char b[32]; snprintf(b, sizeof(b), "%.4f", value); store(b); }
 void NodeProperty::set(double value)       { char b[32]; snprintf(b, sizeof(b), "%f", value);   store(b); }
@@ -102,6 +103,7 @@ void NodeProperty::clearValue() {
 }
 
 void NodeProperty::set_value_and_publish(int value)          { set(value); publish(); }
+void NodeProperty::set_value_and_publish(int64_t value)      { set(value); publish(); }
 void NodeProperty::set_value_and_publish(unsigned int value) { set(value); publish(); }
 void NodeProperty::set_value_and_publish(float value)        { set(value); publish(); }
 void NodeProperty::set_value_and_publish(double value)       { set(value); publish(); }

@@ -51,13 +51,13 @@ bool homie_parse_float_payload(const char* payload, double* out);
 
 // Parse a whole integer payload: an optional '-' then digits, nothing else. Rejects the
 // float spellings ('.', exponent) that the spec allows only for floats, and rejects a
-// value outside int32_t rather than wrapping it. Returns false, writing nothing, for
+// value outside int64_t rather than wrapping it. Returns false, writing nothing, for
 // anything else.
 //
-// int32_t, not int64_t, because Property stores an integer in an `int`. Homie 5 integers
-// are 64-bit, so a payload between 2^31 and 2^63 is spec-legal and refused here; see
-// the issue tracking the widening.
-bool homie_parse_integer_payload(const char* payload, int32_t* out);
+// int64_t is the spec's integer width, and Property stores one, so the whole range round
+// trips exactly. NOTE that the FORMAT path below is double-based, so a step applied to a
+// magnitude above 2^53 is not exact — see homie_validate_number().
+bool homie_parse_integer_payload(const char* payload, int64_t* out);
 
 // --- numeric format: float/integer "[min]:[max][:step]" (C2) ---
 
@@ -79,4 +79,15 @@ bool homie_parse_number_format(const char* format, HomieNumberFormat* out);
 // then require min <= result <= max (inclusive). Writes the coerced (step-rounded)
 // value to *coerced when non-null. Returns true iff the result is in range. With no
 // format constraints, returns true and coerced = value.
+//
+// PRECISION, for integer properties: this is double arithmetic, and a double holds only
+// integers up to 2^53 exactly. So for an integer magnitude above 2^53:
+//   - the range comparison is approximate (it is made on the rounded double), and
+//   - a stepped value cannot be returned exactly.
+// A float property is unaffected — it is double-based end to end. An integer property
+// with no `step` in its format is also unaffected, because Property stores the value the
+// payload parser produced rather than this function's double; see store_set_payload().
+// Giving integers an exact path would mean a second, integer numeric-format parser;
+// nothing in tree needs one, since a stepped format on a counter that large is not a
+// configuration anyone writes.
 bool homie_validate_number(double value, const char* format, double* coerced);

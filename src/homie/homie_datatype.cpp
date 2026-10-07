@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <errno.h>
 #include <ctype.h>
 #include <math.h>
 
@@ -228,7 +229,7 @@ bool homie_parse_float_payload(const char* payload, double* out) {
     return true;
 }
 
-bool homie_parse_integer_payload(const char* payload, int32_t* out) {
+bool homie_parse_integer_payload(const char* payload, int64_t* out) {
     if (!payload) return false;
     const char* p = payload;
     if (*p == '-') p++;
@@ -237,11 +238,13 @@ bool homie_parse_integer_payload(const char* payload, int32_t* out) {
         if (*q < '0' || *q > '9') return false;      // no '.', no exponent, no '+', no space
     }
     // Digits only at this point, so the sign is the only thing strtoll can read besides
-    // them; it is used for the value and for the overflow report. errno is not consulted
-    // because the explicit int32_t bounds below are stricter than ERANGE on a 64-bit long.
+    // them. errno IS the overflow test now that the bound is int64_t itself: strtoll
+    // saturates to LLONG_MIN/MAX and sets ERANGE, which is indistinguishable from a
+    // payload that legitimately spells those two values.
+    errno = 0;
     long long v = strtoll(payload, nullptr, 10);
-    if (v < INT32_MIN || v > INT32_MAX) return false;   // refuse rather than wrap
-    if (out) *out = (int32_t)v;
+    if (errno == ERANGE) return false;               // refuse rather than wrap or saturate
+    if (out) *out = (int64_t)v;
     return true;
 }
 
