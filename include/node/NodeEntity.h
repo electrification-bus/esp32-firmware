@@ -14,6 +14,7 @@ class Node;
 class Property;
 
 #include <node/NodeProperty.h>     // by-value member in every driver, so must be complete
+#include <homie/homie_limits.h>
 
 class NodeEntity {
     public:
@@ -33,7 +34,7 @@ class NodeEntity {
         // This entity's Homie device — its assigned device, or the root theDevice
         // when unassigned (single-device default). Drives where property values publish.
         Device* device() { return _device ? _device : &theDevice; }
-        const char* getPropertyTopic(const char* property_id, char* buf, size_t bufSize = 128);
+        const char* getPropertyTopic(const char* property_id, char* buf, size_t bufSize = HOMIE_TOPIC_MAX + 1);
         Node* getNode(const char* id);
         void publish(const char* node_id);
         Property* validate(const char* node_id, const char* property_id);
@@ -50,7 +51,7 @@ class NodeEntity {
 
     protected:
         Node* _parent_node = nullptr; // Pointer to the parent Node
-        char _homie_node_id[32] = {0}; // Homie node ID,
+        char _homie_node_id[HOMIE_NODE_ID_MAX + 1] = {0}; // Homie node ID,
         NodeProperty* _node_properties[32]; // Array of NodeProperties
         int _num_node_properties = 0;
 

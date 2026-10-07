@@ -16,11 +16,18 @@ void NodeProperty::setup(const char* node_id, const char* property_id) {
     // 'relative_humidity' -> 'relative-humidity'. The SAME sanitized id is used for the
     // topic AND the getProperty() lookup, so they stay in sync with the Property's own
     // sanitized id (set in Node::addProperty).
-    sanitize_homie_id(property_id, _homie_property_id, sizeof(_homie_property_id));
+    if (!sanitize_homie_id(property_id, _homie_property_id, sizeof(_homie_property_id))) {
+        Serial.printf("NodeProperty: **ERROR -- property id '%s' is over %d chars; truncated "
+                      "to '%s'\n", property_id, HOMIE_PROPERTY_ID_MAX, _homie_property_id);
+    }
     if (_homie_property_id[0] == '\0') {
         snprintf(_homie_property_id, sizeof(_homie_property_id), "%s", property_id);
     }
-    snprintf(_topic, sizeof(_topic), "%s%s/%s", dev->topic(), node_id, _homie_property_id);
+    int len = snprintf(_topic, sizeof(_topic), "%s%s/%s", dev->topic(), node_id, _homie_property_id);
+    if (len >= (int)sizeof(_topic)) {
+        Serial.printf("NodeProperty: **ERROR -- topic for '%s/%s' is %d chars, over %d; "
+                      "truncated\n", node_id, _homie_property_id, len, (int)sizeof(_topic) - 1);
+    }
     Serial.printf("NodeProperty: setup() topic: %s\n", _topic);
 
     Node* n = dev->getNode(node_id);
@@ -54,7 +61,7 @@ void NodeProperty::setup(const char* node_id, const char* property_id,
                          entity_settable_callback_t cb, NodeEntity* ne) {
     setup(node_id, property_id);
     Device* dev = g_active_setup_device ? g_active_setup_device : &theDevice;
-    char set_topic[192] = {0};
+    char set_topic[HOMIE_TOPIC_MAX + 1] = {0};
     // Use the sanitized id stored by setup() above, not the raw property_id, so the /set
     // subscription matches the published property topic.
     snprintf(set_topic, sizeof(set_topic), "%s%s/%s/%s",
@@ -63,7 +70,7 @@ void NodeProperty::setup(const char* node_id, const char* property_id,
 }
 
 void NodeProperty::on_set(settable_handler_t handler, void* ctx) {
-    char set_topic[192] = {0};
+    char set_topic[HOMIE_TOPIC_MAX + 1] = {0};
     snprintf(set_topic, sizeof(set_topic), "%s/%s", _topic, HOMIE_TOPIC_SET);
     if (mqtt_client.connected()) mqtt_client.subscribe(set_topic, 0);  // /set is QoS 0 (C4)
     subscribe_settable_handler(set_topic, handler, ctx);

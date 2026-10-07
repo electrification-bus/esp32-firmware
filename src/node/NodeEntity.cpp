@@ -21,7 +21,10 @@ void NodeEntity::setHomieNodeId(const char* id) {
     // feeds both Device::addNode() and the per-property NodeProperty::setup() calls,
     // so the published node topic and every property topic under it stay consistent.
     char sanitized[sizeof(_homie_node_id)] = {0};
-    sanitize_homie_id(id, sanitized, sizeof(sanitized));
+    if (!sanitize_homie_id(id, sanitized, sizeof(sanitized))) {
+        Serial.printf("NodeEntity: **ERROR -- node id '%s' is over %d chars; truncated to '%s'\n",
+                      id, HOMIE_NODE_ID_MAX, sanitized);
+    }
     if (sanitized[0] == '\0') {
         // All-illegal id would leave the node unaddressable; keep the raw value
         // (still null-bounded) and warn rather than silently drop the node.

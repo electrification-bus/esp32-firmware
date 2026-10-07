@@ -6,7 +6,7 @@
 #include <platform/broker_discovery.h>
 
 
-#define MAX_DEVICE_ID_CHARS   64 // <device_name>_<6 hex MAC chars>
+#define MAX_DEVICE_ID_CHARS   (HOMIE_DEVICE_ID_MAX + 1)   // buffer size; see homie_limits.h
 
 // POSIX TZ string for local time — override in platformio.ini build_flags if needed
 // Examples: "EST5EDT,M3.2.0,M11.1.0"  "PST8PDT,M3.2.0,M11.1.0"  "UTC0"

@@ -13,6 +13,9 @@
 #endif
 
 #define HOMIE_TOPIC_PREFIX      HOMIE_TOPIC_DOMAIN "/" HOMIE_VERSION_NUM
+#include <homie/homie_limits.h>
+static_assert(sizeof(HOMIE_TOPIC_PREFIX) - 1 <= HOMIE_TOPIC_PREFIX_MAX,
+              "HOMIE_TOPIC_PREFIX is longer than HOMIE_TOPIC_PREFIX_MAX (homie_limits.h)");
 #define HOMIE_TOPIC_SET         "set"
 
 // Buffer size (incl. null) for a Homie device/node `type` string. Homie itself

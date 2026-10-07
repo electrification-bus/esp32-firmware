@@ -99,6 +99,21 @@ static void test_sanitize_truncation_does_not_leave_trailing_hyphen(void) {
     TEST_ASSERT_EQUAL_STRING("ab", out);
 }
 
+static void test_sanitize_reports_an_id_that_fits(void) {
+    char out[4];
+    TEST_ASSERT_TRUE(sanitize_homie_id("abc", out, sizeof(out)));   // exactly fills it
+    TEST_ASSERT_TRUE(sanitize_homie_id("ab--", out, sizeof(out)));  // trailing run is dropped
+}
+
+static void test_sanitize_reports_truncation(void) {
+    char out[4];
+    TEST_ASSERT_FALSE(sanitize_homie_id("abcd", out, sizeof(out)));
+    TEST_ASSERT_EQUAL_STRING("abc", out);
+    TEST_ASSERT_FALSE(sanitize_homie_id("ab-c", out, sizeof(out)));  // the hyphen did not fit
+    TEST_ASSERT_EQUAL_STRING("ab", out);
+    TEST_ASSERT_FALSE(sanitize_homie_id("abc", out, 0));
+}
+
 static void test_sanitize_zero_size_buffer_is_left_untouched(void) {
     char out[4] = {'x', 'x', 'x', '\0'};
     sanitize_homie_id("abc", out, 0);
@@ -310,6 +325,8 @@ int main(int, char**) {
     RUN_TEST(test_sanitize_all_illegal_input_yields_empty_id);
     RUN_TEST(test_sanitize_truncates_to_buffer_size);
     RUN_TEST(test_sanitize_truncation_does_not_leave_trailing_hyphen);
+    RUN_TEST(test_sanitize_reports_an_id_that_fits);
+    RUN_TEST(test_sanitize_reports_truncation);
     RUN_TEST(test_sanitize_zero_size_buffer_is_left_untouched);
     RUN_TEST(test_sanitize_output_contains_only_homie_id_characters);
 

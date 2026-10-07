@@ -121,7 +121,7 @@ static void controller_state_topic(char* buf, size_t len) {
 
 // Callback to re-publish state after MQTT reconnection
 void on_mqtt_reconnect() {
-    char state_topic[128];
+    char state_topic[HOMIE_TOPIC_MAX + 1];
     controller_state_topic(state_topic, sizeof(state_topic));
     mqtt_client.publish(state_topic, HOMIE_STATE_READY, true, homie_qos(true));  // retained -> QoS 2 (C4)
     Serial.println("CONTROLLER: Re-published $state after reconnect");
@@ -141,7 +141,7 @@ static bool on_state_observed(void* ctx, const char* value) {
 }
 
 static void watch_own_state() {
-    char state_topic[128];
+    char state_topic[HOMIE_TOPIC_MAX + 1];
     controller_state_topic(state_topic, sizeof(state_topic));
     subscribe_settable_handler(state_topic, on_state_observed, nullptr);
     if (mqtt_connected()) mqtt_client.subscribe(state_topic, homie_qos(true));
@@ -257,7 +257,7 @@ void loop() {
     // Deferred out of on_state_observed() — see the note there.
     if (_state_reassert_pending) {
         _state_reassert_pending = false;
-        char state_topic[128];
+        char state_topic[HOMIE_TOPIC_MAX + 1];
         controller_state_topic(state_topic, sizeof(state_topic));
         mqtt_client.publish(state_topic, HOMIE_STATE_READY, true, homie_qos(true));
     }
@@ -355,7 +355,7 @@ static bool on_state_observed(void* ctx, const char* value) {
 }
 
 static void watch_own_state() {
-    char state_topic[160] = {0};
+    char state_topic[HOMIE_TOPIC_MAX + 1] = {0};
     snprintf(state_topic, sizeof(state_topic), "%s%s", theDevice.topic(), HOMIE_$STATE);
     // The handler table is keyed by exact topic and is re-subscribed wholesale on every
     // reconnect, so registering here is enough to keep the watch alive across drops.

@@ -6,8 +6,8 @@
 // See homie_id.h. Single pass, no allocation: a hyphen is emitted lazily — only when
 // a separator run is followed by another kept character — which collapses runs and
 // strips leading/trailing hyphens in one go.
-void sanitize_homie_id(const char* in, char* out, size_t out_size) {
-  if (!out || out_size == 0) return;
+bool sanitize_homie_id(const char* in, char* out, size_t out_size) {
+  if (!out || out_size == 0) return false;
   size_t w = 0;
   bool pending_hyphen = false;  // separator(s) seen since the last kept char
   bool emitted = false;         // at least one kept char written (suppresses leading hyphen)
@@ -17,11 +17,11 @@ void sanitize_homie_id(const char* in, char* out, size_t out_size) {
     bool keep = (lc >= 'a' && lc <= 'z') || (lc >= '0' && lc <= '9');
     if (keep) {
       if (pending_hyphen && emitted) {
-        if (w + 1 >= out_size - 1) break;  // no room for the hyphen AND a char after it
+        if (w + 1 >= out_size - 1) { out[w] = '\0'; return false; }  // no room for hyphen + char
         out[w++] = '-';
       }
       pending_hyphen = false;
-      if (w >= out_size - 1) break;
+      if (w >= out_size - 1) { out[w] = '\0'; return false; }
       out[w++] = lc;
       emitted = true;
     } else if (c == '_' || c == '.' || c == '-' || isspace(c)) {
@@ -30,6 +30,7 @@ void sanitize_homie_id(const char* in, char* out, size_t out_size) {
     // any other character is dropped
   }
   out[w] = '\0';
+  return true;
 }
 
 // Drop hyphens left at the end of `s` when a "%s-%s" join was truncated.

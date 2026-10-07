@@ -25,9 +25,17 @@ Node* Property::node() {
 }
 
 void Property::setId(const char* id) {
-    snprintf(_id, sizeof(_id), "%s", id);
+    if (snprintf(_id, sizeof(_id), "%s", id) >= (int)sizeof(_id)) {
+        Serial.printf("Property: **ERROR -- id '%s' is over %d chars; truncated to '%s'\n",
+                      id, HOMIE_PROPERTY_ID_MAX, _id);
+    }
     // Requires setNode() first — dereferences _parent_node to build topic
-    snprintf(_topic, sizeof(_topic), "%s/%s", _parent_node->topic(), _id);
+    int n = snprintf(_topic, sizeof(_topic), "%s/%s", _parent_node->topic(), _id);
+    if (n >= (int)sizeof(_topic)) {
+        // A truncated topic publishes and subscribes somewhere that is not this property.
+        Serial.printf("Property: **ERROR -- topic '%s/%s' is %d chars, over %d; truncated to "
+                      "'%s'\n", _parent_node->topic(), _id, n, (int)sizeof(_topic) - 1, _topic);
+    }
 }
 
 const char* Property::id() const {
@@ -223,7 +231,7 @@ void Property::clearValue() {
 // the EXACT value received on /set is published byte-for-byte (no coercion), retained,
 // so a controller can close its control loop. Only called when supportsTarget().
 void Property::publish_target_value(const char* payload) {
-    char target_topic[96] = {0};
+    char target_topic[HOMIE_TOPIC_MAX + 1] = {0};
     snprintf(target_topic, sizeof(target_topic), "%s/%s", _topic, HOMIE_$TARGET);
     _mqtt_client->publish(target_topic, payload, true, homie_qos(true));
 }
@@ -400,7 +408,7 @@ void Property::subscribe() {
         //TODO flag for retry
         return;
     }
-    char set[128] = {0};
+    char set[HOMIE_TOPIC_MAX + 1] = {0};
     snprintf(set, sizeof(set), "%s/%s", _topic, HOMIE_TOPIC_SET);
     Serial.printf("property '%s' settable - subscribe: '%s'\n",_id, set);
     //TODO pull this out; retry in loop

@@ -15,12 +15,13 @@
 //   5. strip leading/trailing hyphens
 //
 // Writes the sanitized id (null-terminated, truncated to out_size) into `out`.
-// Truncation never leaves a trailing hyphen.
+// Truncation never leaves a trailing hyphen. Returns false when the sanitized id did not
+// fit in out_size and was truncated (or out_size is 0), true otherwise.
 // An all-illegal or empty input yields an empty string — the caller decides how to
 // handle that (keep a fallback id, warn, etc.). Note the node `$type` is NOT an id
 // and keeps its dotted reverse-domain form (energy.ebus.capability.*) — only ids are
 // sanitized.
-void sanitize_homie_id(const char* in, char* out, size_t out_size);
+bool sanitize_homie_id(const char* in, char* out, size_t out_size);
 
 // --- Unique-id generation toolkit ---
 // Hardcoding unique device-ids doesn't scale; derive them from hardware instead.
