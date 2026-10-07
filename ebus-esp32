@@ -2082,16 +2082,48 @@ def monitor_serial(cfg: dict, env_name: str, port: str, key: str, learn: bool = 
             return subprocess.Popen(cmd, cwd=ROOT, env=pio_env())
         env = pio_env()
         env["PYTHONUNBUFFERED"] = "1"   # else pio's output block-buffers into the pipe
+        if os.name == "posix":
+            # PlatformIO 6.2 refuses to monitor unless its stdout is a terminal, so give
+            # it a pseudo-terminal and read that instead of a pipe.
+            import pty
+            master, slave = pty.openpty()
+            proc = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=slave, stderr=slave)
+            os.close(slave)
+            proc.pty_master = master
+            return proc
         return subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True,
                                 errors="replace", bufsize=1)
+
+    def lines_from(proc):
+        master = getattr(proc, "pty_master", None)
+        if master is None:
+            yield from proc.stdout
+            return
+        pending = ""
+        try:
+            while True:
+                try:
+                    chunk = os.read(master, 4096)
+                except OSError:      # EIO once pio exits and the pty closes
+                    break
+                if not chunk:
+                    break
+                pending += chunk.decode("utf-8", errors="replace")
+                while "\n" in pending:
+                    line, pending = pending.split("\n", 1)
+                    yield line + "\n"
+            if pending:
+                yield pending
+        finally:
+            os.close(master)
 
     def drain(proc):
         if not learn:
             proc.wait()
             return
         device_id = None   # from this boot's "Device ID:" line, printed before the IP
-        for line in proc.stdout:
+        for line in lines_from(proc):
             sys.stdout.write(line)
             sys.stdout.flush()
             m = _ID_LEARN_RE.search(line)
