@@ -132,9 +132,10 @@ Edit `device.yml` (the declarative device definition), then drive everything thr
 ./ebus-esp32 run --monitor                  flash, then attach the network console
 ./ebus-esp32 devices                        list attached serial devices
 ./ebus-esp32 envs                           list board environments; * marks the one device.yml selects
+./ebus-esp32 test                           run the firmware's host-side unit tests (no board)
 ```
 
-The CLI's own unit tests need no PlatformIO or hardware: `pip install -r tests/requirements.txt`, then `python -m pytest -q`.
+The CLI's own unit tests need no PlatformIO or hardware: `pip install -r tests/requirements.txt`, then `python -m pytest -q`. `./ebus-esp32 test` runs the firmware's Unity tests in `test/native/` on the host; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 The network console reads the firmware's serial-over-TCP log (`log.tcp_port` in `device.yml`, default 23), so a board installed without a USB cable can still be watched — it replays its ring buffer on connect, so the boot log survives connecting late. `--monitor` also works on `build` and `push`. See [GettingStartedCLI.md](doc/GettingStartedCLI.md#network-console--no-usb-cable).
 

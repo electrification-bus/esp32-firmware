@@ -24,6 +24,23 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
 
+  native-tests:
+    name: Native unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      # One `pio test` per suite; see cmd_test in ebus-esp32 for why.
+      - name: Run tests
+        run: ./ebus-esp32 test
+
   build:
     name: ${{ matrix.env }}
     runs-on: ubuntu-latest
