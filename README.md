@@ -134,6 +134,8 @@ Edit `device.yml` (the declarative device definition), then drive everything thr
 ./ebus-esp32 envs                           list board environments; * marks the one device.yml selects
 ```
 
+The CLI's own unit tests need no PlatformIO or hardware: `pip install -r tests/requirements.txt`, then `python -m pytest -q`.
+
 The network console reads the firmware's serial-over-TCP log (`log.tcp_port` in `device.yml`, default 23), so a board installed without a USB cable can still be watched — it replays its ring buffer on connect, so the boot log survives connecting late. `--monitor` also works on `build` and `push`. See [GettingStartedCLI.md](doc/GettingStartedCLI.md#network-console--no-usb-cable).
 
 The generated `src/homie.cpp`, `data/homie.yml`, and `data/config.yml` are gitignored and rebuilt from `device.yml` before every `pio run` (a PlatformIO pre-build hook) — `device.yml` and the `lib/<bus>/*.yml` component definitions are the only tracked source. Before the first `generate`, create a gitignored `config-overlay.yml` that sets `device.device_passphrase` (`generate` refuses an empty or `changeme` passphrase) plus any other values that must stay out of the tracked `device.yml`, such as broker credentials, written in `device.yml`'s own sections and key names — see [GettingStartedCLI.md](doc/GettingStartedCLI.md). On Windows use `ebus-esp32.bat` (or `python ebus-esp32`).
