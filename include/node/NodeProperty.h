@@ -60,6 +60,13 @@ class NodeProperty {
         const char* format() const;
 
         // ---- setters: render text, then store once on the Property ----------------
+        //
+        // CAST an int32_t, uint32_t, long, unsigned long or size_t argument. On Xtensa
+        // those are `long`, which converts to int, int64_t, unsigned int, float, double
+        // AND bool at the same (Conversion) rank, so the call is ambiguous and will not
+        // compile — say which one you mean, e.g. set((int64_t)n). Applies equally to
+        // set_value_and_publish() below. Not a consequence of the int64_t overload:
+        // `long` already tied across the others before it existed.
         void set(int value);
         void set(int64_t value);      // Homie 5 integers are 64-bit signed
         void set(unsigned int value);

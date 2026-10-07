@@ -24,6 +24,13 @@ public:
     // Homie 5 integers are 64-bit signed. The int overload is kept so existing call
     // sites and integer literals still bind exactly (dropping it would make setValue(5)
     // ambiguous against the unsigned/float/bool overloads); it widens and delegates.
+    //
+    // CAST an int32_t, uint32_t, long, unsigned long or size_t argument. On Xtensa those
+    // are `long`, which converts to int, int64_t, unsigned int, float AND bool all at the
+    // same (Conversion) rank, so the call is ambiguous and will not compile. Pick the
+    // overload you mean: setValue((int64_t)n), setValue((int)n), setValue((unsigned)n).
+    // Not a consequence of the int64_t overload — `long` already tied across
+    // int/unsigned/float/bool before it existed.
     void setValue(int value);
     void setValue(int64_t value);
     void setValue(float value);
