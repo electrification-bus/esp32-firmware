@@ -151,6 +151,10 @@ void generateDeviceID() {
     if (prefix_id[0] != '\0') {
       int n = snprintf(device_id, sizeof(device_id), "%s-%s", prefix_id, resolved);
       if (n >= (int)sizeof(device_id)) {
+        // A cut at the seam or inside the id can leave a trailing hyphen, which Homie ids
+        // must not have.
+        size_t len = strlen(device_id);
+        while (len > 0 && device_id[len - 1] == '-') device_id[--len] = '\0';
         Serial.printf("CONFIG: WARNING device id truncated to '%s' (prefix + template "
                       "exceeds %u chars)\n", device_id, (unsigned)(sizeof(device_id) - 1));
       }
