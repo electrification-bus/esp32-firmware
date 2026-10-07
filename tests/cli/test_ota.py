@@ -119,7 +119,7 @@ def lost_reply(cli, sandbox, clock, monkeypatch):
 
     def push(outcome, back):
         monkeypatch.setattr(cli, "_ota_wait_reboot", lambda host, timeout, since: (outcome, back))
-        cli._ota_push_image(HOST, "/api/ota/firmware", "p", image, "firmware", reboot=True)
+        cli._ota_push_image(HOST, "/api/v1/ota/firmware", "p", image, "firmware", reboot=True)
     return push
 
 
@@ -145,7 +145,7 @@ def test_http_error_reply_fails(cli, sandbox, monkeypatch, capsys):
     image.write_bytes(b"\0")
     monkeypatch.setattr(cli, "_ota_request", lambda *a, **k: (403, "OTA not enabled"))
     with pytest.raises(SystemExit):
-        cli._ota_push_image(HOST, "/api/ota/filesystem", "p", image, "filesystem", reboot=False)
+        cli._ota_push_image(HOST, "/api/v1/ota/filesystem", "p", image, "filesystem", reboot=False)
     assert "HTTP 403 OTA not enabled" in capsys.readouterr().err
 
 
@@ -158,8 +158,8 @@ def test_staged_image_does_not_accept_a_lost_reply(cli, sandbox, monkeypatch):
         seen.update(url=url, reply_lost_ok=reply_lost_ok)
         return 200, "ok"
     monkeypatch.setattr(cli, "_ota_request", fake_request)
-    cli._ota_push_image(HOST, "/api/ota/filesystem", "p", image, "filesystem", reboot=False)
-    assert seen == {"url": "/api/ota/filesystem?reboot=0", "reply_lost_ok": False}
+    cli._ota_push_image(HOST, "/api/v1/ota/filesystem", "p", image, "filesystem", reboot=False)
+    assert seen == {"url": "/api/v1/ota/filesystem?reboot=0", "reply_lost_ok": False}
 
 
 def test_missing_images_are_reported_before_contacting_the_device(cli, sandbox, capsys):
@@ -217,3 +217,75 @@ def test_pull_non_json_reply_is_shown_as_the_state(cli, device, capsys):
 def test_pull_json_reply_that_is_not_an_object_does_not_crash(cli, device):
     device(['"5"', "[1, 2]", status("complete")])
     assert cli._pull_watch(HOST, "p", 300) == 0
+
+
+# ── /api/v1 with the /api fallback ────────────────────────────────────────────
+
+class PathDevice:
+    """Replaces _ota_get, answering by path from `routes` (path -> (status, text)) and
+    404 for any other path. Records the paths asked for."""
+
+    def __init__(self, routes):
+        self.routes, self.paths = routes, []
+
+    def __call__(self, host, path, passphrase, timeout=10):
+        self.paths.append(path)
+        return self.routes.get(path, (404, "Not found"))
+
+
+CURRENT = {"/api/v1/ota": (200, uptime(5)), "/api/ota": (200, uptime(5))}
+LEGACY = {"/api/ota": (200, uptime(5))}
+
+
+@pytest.mark.parametrize("routes,expected", [
+    (CURRENT, "/api/v1"),
+    (LEGACY, "/api"),
+    ({"/api/v1/ota": (302, ""), "/api/ota": (200, uptime(5))}, "/api"),   # setup-AP build
+])
+def test_api_base_falls_back_only_when_v1_is_missing(cli, monkeypatch, routes, expected):
+    monkeypatch.setattr(cli, "_ota_get", PathDevice(routes))
+    assert cli._api_base(HOST) == expected
+
+
+def test_api_base_of_a_silent_device_is_v1(cli, monkeypatch):
+    monkeypatch.setattr(cli, "_ota_get", lambda *a, **k: None)
+    assert cli._api_base(HOST) == "/api/v1"
+
+
+def test_ota_status_asks_v1_first(cli, monkeypatch):
+    fake = PathDevice(CURRENT)
+    monkeypatch.setattr(cli, "_ota_get", fake)
+    assert cli._ota_status(HOST, "p") == (200, uptime(5))
+    assert fake.paths == ["/api/v1/ota"]
+
+
+def test_ota_status_falls_back_on_legacy_firmware(cli, monkeypatch):
+    fake = PathDevice(LEGACY)
+    monkeypatch.setattr(cli, "_ota_get", fake)
+    assert cli._ota_status(HOST, "p") == (200, uptime(5))
+    assert fake.paths == ["/api/v1/ota", "/api/ota"]
+
+
+def test_ota_status_of_a_silent_device_is_none(cli, monkeypatch):
+    monkeypatch.setattr(cli, "_ota_get", lambda *a, **k: None)
+    assert cli._ota_status(HOST, "p") is None
+
+
+@pytest.mark.parametrize("routes,base", [(CURRENT, "/api/v1"), (LEGACY, "/api")])
+def test_ota_push_uses_the_base_the_device_serves(cli, sandbox, monkeypatch, routes, base):
+    build = cli.PIO_BUILD_DIR / "esp32-poe-iso"
+    build.mkdir(parents=True)
+    (sandbox.root / "data" / "config.yml").write_text("x")
+    (build / "littlefs.bin").write_bytes(b"\0")
+    (build / "firmware.bin").write_bytes(b"\xe9")
+    monkeypatch.setattr(cli, "_ota_get", PathDevice(routes))
+    sent = []
+
+    def fake_request(host, url, passphrase, payload, ctype, label, **kw):
+        sent.append(url)
+        return 200, "ok"
+    monkeypatch.setattr(cli, "_ota_request", fake_request)
+    cfg = {"device": {"environment": "esp32-poe-iso"}}
+    args = Namespace(device_yml=str(sandbox.write_device(cfg)), fs_only=False, passphrase="p")
+    cli.ota_push(cfg, args, HOST, "test")
+    assert sent == [f"{base}/ota", f"{base}/ota/filesystem?reboot=0", f"{base}/ota/firmware"]

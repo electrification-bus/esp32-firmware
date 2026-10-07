@@ -26,7 +26,11 @@
 #define MDNS_TXT_AUTH_METHODS   "auth_methods"
 #define MDNS_VAL_ROLE_DEVICE    "device"
 #define MDNS_VAL_ROLE_CONTROLLER "controller"
-#define MDNS_VAL_AUTH_METHODS   "preconfigured"  // device_passphrase is set out of band (config file)
+#define MDNS_TXT_REGISTER       "register"
+#define MDNS_VAL_REGISTER       "/api/v1/auth/register"
+// passphrase: POST MDNS_VAL_REGISTER exchanges the device passphrase for a token.
+// preconfigured: the passphrase itself is set out of band (config file, setup page).
+#define MDNS_VAL_AUTH_METHODS   "passphrase,preconfigured"
 // Not in framework.md 0.9: the keys shipping eBus devices (SPAN panels) advertise
 #define MDNS_TXT_HOMIE_DOMAIN   "homie_domain"
 #define MDNS_TXT_HOMIE_VERSION  "homie_version"
@@ -50,9 +54,9 @@
 #define MDNS_TXT_HTTP_PATH      "path"
 #define MDNS_TXT_HTTP_VERSION   "version"
 #define MDNS_TXT_HTTP_OPENAPI   "openapi"
-#define MDNS_VAL_HTTP_PATH      "/api"
-#define MDNS_VAL_HTTP_VERSION   "1.2.0"           // keep equal to info.version in data/openapi.yml
-#define MDNS_VAL_HTTP_OPENAPI   "/api/openapi.yml"
+#define MDNS_VAL_HTTP_PATH      "/api/v1"
+#define MDNS_VAL_HTTP_VERSION   "1.3.0"           // keep equal to info.version in data/openapi.yml
+#define MDNS_VAL_HTTP_OPENAPI   "/api/v1/openapi.yml"
 
 // _telnet._tcp - serial-over-TCP console log stream (include/platform/log_stream.h).
 // Not in framework.md; proposed upstream as electrification-bus/specification issue 25.

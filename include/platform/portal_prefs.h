@@ -30,7 +30,7 @@ void portal_prefs_load_fallbacks();
 
 // Recovery copy of the device passphrase: the last one a successfully loaded config
 // carried. Read only when no config can be loaded, so the admin endpoints (and with
-// them POST /api/ota/filesystem) still accept the passphrase the filesystem had.
+// them POST /api/v1/ota/filesystem) still accept the passphrase the filesystem had.
 // Save writes NVS only when the value changed. Load returns false if none is stored.
 void portal_prefs_save_recovery_passphrase(const char* passphrase);
 bool portal_prefs_load_recovery_passphrase();
@@ -47,10 +47,11 @@ void portal_auth_record_failure();
 void portal_auth_reset();
 
 // --- Portal session tokens (RAM only) ---
-// POST /api/login exchanges the device passphrase (Basic auth) for a random
-// session token; admin endpoints then accept X-Session-Token instead of the
-// passphrase for the rest of the browser session. Invalidated by idle/absolute
-// timeout, passphrase change, reset-prefs, or reboot (RAM only).
+// POST /api/v1/login (passphrase as Basic auth) and POST /api/v1/auth/register
+// (passphrase in a JSON body) exchange the device passphrase for a random session
+// token; admin endpoints then accept it in X-Session-Token or as a bearer token
+// instead of the passphrase. One slot: a new token replaces the previous one.
+// Invalidated by idle/absolute timeout, passphrase change, reset-prefs, or reboot.
 #define SESSION_IDLE_TIMEOUT_MS (15UL * 60UL * 1000UL)       // 15 min inactivity
 #define SESSION_MAX_LIFETIME_MS (2UL * 60UL * 60UL * 1000UL) // 2 h absolute cap
 

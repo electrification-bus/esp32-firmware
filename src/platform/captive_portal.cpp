@@ -6,7 +6,7 @@
 #include <LittleFS.h>
 #include <Update.h>          // Update / U_FLASH / U_SPIFFS for the OTA push endpoints
 #include <ArduinoJson.h>
-#include <esp_timer.h>       // esp_timer_get_time() for the uptime in GET /api/ota
+#include <esp_timer.h>       // esp_timer_get_time() for the uptime in GET /api/v1/ota
 #include <homie/homie.h>
 #include <platform/portal_prefs.h>
 #include <platform/mqtt_client.h>
@@ -161,7 +161,7 @@ static void performWifiScan() {
     setup_wifi_sta();
 }
 
-// Handle GET /api/wifi-scan - return JSON array of scanned networks
+// Handle GET /api/v1/wifi-scan - return JSON array of scanned networks
 static void handleWifiScan(AsyncWebServerRequest *request) {
     // Build JSON response in static buffer
     Serial.println("handleWifiScan called  ");
@@ -207,8 +207,9 @@ static void handleWifiScan(AsyncWebServerRequest *request) {
 // held the buffer for POST_BODY_HOLD_MS. On an authenticated route the first chunk
 // claims the buffer only from an authorized request, so an unauthenticated client
 // cannot hold it at all, and the hold limit keeps an authorized but slow client from
-// holding it indefinitely. On the one unauthenticated route, a request cannot claim
-// the buffer for a while after an earlier request on that route freed it (see
+// holding it indefinitely. On the unauthenticated routes (POST /api/v1/auth/register,
+// and POST /api/v1/wifi while the setup AP is up), a request cannot claim the buffer
+// for a while after an earlier request on either route freed it (see
 // post_body_open_wait_ms), so back-to-back slow requests cannot keep it from
 // authenticated routes. A request with no body (Content-Length 0) never reaches a
 // body callback, and a second request whose body starts while another request owns
@@ -226,7 +227,7 @@ static char post_body_buf[2048];
 static size_t post_body_len = 0;
 static AsyncWebServerRequest* post_body_owner = NULL;
 static uint32_t post_body_owned_since = 0;
-// Whether the owner claimed the buffer through the unauthenticated route.
+// Whether the owner claimed the buffer through an unauthenticated route.
 static bool post_body_owner_open = false;
 // When an open-route owner frees the buffer, open-route claims are refused for twice
 // as long as it held the buffer (capped at twice the hold limit), so unauthenticated
@@ -293,11 +294,28 @@ static void expirePostBodyOwner() {
 // callback (the request handler would then send a second response, and the attempt
 // would be counted twice). Body callbacks only need a yes/no; the request handler
 // still calls requireAuth() to produce the real response.
-static bool portalAuthorized(AsyncWebServerRequest *request) {
-    if (request->hasHeader("X-Session-Token") &&
-        portal_session_valid(request->getHeader("X-Session-Token")->value().c_str())) {
-        return true;
+// True when the Authorization header carries a bearer token rather than Basic or
+// Digest credentials.
+static bool hasBearerHeader(AsyncWebServerRequest *request) {
+    return request->hasHeader("Authorization") &&
+           strncasecmp(request->getHeader("Authorization")->value().c_str(), "Bearer ", 7) == 0;
+}
+
+// The session token this request presents, from X-Session-Token or from
+// "Authorization: Bearer <token>" (the accessToken POST /api/v1/auth/register returns),
+// or NULL when it presents none.
+static const char* requestSessionToken(AsyncWebServerRequest *request) {
+    if (request->hasHeader("X-Session-Token")) {
+        return request->getHeader("X-Session-Token")->value().c_str();
     }
+    if (hasBearerHeader(request)) {
+        return request->getHeader("Authorization")->value().c_str() + 7;
+    }
+    return NULL;
+}
+
+static bool portalAuthorized(AsyncWebServerRequest *request) {
+    if (portal_session_valid(requestSessionToken(request))) return true;
     if (portal_auth_is_locked()) return false;
     if (device_passphrase[0] == '\0') return false;
     return request->authenticate("admin", device_passphrase);
@@ -333,10 +351,17 @@ static void accumulateAuthBody(AsyncWebServerRequest *request, uint8_t *data, si
     storeBody(request, data, len, index, total, true);
 }
 
-#ifdef CONFIG_WIFI_AP
-// Body callback for POST /api/wifi, which is unauthenticated only while the setup AP
-// is up (see handleWifiSave()).
+// Body callback for POST /api/v1/auth/register, which carries the passphrase in its
+// body and so cannot be authorized before the body arrives.
 static void accumulateOpenBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
+                               size_t index, size_t total) {
+    storeBody(request, data, len, index, total, false);
+}
+
+#ifdef CONFIG_WIFI_AP
+// Body callback for POST /api/v1/wifi, which is unauthenticated only while the setup AP
+// is up (see handleWifiSave()).
+static void accumulateWifiBody(AsyncWebServerRequest *request, uint8_t *data, size_t len,
                                size_t index, size_t total) {
     storeBody(request, data, len, index, total, !portal_ap_running);
 }
@@ -385,15 +410,21 @@ static bool claimPostBody(AsyncWebServerRequest *request) {
 // library discards the body without parsing or buffering it, and handleRequest()
 // answers 413/415 once the body has drained.
 // ============================================================================
-#define PORTAL_URI_OTA_PUSH_FIRMWARE   "/api/ota/firmware"
-#define PORTAL_URI_OTA_PUSH_FILESYSTEM "/api/ota/filesystem"
-#define PORTAL_URI_BROKER_CERT         "/api/broker-cert"
+// Routes are registered under PORTAL_API, the canonical base path. Requests to the
+// same route under PORTAL_API_LEGACY are rewritten to it before a handler is chosen
+// (see portal_api_routes and captive_portal_start()), so handlers and this guard only
+// ever see PORTAL_API paths.
+#define PORTAL_API                     "/api/v1"
+#define PORTAL_API_LEGACY              "/api"
+#define PORTAL_URI_OTA_PUSH_FIRMWARE   PORTAL_API "/ota/firmware"
+#define PORTAL_URI_OTA_PUSH_FILESYSTEM PORTAL_API "/ota/filesystem"
+#define PORTAL_URI_BROKER_CERT         PORTAL_API "/broker-cert"
 
 // Returns the HTTP status that refuses this request's body, or 0 to let it through.
 //   image push routes: application/octet-stream only, streamed, no size cap here
 //                      (Update.begin() refuses an image larger than the partition)
 //   everything else:   must fit post_body_buf, which is all storeBody() keeps;
-//                      application/json only, except POST /api/broker-cert, which
+//                      application/json only, except POST /api/v1/broker-cert, which
 //                      takes only application/x-pem-file or application/octet-stream
 // The library parses a text/plain body into parameters when its first chunk holds an
 // '=' before any '{', '[' or '&', and a PEM's base64 '=' padding meets that test, so
@@ -436,7 +467,7 @@ public:
     }
 };
 
-// POST /api/broker-cert is registered through this trivial handler instead of
+// POST /api/v1/broker-cert is registered through this trivial handler instead of
 // server.on(), so a body the library diverts into its parameter parser is discarded
 // rather than parsed into heap allocations; the guard admits only types the library
 // passes to the body callback.
@@ -468,7 +499,7 @@ private:
 #ifdef CONFIG_WIFI_AP
 static bool requireAuth(AsyncWebServerRequest *request);   // defined with the auth helpers
 
-// Handle POST /api/wifi - save WiFi credentials and begin connection.
+// Handle POST /api/v1/wifi - save WiFi credentials and begin connection.
 // Unauthenticated while the setup AP is up: this is the first-time-setup path (user on
 // the captive AP joining the device to a network), before any passphrase workflow.
 // Once the AP has shut down it requires auth like the admin endpoints.
@@ -514,7 +545,7 @@ static void handleWifiSave(AsyncWebServerRequest *request) {
     request->send(200, "application/json", "{\"status\":\"connecting\"}");
 }
 
-// Handle GET /api/wifi-status - return connection status from event handler
+// Handle GET /api/v1/wifi-status - return connection status from event handler
 static void handleWifiStatus(AsyncWebServerRequest *request) {
     static char json_buf[192];
     uint8_t reason = wifi_disconnect_reason;
@@ -570,7 +601,7 @@ bool captive_portal_mqtt_changed() {
     return false;
 }
 
-// Handle GET /api/device-info - return device name, topic and OTA URLs as JSON
+// Handle GET /api/v1/device-info - return device name, topic and OTA URLs as JSON
 static void handleDeviceInfo(AsyncWebServerRequest *request) {
     static char json_buf[640];  // sized for two 128-byte OTA URLs
 #ifdef CONFIG_WIFI_AP
@@ -590,7 +621,7 @@ static void handleDeviceInfo(AsyncWebServerRequest *request) {
     request->send(200, "application/json", json_buf);
 }
 
-// Handle GET /api/mqtt-status - return MQTT connection status
+// Handle GET /api/v1/mqtt-status - return MQTT connection status
 static void handleMqttStatus(AsyncWebServerRequest *request) {
     static char json_buf[192];
     if (mqtt_connected()) {
@@ -634,16 +665,13 @@ static void serveConfigPage(AsyncWebServerRequest *request) {
 }
 
 // --- Auth helper (shared by all admin POST endpoints) ---
-// Accepts either a session token from POST /api/login (X-Session-Token header)
-// or Basic auth with the device passphrase. Returns true if authorized, sends
+// Accepts either a session token from POST /api/v1/login or /api/v1/auth/register
+// (X-Session-Token or Authorization: Bearer) or Basic auth with the device passphrase. Returns true if authorized, sends
 // error response and returns false otherwise.
 static bool checkAuthOrReply(AsyncWebServerRequest *request) {
     // Session token first — checked before the lockout so an attacker hammering
     // the passphrase can't lock out an already-authenticated admin.
-    if (request->hasHeader("X-Session-Token") &&
-        portal_session_valid(request->getHeader("X-Session-Token")->value().c_str())) {
-        return true;
-    }
+    if (portal_session_valid(requestSessionToken(request))) return true;
     if (portal_auth_is_locked()) {
         request->send(429, "application/json",
             "{\"status\":\"error\",\"message\":\"Too many failed attempts. Try again later.\"}");
@@ -658,7 +686,8 @@ static bool checkAuthOrReply(AsyncWebServerRequest *request) {
         // Only penalize wrong credentials, not an unauthenticated first attempt.
         // fetch() calls from the portal arrive without an Authorization header;
         // counting those as failures would exhaust the limit on legitimate use.
-        if (request->hasHeader("Authorization")) {
+        // A stale bearer token is not a passphrase guess either.
+        if (request->hasHeader("Authorization") && !hasBearerHeader(request)) {
             portal_auth_record_failure();
         }
         request->requestAuthentication();
@@ -676,7 +705,7 @@ static bool requireAuth(AsyncWebServerRequest *request) {
     return false;
 }
 
-// Handle POST /api/login - exchange the device passphrase (Basic auth) for a
+// Handle POST /api/v1/login - exchange the device passphrase (Basic auth) for a
 // session token; subsequent admin requests may send X-Session-Token instead of
 // re-sending the passphrase. See portal_session_create() for lifetime rules.
 static void handleLogin(AsyncWebServerRequest *request) {
@@ -686,7 +715,73 @@ static void handleLogin(AsyncWebServerRequest *request) {
     request->send(200, "application/json", json_buf);
 }
 
-// Handle POST /api/mqtt - save MQTT configuration from JSON body
+// Compares a candidate with device_passphrase in a time that does not depend on where
+// the two first differ.
+static bool passphraseMatches(const char* candidate) {
+    size_t want = strlen(device_passphrase);
+    size_t got  = strlen(candidate);
+    uint8_t diff = (want != got) ? 1 : 0;
+    for (size_t i = 0; i < sizeof(device_passphrase) - 1; i++) {
+        uint8_t a = i < want ? (uint8_t)device_passphrase[i] : 0;
+        uint8_t b = i < got  ? (uint8_t)candidate[i] : 0;
+        diff |= a ^ b;
+    }
+    return diff == 0;
+}
+
+// Handle POST /api/v1/auth/register - the eBus registration endpoint (framework.md
+// "Registration Endpoint"): exchanges {"password": "<device passphrase>"} for the same
+// session token POST /api/v1/login issues, returned as accessToken. A wrong passphrase
+// counts toward the same lockout as a wrong Basic auth header.
+//
+// This device hosts no broker, so it returns no ebusBrokerUsername/ebusBrokerPassword:
+// those are issued by the broker host's own registration endpoint ("Client
+// Authentication"), and the credentials this device holds for its broker are its own.
+// While MQTT is connected it reports the broker it uses: ebusBrokerHost, and
+// ebusBrokerMqttsPort when that connection is MQTTS.
+static void handleRegister(AsyncWebServerRequest *request) {
+    if (!claimPostBody(request)) return;
+    if (portal_auth_is_locked()) {
+        request->send(429, "application/json",
+            "{\"status\":\"error\",\"message\":\"Too many failed attempts. Try again later.\"}");
+        return;
+    }
+    if (device_passphrase[0] == '\0') {
+        request->send(503, "application/json",
+            "{\"status\":\"error\",\"message\":\"No device_passphrase configured\"}");
+        return;
+    }
+
+    JsonDocument doc;
+    if (deserializeJson(doc, post_body_buf, post_body_len)) {
+        request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid JSON\"}");
+        return;
+    }
+    if (!doc["password"].is<const char*>()) {
+        request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing password field\"}");
+        return;
+    }
+    if (!passphraseMatches(doc["password"].as<const char*>())) {
+        portal_auth_record_failure();
+        request->send(401, "application/json", "{\"status\":\"error\",\"message\":\"Wrong passphrase\"}");
+        return;
+    }
+    portal_auth_reset();
+
+    JsonDocument reply;
+    reply["accessToken"]  = portal_session_create();
+    reply["tokenType"]    = "bearer";
+    reply["serialNumber"] = device_serial[0] != '\0' ? (const char*)device_serial : getDeviceID();
+    if (mqtt_connected()) {
+        reply["ebusBrokerHost"] = (const char*)mqtt_host;
+        if (mqtt_is_secure()) reply["ebusBrokerMqttsPort"] = mqtt_port;
+    }
+    static char json_buf[320];
+    serializeJson(reply, json_buf, sizeof(json_buf));
+    request->send(200, "application/json", json_buf);
+}
+
+// Handle POST /api/v1/mqtt - save MQTT configuration from JSON body
 static void handleMqttSave(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
     if (!claimPostBody(request)) return;
@@ -744,7 +839,7 @@ static bool otaQueryFlag(AsyncWebServerRequest *request, const char* name) {
     return request->getParam(name)->value() != "0";
 }
 
-// Handle POST /api/firmware - save firmware URL from JSON body
+// Handle POST /api/v1/firmware - save firmware URL from JSON body
 static void handleFirmwareSave(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
     if (!claimPostBody(request)) return;
@@ -774,7 +869,7 @@ static void handleFirmwareSave(AsyncWebServerRequest *request) {
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
-// Handle POST /api/filesystem - save filesystem image URL from JSON body and trigger LittleFS OTA
+// Handle POST /api/v1/filesystem - save filesystem image URL from JSON body and trigger LittleFS OTA
 static void handleFilesystemSave(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
     if (!claimPostBody(request)) return;
@@ -804,7 +899,7 @@ static void handleFilesystemSave(AsyncWebServerRequest *request) {
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
-// Handle GET /api/broker-cert - download the CA cert for the current MQTT broker
+// Handle GET /api/v1/broker-cert - download the CA cert for the current MQTT broker
 static void handleBrokerCert(AsyncWebServerRequest *request) {
     if (!has_mqtt_broker()) {
         request->send(404, "text/plain", "No MQTT broker configured");
@@ -825,7 +920,7 @@ static void handleBrokerCert(AsyncWebServerRequest *request) {
     request->send(LittleFS, cert_path, "text/plain");
 }
 
-// Handle POST /api/broker-cert - upload a CA cert and save to SPIFFS (requires Basic Auth)
+// Handle POST /api/v1/broker-cert - upload a CA cert and save to SPIFFS (requires Basic Auth)
 static void handleBrokerCertUpload(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
     if (!claimPostBody(request)) return;
@@ -873,7 +968,7 @@ static void handleBrokerCertUpload(AsyncWebServerRequest *request) {
 
 // --- OTA enable/disable with Basic Auth and rate limiting ---
 
-// Handle GET /api/ota - return OTA status (no auth)
+// Handle GET /api/v1/ota - return OTA status (no auth)
 //
 // uptime_s lets a client whose push reply was lost tell whether the board restarted
 // after the upload began (see _ota_push_image in ebus-esp32). It comes from the 64-bit
@@ -906,13 +1001,13 @@ static void handleOtaStatus(AsyncWebServerRequest *request) {
     request->send(200, "application/json", json_buf);
 }
 
-// --- OTA image push: POST /api/ota/firmware, POST /api/ota/filesystem ---
+// --- OTA image push: POST /api/v1/ota/firmware, POST /api/v1/ota/filesystem ---
 //
 // Streams the raw request body straight into Update.write(). Deliberately does NOT
 // use post_body_buf: a firmware image is >1MB and post_body_buf is 2KB.
 //
 //   curl -u admin:<passphrase> -H 'Content-Type: application/octet-stream'
-//        --data-binary @firmware.bin http://<device-ip>/api/ota/firmware
+//        --data-binary @firmware.bin http://<device-ip>/api/v1/ota/firmware
 //   (one line; no trailing backslash here — it would continue the comment)
 //
 // Flash writes happen on the AsyncTCP task, which is why CONFIG_ASYNC_TCP_STACK_SIZE
@@ -1140,7 +1235,7 @@ static void handleOtaPushFilesystemDone(AsyncWebServerRequest *request) {
     handleOtaPushDone(request, U_SPIFFS);
 }
 
-// Handle POST /api/ota - enable or disable OTA (requires Basic Auth)
+// Handle POST /api/v1/ota - enable or disable OTA (requires Basic Auth)
 static void handleOtaToggle(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
     if (!claimPostBody(request)) return;
@@ -1168,7 +1263,7 @@ static void handleOtaToggle(AsyncWebServerRequest *request) {
     request->send(200, "application/json", resp);
 }
 
-// Returns why POST /api/passphrase refuses a new passphrase, or NULL to accept it.
+// Returns why POST /api/v1/passphrase refuses a new passphrase, or NULL to accept it.
 // Refuses what `ebus-esp32 generate` refuses (blank, or "changeme" in any case once
 // surrounding whitespace is trimmed) and anything longer than device_passphrase holds,
 // which would be stored truncated and then fail to match the passphrase as typed.
@@ -1186,7 +1281,7 @@ static const char* passphraseRefusal(const char* p) {
     return NULL;
 }
 
-// Handle POST /api/passphrase - save device passphrase from JSON body
+// Handle POST /api/v1/passphrase - save device passphrase from JSON body
 static void handlePassphraseSave(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
     if (!claimPostBody(request)) return;
@@ -1219,7 +1314,7 @@ static void handlePassphraseSave(AsyncWebServerRequest *request) {
     request->send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Passphrase saved. Takes effect immediately.\"}");
 }
 
-// Handle POST /api/reset-prefs - clear all portal Preferences
+// Handle POST /api/v1/reset-prefs - clear all portal Preferences
 static void handleResetPrefs(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
     Serial.println("PORTAL: Resetting all portal preferences");
@@ -1228,7 +1323,7 @@ static void handleResetPrefs(AsyncWebServerRequest *request) {
     request->send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Preferences cleared. Reboot to use YML config.\"}");
 }
 
-// Handle POST /api/reboot - reboot the ESP32
+// Handle POST /api/v1/reboot - reboot the ESP32
 static void handleReboot(AsyncWebServerRequest *request) {
     if (!requireAuth(request)) return;
     Serial.println("PORTAL: Reboot requested via portal");
@@ -1264,7 +1359,7 @@ void captive_portal_loop() {
         WiFi.softAPdisconnect(true);   // true: drop AP mode, keep STA
         Serial.println("PORTAL: setup AP shut down (STA has an address)");
     }
-    // Deferred STA reconnect after POST /api/wifi; see handleWifiSave().
+    // Deferred STA reconnect after POST /api/v1/wifi; see handleWifiSave().
     if (portal_wifi_reconnect_pending && (int32_t)(millis() - portal_wifi_reconnect_at) >= 0) {
         portal_wifi_reconnect_pending = false;
         wifi_connected = false;           // again: the old link may have dropped meanwhile
@@ -1286,6 +1381,17 @@ void captive_portal_loop() {
         ESP.restart();
     }
 }
+
+// Routes served under PORTAL_API that are also answered under PORTAL_API_LEGACY, the
+// base path before /api/v1. Routes added since (auth/register) have no legacy alias.
+static const char* const portal_api_routes[] = {
+    "/device-info", "/mqtt-status", "/mqtt", "/firmware", "/filesystem", "/login",
+    "/passphrase", "/reset-prefs", "/reboot", "/broker-cert", "/ota", "/ota/firmware",
+    "/ota/filesystem", "/openapi.yml",
+#ifdef CONFIG_WIFI_AP
+    "/wifi-scan", "/wifi", "/wifi-status",
+#endif
+};
 
 void captive_portal_start() {
     // Mount SPIFFS to serve HTML
@@ -1325,32 +1431,44 @@ void captive_portal_start() {
     // AsyncWebServer owns its handlers (unique_ptr), as with server.on().
     server.addHandler(new PortalBodyGuard());
 
+    // Legacy aliases: each PORTAL_API_LEGACY path is rewritten to its PORTAL_API path.
+    // A rewrite matches the exact path (the query string is kept), so "/api/ota" does
+    // not catch "/api/ota/firmware".
+    for (size_t i = 0; i < sizeof(portal_api_routes) / sizeof(portal_api_routes[0]); i++) {
+        char from[48];
+        char to[48];
+        snprintf(from, sizeof(from), PORTAL_API_LEGACY "%s", portal_api_routes[i]);
+        snprintf(to, sizeof(to), PORTAL_API "%s", portal_api_routes[i]);
+        server.rewrite(from, to);
+    }
+
     // === Common endpoints (available on all interfaces) ===
     server.on("/", HTTP_GET, serveConfigPage);
-    server.on("/api/device-info", HTTP_GET, handleDeviceInfo);
-    server.on("/api/mqtt-status", HTTP_GET, handleMqttStatus);
-    server.on("/api/mqtt", HTTP_POST, handleMqttSave, NULL, accumulateAuthBody);
-    server.on("/api/firmware", HTTP_POST, handleFirmwareSave, NULL, accumulateAuthBody);
-    server.on("/api/filesystem", HTTP_POST, handleFilesystemSave, NULL, accumulateAuthBody);
-    server.on("/api/login", HTTP_POST, handleLogin);
-    server.on("/api/passphrase", HTTP_POST, handlePassphraseSave, NULL, accumulateAuthBody);
-    server.on("/api/reset-prefs", HTTP_POST, handleResetPrefs);
-    server.on("/api/reboot", HTTP_POST, handleReboot);
+    server.on(PORTAL_API "/device-info", HTTP_GET, handleDeviceInfo);
+    server.on(PORTAL_API "/mqtt-status", HTTP_GET, handleMqttStatus);
+    server.on(PORTAL_API "/mqtt", HTTP_POST, handleMqttSave, NULL, accumulateAuthBody);
+    server.on(PORTAL_API "/firmware", HTTP_POST, handleFirmwareSave, NULL, accumulateAuthBody);
+    server.on(PORTAL_API "/filesystem", HTTP_POST, handleFilesystemSave, NULL, accumulateAuthBody);
+    server.on(PORTAL_API "/login", HTTP_POST, handleLogin);
+    server.on(PORTAL_API "/auth/register", HTTP_POST, handleRegister, NULL, accumulateOpenBody);
+    server.on(PORTAL_API "/passphrase", HTTP_POST, handlePassphraseSave, NULL, accumulateAuthBody);
+    server.on(PORTAL_API "/reset-prefs", HTTP_POST, handleResetPrefs);
+    server.on(PORTAL_API "/reboot", HTTP_POST, handleReboot);
     server.on(PORTAL_URI_BROKER_CERT, HTTP_GET, handleBrokerCert);
     server.addHandler(new PortalRawPostHandler(PORTAL_URI_BROKER_CERT, handleBrokerCertUpload, accumulateAuthBody));
     // AsyncURIMatcher::exact() is REQUIRED on these two, not cosmetic. A bare
-    // server.on("/api/ota", ...) uses the library's BackwardCompatible matcher,
-    // which is ^{uri}(/.*)?$ — so "/api/ota" also matches "/api/ota/filesystem",
+    // server.on("/api/v1/ota", ...) uses the library's BackwardCompatible matcher,
+    // which is ^{uri}(/.*)?$ — so "/api/v1/ota" also matches "/api/v1/ota/filesystem",
     // and _attachHandler() takes the FIRST handler that matches. Registered plain
     // and first, the toggle below swallowed every image push: the body went to
     // the 2KB post_body_buf (image discarded) and handleOtaToggle tried to
     // parse a firmware binary as JSON. exact() confines each route to its own URI.
-    server.on(AsyncURIMatcher::exact("/api/ota"), HTTP_GET, handleOtaStatus);
-    server.on(AsyncURIMatcher::exact("/api/ota"), HTTP_POST, handleOtaToggle, NULL, accumulateAuthBody);
-    // Image push — distinct paths; /api/ota itself is the enable/disable toggle.
+    server.on(AsyncURIMatcher::exact(PORTAL_API "/ota"), HTTP_GET, handleOtaStatus);
+    server.on(AsyncURIMatcher::exact(PORTAL_API "/ota"), HTTP_POST, handleOtaToggle, NULL, accumulateAuthBody);
+    // Image push — distinct paths; /api/v1/ota itself is the enable/disable toggle.
     server.on(AsyncURIMatcher::exact(PORTAL_URI_OTA_PUSH_FIRMWARE),   HTTP_POST, handleOtaPushFirmwareDone, NULL, otaPushFirmwareBody);
     server.on(AsyncURIMatcher::exact(PORTAL_URI_OTA_PUSH_FILESYSTEM), HTTP_POST, handleOtaPushFilesystemDone, NULL, otaPushFilesystemBody);
-    server.on("/api/openapi.yml", HTTP_GET, [](AsyncWebServerRequest *request) {
+    server.on(PORTAL_API "/openapi.yml", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(LittleFS, "/openapi.yml", "text/yaml");
     });
 
@@ -1364,9 +1482,9 @@ void captive_portal_start() {
     server.on("/redirect", HTTP_GET, handleCaptiveRedirect);
 
     // WiFi scan, join, and status endpoints
-    server.on("/api/wifi-scan", HTTP_GET, handleWifiScan);
-    server.on("/api/wifi", HTTP_POST, handleWifiSave, NULL, accumulateOpenBody);
-    server.on("/api/wifi-status", HTTP_GET, handleWifiStatus);
+    server.on(PORTAL_API "/wifi-scan", HTTP_GET, handleWifiScan);
+    server.on(PORTAL_API "/wifi", HTTP_POST, handleWifiSave, NULL, accumulateWifiBody);
+    server.on(PORTAL_API "/wifi-status", HTTP_GET, handleWifiStatus);
 
     // Catch-all: redirect any unknown URL to config page (improves Android captive portal detection)
     server.onNotFound(handleCaptiveRedirect);

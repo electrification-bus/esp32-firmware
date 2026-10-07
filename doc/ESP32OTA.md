@@ -6,7 +6,7 @@ How firmware and filesystem images reach a device that has no reachable USB cabl
 
 | Mechanism | Direction | State |
 |---|---|---|
-| `POST /api/ota/firmware`, `/api/ota/filesystem` | push (host → device) | **implemented** |
+| `POST /api/v1/ota/firmware`, `/api/v1/ota/filesystem` | push (host → device) | **implemented** |
 | `firmware_url` / `fs_url` download | pull (device → server) | **implemented** |
 | `ebus-esp32 push --ota` | push, both images, one command | **implemented** |
 | `ebus-esp32 push --pull --url …` | pull, device downloads from your server | **implemented** |
@@ -23,12 +23,14 @@ The device's portal accepts a raw image body and streams it straight into the ap
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET`  | `/api/ota` | status of the *pull* updater (idle/downloading/error detail), and `uptime_s`, which `push --ota` uses to confirm a restart when a push reply is lost |
-| `POST` | `/api/ota` | enable/disable the OTA window — `{"enabled":true}` |
-| `POST` | `/api/ota/firmware` | push an app image (`U_FLASH`) |
-| `POST` | `/api/ota/filesystem` | push a LittleFS image (`U_SPIFFS`) |
+| `GET`  | `/api/v1/ota` | status of the *pull* updater (idle/downloading/error detail), and `uptime_s`, which `push --ota` uses to confirm a restart when a push reply is lost |
+| `POST` | `/api/v1/ota` | enable/disable the OTA window — `{"enabled":true}` |
+| `POST` | `/api/v1/ota/firmware` | push an app image (`U_FLASH`) |
+| `POST` | `/api/v1/ota/filesystem` | push a LittleFS image (`U_SPIFFS`) |
 
-All four routes are registered with `AsyncURIMatcher::exact()`, and that is load-bearing. AsyncWebServer's default matcher is `BackwardCompatible` — `^{uri}(/.*)?$` — so a plain `server.on("/api/ota", ...)` *also* matches `/api/ota/filesystem`, and `_attachHandler()` binds the first handler that matches. Registered plainly, the toggle silently swallows every image push: the body lands in the 2 KB `post_body_buf` and the image is discarded. The symptom is a `PORTAL: body url=/api/ota/filesystem` line in the log where `PORTAL: OTA push started` belongs.
+All four routes are registered with `AsyncURIMatcher::exact()`, and that is load-bearing. AsyncWebServer's default matcher is `BackwardCompatible` — `^{uri}(/.*)?$` — so a plain `server.on("/api/v1/ota", ...)` *also* matches `/api/v1/ota/filesystem`, and `_attachHandler()` binds the first handler that matches. Registered plainly, the toggle silently swallows every image push: the body lands in the 2 KB `post_body_buf` and the image is discarded. The symptom is a `PORTAL: body url=/api/v1/ota/filesystem` line in the log where `PORTAL: OTA push started` belongs.
+
+Each route is also answered at its old path without `/v1` (`/api/ota`, `/api/ota/firmware`, `/api/ota/filesystem`, `/api/firmware`, `/api/filesystem`), which the server rewrites to the `/api/v1` path; a rewrite matches the exact path, so it cannot reintroduce the overlap above.
 
 **Query parameter:** `?reboot=0` stages the image and keeps the device running, so both images can be pushed in one session with a single restart at the end. The default is to reboot, so a one-image `curl` takes effect immediately.
 
@@ -42,19 +44,19 @@ ebus-esp32 run  --ota --monitor             # build, flash over TCP, then watch 
 ebus-esp32 push --ota --host 10.0.0.5:8080  # non-default port
 ```
 
-The CLI opens the OTA window, pushes the filesystem staged, then the firmware carrying the reboot. The passphrase is `--passphrase` if given, else `device.device_passphrase` from `config-overlay.yml`, else from `device.yml`. See [GettingStartedCLI.md](GettingStartedCLI.md).
+The CLI opens the OTA window, pushes the filesystem staged, then the firmware carrying the reboot. It uses the `/api/v1` paths, and the old `/api` paths when the device answers `GET /api/v1/ota` with a 404 or a redirect, as firmware from before `/api/v1` does. The passphrase is `--passphrase` if given, else `device.device_passphrase` from `config-overlay.yml`, else from `device.yml`. See [GettingStartedCLI.md](GettingStartedCLI.md).
 
 ### With curl
 
 ```sh
 curl -u admin:<passphrase> -H 'Content-Type: application/json' -d '{"enabled":true}' \
-     http://192.168.1.42/api/ota
+     http://192.168.1.42/api/v1/ota
 curl -u admin:<passphrase> -H 'Content-Type: application/octet-stream' \
      --data-binary @.pio/cli/build/<env>/littlefs.bin \
-     "http://192.168.1.42/api/ota/filesystem?reboot=0"
+     "http://192.168.1.42/api/v1/ota/filesystem?reboot=0"
 curl -u admin:<passphrase> -H 'Content-Type: application/octet-stream' \
      --data-binary @.pio/cli/build/<env>/firmware.bin \
-     http://192.168.1.42/api/ota/firmware
+     http://192.168.1.42/api/v1/ota/firmware
 ```
 
 The `Content-Type` headers are required: curl's default for `-d` and `--data-binary` is `application/x-www-form-urlencoded`, which the device refuses with 415. Image pushes take only `application/octet-stream`; the JSON control requests take only `application/json`, at most 2047 bytes (413 above that). See [Authentication.md](Authentication.md#security-notes).
@@ -134,17 +136,17 @@ It serves **exactly those two paths**, not the build directory — which also ho
 ./ebus-esp32 push --pull --url https://releases.example.com/ebus/v1.2 --host 192.168.1.42
 ```
 
-`--url` is the base the **device** downloads from — it is required, since the server is separate from this tool. The CLI stages both images, arms them, then polls `GET /api/ota` and prints the device's progress until it completes or reboots. `--fs-only` sends just the filesystem; `--pull-wait` bounds the poll (default 300s).
+`--url` is the base the **device** downloads from — it is required, since the server is separate from this tool. The CLI stages both images, arms them, then polls `GET /api/v1/ota` and prints the device's progress until it completes or reboots. `--fs-only` sends just the filesystem; `--pull-wait` bounds the poll (default 300s).
 
 ### With curl
 
 ```sh
 # stage the filesystem without starting it, and keep the URL out of NVS
 curl -u admin:<passphrase> -H 'Content-Type: application/json' -d '{"url":"http://10.0.0.2:8080/littlefs.bin"}' \
-     'http://192.168.1.42/api/filesystem?start=0&persist=0'
+     'http://192.168.1.42/api/v1/filesystem?start=0&persist=0'
 # the firmware request arms both — one download session, one reboot
 curl -u admin:<passphrase> -H 'Content-Type: application/json' -d '{"url":"http://10.0.0.2:8080/firmware.bin"}' \
-     'http://192.168.1.42/api/firmware?persist=0'
+     'http://192.168.1.42/api/v1/firmware?persist=0'
 ```
 
 | Query flag | Effect |
@@ -152,7 +154,7 @@ curl -u admin:<passphrase> -H 'Content-Type: application/json' -d '{"url":"http:
 | `start=0` | stage the pull without beginning it. The next request without the flag arms everything staged. This is what makes a two-image pull deterministic — otherwise the first download starts immediately and the second request races it |
 | `persist=0` | do not write the URL to NVS. A workstation serving one image should not become the device's configured `firmware_url` for the rest of its life |
 
-`ota_loop()` (called from `captive_portal_loop()`) performs the work on the main loop, always filesystem first, and reboots once when both complete. `GET /api/ota` reports `idle`, `downloading`, `host_not_found`, `file_not_found`, `http_error`, `write_error`, `download_incomplete` (the connection closed, or sent nothing for 30 s, before the whole image arrived), `complete`.
+`ota_loop()` (called from `captive_portal_loop()`) performs the work on the main loop, always filesystem first, and reboots once when both complete. `GET /api/v1/ota` reports `idle`, `downloading`, `host_not_found`, `file_not_found`, `http_error`, `write_error`, `download_incomplete` (the connection closed, or sent nothing for 30 s, before the whole image arrived), `complete`.
 
 ### https and redirects
 
@@ -212,8 +214,8 @@ Update.isRunning();
 
 What is in place today:
 
-- **Authentication** on every OTA endpoint — HTTP Basic with `device_passphrase`, or an `X-Session-Token` from `POST /api/login`. Failed attempts are rate limited and lock out.
-- **A time-boxed OTA window** — `POST /api/ota {"enabled":true}` opens it and it closes on its own, so the write surface is not permanently exposed.
+- **Authentication** on every OTA endpoint — HTTP Basic with `device_passphrase`, or a session token from `POST /api/v1/login` or `POST /api/v1/auth/register` (`X-Session-Token` or `Authorization: Bearer`). Failed attempts are rate limited and lock out.
+- **A time-boxed OTA window** — `POST /api/v1/ota {"enabled":true}` opens it and it closes on its own, so the write surface is not permanently exposed.
 - **Magic-byte rejection** of non-ESP32 app images before anything is written.
 
 What is *not*, and should be understood before this leaves a trusted LAN:
@@ -226,12 +228,12 @@ What is *not*, and should be understood before this leaves a trusted LAN:
 
 ## Testing checklist
 
-- [ ] `POST /api/ota {"enabled":true}` returns `ota_enabled: true`
+- [ ] `POST /api/v1/ota {"enabled":true}` returns `ota_enabled: true`
 - [ ] A push with no OTA window open is rejected
 - [ ] A push with a wrong passphrase returns 401 **and writes nothing**
 - [ ] `?reboot=0` leaves the device up and serving the portal
 - [ ] Filesystem then firmware in one session produces exactly one reboot
-- [ ] A non-firmware file posted to `/api/ota/firmware` is rejected on the magic byte
+- [ ] A non-firmware file posted to `/api/v1/ota/firmware` is rejected on the magic byte
 - [ ] An image larger than the partition fails at `Update.begin()`, not mid-write
 - [ ] Interrupting a push mid-transfer leaves the device bootable (old slot still active)
 - [ ] Stack low-water figure is comfortably above zero (see [Stack sizing](#stack-sizing))

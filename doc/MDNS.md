@@ -63,7 +63,8 @@ Entity discovery (requirement 6). The port is the configured `mqtt.port`.
 | `manufacturer` | recommended | `device.manufacturer`, or `unknown` when that is empty |
 | `model` | recommended | `device.model`, or `ESP32` when that is empty |
 | `fw_version` | recommended | `device.firmware_version` |
-| `auth_methods` | recommended | `preconfigured`: the REST passphrase (`device.device_passphrase`) is set out of band, in the configuration |
+| `register` | recommended | `/api/v1/auth/register`, which exchanges the device passphrase for an access token (see [Authentication.md](Authentication.md)) |
+| `auth_methods` | recommended | `passphrase,preconfigured`: `passphrase` for the `register` endpoint, `preconfigured` because the passphrase itself (`device.device_passphrase`) is set out of band, in the configuration or on the setup page |
 | `homie_domain` | compatibility | The Homie topic domain: `ebus` with `-DUSE_EBUS_TOPIC`, otherwise `homie` |
 | `homie_version` | compatibility | `5` |
 | `homie_roles` | compatibility | Same value as `roles` |
@@ -89,11 +90,11 @@ The web UI and REST API (requirement 8), on port 80.
 | TXT key | Spec | Value |
 |---|---|---|
 | `txtvers` | required | `1` |
-| `path` | required | `/api` |
-| `version` | required | `1.2.0`, the `info.version` of [`data/openapi.yml`](../data/openapi.yml) |
+| `path` | required | `/api/v1` |
+| `version` | required | `1.3.0`, the `info.version` of [`data/openapi.yml`](../data/openapi.yml) |
 | `device_id` | required | Device ID |
 | `device_type` | required | `device.device_type`, or `device.type` when that is empty; omitted when both are empty |
-| `openapi` | recommended | `/api/openapi.yml` |
+| `openapi` | recommended | `/api/v1/openapi.yml` (also served at `/api/openapi.yml`) |
 
 ### `_telnet._tcp`
 

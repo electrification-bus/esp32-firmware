@@ -8,16 +8,24 @@ info:
       tagged "WiFi AP only".
     - Other builds serve it over Ethernet (and WiFi STA when credentials are configured).
 
+    Every /api/v1 path below except /api/v1/auth/register is also served without the "/v1" (for
+    example /api/ota for /api/v1/ota), the paths of API version 1.2.0 and earlier. Both reach the
+    same handler.
+
     Protected operations accept HTTP Basic or Digest auth (username "admin", password the device
-    passphrase) or a session token from POST /api/login in the X-Session-Token header.
+    passphrase) or a session token from POST /api/v1/login or POST /api/v1/auth/register, sent in
+    the X-Session-Token header or as "Authorization: Bearer <token>".
+
+    Operations that serve an eBus-defined function carry the matching ebus:* tag from the eBus
+    specification (framework.md, "OpenAPI Tags for eBus Endpoints").
 
     Every request passes a body guard that reads only the headers, before the body is read or any
-    credentials are checked: POST /api/ota/firmware and /api/ota/filesystem take only
-    application/octet-stream; POST /api/broker-cert takes only application/x-pem-file or
+    credentials are checked: POST /api/v1/ota/firmware and /api/v1/ota/filesystem take only
+    application/octet-stream; POST /api/v1/broker-cert takes only application/x-pem-file or
     application/octet-stream, at most 2047 bytes; any other request with a body takes only
     application/json, at most 2047 bytes. A larger body gets 413, any other Content-Type (and any
     request with a multipart/* Content-Type header) gets 415.
-  version: 1.2.0
+  version: 1.3.0
 
 servers:
   - url: "http://{device}"
@@ -30,6 +38,18 @@ servers:
     description: Setup AP (CONFIG_WIFI_AP builds, until it shuts down)
 
 tags:
+  - name: "ebus:register"
+    description: Exchange the device passphrase for an API token and MQTT broker connection details
+  - name: "ebus:device-info"
+    description: Retrieve device identity and status information
+  - name: "ebus:network-config"
+    description: Network interface configuration
+  - name: "ebus:broker-config"
+    description: MQTT broker connection configuration
+  - name: "ebus:certificate"
+    description: TLS certificate management (upload/download)
+  - name: "ebus:ota"
+    description: OTA firmware update initiation
   - name: WiFi AP only
     description: Registered only on builds with CONFIG_WIFI_AP
 
@@ -52,9 +72,10 @@ paths:
               schema:
                 type: string
 
-  /api/device-info:
+  /api/v1/device-info:
     get:
       summary: Device information
+      tags: ["ebus:device-info"]
       description: >
         Returns the device name, its Homie topic, its role, and the OTA image URLs set through the
         portal (empty when the URL comes from config.yml).
@@ -86,9 +107,10 @@ paths:
                     type: string
                     example: ""
 
-  /api/mqtt-status:
+  /api/v1/mqtt-status:
     get:
       summary: MQTT connection status
+      tags: ["ebus:broker-config"]
       responses:
         "200":
           description: MQTT status
@@ -128,17 +150,19 @@ paths:
                   value:
                     status: none
 
-  /api/login:
+  /api/v1/login:
     post:
       summary: Issue a session token
       description: |
-        Returns a random session token. Later requests may send it in the X-Session-Token header
-        instead of the passphrase. One session exists at a time; a new login replaces the previous
-        token. It expires after 15 minutes without use or 2 hours after login, and on reboot,
-        POST /api/passphrase or POST /api/reset-prefs.
+        Returns a random session token. Later requests may send it in the X-Session-Token header,
+        or as "Authorization: Bearer <token>", instead of the passphrase. One session exists at a
+        time; a new login or registration replaces the previous token. It expires after 15 minutes
+        without use or 2 hours after login, and on reboot, POST /api/v1/passphrase or
+        POST /api/v1/reset-prefs.
       security:
         - basicAuth: []
         - sessionAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: Session token issued
@@ -158,15 +182,112 @@ paths:
         "503":
           $ref: "#/components/responses/NoPassphrase"
 
-  /api/mqtt:
+  /api/v1/auth/register:
+    post:
+      summary: Register and obtain credentials
+      tags: ["ebus:register"]
+      description: |
+        The eBus registration endpoint (framework.md, "Registration Endpoint"), advertised by the
+        `register` TXT key of `_ebus._tcp`. Exchanges the device passphrase for an access token,
+        the same session token POST /api/v1/login issues: send it as "Authorization: Bearer
+        <token>" or in X-Session-Token. One session exists at a time, so registering replaces the
+        token of an earlier login or registration.
+
+        This device hosts no MQTT broker, so the reply carries no ebusBrokerUsername or
+        ebusBrokerPassword. While MQTT is connected it names the broker the device uses:
+        ebusBrokerHost, plus ebusBrokerMqttsPort when that connection is MQTTS (port 8883).
+
+        A wrong passphrase counts toward the same lockout as a wrong Basic auth header.
+      security:
+        - {}
+      requestBody:
+        required: true
+        description: At most 2047 bytes.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - password
+              properties:
+                password:
+                  type: string
+                  description: The device passphrase
+            example:
+              password: "correct horse battery staple"
+      responses:
+        "200":
+          description: Registered
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - accessToken
+                  - tokenType
+                  - serialNumber
+                properties:
+                  accessToken:
+                    type: string
+                    description: Session token, 32 hexadecimal characters
+                    example: "3fa85f64c9b2de7a1a2b3c4d5e6f7a8b"
+                  tokenType:
+                    type: string
+                    enum: [bearer]
+                  serialNumber:
+                    type: string
+                    description: device.serial_number when set, else the Device ID (the _device-info._tcp serial_number value)
+                    example: "b0b21c90f570"
+                  ebusBrokerHost:
+                    type: string
+                    description: Broker the device is connected to; present only while connected
+                    example: "192.168.1.100"
+                  ebusBrokerMqttsPort:
+                    type: integer
+                    description: Present only while connected over MQTTS
+                    example: 8883
+        "400":
+          description: Empty body, invalid JSON, or no password string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                status: error
+                message: "Missing password field"
+        "401":
+          description: Wrong passphrase
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                status: error
+                message: "Wrong passphrase"
+        "408":
+          $ref: "#/components/responses/RequestTimeout"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/NoPassphrase"
+
+  /api/v1/mqtt:
     post:
       summary: Save MQTT configuration
+      tags: ["ebus:broker-config"]
       description: |
         Saves the MQTT broker settings to NVS, invalidates the cached CA certificate, and makes
         the main loop reconnect MQTT with the new settings.
       security:
         - basicAuth: []
         - sessionAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -209,9 +330,10 @@ paths:
         "503":
           $ref: "#/components/responses/NoPassphrase"
 
-  /api/firmware:
+  /api/v1/firmware:
     post:
       summary: Set the firmware URL and pull the image
+      tags: ["ebus:ota"]
       description: >
         Sets the firmware image URL, opens the OTA window, and queues a download. https is
         supported; the device verifies the server only if a CA for it is present at
@@ -219,6 +341,7 @@ paths:
       security:
         - basicAuth: []
         - sessionAuth: []
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/start"
         - $ref: "#/components/parameters/persist"
@@ -253,16 +376,18 @@ paths:
         "503":
           $ref: "#/components/responses/NoPassphrase"
 
-  /api/filesystem:
+  /api/v1/filesystem:
     post:
       summary: Set the filesystem URL and pull the image
+      tags: ["ebus:ota"]
       description: >
         Sets the LittleFS image URL, opens the OTA window, and queues a download. Same https and
-        query-flag behavior as /api/firmware. A staged filesystem is always applied before a
+        query-flag behavior as /api/v1/firmware. A staged filesystem is always applied before a
         staged firmware.
       security:
         - basicAuth: []
         - sessionAuth: []
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/start"
         - $ref: "#/components/parameters/persist"
@@ -297,7 +422,7 @@ paths:
         "503":
           $ref: "#/components/responses/NoPassphrase"
 
-  /api/passphrase:
+  /api/v1/passphrase:
     post:
       summary: Change the device passphrase
       description: >
@@ -308,6 +433,7 @@ paths:
       security:
         - basicAuth: []
         - sessionAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -357,7 +483,7 @@ paths:
         "503":
           $ref: "#/components/responses/NoPassphrase"
 
-  /api/reset-prefs:
+  /api/v1/reset-prefs:
     post:
       summary: Clear the settings saved in NVS
       description: >
@@ -366,6 +492,7 @@ paths:
       security:
         - basicAuth: []
         - sessionAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: Preferences cleared
@@ -383,12 +510,13 @@ paths:
         "503":
           $ref: "#/components/responses/NoPassphrase"
 
-  /api/reboot:
+  /api/v1/reboot:
     post:
       summary: Reboot the device
       security:
         - basicAuth: []
         - sessionAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: Reboot acknowledged; the device restarts about 500 ms later
@@ -406,7 +534,7 @@ paths:
         "503":
           $ref: "#/components/responses/NoPassphrase"
 
-  /api/openapi.yml:
+  /api/v1/openapi.yml:
     get:
       summary: OpenAPI description
       description: Returns this document from LittleFS.
@@ -418,9 +546,10 @@ paths:
               schema:
                 type: string
 
-  /api/broker-cert:
+  /api/v1/broker-cert:
     get:
       summary: Download the broker CA certificate
+      tags: ["ebus:certificate"]
       description: Returns the CA certificate saved on LittleFS for the current MQTT broker.
       responses:
         "200":
@@ -437,6 +566,7 @@ paths:
                 type: string
     post:
       summary: Upload a broker CA certificate
+      tags: ["ebus:certificate"]
       description: |
         Saves a PEM-encoded CA certificate to LittleFS as /certs/uploaded-cert.ca and invalidates
         the cached certificate so the next MQTT connection uses the new one. text/plain is refused
@@ -445,6 +575,7 @@ paths:
       security:
         - basicAuth: []
         - sessionAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         description: At most 2047 bytes.
@@ -501,9 +632,10 @@ paths:
         "503":
           $ref: "#/components/responses/NoPassphrase"
 
-  /api/ota:
+  /api/v1/ota:
     get:
       summary: OTA status
+      tags: ["ebus:ota"]
       description: >
         Reports the state of the last pull OTA and the device's uptime. A client whose push reply
         was lost can compare uptime_s to tell whether the device restarted.
@@ -537,6 +669,7 @@ paths:
                     example: 1234.567
     post:
       summary: Open or close the OTA window
+      tags: ["ebus:ota"]
       description: >
         The push endpoints refuse an image unless the OTA window is open. It closes after
         timeout_minutes (OTA_ENABLED_TIMEOUT, default 10, 0 for no timeout) and is always closed
@@ -544,6 +677,7 @@ paths:
       security:
         - basicAuth: []
         - sessionAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -594,9 +728,10 @@ paths:
         "503":
           $ref: "#/components/responses/NoPassphrase"
 
-  /api/ota/firmware:
+  /api/v1/ota/firmware:
     post:
       summary: Push a firmware image
+      tags: ["ebus:ota"]
       description: >
         Streams the request body into the inactive app partition. Requires the OTA window to be
         open. The image must start with the ESP image magic byte (0xE9). One push runs at a time.
@@ -604,6 +739,7 @@ paths:
       security:
         - basicAuth: []
         - sessionAuth: []
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/reboot"
       requestBody:
@@ -629,9 +765,10 @@ paths:
         "503":
           $ref: "#/components/responses/NoPassphrase"
 
-  /api/ota/filesystem:
+  /api/v1/ota/filesystem:
     post:
       summary: Push a LittleFS image
+      tags: ["ebus:ota"]
       description: >
         Streams the request body into the filesystem partition, which is unmounted for the write.
         Requires the OTA window to be open. One push runs at a time. Unless reboot=0, the device
@@ -639,6 +776,7 @@ paths:
       security:
         - basicAuth: []
         - sessionAuth: []
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/reboot"
       requestBody:
@@ -664,12 +802,13 @@ paths:
         "503":
           $ref: "#/components/responses/NoPassphrase"
 
-  /api/wifi-scan:
+  /api/v1/wifi-scan:
     get:
       summary: WiFi scan results
       description: Networks found by the scan at boot, deduplicated and strongest first.
       tags:
         - WiFi AP only
+        - "ebus:network-config"
       responses:
         "200":
           description: Discovered WiFi networks
@@ -692,19 +831,21 @@ paths:
                       description: Whether the network requires a password
                       example: true
 
-  /api/wifi:
+  /api/v1/wifi:
     post:
       summary: Connect to a WiFi network
       description: >
-        Saves WiFi credentials to NVS and starts a STA connection; poll /api/wifi-status for the
+        Saves WiFi credentials to NVS and starts a STA connection; poll /api/v1/wifi-status for the
         result. Unauthenticated while the setup AP is up; once the AP has shut down it requires
         auth like the admin endpoints.
       tags:
         - WiFi AP only
+        - "ebus:network-config"
       security:
         - {}
         - basicAuth: []
         - sessionAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -746,11 +887,12 @@ paths:
         "503":
           $ref: "#/components/responses/NoPassphrase"
 
-  /api/wifi-status:
+  /api/v1/wifi-status:
     get:
       summary: WiFi STA connection status
       tags:
         - WiFi AP only
+        - "ebus:network-config"
       responses:
         "200":
           description: WiFi connection status
@@ -841,15 +983,20 @@ components:
       scheme: basic
       description: |
         Username "admin", password the device passphrase (device.device_passphrase in config.yml,
-        or the value saved by POST /api/passphrase). Digest auth with the same credentials is also
+        or the value saved by POST /api/v1/passphrase). Digest auth with the same credentials is also
         accepted. Five wrong Authorization headers lock passphrase auth out for 5 minutes.
     sessionAuth:
       type: apiKey
       in: header
       name: X-Session-Token
       description: |
-        Session token from POST /api/login. Accepted during a lockout. Expires after 15 minutes
-        without use or 2 hours after login, and on reboot, passphrase change or reset-prefs.
+        Session token from POST /api/v1/login or POST /api/v1/auth/register. Accepted during a
+        lockout. Expires after 15 minutes without use or 2 hours after it was issued, and on
+        reboot, passphrase change or reset-prefs.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 'The same session token as sessionAuth, sent as "Authorization: Bearer <token>".'
 
   parameters:
     start:

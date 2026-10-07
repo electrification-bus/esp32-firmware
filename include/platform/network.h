@@ -9,7 +9,7 @@ void setup_ethernet();
 // NB: no setup_ota()/loop_ota() here. ArduinoOTA (espota, port 3232) was removed —
 // it was never called, and its protocol has the device dial back to a TCP port on
 // the *host*, which does not survive NAT/VPN/host firewalls. Push images instead to
-// POST /api/ota/{firmware,filesystem} on the portal (see captive_portal.cpp); pulling
+// POST /api/v1/ota/{firmware,filesystem} on the portal (see captive_portal.cpp); pulling
 // from a URL still works via ota_start_update() in platform/ota.h.
 void loop_mdns();
 

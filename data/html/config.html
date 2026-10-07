@@ -255,7 +255,7 @@
       var wifiEnabled = false;
 
       // Load device info
-      fetch('/api/device-info')
+      fetch('/api/v1/device-info')
         .then(function(r) { return r.json(); })
         .then(function(d) {
           document.getElementById('dev-name').textContent = d.name;
@@ -280,7 +280,7 @@
       // Load MQTT status banner
       var mqttBanner = document.getElementById('mqtt-banner');
       function updateMqttStatus() {
-        fetch('/api/mqtt-status')
+        fetch('/api/v1/mqtt-status')
           .then(function(r) { return r.json(); })
           .then(function(d) {
             if (d.status === 'connected') {
@@ -309,7 +309,7 @@
       // Check current WiFi STA connection, then load scan results
       var wifiCurrent = document.getElementById('wifi-current');
       function updateCurrentWifi() {
-        fetch('/api/wifi-status')
+        fetch('/api/v1/wifi-status')
           .then(function(r) { return r.json(); })
           .then(function(d) {
             if (d.status === 'connected') {
@@ -328,7 +328,7 @@
 
       // Load WiFi networks - called only when wifi_enabled is true
       function loadWifiNetworks() {
-        fetch('/api/wifi-status')
+        fetch('/api/v1/wifi-status')
           .then(function(r) { return r.json(); })
           .then(function(d) {
             if (d.status === 'connected') {
@@ -337,7 +337,7 @@
               document.getElementById('wifi-current-ip').textContent = 'IP: ' + d.ip;
               wifiCurrent.style.display = 'block';
             }
-            return fetch('/api/wifi-scan');
+            return fetch('/api/v1/wifi-scan');
           })
           .then(function(r) { return r.json(); })
           .then(function(data) { renderNetworks(data); })
@@ -378,7 +378,7 @@
           return;
         }
         setTimeout(function() {
-          fetch('/api/wifi-status')
+          fetch('/api/v1/wifi-status')
             .then(function(r) { return r.json(); })
             .then(function(d) {
               if (d.status === 'connected') {
@@ -416,7 +416,7 @@
         // Sent when a session exists: the device requires auth here once its setup AP is down.
         var wifiHeaders = {'Content-Type':'application/json'};
         if (sessionToken) wifiHeaders['X-Session-Token'] = sessionToken;
-        fetch('/api/wifi', { method: 'POST', headers: wifiHeaders, body: body })
+        fetch('/api/v1/wifi', { method: 'POST', headers: wifiHeaders, body: body })
           .then(function(r) { return r.json(); })
           .then(function() { pollWifiStatus(20); })
           .catch(function(err) {
@@ -461,7 +461,7 @@
             password: document.getElementById('password').value,
             port: parseInt(document.getElementById('port').value) || 1883
           });
-          fetch('/api/mqtt', { method: 'POST', headers: headers, body: body })
+          fetch('/api/v1/mqtt', { method: 'POST', headers: headers, body: body })
             .then(function(r) {
               if (r.status === 401) { sessionExpired(status); btn.disabled = false; return; }
               if (r.status === 429) { status.className = 'status err'; status.textContent = 'Too many failed attempts. Try again later.'; btn.disabled = false; return; }
@@ -490,7 +490,7 @@
         mqttConfirmPanel.className = 'wifi-pass-panel';
       });
 
-      // --- Session auth: passphrase is exchanged once (POST /api/login) for a
+      // --- Session auth: passphrase is exchanged once (POST /api/v1/login) for a
       // token kept in this variable only (dies with the tab); later privileged
       // actions send X-Session-Token instead of prompting again.
       var sessionToken = '';
@@ -511,7 +511,7 @@
         if (sessionToken) { action({ 'X-Session-Token': sessionToken }); return; }
         var pass = passInput.value;
         if (!pass) { status.className = 'status err'; status.textContent = 'Enter the device passphrase.'; return; }
-        fetch('/api/login', { method: 'POST', headers: { 'Authorization': 'Basic ' + btoa('admin:' + pass) } })
+        fetch('/api/v1/login', { method: 'POST', headers: { 'Authorization': 'Basic ' + btoa('admin:' + pass) } })
           .then(function(r) {
             if (r.status === 401) { status.className = 'status err'; status.textContent = 'Wrong passphrase.'; return; }
             if (r.status === 429) { status.className = 'status err'; status.textContent = 'Too many failed attempts. Try again later.'; return; }
@@ -545,7 +545,7 @@
           resetPanel.className = 'wifi-pass-panel';
           status.className = 'status';
           status.textContent = 'Clearing...';
-          fetch('/api/reset-prefs', { method: 'POST', headers: headers })
+          fetch('/api/v1/reset-prefs', { method: 'POST', headers: headers })
             .then(function(r) {
               if (r.status === 401) { sessionExpired(status); }
               else if (r.status === 429) { status.className = 'status err'; status.textContent = 'Too many failed attempts. Try again later.'; }
@@ -587,7 +587,7 @@
         passPanel.className = 'wifi-pass-panel';
         status.className = 'status';
         status.textContent = 'Saving...';
-        fetch('/api/passphrase', {
+        fetch('/api/v1/passphrase', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa('admin:' + current) },
           body: JSON.stringify({ passphrase: next })
@@ -631,7 +631,7 @@
           rebootPanel.className = 'wifi-pass-panel';
           status.className = 'status';
           status.textContent = 'Sending reboot request...';
-          fetch('/api/reboot', { method: 'POST', headers: headers })
+          fetch('/api/v1/reboot', { method: 'POST', headers: headers })
             .then(function(r) {
               if (r.status === 401) {
                 sessionExpired(status);
@@ -703,7 +703,7 @@
               return;
             }
             status.textContent = 'Queuing firmware update...';
-            fetch('/api/firmware', { method: 'POST', headers: headers, body: JSON.stringify({ url: fwUrl }) })
+            fetch('/api/v1/firmware', { method: 'POST', headers: headers, body: JSON.stringify({ url: fwUrl }) })
               .then(function(r) {
                 if (r.status === 401) { sessionExpired(status); }
                 else if (r.status === 429) { status.className = 'status err'; status.textContent = 'Too many failed attempts. Try again later.'; }
@@ -714,7 +714,7 @@
 
           if (fsUrl) {
             status.textContent = 'Queuing filesystem update...';
-            fetch('/api/filesystem', { method: 'POST', headers: headers, body: JSON.stringify({ url: fsUrl }) })
+            fetch('/api/v1/filesystem', { method: 'POST', headers: headers, body: JSON.stringify({ url: fsUrl }) })
               .then(function(r) {
                 if (r.status === 401) { sessionExpired(status); }
                 else if (r.status === 429) { status.className = 'status err'; status.textContent = 'Too many failed attempts. Try again later.'; }

@@ -332,7 +332,7 @@ void ota_loop() {
     if (ok) {
         _ota_status = OTA_STATUS_COMPLETE;
         Serial.println("OTA: All updates complete, rebooting...");
-        // Hold "complete" long enough for a client polling GET /api/ota once a second
+        // Hold "complete" long enough for a client polling GET /api/v1/ota once a second
         // (ebus-esp32 push --pull) to see it; the web server runs on its own task.
         delay(3000);
         ESP.restart();

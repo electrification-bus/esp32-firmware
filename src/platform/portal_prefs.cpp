@@ -145,7 +145,7 @@ void portal_prefs_load_fallbacks() {
     }
 
     if (mqtt_any)
-        Serial.println("PREFS: NVRAM PREF OVERRIDES CONFIG: clear via POST /api/reset-prefs");
+        Serial.println("PREFS: NVRAM PREF OVERRIDES CONFIG: clear via POST /api/v1/reset-prefs");
 
     len = prefs.getString(PREFS_KEY_FW_URL, buf, sizeof(buf));
     if (len > 0) {
@@ -170,7 +170,7 @@ void portal_prefs_load_fallbacks() {
         strncpy(device_passphrase, buf, sizeof(device_passphrase) - 1);
         device_passphrase[sizeof(device_passphrase) - 1] = '\0';
         Serial.println("PREFS: NVRAM device_passphrase=<set>");
-        Serial.println("PREFS: NVRAM PREF OVERRIDES CONFIG: clear via POST /api/reset-prefs");
+        Serial.println("PREFS: NVRAM PREF OVERRIDES CONFIG: clear via POST /api/v1/reset-prefs");
         any = true;
     }
 

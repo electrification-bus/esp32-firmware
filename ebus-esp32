@@ -1185,6 +1185,17 @@ OTA_COMEBACK_TIMEOUT = 120
 # before _ota_wait_reboot() stops waiting for one.
 OTA_STAYED_UP_LIMIT = 15
 
+# The portal's REST base path. Firmware older than the /api/v1 paths serves the same
+# routes under /api only, and current firmware answers both, so a client that finds
+# /api/v1 missing falls back to /api (see _api_base and _ota_status).
+API_V1     = "/api/v1"
+API_LEGACY = "/api"
+
+def _api_missing(status) -> bool:
+    """True when a reply to an /api/v1 path says the firmware predates it: 404 from an
+    Ethernet build, a redirect from a setup-AP build's catch-all."""
+    return status is not None and (status == 404 or 300 <= status < 400)
+
 def _ota_unreachable(host: str, detail: str, unresolved: bool = False) -> None:
     """Exit with something actionable instead of a socket traceback. Every OTA call
     goes through _ota_request(), so this is the one place a network failure surfaces."""
@@ -1287,18 +1298,18 @@ def _ota_request(host: str, path: str, passphrase: str, payload: bytes,
         conn.close()
 
 def _ota_wait_back(host: str, timeout: int):
-    """Poll GET /api/ota until the device answers. Returns its reply text, or None if it
-    did not answer within timeout seconds."""
+    """Poll GET /api/v1/ota until the device answers. Returns its reply text, or None if
+    it did not answer within timeout seconds."""
     deadline = time.time() + timeout
     while time.time() < deadline:
-        reply = _ota_get(host, "/api/ota", "", timeout=3)
+        reply = _ota_status(host, "", timeout=3)
         if reply is not None:
             return reply[1]
         time.sleep(2.0)
     return None
 
 def _ota_uptime(reply_text: str):
-    """uptime_s from a GET /api/ota reply, or None when the firmware does not report it."""
+    """uptime_s from a GET /api/v1/ota reply, or None when the firmware does not report it."""
     try:
         up = (json.loads(reply_text) or {}).get("uptime_s")
     except (ValueError, AttributeError):
@@ -1320,7 +1331,7 @@ def _ota_wait_reboot(host: str, timeout: int, since: float):
     unproven_since = None
     while time.time() < deadline:
         asked = time.time()
-        reply = _ota_get(host, "/api/ota", "", timeout=3)
+        reply = _ota_status(host, "", timeout=3)
         if reply is not None:
             up = _ota_uptime(reply[1])
             if up is not None and up < asked - since:
@@ -1372,6 +1383,21 @@ def _ota_push_image(host: str, path: str, passphrase: str, image: Path,
         sys.exit(1)
     print(f"  -> {body}")
 
+def _ota_status(host: str, passphrase: str, timeout: int = 10):
+    """GET the OTA status, from /api/v1/ota or, on firmware that predates it, /api/ota.
+    Asked afresh each time: a push can reboot the board into either kind."""
+    reply = _ota_get(host, f"{API_V1}/ota", passphrase, timeout=timeout)
+    if reply is not None and _api_missing(reply[0]):
+        reply = _ota_get(host, f"{API_LEGACY}/ota", passphrase, timeout=timeout)
+    return reply
+
+def _api_base(host: str) -> str:
+    """The base path this device serves its REST API under: API_V1, or API_LEGACY when
+    it answers GET /api/v1/ota as firmware without the /api/v1 paths does. API_V1 when
+    it does not answer at all, so the request that follows reports why."""
+    reply = _ota_get(host, f"{API_V1}/ota", "", timeout=10)
+    return API_LEGACY if reply is not None and _api_missing(reply[0]) else API_V1
+
 def _ota_get(host: str, path: str, passphrase: str, timeout: int = 10):
     """GET with the same pre-emptive auth as _ota_request(). Returns (status, text), or
     None when the device does not answer: callers poll a board that may be rebooting."""
@@ -1394,7 +1420,7 @@ def _ota_get(host: str, path: str, passphrase: str, timeout: int = 10):
 # device downloads them itself from a URL, which is what works when the device is
 # reachable from a server but not from here (NAT, VPN, a fleet behind a gateway).
 #
-# The firmware already implements it — POST /api/firmware and /api/filesystem take
+# The firmware already implements it — POST /api/v1/firmware and /api/v1/filesystem take
 # {"url": ...}, save it, and queue a download (src/platform/ota.cpp). Two query flags
 # make it usable for a one-shot dev push: ?start=0 stages without beginning, so both
 # images run as ONE session with a single reboot, and ?persist=0 keeps a throwaway URL
@@ -1431,7 +1457,7 @@ _PULL_ERRORS = {
 }
 
 def _pull_watch(host: str, passphrase: str, timeout: int) -> int:
-    """Poll /api/ota until the device reports complete or an error. Returns a process rc.
+    """Poll /api/v1/ota until the device reports complete or an error. Returns a process rc.
 
     The device holds "complete" for 3 s before rebooting (ota_loop() in ota.cpp), so a
     once-a-second poll sees it. Losing contact before that is NOT success: a crash or a
@@ -1439,7 +1465,7 @@ def _pull_watch(host: str, passphrase: str, timeout: int) -> int:
     deadline = time.time() + timeout
     last = None
     while time.time() < deadline:
-        reply = _ota_get(host, "/api/ota", passphrase, timeout=5)
+        reply = _ota_status(host, passphrase, timeout=5)
         if reply is None:
             print(f"  device stopped answering before reporting completion; waiting up to "
                   f"{OTA_COMEBACK_TIMEOUT}s for it to come back...", flush=True)
@@ -1515,16 +1541,17 @@ def ota_pull(cfg: dict, args, host: str, source: str) -> None:
 
     print(f"\n--- OTA pull from {base} ---")
     print(f"    device {host} (host {source}, env {env_name})")
+    api = _api_base(host)
 
     # Filesystem staged first, firmware last and it arms both — so one download session,
     # one reboot, and the firmware is what the device comes up on.
     if not args.fs_only:
-        _pull_request(host, "/api/filesystem", passphrase, f"{base}/littlefs.bin",
+        _pull_request(host, f"{api}/filesystem", passphrase, f"{base}/littlefs.bin",
                       start=False, persist=False, label="stage filesystem")
-        _pull_request(host, "/api/firmware", passphrase, f"{base}/firmware.bin",
+        _pull_request(host, f"{api}/firmware", passphrase, f"{base}/firmware.bin",
                       start=True, persist=False, label="start firmware")
     else:
-        _pull_request(host, "/api/filesystem", passphrase, f"{base}/littlefs.bin",
+        _pull_request(host, f"{api}/filesystem", passphrase, f"{base}/littlefs.bin",
                       start=True, persist=False, label="start filesystem")
     rc = _pull_watch(host, passphrase, getattr(args, "pull_wait", 300))
     if rc != 0:
@@ -1677,7 +1704,8 @@ def ota_push(cfg: dict, args, host: str, source: str) -> None:
 
     # The endpoints are gated on ota_is_enabled(), which is a timed window — open it
     # first or every push comes back "OTA not enabled".
-    status, body = _ota_request(host, "/api/ota", passphrase, b'{"enabled":true}',
+    api = _api_base(host)
+    status, body = _ota_request(host, f"{api}/ota", passphrase, b'{"enabled":true}',
                                 "application/json", "enable OTA", timeout=15)
     if status != 200:
         print(f"\nCould not enable OTA: HTTP {status} {body}", file=sys.stderr)
@@ -1689,10 +1717,10 @@ def ota_push(cfg: dict, args, host: str, source: str) -> None:
     # Filesystem first, staged; firmware last and it carries the reboot. With
     # --fs-only there is no second image, so the filesystem push reboots instead.
     if not args.fs_only:
-        _ota_push_image(host, "/api/ota/filesystem", passphrase, fs, "filesystem", reboot=False)
-        _ota_push_image(host, "/api/ota/firmware",   passphrase, fw, "firmware",   reboot=True)
+        _ota_push_image(host, f"{api}/ota/filesystem", passphrase, fs, "filesystem", reboot=False)
+        _ota_push_image(host, f"{api}/ota/firmware",   passphrase, fw, "firmware",   reboot=True)
     else:
-        _ota_push_image(host, "/api/ota/filesystem", passphrase, fs, "filesystem", reboot=True)
+        _ota_push_image(host, f"{api}/ota/filesystem", passphrase, fs, "filesystem", reboot=True)
 
     print("\ndone — device rebooting.")
 
