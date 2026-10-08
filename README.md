@@ -12,8 +12,8 @@ Working firmware with Homie 5 device representation, Modbus RTU, captive-portal 
 
 You need:
 
-- An **Olimex ESP32-POE-ISO** on Ethernet, plus a USB cable for the first flash. The default `device.yml` needs nothing else attached: its one node is a settable output on GPIO 14. For another board, set `device.environment` in `device.yml` (see [Hardware Targets](#hardware-targets)).
-- An **MQTT broker** the board can reach, for example [Mosquitto](https://mosquitto.org/) on your computer. Mosquitto 2.x accepts only local connections until its config has a `listener 1883` line and an authentication choice (`allow_anonymous true` is enough for a bench test).
+- An **ESP32 board** from [Hardware Targets](#hardware-targets), plus a USB cable for the first flash. The default is an Olimex ESP32-POE-ISO on Ethernet; for another board, set `device.environment` in `device.yml`, and on a WiFi board also set `wifi.ssid` and `wifi.password` in the overlay below. The default `device.yml` needs nothing else attached: its one node is a settable output on GPIO 14.
+- An **MQTT broker** the board can reach. [broker-quickstart](https://github.com/electrification-bus/broker-quickstart) sets one up on a laptop, a Raspberry Pi or Docker; any [Mosquitto](https://mosquitto.org/) works too. Mosquitto 2.x accepts only local connections until its config has a `listener 1883` line and an authentication choice (`allow_anonymous true` is enough for a bench test).
 - **Python 3.9+**, git, and **PlatformIO Core** (the VSCode PlatformIO IDE extension, `pipx install platformio`, or `brew install platformio`).
 
 Clone with `--recursive`, because the portable core in `lib/ebus_core/` is a git submodule of [cpp-sdk](https://github.com/electrification-bus/cpp-sdk), and install PyYAML for the `./ebus-esp32` CLI in a virtual environment (Homebrew and most Linux distributions refuse `pip install` into the system Python):
