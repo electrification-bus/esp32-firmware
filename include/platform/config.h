@@ -137,5 +137,5 @@ JsonDocument* get_platform_config();
 JsonDocument* get_homie_config();
 
 // theDevice and g_active_setup_device live in homie/homie_globals.h. config.h includes it,
-// so anything that got them from here still does — but NodeEntity.h and NodeProperty can
+// so anything that got them from here still does, but NodeEntity.h and NodeProperty can
 // reach them without pulling the rest of config.h into every driver translation unit.

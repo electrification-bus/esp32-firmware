@@ -1,6 +1,6 @@
 # Extracting the Homie layer and drivers as a standalone library
 
-**Status: proposal — Stage 0 implemented; Stages 1–5 not built.** Like the rest of `doc/proposals/`, this records a design and its evidence so the decision survives independently of the conversation that produced it. Mark stages `implemented` as they land, the way [DriverLayering.md](DriverLayering.md) does.
+**Status: proposal. Stages 0, 1 and 3 implemented, and Stage 4 in part; Stages 2 and 5 not built.** Stages 1, 3 and 4 landed in a different shape from the one below: the transport is an abstract class, `HomieTransport`, the log and clock hooks are separate headers, and the core lives in `lib/ebus_core` with host tests in `test/native/`. [`lib/ebus_core/README.md`](../../lib/ebus_core/README.md) describes what landed and what a port implements. Like the rest of `doc/proposals/`, this records a design and its evidence so the decision survives independently of the conversation that produced it. Mark stages `implemented` as they land, the way [DriverLayering.md](DriverLayering.md) does.
 
 ## The problem
 
@@ -112,10 +112,10 @@ Every decoupling stage is verified by the **existing PlatformIO build**. The rep
 | Stage | Work | Size |
 |---|---|---|
 | **0** | Delete the dead includes listed above; fix the stale `NodeProperty.h` comment. **Implemented** — `<ArduinoYaml.h>` also turned out dead in `mqtt_client.cpp` and the public `config.h`; it now appears only in `config.cpp`, the one real YAML user | 1–2 h, zero risk |
-| **1** | Move the settable registry into the core; repoint `NodeProperty.h:9`; keep `mqtt_client.h` re-exporting via `inline` forwarders. **Ends `<MQTT.h>` in the driver contract** | 1 day |
+| **1** | Move the settable registry into the core; repoint `NodeProperty.h:9`; keep `mqtt_client.h` re-exporting via `inline` forwarders. **Ends `<MQTT.h>` in the driver contract.** **Implemented** (`homie/homie_settable.h`, caller-supplied storage) | 1 day |
 | **2** | Add `homie_log.h` with the shim; repoint `NodeEntity.h:6`. **Driver contract then compiles without Arduino** | ½ day |
-| **3** | Add `homie_mqtt.h`; swap the pointer type in 4 headers and ~25 bodies; implement the port in `mqtt_client.cpp`. **Core then compiles against libc + ArduinoJson alone** | 2 days |
-| **4** | `CMakeLists.txt`, `cmake/homie-core.cmake`, `test/cpp/` with a fake port that records publishes | 1–2 days |
+| **3** | Add `homie_mqtt.h`; swap the pointer type in 4 headers and ~25 bodies; implement the port in `mqtt_client.cpp`. **Core then compiles against libc + ArduinoJson alone.** **Implemented** (`homie/homie_transport.h`) | 2 days |
+| **4** | `CMakeLists.txt`, `cmake/homie-core.cmake`, `test/cpp/` with a fake port that records publishes. **In part**: `lib/ebus_core/CMakeLists.txt`, and `test/native/` suites through `FakeTransport` | 1–2 days |
 | **5** | `git subtree split` / `filter-repo` into its own repo, history preserved | 1 day |
 
 Roughly **5–7 days**, ~130 edits plus one 470-line file move. No stage is algorithmically hard; the compiler finds every site in Stage 3.

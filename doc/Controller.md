@@ -1,6 +1,6 @@
 # Homie Controller
 
-A controller build discovers, monitors and commands other Homie 5 devices on the MQTT broker. Controller mode is exclusive: when `ENABLE_CONTROLLER` is defined, `src/main.cpp` compiles its controller branch instead of the device branch, so the board publishes no nodes or properties of its own. The controller API is declared in [`include/homie/controller.h`](../include/homie/controller.h) and implemented in `src/homie/controller.cpp`; it stores what it discovers in the same `Device`, `Node` and `Property` classes the device role uses.
+A controller build discovers, monitors and commands other Homie 5 devices on the MQTT broker. Controller mode is exclusive: when `ENABLE_CONTROLLER` is defined, `src/main.cpp` compiles its controller branch instead of the device branch, so the board publishes no nodes or properties of its own. The controller API is declared in [`lib/ebus_core/include/homie/controller.h`](../lib/ebus_core/include/homie/controller.h) and implemented in `lib/ebus_core/src/homie/controller.cpp`, part of the portable core; it stores what it discovers in the same `Device`, `Node` and `Property` classes the device role uses.
 
 ## Enabling it
 
@@ -20,7 +20,7 @@ The serial log starts with `===== HOMIE CONTROLLER =====` instead of the device 
 `setup()` brings up the network, portal, network console, mDNS and MQTT exactly as device mode does, using the same configuration (`device.yml`, portal settings in NVS). Then it:
 
 1. Publishes its own retained `$state` of `ready` at `<domain>/5/<device-id>/$state`, republishes it after every MQTT reconnect, and re-asserts it if the broker reports anything else (for example the Last Will's `lost`).
-2. Calls `controller_init(&mqtt_client, top_level_topic(), false)`, so it discovers devices only in this build's domain (`ebus`; `homie` without `-DUSE_EBUS_TOPIC`).
+2. Calls `controller_init(&mqtt_transport, top_level_topic(), false)`, so it discovers devices only in this build's domain (`ebus`; `homie` without `-DUSE_EBUS_TOPIC`).
 3. Registers `controller_mqtt_callback` with `mqtt_set_fallback_callback()`, which hands it every message no settable-property handler claimed.
 4. Calls `controller_setup_discovery()`, which schedules the discovery subscription. The reconnect callback calls it again after every MQTT reconnect, which schedules discovery and every known device's subscriptions anew.
 
@@ -40,7 +40,7 @@ To add your own logic, edit the `loop()` in the `ENABLE_CONTROLLER` branch of `s
 
 `controller_mqtt_callback()` runs inside the MQTT client's receive callback, which the client also runs while it waits for a SUBACK or a QoS 2 acknowledgment. So it only copies the message into the controller's inbox, a `CONTROLLER_INBOX_BYTES` (16384) byte buffer; `controller_loop()` handles everything queued after the client's `loop()` has returned, and only then makes subscriptions. Handling a message makes no client call.
 
-A message that does not fit in the inbox is dropped and counted in `ControllerStats.messages_dropped`, with a `CONTROLLER: inbox full ... DROPPED` log line. Five seconds later `controller_loop()` re-subscribes the topics it came from (the device's own subscriptions, or discovery for a `$state`), so the broker resends the retained copy. Each message takes its topic and payload length plus 6 bytes, and the inbox must hold the largest message the client accepts (`MAX_DATA_LEN`, 8192 bytes); raise it with `-DCONTROLLER_INBOX_BYTES=<n>` in `build_src_flags`.
+A message that does not fit in the inbox is dropped and counted in `ControllerStats.messages_dropped`, with a `CONTROLLER: inbox full ... DROPPED` log line. Five seconds later `controller_loop()` re-subscribes the topics it came from (the device's own subscriptions, or discovery for a `$state`), so the broker resends the retained copy. Each message takes its topic and payload length plus 6 bytes, and the inbox must hold the largest message the client accepts (`MAX_DATA_LEN`, 8192 bytes); raise it with `-DCONTROLLER_INBOX_BYTES=<n>` in `build_flags` (not `build_src_flags`, which does not reach the core library).
 
 ## API
 
@@ -48,7 +48,7 @@ A message that does not fit in the inbox is dropped and counted in `ControllerSt
 
 | Function | Purpose |
 |---|---|
-| `controller_init(MQTTClient* mqtt_client, const char* domain = top_level_topic(), bool discover_all_domains = true)` | Store the client and the discovery domain; `true` discovers in every domain via `+/5/+/$state`. A device's subscriptions and commands use the domain it was discovered in. Clears the device table. |
+| `controller_init(HomieTransport* transport, const char* domain = top_level_topic(), bool discover_all_domains = true)` | Store the transport (the firmware's is `mqtt_transport`) and the discovery domain; `true` discovers in every domain via `+/5/+/$state`. A device's subscriptions and commands use the domain it was discovered in. Clears the device table. |
 | `controller_setup_discovery()` | Schedule the discovery subscription and every known device's subscriptions, which `controller_loop()` makes. Call after MQTT connects and after every reconnect. |
 | `controller_mqtt_callback(char* topic, uint8_t* payload, unsigned int length)` | Feed one MQTT message to the controller from the client's receive callback. It copies the message into the inbox; the payload need not be null-terminated. |
 | `controller_loop()` | Call every loop, after the client's `loop()`: handles the queued messages, then makes at most one pending subscription step. |
@@ -96,7 +96,7 @@ if (state && controller_effective_state("relay-device-id") == DEVICE_STATE_READY
 
 ## Standalone sketch
 
-[`examples/controller_example.cpp`](../examples/controller_example.cpp) uses the same API on its own WiFi and `MQTTClient` connection, without the firmware's configuration, portal or mDNS. It defines its own `setup()` and `loop()`, so it replaces `src/main.cpp` rather than running beside it. To build it, set its WiFi, broker and device-id constants, then swap it in for `src/main.cpp` in `platformio_local.ini` for the env named by `device.environment` and run `./ebus-esp32 build`:
+[`examples/controller_example.cpp`](../examples/controller_example.cpp) uses the same API on its own WiFi and `MQTTClient` connection, wrapped in a `MqttClientTransport`, without the firmware's configuration, portal or mDNS. It defines its own `setup()` and `loop()`, so it replaces `src/main.cpp` rather than running beside it. To build it, set its WiFi, broker and device-id constants, then swap it in for `src/main.cpp` in `platformio_local.ini` for the env named by `device.environment` and run `./ebus-esp32 build`:
 
 ```ini
 [env:esp32-poe-iso]
