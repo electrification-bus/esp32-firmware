@@ -1,0 +1,11 @@
+{
+  "name": "ebus_core",
+  "version": "0.0.1",
+  "description": "Portable eBus / Homie 5 core: id and payload validation, limits, enums, controller inbox, broker discovery. Depends on the C/C++ standard library only; see README.md.",
+  "frameworks": "*",
+  "platforms": "*",
+  "build": {
+    "includeDir": "include",
+    "srcDir": "src"
+  }
+}

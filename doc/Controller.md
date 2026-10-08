@@ -108,7 +108,7 @@ Remove the override to build the firmware again.
 ## Limits
 
 - At most `MAX_DISCOVERED_DEVICES` (16) devices; further devices are not tracked.
-- Ids are held up to the limits in [`include/homie/homie_limits.h`](../include/homie/homie_limits.h): device, parent and root ids `HOMIE_DEVICE_ID_MAX` (63), node and property ids 31, domains `HOMIE_TOPIC_PREFIX_MAX` (7). A message whose topic has a longer level is ignored, and a longer parent or root id in a description is left empty, rather than stored truncated.
+- Ids are held up to the limits in [`lib/ebus_core/include/homie/homie_limits.h`](../lib/ebus_core/include/homie/homie_limits.h): device, parent and root ids `HOMIE_DEVICE_ID_MAX` (63), node and property ids 31, domains `HOMIE_TOPIC_PREFIX_MAX` (7). A message whose topic has a longer level is ignored, and a longer parent or root id in a description is left empty, rather than stored truncated.
 - A changed `$description` adds the nodes it names that the device does not have yet; nodes it already has keep the properties first described.
 - A device whose retained topics together exceed the inbox overflows it on every re-subscribe, so it logs a drop and is re-subscribed every five seconds. Raise `CONTROLLER_INBOX_BYTES` for it.
 - Each discovered `Device` is allocated with `new`, and `$description` parsing uses ArduinoJson documents.

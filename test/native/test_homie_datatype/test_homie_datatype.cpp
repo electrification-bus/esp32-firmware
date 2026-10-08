@@ -1,6 +1,6 @@
-// Host-side tests for src/homie/homie_datatype.cpp. Expected values come from the
-// Homie 5 convention (https://homieiot.github.io/specification/), sections "Payloads"
-// and "Formats", not from the implementation.
+// Host-side tests for lib/ebus_core/src/homie/homie_datatype.cpp. Expected values come
+// from the Homie 5 convention (https://homieiot.github.io/specification/), sections
+// "Payloads" and "Formats", not from the implementation.
 
 #include <unity.h>
 #include <homie/homie_datatype.h>

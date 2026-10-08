@@ -150,8 +150,8 @@ def test_register_property_topic_one_over_the_limit_fails(sandbox, capsys):
                          with_child(CHILD50, [reg_node(node, "r" * 31)], buses=RS485))
     topic = f"homie/5/000000000000-{CHILD50}/{node}/{'r' * 31}"
     assert f"property topic '{topic}' (node '{node}', child '{CHILD50}') is 120 chars" in err
-    assert "at most 119 (HOMIE_TOPIC_MAX 127 in include/homie/homie_limits.h, less 8 " \
-           "for '/$target')" in err
+    assert "at most 119 (HOMIE_TOPIC_MAX 127 in lib/ebus_core/include/homie/homie_limits.h, " \
+           "less 8 for '/$target')" in err
     assert "id '" not in err   # every id is within its own limit
 
 
