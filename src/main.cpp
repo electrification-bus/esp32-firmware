@@ -38,6 +38,77 @@ void memstats() {
     Serial.printf("Free PSRAM: %u bytes\n", (unsigned)ESP.getFreePsram());
 }
 // ============================================================================
+// WAIT FOR AN ADDRESS - bounded when a network is expected
+// ============================================================================
+// A board that never gets an address (a PHY or switch-port fault, a DHCP outage) would
+// otherwise wait until someone power-cycles it. When a network is expected, give up
+// after NETWORK_WAIT_RESTART_MS and restart; on Ethernet builds the restart goes
+// through the deep-sleep reset in setup_ethernet(). Override with
+// -DNETWORK_WAIT_RESTART_MS=<ms>, e.g. 60000 to test it.
+#ifndef NETWORK_WAIT_RESTART_MS
+#define NETWORK_WAIT_RESTART_MS (5UL * 60UL * 1000UL)
+#endif
+#ifndef NETWORK_WAIT_LOG_MS
+#define NETWORK_WAIT_LOG_MS 30000UL   // how often the wait logs its status
+#endif
+
+#ifdef CONFIG_WIFI_AP
+#include <WiFi.h>
+#endif
+
+static unsigned long _network_wait_since = 0;    // start of the counted wait
+static unsigned long _network_wait_logged = 0;   // last status line
+
+// Ethernet builds always expect a network. A WiFi AP build expects one only when STA
+// has credentials to join (the test setup_wifi_sta() makes); without them it is
+// waiting for someone to provision it through the portal, and must not restart.
+static bool network_expected() {
+#ifdef CONFIG_WIFI_AP
+    return wifi_ssid[0] != '\0' && (wifi_sta_enabled || !config_loaded);
+#else
+    return true;
+#endif
+}
+
+static void network_wait_begin() {
+    _network_wait_since = millis();
+    _network_wait_logged = _network_wait_since - NETWORK_WAIT_LOG_MS;   // log at once
+}
+
+// Call on every pass while client_connected() is false.
+static void network_wait_check() {
+    unsigned long now = millis();
+    const char* hold = nullptr;   // why the restart is not counting down
+    if (!network_expected()) {
+        hold = "no WiFi STA credentials: provision through the portal";
+    }
+#ifdef CONFIG_WIFI_AP
+    // Without an address the portal and the OTA push endpoints are reachable only
+    // through the setup AP, so a client on the AP may be mid-session or mid-push.
+    else if (WiFi.softAPgetStationNum() > 0) {
+        hold = "a client is on the setup AP: restart held";
+    }
+#endif
+    if (hold) _network_wait_since = now;   // the full wait starts over once it counts
+    unsigned long waited = now - _network_wait_since;
+
+    if (!hold && waited >= NETWORK_WAIT_RESTART_MS) {
+        Serial.printf("NETWORK: no address after %lu s; restarting\n", waited / 1000);
+        Serial.flush();
+        ESP.restart();
+    }
+    if (now - _network_wait_logged >= NETWORK_WAIT_LOG_MS) {
+        _network_wait_logged = now;
+        if (hold) {
+            Serial.printf("Waiting for network connection... (%s)\n", hold);
+        } else {
+            Serial.printf("Waiting for network connection... (restart in %lu s)\n",
+                          (NETWORK_WAIT_RESTART_MS - waited) / 1000);
+        }
+    }
+}
+
+// ============================================================================
 // RECOVERY MODE - no usable configuration
 // ============================================================================
 // Entered when loadConfiguration() fails: LittleFS will not mount (e.g. a filesystem
@@ -85,6 +156,7 @@ static void setup_recovery() {
     captive_portal_start();  // WiFi AP portal on AP builds, HTTP API otherwise
     setup_wifi_sta();        // no-op without NVS credentials
     log_tcp_begin(log_tcp_port);
+    network_wait_begin();
 }
 
 static void loop_recovery() {
@@ -102,6 +174,8 @@ static void loop_recovery() {
         }
         Serial.printf("RECOVERY: reachable at http://%s/ - push the filesystem image "
                       "with ./ebus-esp32 push --ota --fs-only --host %s\n", ip, ip);
+    } else if (!_recovery_ip_announced) {
+        network_wait_check();   // same bound as the normal boot's wait
     }
 }
 
@@ -144,10 +218,11 @@ static void watch_own_state() {
 
 // Wait for at least one network interface to get an IP
 static void wait_for_network() {
+    network_wait_begin();
     while (!client_connected()) {
         log_tcp_loop();         // keep the remote monitor fed while setup() blocks here
         captive_portal_loop();  // Keep portal responsive while waiting
-        Serial.println("Waiting for network connection...");
+        network_wait_check();   // logs, and restarts once the bound runs out
         delay(1000);
     }
 }
