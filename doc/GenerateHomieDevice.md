@@ -406,9 +406,10 @@ Available boards (defined in `platformio/platformio.ini`):
 | `esp32-poe-iso-16mb` | Olimex POE-ISO, WROOM-32E | 16 MB | no | `esp32-poe-iso-16mb-arduino2` |
 | `esp32-poe-iso-wrover` | Olimex POE-ISO, WROVER-E | 4 MB | 8 MB | `esp32-poe-iso-wrover-arduino2` |
 | `esp32-s3-devkitc-1` | ESP32-S3-DevKitC-1-N8 | 8 MB | no | `esp32-s3-devkitc-1-arduino2` |
-| `wesp32-poe` | Silicognition wESP32 | 4 MB | no | `wesp32-poe-arduino2` |
+| `wesp32-poe` | Silicognition wESP32, RTL8201 Ethernet | 4 MB | no | `wesp32-poe-arduino2` |
+| `wesp32-poe-lan8720` | Silicognition wESP32, LAN8720 Ethernet (earlier revisions, e.g. 2018 boards) | 4 MB | no | none |
 | `seeed_xiao_esp32s3` | Seeed XIAO ESP32S3 | 8 MB | yes (octal) | none |
 
-The unsuffixed envs build on arduino-esp32 3.x; each `-arduino2` twin builds the same board on 2.0.x. The `wesp32-poe` envs use the same `partitions/partitions_ota.csv` partition table and LittleFS filesystem as `esp32-poe-iso`.
+The unsuffixed envs build on arduino-esp32 3.x; each `-arduino2` twin builds the same board on 2.0.x. The `wesp32-poe*` envs use the same `partitions/partitions_ota.csv` partition table and LittleFS filesystem as `esp32-poe-iso`.
 
 List all boards: `./ebus-esp32 envs`
