@@ -1,13 +1,43 @@
 /* A minimally-vibed controller. Claude Code, 12/3/25 drm */
 #include <homie/controller.h>
 #include <homie/homie.h>
+#include <platform/mqtt_client.h>
 #include <string.h>
 
 // Module state
 static MQTTClient* _mqtt_client = nullptr;
-static char _domain[16] = HOMIE_TOPIC_DOMAIN;
+static char _domain[CONTROLLER_DOMAIN_MAX + 1] = HOMIE_TOPIC_DOMAIN;
 static char _version[8] = HOMIE_VERSION_NUM;
 static bool _discover_all_domains = true;  // If true, use wildcard for domain discovery
+
+// ── Why messages are queued here ────────────────────────────────────────────────────
+// Nothing on the controller path may run inside the MQTT receive callback beyond a copy.
+// arduino-mqtt waits for a SUBACK (or a QoS 2 PUBREC/PUBCOMP) by pumping its own receive
+// loop, which hands any PUBLISH that arrives meanwhile to the same callback, one frame
+// deeper. The retained topics of a new subscription arrive exactly then, so subscribing
+// from the callback nested one subscribe() per newly seen device and they failed,
+// innermost first. Parsing $description and building Device objects there held the
+// client mid-packet as well. The /set path is deferred the same way (see the note on
+// MqttQueueKind in src/platform/mqtt_client.cpp).
+//
+// So controller_mqtt_callback() only copies the message into _inbox, and controller_loop()
+// handles it after mqtt_client.loop() has returned. Handling makes no client call, and
+// controller_loop() subscribes only once the inbox is empty, one step per pass, so a
+// SUBACK wait can only add to the inbox, never re-enter the controller.
+static_assert(CONTROLLER_INBOX_BYTES >= MAX_DATA_LEN + HOMIE_TOPIC_MAX + 8,
+              "CONTROLLER_INBOX_BYTES cannot hold a MAX_DATA_LEN $description");
+static uint8_t _inbox_arena[CONTROLLER_INBOX_BYTES];
+static ControllerInbox _inbox(_inbox_arena, sizeof(_inbox_arena));
+
+// Subscriptions controller_loop() still has to make. Per-device ones are each device's
+// properties_subscribed == false.
+static bool _discovery_pending = false;
+// controller_loop() makes no subscription before this time: set after a failed subscribe,
+// and after a dropped message so the burst that overflowed the inbox finishes arriving
+// before its topics are re-subscribed.
+static unsigned long _subscribe_hold_until_ms = 0;
+#define CONTROLLER_SUBSCRIBE_RETRY_MS 1000UL
+#define CONTROLLER_RESYNC_DELAY_MS 5000UL
 
 // Discovered devices storage - uses actual Device objects
 static ControllerDevice _devices[MAX_DISCOVERED_DEVICES];
@@ -24,9 +54,9 @@ static void handle_property_message(const char* domain, const char* device_id,
                                    const char* payload);
 static int find_device_index(const char* device_id);
 static int find_or_create_device(const char* device_id);
-static bool parse_topic(const char* topic, char* domain_out, char* device_id_out,
-                       char* node_id_out, char* property_id_out, bool* is_attribute);
 static void create_device_from_description(ControllerDevice* ctrl_dev, JsonDocument& doc);
+static void handle_message(const char* topic, const char* payload);
+static void run_subscriptions();
 
 // Initialize the controller
 void controller_init(MQTTClient* mqtt_client, const char* domain, bool discover_all_domains) {
@@ -41,74 +71,32 @@ void controller_init(MQTTClient* mqtt_client, const char* domain, bool discover_
                   _domain, _discover_all_domains ? "true" : "false");
 }
 
-// Setup device discovery
+// Schedule discovery and every known device's subscriptions; controller_loop() makes them.
 void controller_setup_discovery() {
-    if (!_mqtt_client || !_mqtt_client->connected()) {
-        Serial.println("CONTROLLER: Cannot setup discovery - MQTT not connected");
-        return;
-    }
-
-    // Subscribe to device state messages for discovery
-    // If _discover_all_domains is true: +/5/+/$state (any domain)
-    // If false: homie/5/+/$state (specific domain only)
-    char discovery_topic[64];
-    if (_discover_all_domains) {
-        snprintf(discovery_topic, sizeof(discovery_topic), "+/%s/+/$state", _version);
-    } else {
-        snprintf(discovery_topic, sizeof(discovery_topic), "%s/%s/+/$state", _domain, _version);
-    }
-
-    if (_mqtt_client->subscribe(discovery_topic)) {
-        Serial.printf("CONTROLLER: Subscribed to discovery topic: %s\n", discovery_topic);
-    } else {
-        Serial.printf("CONTROLLER: Failed to subscribe to: %s\n", discovery_topic);
-    }
-
-    // Also subscribe to device descriptions
-    if (_discover_all_domains) {
-        snprintf(discovery_topic, sizeof(discovery_topic), "+/%s/+/$description", _version);
-    } else {
-        snprintf(discovery_topic, sizeof(discovery_topic), "%s/%s/+/$description", _domain, _version);
-    }
-    if (_mqtt_client->subscribe(discovery_topic)) {
-        Serial.printf("CONTROLLER: Subscribed to descriptions: %s\n", discovery_topic);
+    _discovery_pending = true;
+    _subscribe_hold_until_ms = millis();
+    for (int i = 0; i < MAX_DISCOVERED_DEVICES; i++) {
+        if (_devices[i].is_active) _devices[i].properties_subscribed = false;
     }
 }
 
 // Process controller logic
 void controller_loop() {
-    // Check for stale devices (not seen in 60 seconds -> mark as lost)
-    unsigned long now = millis();
-    for (int i = 0; i < MAX_DISCOVERED_DEVICES; i++) {
-        if (!_devices[i].is_active) continue;
-
-        if (_devices[i].state == DEVICE_STATE_READY ||
-            _devices[i].state == DEVICE_STATE_INIT) {
-            if (now - _devices[i].last_seen_ms > 60000) {
-                Serial.printf("CONTROLLER: Device %s timeout - marking as LOST\n",
-                             _devices[i].device->getId());
-                _devices[i].state = DEVICE_STATE_LOST;
-            }
-        }
+    // Handle everything queued. Handling makes no client call, so nothing is added
+    // meanwhile and the inbox is empty afterwards.
+    const char* topic;
+    const char* payload;
+    while (_inbox.front(&topic, &payload, nullptr)) {
+        handle_message(topic, payload);
+        _inbox.pop();
     }
+    run_subscriptions();
 }
 
-// Subscribe to all properties of a device
+// Schedule a device's $description and property subscriptions
 void controller_subscribe_device_properties(const char* device_id) {
-    if (!_mqtt_client || !_mqtt_client->connected()) {
-        Serial.println("CONTROLLER: Cannot subscribe - MQTT not connected");
-        return;
-    }
-
-    // Subscribe to all properties: domain/5/device_id/+/+
-    char topic[128];
-    snprintf(topic, sizeof(topic), "%s/%s/%s/+/+", _domain, _version, device_id);
-
-    if (_mqtt_client->subscribe(topic)) {
-        Serial.printf("CONTROLLER: Subscribed to device properties: %s\n", topic);
-    } else {
-        Serial.printf("CONTROLLER: Failed to subscribe to: %s\n", topic);
-    }
+    int idx = find_device_index(device_id);
+    if (idx >= 0) _devices[idx].properties_subscribed = false;
 }
 
 // Send command to settable property (non-retained per Homie spec)
@@ -131,10 +119,17 @@ bool controller_set_property(const char* device_id, const char* node_id,
         return false;
     }
 
-    // Construct set topic: domain/5/device_id/node_id/property_id/set
-    char topic[128];
-    snprintf(topic, sizeof(topic), "%s/%s/%s/%s/%s/set",
-             _domain, _version, device_id, node_id, property_id);
+    // Construct set topic: domain/5/device_id/node_id/property_id/set, in the domain the
+    // device was discovered in
+    ControllerDevice* info = controller_get_device_info(device_id);
+    char topic[HOMIE_TOPIC_MAX + 1];
+    int n = snprintf(topic, sizeof(topic), "%s/%s/%s/%s/%s/set",
+                     info ? info->domain : _domain, _version, device_id, node_id, property_id);
+    if (n < 0 || n >= (int)sizeof(topic)) {
+        Serial.printf("CONTROLLER: /set topic for %s/%s/%s is over %d chars, not sent\n",
+                      device_id, node_id, property_id, HOMIE_TOPIC_MAX);
+        return false;
+    }
 
     // Publish non-retained message (per Homie spec)
     // MQTTClient publish: (topic, payload, retained, qos)
@@ -203,6 +198,7 @@ void controller_get_stats(ControllerStats* stats) {
         }
         stats->properties_discovered = total_props;
         stats->messages_received = _stats.messages_received;
+        stats->messages_dropped = _stats.messages_dropped;
         stats->commands_sent = _stats.commands_sent;
         stats->last_discovery_ms = _stats.last_discovery_ms;
     }
@@ -230,32 +226,117 @@ int controller_list_device_info(ControllerDevice* devices, int max_devices) {
     return count;
 }
 
-// MQTT callback handler
-// Note: payload is already null-terminated by subscriber_callback in mqtt_client.cpp
+// A message the inbox could not hold: count it, and re-subscribe the topics it came from
+// once the inbox has drained, so the broker resends the retained copy. Runs inside the
+// receive callback, so it only reads the device table and sets flags.
+static void note_dropped(const char* topic, unsigned int length) {
+    _stats.messages_dropped++;
+    ControllerTopic t;
+    int idx = -1;
+    if (controller_parse_topic(topic, &t) && t.kind != CONTROLLER_TOPIC_STATE) {
+        idx = find_device_index(t.device_id);
+    }
+    if (idx >= 0) {
+        _devices[idx].properties_subscribed = false;
+    } else {
+        _discovery_pending = true;   // a $state, or a device not in the table yet
+    }
+    _subscribe_hold_until_ms = millis() + CONTROLLER_RESYNC_DELAY_MS;
+    Serial.printf("CONTROLLER: inbox full (%u of %u bytes, %u messages), DROPPED %u-byte "
+                  "message on %s (%d dropped so far); re-subscribing in %lu s\n",
+                  (unsigned)_inbox.used(), (unsigned)_inbox.size(), (unsigned)_inbox.count(),
+                  length, topic, _stats.messages_dropped, CONTROLLER_RESYNC_DELAY_MS / 1000);
+}
+
+// MQTT callback handler: runs inside the client's receive callback, so it only copies.
+// See the note on _inbox.
 void controller_mqtt_callback(char* topic, uint8_t* payload, unsigned int length) {
     _stats.messages_received++;
+    if (!_inbox.push(topic, payload, length)) note_dropped(topic, length);
+}
 
-    // Payload is already null-terminated by mqtt_client's subscriber_callback
-    const char* payload_str = (const char*)payload;
-
-    // Parse topic to extract components
-    char domain[16], device_id[32], node_id[32], property_id[32];
-    bool is_attribute = false;
-
-    if (!parse_topic(topic, domain, device_id, node_id, property_id, &is_attribute)) {
-        return; // Not a Homie topic we care about
+// Handle one queued message. No client calls: see the note on _inbox.
+static void handle_message(const char* topic, const char* payload) {
+    ControllerTopic t;
+    if (!controller_parse_topic(topic, &t)) {
+        return; // Not a Homie topic we care about, or an id over its homie_limits.h maximum
     }
 
-    // Handle device attributes ($state, $description, etc.)
-    if (is_attribute) {
-        if (strcmp(property_id, "$state") == 0) {
-            handle_state_message(domain, device_id, payload_str);
-        } else if (strcmp(property_id, "$description") == 0) {
-            handle_description_message(domain, device_id, payload_str);
-        }
+    int idx = find_device_index(t.device_id);
+    if (idx >= 0) _devices[idx].last_seen_ms = millis();
+
+    if (t.kind == CONTROLLER_TOPIC_STATE) {
+        handle_state_message(t.domain, t.device_id, payload);
+    } else if (t.kind == CONTROLLER_TOPIC_DESCRIPTION) {
+        handle_description_message(t.domain, t.device_id, payload);
     } else {
-        // Handle property value message
-        handle_property_message(domain, device_id, node_id, property_id, payload_str);
+        handle_property_message(t.domain, t.device_id, t.node_id, t.property_id, payload);
+    }
+}
+
+// Make at most one pending subscription step: discovery first, then one device's
+// $description and property subscriptions. Runs only with the inbox empty, so the
+// retained burst each step triggers lands in an empty inbox and is handled on the next
+// pass before the next step. Each pending flag is cleared BEFORE subscribing: a message
+// dropped during the SUBACK wait sets it again, and that must not be overwritten.
+static void run_subscriptions() {
+    if (!_mqtt_client || !_mqtt_client->connected()) return;
+    if (_inbox.count() > 0) return;
+    if ((long)(millis() - _subscribe_hold_until_ms) < 0) return;
+
+    char topic[HOMIE_TOPIC_MAX + 1];
+
+    if (_discovery_pending) {
+        // Discover by $state: <domain>/5/+/$state, or +/5/+/$state for every domain.
+        // Each device's $description is subscribed per device, below, so a re-subscribe
+        // never makes the broker resend every description at once.
+        if (_discover_all_domains) {
+            snprintf(topic, sizeof(topic), "+/%s/+/$state", _version);
+        } else {
+            snprintf(topic, sizeof(topic), "%s/%s/+/$state", _domain, _version);
+        }
+        _discovery_pending = false;
+        if (_mqtt_client->subscribe(topic)) {
+            Serial.printf("CONTROLLER: Subscribed to discovery topic: %s\n", topic);
+        } else {
+            _discovery_pending = true;
+            _subscribe_hold_until_ms = millis() + CONTROLLER_SUBSCRIBE_RETRY_MS;
+            Serial.printf("CONTROLLER: Failed to subscribe to: %s (error %d); retrying\n",
+                          topic, (int)_mqtt_client->lastError());
+        }
+        return;
+    }
+
+    for (int i = 0; i < MAX_DISCOVERED_DEVICES; i++) {
+        ControllerDevice* d = &_devices[i];
+        if (!d->is_active || d->properties_subscribed || !d->device) continue;
+
+        const char* id = d->device->getId();
+        bool ok = true;
+        d->properties_subscribed = true;
+        snprintf(topic, sizeof(topic), "%s/%s/%s/$description", d->domain, _version, id);
+        if (_mqtt_client->subscribe(topic)) {
+            Serial.printf("CONTROLLER: Subscribed to device description: %s\n", topic);
+        } else {
+            ok = false;
+            Serial.printf("CONTROLLER: Failed to subscribe to: %s (error %d); retrying\n",
+                          topic, (int)_mqtt_client->lastError());
+        }
+        if (ok) {
+            snprintf(topic, sizeof(topic), "%s/%s/%s/+/+", d->domain, _version, id);
+            if (_mqtt_client->subscribe(topic)) {
+                Serial.printf("CONTROLLER: Subscribed to device properties: %s\n", topic);
+            } else {
+                ok = false;
+                Serial.printf("CONTROLLER: Failed to subscribe to: %s (error %d); retrying\n",
+                              topic, (int)_mqtt_client->lastError());
+            }
+        }
+        if (!ok) {
+            d->properties_subscribed = false;
+            _subscribe_hold_until_ms = millis() + CONTROLLER_SUBSCRIBE_RETRY_MS;
+        }
+        return;
     }
 }
 
@@ -271,6 +352,7 @@ void controller_reset() {
     memset(_devices, 0, sizeof(_devices));
     _device_count = 0;
     memset(&_stats, 0, sizeof(_stats));
+    _inbox.clear();
 
     Serial.println("CONTROLLER: Reset - all discovered data cleared");
 }
@@ -355,33 +437,29 @@ int controller_list_descendants(const char* device_id, ControllerDevice** out, i
 static void handle_state_message(const char* domain, const char* device_id, const char* payload) {
     DeviceState state = device_state_from_cstr(payload);
 
+    bool is_new = find_device_index(device_id) < 0;
     int idx = find_or_create_device(device_id);
     if (idx < 0) {
-        Serial.println("CONTROLLER: Device table full, cannot add device");
+        Serial.printf("CONTROLLER: Device table full (%d), cannot add device %s\n",
+                      MAX_DISCOVERED_DEVICES, device_id);
         return;
     }
 
     ControllerDevice* ctrl_dev = &_devices[idx];
-    bool is_new = !ctrl_dev->is_active || (ctrl_dev->state == DEVICE_STATE_INIT && !ctrl_dev->has_description);
 
-    strncpy(ctrl_dev->domain, domain, sizeof(ctrl_dev->domain) - 1);
+    snprintf(ctrl_dev->domain, sizeof(ctrl_dev->domain), "%s", domain);
     ctrl_dev->state = state;
     ctrl_dev->last_seen_ms = millis();
     ctrl_dev->is_active = true;
 
     if (is_new) {
+        // controller_loop() subscribes to its $description and properties (still
+        // properties_subscribed == false from find_or_create_device()).
         Serial.printf("CONTROLLER: New device discovered: %s (state: %s)\n",
                      device_id, payload);
         _stats.last_discovery_ms = millis();
     } else {
         Serial.printf("CONTROLLER: Device %s state: %s\n", device_id, payload);
-    }
-
-    // Subscribe to device properties (only once per device)
-    if (!ctrl_dev->properties_subscribed) {
-        Serial.printf("CONTROLLER: First-time subscription for device %s\n", device_id);
-        controller_subscribe_device_properties(device_id);
-        ctrl_dev->properties_subscribed = true;
     }
 }
 
@@ -391,13 +469,25 @@ static void handle_description_message(const char* domain, const char* device_id
         // Device not yet discovered, create it
         idx = find_or_create_device(device_id);
         if (idx < 0) return;
-        strncpy(_devices[idx].domain, domain, sizeof(_devices[idx].domain) - 1);
+        snprintf(_devices[idx].domain, sizeof(_devices[idx].domain), "%s", domain);
         _devices[idx].is_active = true;
     }
 
     ControllerDevice* ctrl_dev = &_devices[idx];
 
-    // Parse JSON description (static to avoid stack overflow in MQTT callback)
+    // Every re-subscribe (reconnect, recovery from a drop) brings the retained
+    // $description again. Device has no way to drop a node, so building it twice would
+    // add every node twice; an unchanged description is skipped.
+    uint32_t hash = 2166136261u;   // FNV-1a
+    for (const char* c = payload; *c; c++) {
+        hash = (hash ^ (uint8_t)*c) * 16777619u;
+    }
+    if (ctrl_dev->has_description && ctrl_dev->description_hash == hash) {
+        Serial.printf("CONTROLLER: Device %s description unchanged\n", device_id);
+        return;
+    }
+
+    // Parse JSON description (static: a large description would not fit on the stack)
     static JsonDocument doc;
     doc.clear();
     DeserializationError error = deserializeJson(doc, payload);
@@ -409,8 +499,13 @@ static void handle_description_message(const char* domain, const char* device_id
     }
 
     // Create or update Device object from description
+    if (ctrl_dev->has_description) {
+        Serial.printf("CONTROLLER: Device %s description changed; adding new nodes, "
+                      "keeping existing ones as first described\n", device_id);
+    }
     create_device_from_description(ctrl_dev, doc);
     ctrl_dev->has_description = true;
+    ctrl_dev->description_hash = hash;
 
     Serial.printf("CONTROLLER: Device %s description received: %s (%s)\n",
                  device_id, ctrl_dev->device->type(), ctrl_dev->device->type());
@@ -472,6 +567,7 @@ static int find_or_create_device(const char* device_id) {
             _devices[i].is_active = true;
             _devices[i].has_description = false;
             _devices[i].properties_subscribed = false;
+            _devices[i].description_hash = 0;
             _devices[i].parent_id[0] = '\0';   // topology unknown until $description
             _devices[i].root_id[0] = '\0';
             _device_count++;
@@ -480,6 +576,18 @@ static int find_or_create_device(const char* device_id) {
     }
 
     return -1; // Table full
+}
+
+// Copy a parent or root id from a $description. One over HOMIE_DEVICE_ID_MAX names no
+// device the controller can hold, so it is left empty rather than stored truncated.
+static void copy_topology_id(char (&out)[HOMIE_DEVICE_ID_MAX + 1], const char* id,
+                             const char* device_id) {
+    if (strlen(id) > HOMIE_DEVICE_ID_MAX) {
+        Serial.printf("CONTROLLER: Device %s names a parent/root id over %d chars, ignored: %s\n",
+                      device_id, HOMIE_DEVICE_ID_MAX, id);
+        return;
+    }
+    strcpy(out, id);
 }
 
 static void create_device_from_description(ControllerDevice* ctrl_dev, JsonDocument& doc) {
@@ -501,12 +609,10 @@ static void create_device_from_description(ControllerDevice* ctrl_dev, JsonDocum
     ctrl_dev->parent_id[0] = '\0';
     ctrl_dev->root_id[0] = '\0';
     if (doc[HOMIE_PARENT].is<const char*>()) {
-        strncpy(ctrl_dev->parent_id, doc[HOMIE_PARENT].as<const char*>(), sizeof(ctrl_dev->parent_id) - 1);
-        ctrl_dev->parent_id[sizeof(ctrl_dev->parent_id) - 1] = '\0';
+        copy_topology_id(ctrl_dev->parent_id, doc[HOMIE_PARENT].as<const char*>(), dev->getId());
     }
     if (doc[HOMIE_ROOT].is<const char*>()) {
-        strncpy(ctrl_dev->root_id, doc[HOMIE_ROOT].as<const char*>(), sizeof(ctrl_dev->root_id) - 1);
-        ctrl_dev->root_id[sizeof(ctrl_dev->root_id) - 1] = '\0';
+        copy_topology_id(ctrl_dev->root_id, doc[HOMIE_ROOT].as<const char*>(), dev->getId());
     }
 
     // Parse nodes and properties from description
@@ -559,8 +665,8 @@ static void create_device_from_description(ControllerDevice* ctrl_dev, JsonDocum
             }
 
             // Add node to device
-            char topic[64];
-            snprintf(topic, sizeof(topic), "%s/%s/%s/", _domain, _version, dev->getId());
+            char topic[HOMIE_DEVICE_TOPIC_MAX + 1];
+            snprintf(topic, sizeof(topic), "%s/%s/%s/", ctrl_dev->domain, _version, dev->getId());
             Node* new_node = dev->addNode(node_doc.as<JsonVariant>(), topic);
             if (new_node) {
                 dev->addNodePropertiesFromConfigJson(new_node, node_doc.as<JsonVariant>(), false);
@@ -568,54 +674,4 @@ static void create_device_from_description(ControllerDevice* ctrl_dev, JsonDocum
             }
         }
     }
-}
-
-static bool parse_topic(const char* topic, char* domain_out, char* device_id_out,
-                       char* node_id_out, char* property_id_out, bool* is_attribute) {
-    // Expected format: domain/version/device_id[/node_id/property_id]
-    // Attributes: domain/version/device_id/$attribute
-
-    char topic_copy[256];
-    strncpy(topic_copy, topic, sizeof(topic_copy) - 1);
-    topic_copy[sizeof(topic_copy) - 1] = '\0';
-
-    char* parts[6];
-    int part_count = 0;
-
-    char* token = strtok(topic_copy, "/");
-    while (token != nullptr && part_count < 6) {
-        parts[part_count++] = token;
-        token = strtok(nullptr, "/");
-    }
-
-    if (part_count < 3) {
-        return false; // Not enough parts
-    }
-
-    // parts[0] = domain, parts[1] = version, parts[2] = device_id
-    strncpy(domain_out, parts[0], 15);
-    domain_out[15] = '\0';
-    strncpy(device_id_out, parts[2], 31);
-    device_id_out[31] = '\0';
-
-    if (part_count == 4 && parts[3][0] == '$') {
-        // Device attribute: domain/version/device/$attribute
-        *is_attribute = true;
-        strncpy(property_id_out, parts[3], 31);
-        property_id_out[31] = '\0';
-        node_id_out[0] = '\0';
-        return true;
-    }
-
-    if (part_count >= 5) {
-        // Property: domain/version/device/node/property[/set]
-        *is_attribute = false;
-        strncpy(node_id_out, parts[3], 31);
-        node_id_out[31] = '\0';
-        strncpy(property_id_out, parts[4], 31);
-        property_id_out[31] = '\0';
-        return true;
-    }
-
-    return false;
 }

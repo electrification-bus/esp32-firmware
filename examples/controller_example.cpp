@@ -36,29 +36,22 @@ static const char* MQTT_CLIENT_ID = "homie-controller-example";
 static const char* RELAY_DEVICE_ID = "relay-device-id";
 static const char* SENSOR_DEVICE_ID = "sensor-device-id";
 
-// $description payloads can be several KB; size the client and the payload copy for them.
+// $description payloads can be several KB; size the client for them.
 #define EXAMPLE_MQTT_BUFFER_SIZE 8192
 
 static WiFiClient _net;
 static MQTTClient _mqtt(EXAMPLE_MQTT_BUFFER_SIZE);
 
-// controller_mqtt_callback() expects a null-terminated payload; MQTTClient does not
-// terminate it, so each message is copied here first.
-static char _payload_buf[EXAMPLE_MQTT_BUFFER_SIZE];
-
 static unsigned long _last_discovery_print = 0;
 static unsigned long _last_stats_check = 0;
 static unsigned long _last_control_cmd = 0;
 
+// Runs inside _mqtt's receive loop. controller_mqtt_callback() only queues the message
+// (no terminator needed); controller_loop() handles it.
 static void on_mqtt_message(MQTTClient* client, char topic[], char bytes[], int length) {
     (void)client;
-    if (length < 0 || length >= (int)sizeof(_payload_buf)) {
-        Serial.printf("MQTT: dropped %d-byte message on %s\n", length, topic);
-        return;
-    }
-    memcpy(_payload_buf, bytes, length);
-    _payload_buf[length] = '\0';
-    controller_mqtt_callback(topic, (uint8_t*)_payload_buf, (unsigned int)length);
+    if (length < 0) return;
+    controller_mqtt_callback(topic, (uint8_t*)bytes, (unsigned int)length);
 }
 
 static void setup_wifi() {
@@ -84,10 +77,8 @@ static void mqtt_reconnect() {
         if (_mqtt.connect(MQTT_CLIENT_ID, user, pass)) {
             Serial.println("connected");
 
-            // A clean session drops every subscription, including the per-device
-            // property subscriptions. Clear the device table so the retained $state
-            // messages rediscover each device and subscribe to its properties again.
-            controller_reset();
+            // A clean session drops every subscription. Schedule discovery and every
+            // known device's subscriptions again; controller_loop() makes them.
             controller_setup_discovery();
         } else {
             Serial.printf("failed, error=%d, return code=%d; retrying in 5 seconds\n",
@@ -123,7 +114,7 @@ static void print_discovered_devices() {
                           device_state_to_cstr(controller_effective_state(dev->getId())));
             Serial.printf("  Parent: %s\n", parent ? parent : "(root)");
             Serial.printf("  Domain: %s\n", info->domain);
-            Serial.printf("  Last $state: %lu ms ago\n", millis() - info->last_seen_ms);
+            Serial.printf("  Last message: %lu ms ago\n", millis() - info->last_seen_ms);
             Serial.printf("  Has description: %s\n", info->has_description ? "yes" : "no");
         }
     }
@@ -223,7 +214,7 @@ void loop() {
     }
     _mqtt.loop();
 
-    // Marks a ready/init device lost when no $state has arrived for 60 s
+    // Handles the messages _mqtt.loop() queued, then makes any pending subscription
     controller_loop();
 
     if (millis() - _last_discovery_print > 30000) {
