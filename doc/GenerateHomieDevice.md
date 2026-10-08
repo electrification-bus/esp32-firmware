@@ -213,7 +213,7 @@ The generator emits a `Device` object per child, wires the parent/child topology
 
 ### Id and topic lengths
 
-The firmware holds ids and topics in fixed buffers sized in [`lib/ebus_core/include/homie/homie_limits.h`](../lib/ebus_core/include/homie/homie_limits.h). `generate` computes every id and topic the device will build and refuses a `device.yml` that exceeds them, naming the id or topic, its length and the limit.
+The firmware holds ids and topics in fixed buffers sized in [`lib/ebus_core/include/homie/homie_limits.h`](https://github.com/electrification-bus/cpp-sdk/blob/main/include/homie/homie_limits.h). `generate` computes every id and topic the device will build and refuses a `device.yml` that exceeds them, naming the id or topic, its length and the limit.
 
 | What | Longest (chars) | Set by |
 |---|---:|---|

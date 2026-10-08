@@ -1,0 +1,3 @@
+[submodule "lib/ebus_core"]
+	path = lib/ebus_core
+	url = https://github.com/electrification-bus/cpp-sdk.git

@@ -16,15 +16,17 @@ You need:
 - An **MQTT broker** the board can reach, for example [Mosquitto](https://mosquitto.org/) on your computer. Mosquitto 2.x accepts only local connections until its config has a `listener 1883` line and an authentication choice (`allow_anonymous true` is enough for a bench test).
 - **Python 3.9+**, git, and **PlatformIO Core** (the VSCode PlatformIO IDE extension, `pipx install platformio`, or `brew install platformio`).
 
-Clone, and install PyYAML for the `./ebus-esp32` CLI in a virtual environment (Homebrew and most Linux distributions refuse `pip install` into the system Python):
+Clone with `--recursive`, because the portable core in `lib/ebus_core/` is a git submodule of [cpp-sdk](https://github.com/electrification-bus/cpp-sdk), and install PyYAML for the `./ebus-esp32` CLI in a virtual environment (Homebrew and most Linux distributions refuse `pip install` into the system Python):
 
 ```sh
-git clone https://github.com/electrification-bus/esp32-sdk.git
+git clone --recursive https://github.com/electrification-bus/esp32-sdk.git
 cd esp32-sdk
 python3 -m venv .venv
 . .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install pyyaml
 ```
+
+In a clone made without `--recursive`, and after a pull that moves the submodule, run `git submodule update --init`.
 
 Before the first build, create `config-overlay.yml`, a gitignored file merged over `device.yml` at build time. It must set `device.device_passphrase` (the password for the device's admin and OTA endpoints; `generate` refuses an empty or `changeme` value) and points the firmware at your broker:
 
@@ -80,8 +82,9 @@ src/                          Implementation files
   main.cpp                    Arduino setup() / loop()
 include/                      Headers for src/ (same subdirectories), plus homie.h
 lib/                          Component libraries, one PlatformIO library per bus
-  ebus_core/                  Portable core (standard library only): Homie ids, payloads,
-                              limits, broker discovery; see lib/ebus_core/README.md
+  ebus_core/                  Portable core (git submodule of electrification-bus/cpp-sdk):
+                              Homie device model, controller, ids, payloads, limits, broker
+                              discovery; see doc/core.md in cpp-sdk
   ble/ gpio/ i2c/ modbus/ spi/  Drivers; each <name>.yml is a component device.yml can use
   sim/                        battery_sim and proxy_info, used by the nested bridge example
   platform/                   Modbus RTU master and queue shared by the modbus/ drivers
@@ -139,7 +142,7 @@ Edit `device.yml` (the declarative device definition), then drive everything thr
 ./ebus-esp32 test                           run the firmware's host-side unit tests (no board)
 ```
 
-The CLI's own unit tests need no PlatformIO or hardware: `pip install -r tests/requirements.txt`, then `python -m pytest -q`. `./ebus-esp32 test` runs the firmware's Unity tests in `test/native/` on the host; see [CONTRIBUTING.md](CONTRIBUTING.md).
+The CLI's own unit tests need no PlatformIO or hardware: `pip install -r tests/requirements.txt`, then `python -m pytest -q`. `./ebus-esp32 test` runs the firmware's Unity tests in `test/native/` and the core's in `lib/ebus_core/test/` on the host; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 The network console reads the firmware's serial-over-TCP log (`log.tcp_port` in `device.yml`, default 23), so a board installed without a USB cable can still be watched — it replays its ring buffer on connect, so the boot log survives connecting late. `--monitor` also works on `build` and `push`. See [GettingStartedCLI.md](doc/GettingStartedCLI.md#network-console--no-usb-cable).
 

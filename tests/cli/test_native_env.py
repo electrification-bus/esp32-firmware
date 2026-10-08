@@ -20,7 +20,20 @@ def test_no_suites_when_test_native_is_missing(cli, tmp_path, monkeypatch):
 
 
 def test_repo_suites_are_found(cli):
-    assert {"native/test_homie_datatype", "native/test_homie_id"} <= set(cli.native_test_suites())
+    assert "native/test_log_stream" in cli.native_test_suites()
+
+
+def test_core_suites_come_from_the_submodule(cli):
+    assert {"test_homie_datatype", "test_homie_id"} <= set(cli.core_test_suites())
+
+
+def test_missing_submodule_stops_generate_with_a_hint(cli, sandbox, monkeypatch, capsys):
+    empty = sandbox.root / "empty-lib"
+    (empty / "ebus_core").mkdir(parents=True)
+    monkeypatch.setattr(cli, "LIB_DIR", empty)
+    with pytest.raises(SystemExit):
+        sandbox.generate({"device": {"name": "x"}, "nodes": []})
+    assert "git submodule update --init" in capsys.readouterr().err
 
 
 def test_envs_marks_native_as_not_a_board(cli, sandbox, capsys):
