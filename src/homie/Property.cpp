@@ -112,8 +112,8 @@ const char* Property::datatype() const {
     return _datatype;
 }
 
-MQTTClient* Property::mqttClient() const {
-    return _mqtt_client;
+HomieTransport* Property::mqttClient() const {
+    return _transport;
 }
 
 void Property::start_mqtt_client() {}
@@ -191,8 +191,8 @@ bool Property::publish_value(bool force) {
 
     // A suppressed republish is a success: nothing failed and the broker holds the value.
     if (!gate_allows(payload, len, force)) return true;
-    if (!_mqtt_client) return false;
-    bool ok = _mqtt_client->publish(topic(), payload, len, retained(), homie_qos(retained()));
+    if (!_transport) return false;
+    bool ok = _transport->publish(topic(), payload, len, retained(), homie_qos(retained()));
     if (ok) note_published(payload, len);
     return ok;
 }
@@ -209,9 +209,10 @@ bool Property::publish_queued(bool force) {
     int len = (_value[0] == '\0') ? 1 : (int)strlen(_value);
 
     if (!gate_allows(payload, len, force)) return true;
+    if (!_transport) return false;
     // Counted before the hand-off: the main task may send it before this call returns.
     __atomic_add_fetch(&_in_flight, 1, __ATOMIC_ACQ_REL);
-    bool ok = mqtt_queue_publish(topic(), payload, len, retained(), this);
+    bool ok = _transport->queue_publish(topic(), payload, len, retained(), this);
     if (ok) __atomic_add_fetch(&_queued_count, 1, __ATOMIC_RELAXED);
     return ok;
 }
@@ -224,7 +225,7 @@ void Property::clearValue() {
     // Forget the memo: after a retraction the broker holds nothing, so the next set()
     // must publish even if it happens to repeat the value that was there before.
     _last_pub_len = -1;
-    if (_mqtt_client) _mqtt_client->publish(topic(), "", true, homie_qos(true));
+    if (_transport) _transport->publish(topic(), "", true, homie_qos(true));
 }
 
 // Publish the intended target value to the property's $target topic (C5). Per spec,
@@ -233,7 +234,7 @@ void Property::clearValue() {
 void Property::publish_target_value(const char* payload) {
     char target_topic[HOMIE_TOPIC_MAX + 1] = {0};
     snprintf(target_topic, sizeof(target_topic), "%s/%s", _topic, HOMIE_$TARGET);
-    _mqtt_client->publish(target_topic, payload, true, homie_qos(true));
+    _transport->publish(target_topic, payload, true, homie_qos(true));
 }
 
 void Property::device_new_value_callback(const char* sensor_value) {
@@ -404,7 +405,7 @@ void Property::restore_value(const ValueSnapshot* s) {
 }
 
 void Property::subscribe() {
-    if (!_mqtt_client || !_mqtt_client->connected()) {
+    if (!_transport || !_transport->connected()) {
         //TODO flag for retry
         return;
     }
@@ -412,11 +413,11 @@ void Property::subscribe() {
     snprintf(set, sizeof(set), "%s/%s", _topic, HOMIE_TOPIC_SET);
     Serial.printf("property '%s' settable - subscribe: '%s'\n",_id, set);
     //TODO pull this out; retry in loop
-    if (!_mqtt_client->subscribe(set, 0)) {   // /set is non-retained -> QoS 0 (C4)
+    if (!_transport->subscribe(set, 0)) {   // /set is non-retained -> QoS 0 (C4)
         delay(250);
-        if (!_mqtt_client->subscribe(set, 0)) {   // /set is non-retained -> QoS 0 (C4)
+        if (!_transport->subscribe(set, 0)) {   // /set is non-retained -> QoS 0 (C4)
             delay(500);
-            if (!_mqtt_client->subscribe(set, 0)) {   // /set is non-retained -> QoS 0 (C4)
+            if (!_transport->subscribe(set, 0)) {   // /set is non-retained -> QoS 0 (C4)
                 Serial.printf("MQTT: FAILED TO SUBSCRIBE TO PROPERTY SET TOPIC: %s\r\n", set);
                 return;
             }
@@ -430,7 +431,7 @@ const char* Property::topic() {
     return _topic;
 }
 
-void Property::setMQTTClient(MQTTClient* client) {
-    _mqtt_client = client;
+void Property::setMQTTClient(HomieTransport* transport) {
+    _transport = transport;
 }
 

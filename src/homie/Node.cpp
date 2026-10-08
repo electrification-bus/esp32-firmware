@@ -3,7 +3,7 @@
 #include <homie/Node.h>
 #include <homie/Property.h>
 #include <homie/Device.h>
-Node::Node() : _mqtt_client(nullptr), _device(nullptr) {
+Node::Node() : _transport(nullptr), _device(nullptr) {
     _num_properties = 0;
 }
 
@@ -18,7 +18,7 @@ void Node::addProperty(Property* property) {
     }
     Serial.printf("Node '%s': Adding property: '%s'\n", _id, property->id());
     property->setNode(this);
-    if (_mqtt_client) property->setMQTTClient(_mqtt_client);
+    if (_transport) property->setMQTTClient(_transport);
     _properties[_num_properties++] = property;
 }
 
@@ -51,9 +51,9 @@ void Node::publish() {
 
 void Node::clearRetained() {
     // Remove each property's retained value by publishing a zero-length payload.
-    if (!_mqtt_client) return;
+    if (!_transport) return;
     for (int i = 0; i < _num_properties; i++) {
-        _mqtt_client->publish(_properties[i]->topic(), "", true, homie_qos(true));
+        _transport->publish(_properties[i]->topic(), "", true, homie_qos(true));
     }
 }
 
@@ -104,10 +104,10 @@ const char* Node::topic() {
     return _topic;
 }
 
-void Node::setMQTTClient(MQTTClient* client) {
-    _mqtt_client = client;
+void Node::setMQTTClient(HomieTransport* transport) {
+    _transport = transport;
     for(int i=0; i < _num_properties; i++) {
-        _properties[i]->setMQTTClient(client); // Set the MQTT client for each property
+        _properties[i]->setMQTTClient(transport); // Set the MQTT transport for each property
     }
 }
 

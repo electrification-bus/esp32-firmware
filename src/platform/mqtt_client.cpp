@@ -509,8 +509,8 @@ void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_
      settable_properties[num_subscribers].entity_callback = cb;
      settable_properties[num_subscribers].entity = entity;
      num_subscribers++;
-     if (mqtt_connected()) {
-       mqtt_client.subscribe(topic);
+     if (mqtt_transport.connected()) {
+       mqtt_transport.subscribe(topic, 0);
      }
    } else {
      report_settable_table_full(topic);

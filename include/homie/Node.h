@@ -1,6 +1,5 @@
 #pragma once
-//#include <MQTTClient.h>
-#include <MQTT.h>
+#include <homie/homie_transport.h>
 #include <homie/homie.h>   // HOMIE_TYPE_MAXLEN, homie_limits.h
 #include <homie/homie_enums.h>   // PropertyDatatype / Unit (D1)
 class Property; // Forward declaration
@@ -31,8 +30,7 @@ public:
     const char* type();
     void setDevice(Device* device);
     Device* device();
-    //void setMQTTClient(MQTTClient* client);
-    void setMQTTClient(MQTTClient* client);
+    void setMQTTClient(HomieTransport* transport);
     void mqttConnected();
     void setTopic(const char*);
     const char* topic();
@@ -50,7 +48,7 @@ private:
     char _name[64] = {0};
     char _type[HOMIE_TYPE_MAXLEN] = {0};   // eBus capability types up to 36 chars
     char _topic[HOMIE_PROPERTY_TOPIC_MAX + 1] = {0};   // node topics are shorter than property topics
-    MQTTClient* _mqtt_client; // MQTT client for this node
+    HomieTransport* _transport; // MQTT transport for this node
     Property* _properties[MAX_PROPERTIES]; //array of properties, could be a vector or list in a full implementation
     int _num_properties = 0; // Number of properties added to this node
     int _num_properties_mapped = 0; // Number of properties mapped to a device callback

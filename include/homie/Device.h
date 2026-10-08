@@ -28,8 +28,7 @@ class Device {
     Device();
     ~Device() {};
 
-    //void init(const char* name, const char* id, const char* type, MQTTClient* mqtt_client);
-    void init(const char* name, const char* id, const char* type, MQTTClient* mqtt_client);
+    void init(const char* name, const char* id, const char* type, HomieTransport* transport);
     void setState(DeviceState state);
     DeviceState state() { return _state;};
     Node* addNode(const char* id, const char* name, const char* type);
@@ -47,9 +46,8 @@ class Device {
         return addNode(id, name, type, descs, storage, N);
     }
     void addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json, bool subscribe = true);
-    //void setMQTTClient(MQTTClient* client);
-    void setMQTTClient(MQTTClient* client);
-    MQTTClient* mqttClient() { return _mqtt_client; }  // children share the root's client
+    void setMQTTClient(HomieTransport* transport);
+    HomieTransport* mqttClient() { return _transport; }  // children share the root's transport
     void mqttConnected();
     size_t toJson(char* buffer, size_t bufferSize);
     void setId(const char* id);
@@ -136,7 +134,7 @@ class Device {
     char _topic[HOMIE_DEVICE_TOPIC_MAX + 1] = {0};
     Node* _nodes[MAX_NODES] = {0};
     DeviceState _state = DEVICE_STATE_INIT;
-    MQTTClient* _mqtt_client;
+    HomieTransport* _transport = nullptr;
     int _num_nodes;
 
     // Nested-device tree links (intrusive; null for a standalone/root device).

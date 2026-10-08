@@ -5,7 +5,7 @@
 #include <string.h>
 
 // Module state
-static MQTTClient* _mqtt_client = nullptr;
+static HomieTransport* _transport = nullptr;
 static char _domain[CONTROLLER_DOMAIN_MAX + 1] = HOMIE_TOPIC_DOMAIN;
 static char _version[8] = HOMIE_VERSION_NUM;
 static bool _discover_all_domains = true;  // If true, use wildcard for domain discovery
@@ -59,8 +59,8 @@ static void handle_message(const char* topic, const char* payload);
 static void run_subscriptions();
 
 // Initialize the controller
-void controller_init(MQTTClient* mqtt_client, const char* domain, bool discover_all_domains) {
-    _mqtt_client = mqtt_client;
+void controller_init(HomieTransport* transport, const char* domain, bool discover_all_domains) {
+    _transport = transport;
     strncpy(_domain, domain, sizeof(_domain) - 1);
     _domain[sizeof(_domain) - 1] = '\0';
     _discover_all_domains = discover_all_domains;
@@ -102,7 +102,7 @@ void controller_subscribe_device_properties(const char* device_id) {
 // Send command to settable property (non-retained per Homie spec)
 bool controller_set_property(const char* device_id, const char* node_id,
                              const char* property_id, const char* value) {
-    if (!_mqtt_client || !_mqtt_client->connected()) {
+    if (!_transport || !_transport->connected()) {
         Serial.println("CONTROLLER: Cannot send command - MQTT not connected");
         return false;
     }
@@ -132,8 +132,8 @@ bool controller_set_property(const char* device_id, const char* node_id,
     }
 
     // Publish non-retained message (per Homie spec)
-    // MQTTClient publish: (topic, payload, retained, qos)
-    bool result = _mqtt_client->publish(topic, value, false, 0);
+    // publish(topic, payload, retained, qos)
+    bool result = _transport->publish(topic, value, false, 0);
 
     if (result) {
         Serial.printf("CONTROLLER: Sent command to %s: %s\n", topic, value);
@@ -280,7 +280,7 @@ static void handle_message(const char* topic, const char* payload) {
 // pass before the next step. Each pending flag is cleared BEFORE subscribing: a message
 // dropped during the SUBACK wait sets it again, and that must not be overwritten.
 static void run_subscriptions() {
-    if (!_mqtt_client || !_mqtt_client->connected()) return;
+    if (!_transport || !_transport->connected()) return;
     if (_inbox.count() > 0) return;
     if ((long)(millis() - _subscribe_hold_until_ms) < 0) return;
 
@@ -296,13 +296,13 @@ static void run_subscriptions() {
             snprintf(topic, sizeof(topic), "%s/%s/+/$state", _domain, _version);
         }
         _discovery_pending = false;
-        if (_mqtt_client->subscribe(topic)) {
+        if (_transport->subscribe(topic, 0)) {
             Serial.printf("CONTROLLER: Subscribed to discovery topic: %s\n", topic);
         } else {
             _discovery_pending = true;
             _subscribe_hold_until_ms = millis() + CONTROLLER_SUBSCRIBE_RETRY_MS;
             Serial.printf("CONTROLLER: Failed to subscribe to: %s (error %d); retrying\n",
-                          topic, (int)_mqtt_client->lastError());
+                          topic, (int)_transport->last_error());
         }
         return;
     }
@@ -315,21 +315,21 @@ static void run_subscriptions() {
         bool ok = true;
         d->properties_subscribed = true;
         snprintf(topic, sizeof(topic), "%s/%s/%s/$description", d->domain, _version, id);
-        if (_mqtt_client->subscribe(topic)) {
+        if (_transport->subscribe(topic, 0)) {
             Serial.printf("CONTROLLER: Subscribed to device description: %s\n", topic);
         } else {
             ok = false;
             Serial.printf("CONTROLLER: Failed to subscribe to: %s (error %d); retrying\n",
-                          topic, (int)_mqtt_client->lastError());
+                          topic, (int)_transport->last_error());
         }
         if (ok) {
             snprintf(topic, sizeof(topic), "%s/%s/%s/+/+", d->domain, _version, id);
-            if (_mqtt_client->subscribe(topic)) {
+            if (_transport->subscribe(topic, 0)) {
                 Serial.printf("CONTROLLER: Subscribed to device properties: %s\n", topic);
             } else {
                 ok = false;
                 Serial.printf("CONTROLLER: Failed to subscribe to: %s (error %d); retrying\n",
-                              topic, (int)_mqtt_client->lastError());
+                              topic, (int)_transport->last_error());
             }
         }
         if (!ok) {
@@ -561,7 +561,7 @@ static int find_or_create_device(const char* device_id) {
             // Initialize new device
             _devices[i].device = new Device();
             _devices[i].device->setId(device_id);
-            _devices[i].device->setMQTTClient(_mqtt_client);
+            _devices[i].device->setMQTTClient(_transport);
             _devices[i].state = DEVICE_STATE_INIT;
             _devices[i].last_seen_ms = millis();
             _devices[i].is_active = true;

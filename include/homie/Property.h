@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <platform/mqtt_client.h>
+#include <homie/homie_transport.h>
 #include <homie/homie_limits.h>
 class Node;
 
@@ -57,10 +58,8 @@ public:
     const char* unit();
     void setFormat(const char* fmt);
     const char* format();
-    //void setMQTTClient(PubSubClient* client);
-    void setMQTTClient(MQTTClient* client);
-    //PubSubClient* mqttClient() const;
-    MQTTClient* mqttClient() const;
+    void setMQTTClient(HomieTransport* transport);
+    HomieTransport* mqttClient() const;
     void start_mqtt_client();
     void setSettable(bool settable);
     bool settable();
@@ -165,8 +164,7 @@ private:
     int _round_to = 0;
     bool _supports_target = false;
     Node* _parent_node = nullptr;
-    //PubSubClient* _mqtt_client;
-    MQTTClient* _mqtt_client;
+    HomieTransport* _transport = nullptr;
     void* _async_loop = nullptr;
 
     bool _boolValue;

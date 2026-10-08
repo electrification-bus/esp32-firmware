@@ -5,11 +5,13 @@
 // init -> details -> ready, then the parent init -> description with the child -> ready).
 //
 // Device.cpp is compiled into this suite directly, against the Arduino.h and MQTT.h
-// stand-ins next to this file; MQTT.h records every publish. Node, Property and the JSON
-// helpers it links against are stubbed below: a Node publishes one value topic.
+// stand-ins next to this file, and publishes through a FakeTransport that records every
+// publish. Node, Property and the JSON helpers it links against are stubbed below: a Node
+// publishes one value topic.
 
 #include <unity.h>
 #include "../../../src/homie/Device.cpp"
+#include "../support/fake_transport.h"
 
 // ---- stubs for what Device.cpp links against ------------------------------------------
 
@@ -21,12 +23,12 @@ void node_serialize_into(Node& node, JsonObject& obj) { obj[HOMIE_NAME] = node.n
 
 Property::Property() {}
 void Property::setNode(Node* node) { _parent_node = node; }
-void Property::setMQTTClient(MQTTClient* client) { _mqtt_client = client; }
+void Property::setMQTTClient(HomieTransport* transport) { _transport = transport; }
 bool Property::settable() { return false; }
 void Property::subscribe() {}
 void Property::setSupportsTarget(bool t) { _supports_target = t; }
 
-Node::Node() : _mqtt_client(nullptr), _device(nullptr) {}
+Node::Node() : _transport(nullptr), _device(nullptr) {}
 Node::~Node() {}
 void Node::addProperty(Property* property) { (void)property; }
 void Node::addProperty(Property* property, const char* id, const char* name, const char* datatype,
@@ -40,19 +42,19 @@ void Node::setName(const char* name) { snprintf(_name, sizeof(_name), "%s", name
 const char* Node::name() { return _name; }
 void Node::setType(const char* type) { snprintf(_type, sizeof(_type), "%s", type); }
 void Node::setDevice(Device* device) { _device = device; }
-void Node::setMQTTClient(MQTTClient* client) { _mqtt_client = client; }
+void Node::setMQTTClient(HomieTransport* transport) { _transport = transport; }
 void Node::mqttConnected() {}
 void Node::setTopic(const char* topic) { snprintf(_topic, sizeof(_topic), "%s", topic); }
 void Node::clearRetained() {}
 void Node::publish() {
     char top[128];
     snprintf(top, sizeof(top), "%s%s/value", _topic, _id);
-    _mqtt_client->publish(top, "v", true, 2);
+    _transport->publish(top, "v", true, 2);
 }
 
 // ---- helpers ----------------------------------------------------------------------------
 
-static MQTTClient client;
+static FakeTransport client;
 
 void setUp(void) { client.clear(); }
 void tearDown(void) {}

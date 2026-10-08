@@ -20,6 +20,7 @@
 #include <WiFi.h>
 #include <MQTT.h>
 #include <homie/controller.h>
+#include <platform/mqtt_client.h>   // MqttClientTransport
 
 // WiFi credentials
 static const char* WIFI_SSID = "your-ssid";
@@ -41,6 +42,7 @@ static const char* SENSOR_DEVICE_ID = "sensor-device-id";
 
 static WiFiClient _net;
 static MQTTClient _mqtt(EXAMPLE_MQTT_BUFFER_SIZE);
+static MqttClientTransport _transport(_mqtt);   // what the controller publishes through
 
 static unsigned long _last_discovery_print = 0;
 static unsigned long _last_stats_check = 0;
@@ -203,7 +205,7 @@ void setup() {
     // Discover and command devices in this build's domain (ebus; homie without
     // -DUSE_EBUS_TOPIC). Property subscriptions and commands always use this domain,
     // so discovering every domain (true) would track devices it cannot reach.
-    controller_init(&_mqtt, top_level_topic(), false);
+    controller_init(&_transport, top_level_topic(), false);
 
     Serial.println("Controller initialized");
 }
