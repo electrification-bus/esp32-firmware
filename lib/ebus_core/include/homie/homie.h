@@ -35,6 +35,13 @@ static_assert(sizeof(HOMIE_TOPIC_PREFIX) - 1 <= HOMIE_TOPIC_PREFIX_MAX,
 
 inline const char* top_level_topic() { return HOMIE_TOPIC_DOMAIN; }
 
+// The "<domain>/5" prefix Device::setId() builds device topics from. It starts as
+// HOMIE_TOPIC_PREFIX; a port that takes the domain at run time (a command-line flag)
+// calls homie_set_topic_domain() before any Device::init(). Returns false, changing
+// nothing, for a domain that is not a Homie id or does not fit HOMIE_TOPIC_PREFIX_MAX.
+bool homie_set_topic_domain(const char* domain);
+const char* homie_topic_prefix();
+
 #define HOMIE_DATATYPE_BOOLEAN  "boolean"
 #define HOMIE_DATATYPE_STRING   "string"
 #define HOMIE_DATATYPE_INTEGER  "integer"

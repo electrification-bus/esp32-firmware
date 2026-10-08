@@ -64,6 +64,9 @@ class Device {
     size_t serialize(char* buffer, size_t bufferSize);
     
    Node* getNode(const char* id);
+   // Iterate the nodes, as Node::numProperties() / propertyAt() do the properties.
+   int numNodes() { return _num_nodes; }
+   Node* nodeAt(int i) { return (i >= 0 && i < _num_nodes) ? _nodes[i] : nullptr; }
    Node* operator[](const char* node_id_key) { return getNode(node_id_key); };
 
    // --- Nested-device tree (Homie 5 parent/child) ---

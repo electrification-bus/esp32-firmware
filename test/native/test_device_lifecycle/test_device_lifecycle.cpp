@@ -209,6 +209,24 @@ static void test_id_at_the_limit_is_not_logged(void) {
     TEST_ASSERT_EQUAL_INT(0, g_log.errors);
 }
 
+static void test_run_time_topic_domain(void) {
+    TEST_ASSERT_EQUAL_STRING(HOMIE_TOPIC_PREFIX, homie_topic_prefix());
+    TEST_ASSERT_FALSE(homie_set_topic_domain("toolong"));   // "toolong/5" > 7 chars
+    TEST_ASSERT_FALSE(homie_set_topic_domain("Ebus"));
+    TEST_ASSERT_FALSE(homie_set_topic_domain(""));
+    TEST_ASSERT_EQUAL_STRING(HOMIE_TOPIC_PREFIX, homie_topic_prefix());
+
+    TEST_ASSERT_TRUE(homie_set_topic_domain("ebus"));
+    Device d;
+    d.init("Dom", "dev", "generic", &client);
+    TEST_ASSERT_EQUAL_STRING("ebus/5/dev/", d.topic());
+    Node* n = add_node(d, "node", "Node");
+    TEST_ASSERT_EQUAL_STRING("ebus/5/dev/node/value", n->getProperty("value")->topic());
+
+    TEST_ASSERT_TRUE(homie_set_topic_domain(HOMIE_TOPIC_DOMAIN));
+    TEST_ASSERT_EQUAL_STRING(HOMIE_TOPIC_PREFIX, homie_topic_prefix());
+}
+
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
@@ -219,5 +237,6 @@ int main(int argc, char** argv) {
     RUN_TEST(test_live_add_child_follows_adding_children_order);
     RUN_TEST(test_over_long_id_is_truncated_and_logged_once);
     RUN_TEST(test_id_at_the_limit_is_not_logged);
+    RUN_TEST(test_run_time_topic_domain);
     return UNITY_END();
 }

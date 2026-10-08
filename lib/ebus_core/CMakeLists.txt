@@ -13,6 +13,7 @@ add_library(ebus_core STATIC
     src/homie/homie_json.cpp
     src/homie/homie_log.cpp
     src/homie/homie_settable.cpp
+    src/homie/homie_topic.cpp
     src/homie/homie_transport.cpp
     src/homie/Node.cpp
     src/homie/Property.cpp
