@@ -5,8 +5,11 @@ project(ebus_core LANGUAGES CXX)
 
 add_library(ebus_core STATIC
     src/homie/controller_inbox.cpp
+    src/homie/homie_clock.cpp
     src/homie/homie_datatype.cpp
     src/homie/homie_id.cpp
+    src/homie/homie_log.cpp
+    src/homie/homie_transport.cpp
     src/platform/broker_discovery.cpp
 )
 target_include_directories(ebus_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

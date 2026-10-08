@@ -7,6 +7,7 @@
 #include <platform/portal_prefs.h>
 #include <platform/network.h>
 #include <homie/homie_id.h>
+#include <homie/homie_transport.h>   // mqtt_qos
 
 Device theDevice;
 Device* g_active_setup_device = nullptr;  // see config.h; set by NodeEntity::setup()
@@ -20,7 +21,6 @@ char wifi_password[64] = {0};
 
 char mqtt_host[64] = {0};
 uint16_t mqtt_port;
-uint8_t mqtt_qos = 2;   // QoS for retained Homie publications; Homie 5 recommends 2 (C4)
 // mDNS. mdns_enabled is the master switch: false means no mDNS at all (no MDNS.begin(),
 // no <device id>.local claim, no querier, no service records). With it on, two gates
 // split the work, and their default is BUILD-CONDITIONAL; data/config.yml overrides any of

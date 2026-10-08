@@ -32,6 +32,7 @@ bool mqtt_using_secure = false;
 // MAX_DATA_LEN + 137; 256 bytes of headroom covers it with margin.
 #define MQTT_PACKET_HEADROOM 256
 MQTTClient mqtt_client(MAX_DATA_LEN + MQTT_PACKET_HEADROOM);
+MqttClientTransport mqtt_transport(mqtt_client);
 
 // Set once begin() has bound the client to a transport. Until then loop_mqtt() does not
 // call loop() and mqtt_connected() does not call connected().

@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <MQTT.h>
 #include <homie/homie_limits.h>
+#include <homie/homie_transport.h>   // HomieTransport, MAX_DATA_LEN, homie_qos()
 // Property is used here ONLY as a pointer and in pointer-to-member typedefs, both of
 // which an incomplete type satisfies. Forward-declaring instead of including breaks a
 // real cycle: homie/Property.h includes this header, so including it back made
@@ -9,10 +10,6 @@
 // file failed with "'Property' has not been declared". It only ever worked because every
 // existing translation unit happened to reach this header first.
 class Property;
-
-#ifndef MAX_DATA_LEN
-#define MAX_DATA_LEN 8192
-#endif
 
 #define MQTTPublish_rootrate 10000
 
@@ -87,13 +84,6 @@ void mqtt_restart();
 boolean mqtt_connected();
 
 
-// QoS for RETAINED Homie publications (property values + $state/$description).
-// Homie 5 recommends QoS 2 (SHOULD), so it defaults to 2 but is configurable via the
-// `mqtt_qos` config key. Non-retained publications and /set are fixed at QoS 0 per the
-// spec (a hard requirement), so homie_qos() returns 0 for them regardless. (C4)
-extern uint8_t mqtt_qos;
-inline int homie_qos(bool retained) { return retained ? (int)mqtt_qos : 0; }
-
 // Thread-safe MQTT publish queue (for publishing from other tasks/cores)
 void mqtt_queue_init();
 bool mqtt_queue_publish(const char* topic, const char* payload, bool retained = false);
@@ -106,3 +96,29 @@ bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool
                         Property* source = nullptr);
 
 extern MQTTClient mqtt_client;
+
+// HomieTransport over an arduino-mqtt client. queue_publish() always goes through the
+// firmware's publish queue above, which mqtt_client drains, whichever client this wraps.
+class MqttClientTransport final : public HomieTransport {
+ public:
+    explicit MqttClientTransport(MQTTClient& client) : _client(client) {}
+
+    using HomieTransport::publish;
+    bool publish(const char* topic, const char* payload, int length, bool retained,
+                 int qos) override {
+        return _client.publish(topic, payload, length, retained, qos);
+    }
+    bool queue_publish(const char* topic, const char* payload, int length, bool retained,
+                       Property* source) override {
+        return mqtt_queue_publish(topic, payload, length, retained, source);
+    }
+    bool subscribe(const char* topic, int qos) override { return _client.subscribe(topic, qos); }
+    bool connected() override { return _client.connected(); }
+    int last_error() override { return (int)_client.lastError(); }
+
+ private:
+    MQTTClient& _client;
+};
+
+// The transport the firmware's Homie devices, settable table and controller use.
+extern MqttClientTransport mqtt_transport;

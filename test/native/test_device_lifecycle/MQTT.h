@@ -26,6 +26,12 @@ class MQTTClient {
         return true;
     }
     bool subscribe(const char* topic, int qos) { (void)topic; (void)qos; return true; }
+    bool publish(const char* topic, const char* payload, int length, bool retained, int qos) {
+        (void)length;
+        return publish(topic, payload, retained, qos);
+    }
+    bool connected() { return true; }
+    int lastError() { return 0; }
 
     void clear() { _count = 0; }
     int count() const { return _count; }
