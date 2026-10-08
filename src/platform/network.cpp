@@ -3,6 +3,8 @@
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <esp_mac.h>
+#include <esp_sleep.h>
+#include <esp_system.h>
 #include <esp_idf_version.h>
 #include <lwip/netif.h>
 #include <lwip/dns.h>
@@ -783,6 +785,15 @@ void setup_ethernet() {
   WiFi.setHostname(mdns_hostname);
   WiFi.onEvent(WiFiEvent);
 #ifndef CONFIG_WIFI_AP
+  // ESP.restart() (OTA, /reboot) is a CPU reset that leaves the Ethernet MAC as it was,
+  // and about one boot in four after one never gets a working link. A deep-sleep wake
+  // resets the whole digital domain, so turn a software restart into one before ETH.begin().
+  if (esp_reset_reason() == ESP_RST_SW) {
+    Serial.println("ETH: software restart; resetting through a 10 ms deep sleep");
+    Serial.flush();
+    esp_sleep_enable_timer_wakeup(10000);
+    esp_deep_sleep_start();
+  }
   ETH.begin();
 #endif
 }
