@@ -192,6 +192,7 @@ typedef struct {
     int      fd;        // -1 = free slot
     uint64_t tail;      // absolute ring position this client has been sent up to
     uint32_t dropped;   // cumulative bytes lost to overrun
+    bool     rx_open;   // false once the peer has shut down its sending side
 } LogClient;
 
 static LogClient s_clients[LOG_MAX_CLIENTS];
@@ -215,6 +216,7 @@ static void client_close(LogClient* c) {
     c->fd = -1;
     c->tail = 0;
     c->dropped = 0;
+    c->rx_open = false;
 }
 
 static void clients_init_once(void) {
@@ -313,8 +315,18 @@ static void accept_pending(void) {
             client_close(slot);
         }
 
+        // Logged before the replay start is taken: written after it, this line
+        // would push the oldest bytes out of a full ring and greet every monitor
+        // with a spurious "bytes dropped" note.
+        logStream.printf("LOG: monitor connected from %u.%u.%u.%u\n",
+                         (unsigned)(peer.sin_addr.s_addr & 0xff),
+                         (unsigned)((peer.sin_addr.s_addr >> 8) & 0xff),
+                         (unsigned)((peer.sin_addr.s_addr >> 16) & 0xff),
+                         (unsigned)((peer.sin_addr.s_addr >> 24) & 0xff));
+
         slot->fd      = fd;
         slot->dropped = 0;
+        slot->rx_open = true;
         // Start at the oldest retained byte: a monitor started after boot still
         // gets the boot log.
         uint64_t head = ring_head();
@@ -325,24 +337,28 @@ static void accept_pending(void) {
                  "\r\n<< esp32 log stream: replaying %u buffered bytes >>\r\n",
                  (unsigned)(head - slot->tail));
         client_note(fd, banner);
-
-        logStream.printf("LOG: monitor connected from %u.%u.%u.%u\n",
-                         (unsigned)(peer.sin_addr.s_addr & 0xff),
-                         (unsigned)((peer.sin_addr.s_addr >> 8) & 0xff),
-                         (unsigned)((peer.sin_addr.s_addr >> 16) & 0xff),
-                         (unsigned)((peer.sin_addr.s_addr >> 24) & 0xff));
     }
 }
 
-// Discard anything the monitor types (and detect a clean close). Keystrokes are
-// not forwarded to the UART: this is a log tap, not a remote console.
-// Returns false if the peer closed the connection.
+// Discard anything the monitor types. Keystrokes are not forwarded to the UART:
+// this is a log tap, not a remote console.
+//
+// recv() returning 0 means the peer shut down its *sending* side, not that it
+// stopped reading: `nc host 23 </dev/null` sends its FIN as soon as it connects,
+// and still reads. So EOF only stops the draining; the stream continues. A peer
+// that is fully gone answers the next send() with a RST (see flush_client), and
+// keepalive catches one that went silent.
+// Returns false if the connection is broken.
 static bool drain_rx(LogClient* c) {
+    if (!c->rx_open) return true;
     uint8_t junk[64];
     for (int i = 0; i < 8; i++) {          // bounded: a chatty peer must not hog the loop
         int n = recv(c->fd, junk, sizeof(junk), MSG_DONTWAIT);
         if (n > 0) continue;
-        if (n == 0) return false;                                  // orderly close
+        if (n == 0) {                       // half-close: keep streaming
+            c->rx_open = false;
+            return true;
+        }
         return (errno == EWOULDBLOCK || errno == EAGAIN);          // else: broken
     }
     return true;
@@ -368,7 +384,9 @@ static void flush_client(LogClient* c) {
                 c->tail -= n;                      // un-consume; retry next loop
                 return;
             }
+            int err = errno;
             client_close(c);
+            logStream.printf("LOG: monitor disconnected (send errno=%d)\n", err);
             return;
         }
         if ((size_t)sent < n) {
