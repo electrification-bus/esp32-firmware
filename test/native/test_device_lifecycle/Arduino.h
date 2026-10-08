@@ -1,6 +1,7 @@
 #pragma once
 // Host stand-in for the parts of <Arduino.h> that src/homie/Device.cpp uses: a Print
-// base class for its hashing sink, a silent Serial, and the `boolean` typedef.
+// base class for its hashing sink, a Serial that records error lines, and the `boolean`
+// typedef.
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -19,9 +20,23 @@ class Print {
     }
 };
 
+// Serial prints nothing; it counts the lines that carry "**ERROR" and keeps the last one.
 class FakeSerial {
  public:
-    int printf(const char* fmt, ...) { (void)fmt; return 0; }
+    int errors = 0;
+    char last_error[256] = {0};
+    int printf(const char* fmt, ...) {
+        char line[256];
+        va_list args;
+        va_start(args, fmt);
+        int n = vsnprintf(line, sizeof(line), fmt, args);
+        va_end(args);
+        if (strstr(line, "**ERROR")) {
+            errors++;
+            snprintf(last_error, sizeof(last_error), "%s", line);
+        }
+        return n;
+    }
     size_t println(const char* s) { (void)s; return 0; }
 };
 

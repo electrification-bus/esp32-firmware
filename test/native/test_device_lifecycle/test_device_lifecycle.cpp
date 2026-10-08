@@ -199,6 +199,39 @@ static void test_live_add_child_follows_adding_children_order(void) {
     TEST_ASSERT_EQUAL_INT(6, client.count());
 }
 
+static void test_over_long_id_is_truncated_and_logged_once(void) {
+    char id[HOMIE_DEVICE_ID_MAX + 11];
+    memset(id, 'a', sizeof(id) - 1);
+    id[sizeof(id) - 1] = '\0';
+    char want_id[HOMIE_DEVICE_ID_MAX + 1];
+    memcpy(want_id, id, HOMIE_DEVICE_ID_MAX);
+    want_id[HOMIE_DEVICE_ID_MAX] = '\0';
+    char want_topic[HOMIE_DEVICE_TOPIC_MAX + 1];
+    snprintf(want_topic, sizeof(want_topic), "homie/5/%s/", want_id);
+    Serial.errors = 0;
+
+    Device d;
+    d.init("Long", id, "generic", &client);
+
+    TEST_ASSERT_EQUAL_STRING(want_id, d.getId());
+    TEST_ASSERT_EQUAL_STRING(want_topic, d.topic());
+    TEST_ASSERT_EQUAL_INT(1, Serial.errors);
+    TEST_ASSERT_NOT_NULL(strstr(Serial.last_error, "device id"));
+}
+
+static void test_id_at_the_limit_is_not_logged(void) {
+    char id[HOMIE_DEVICE_ID_MAX + 1];
+    memset(id, 'b', sizeof(id) - 1);
+    id[sizeof(id) - 1] = '\0';
+    Serial.errors = 0;
+
+    Device d;
+    d.init("Max", id, "generic", &client);
+
+    TEST_ASSERT_EQUAL_STRING(id, d.getId());
+    TEST_ASSERT_EQUAL_INT(0, Serial.errors);
+}
+
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
@@ -207,5 +240,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_boot_orders_a_deeper_tree);
     RUN_TEST(test_reconnect_republishes_state_only);
     RUN_TEST(test_live_add_child_follows_adding_children_order);
+    RUN_TEST(test_over_long_id_is_truncated_and_logged_once);
+    RUN_TEST(test_id_at_the_limit_is_not_logged);
     return UNITY_END();
 }
