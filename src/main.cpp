@@ -105,61 +105,60 @@ static void loop_recovery() {
     }
 }
 
+// ============================================================================
+// SHARED BRING-UP - used by the controller and device halves below
+// ============================================================================
 #ifdef ENABLE_CONTROLLER
-// ============================================================================
-// CONTROLLER MODE - discovers and monitors other Homie devices
-// ============================================================================
-#include <homie/controller.h>
-#include <homie/homie.h>
+#define ROLE_TAG "CONTROLLER"
+#else
+#define ROLE_TAG "DEVICE"
+#endif
 
-unsigned long lastDiscoveryPrint = 0;
-unsigned long lastStatsCheck = 0;
+// Role hooks, defined in the controller or device half.
+static void own_state_topic(char* buf, size_t len);         // this firmware's $state topic
+static bool on_state_observed(void* ctx, const char* value); // the broker's $state arrived
+static void reassert_own_state();                           // publish the real $state again
 
-static void controller_state_topic(char* buf, size_t len) {
-    snprintf(buf, len, "%s/%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID(), HOMIE_$STATE);
-}
+// ── $state self-correction ────────────────────────────────────────────────────
+// Watch our own retained $state and republish whenever the broker's value disagrees
+// with the real one. A session takeover makes the broker fire the PREVIOUS session's
+// will after we have already published "ready", so re-asserting at reconnect loses the
+// race; $state is only published on a change, so the wrong value then sticks.
+// Subscribing costs nothing until something publishes, catches the retained value at
+// subscribe time as well as later arrivals, and converges in one round trip.
 
-// Callback to re-publish state and re-subscribe discovery after MQTT reconnection
-void on_mqtt_reconnect() {
-    char state_topic[HOMIE_TOPIC_MAX + 1];
-    controller_state_topic(state_topic, sizeof(state_topic));
-    mqtt_client.publish(state_topic, HOMIE_STATE_READY, true, homie_qos(true));  // retained -> QoS 2 (C4)
-    Serial.println("CONTROLLER: Re-published $state after reconnect");
-    // Only schedules the subscriptions; controller_loop() makes them.
-    controller_setup_discovery();
-}
-
-// Same watch as the device half. A running controller is always "ready", so it compares
-// against that constant rather than a state machine.
-// Must not publish from here — runs inside the MQTT receive callback. See device half.
+// on_state_observed() runs inside the MQTT receive callback, so it must not publish:
+// that re-enters the client mid-packet. It records here; loop_housekeeping() acts.
 static volatile bool _state_reassert_pending = false;
 
-static bool on_state_observed(void* ctx, const char* value) {
-    (void)ctx;
-    if (strcmp(value, HOMIE_STATE_READY) == 0) return true;
-    Serial.printf("CONTROLLER: broker holds $state='%s' but we are running — re-asserting\n", value);
-    _state_reassert_pending = true;
-    return true;   // a watch, not a property: nothing to refuse
-}
-
 static void watch_own_state() {
-    char state_topic[HOMIE_TOPIC_MAX + 1];
-    controller_state_topic(state_topic, sizeof(state_topic));
+    char state_topic[HOMIE_TOPIC_MAX + 1] = {0};
+    own_state_topic(state_topic, sizeof(state_topic));
+    // The handler table is keyed by exact topic and is re-subscribed wholesale on every
+    // reconnect, so registering here is enough to keep the watch alive across drops.
+    // The explicit subscribe covers the CURRENT connection, which is already up by now.
     subscribe_settable_handler(state_topic, on_state_observed, nullptr);
     if (mqtt_connected()) mqtt_client.subscribe(state_topic, homie_qos(true));
-    Serial.printf("CONTROLLER: watching %s for a stale 'lost'\n", state_topic);
+    Serial.printf(ROLE_TAG ": watching %s for a stale 'lost'\n", state_topic);
 }
 
-void setup() {
-    Serial.begin(115200);
-    delay(1000);
+// Wait for at least one network interface to get an IP
+static void wait_for_network() {
+    while (!client_connected()) {
+        log_tcp_loop();         // keep the remote monitor fed while setup() blocks here
+        captive_portal_loop();  // Keep portal responsive while waiting
+        Serial.println("Waiting for network connection...");
+        delay(1000);
+    }
+}
 
-    Serial.println("\n\n===== HOMIE CONTROLLER =====");
-
+// Load the configuration and bring the network up through mDNS. Returns false when no
+// usable configuration loaded: recovery mode is then running and setup() must return.
+static bool setup_network() {
     if (!loadConfiguration()) {
         Serial.println("CONFIG: **ERROR -- failed to load configuration");
         setup_recovery();
-        return;
+        return false;
     }
 
     // Generate device ID after config (needs device_name from homie.yml)
@@ -187,13 +186,7 @@ void setup() {
     // and, once STA does associate, at the device's LAN address on the same port.
     log_tcp_begin(log_tcp_port);
 
-    // Wait for at least one network interface to get an IP
-    while (!client_connected()) {
-        log_tcp_loop();         // keep the remote monitor fed while setup() blocks here
-        captive_portal_loop();  // Keep portal responsive while waiting
-        Serial.println("Waiting for network connection...");
-        delay(1000);
-    }
+    wait_for_network();
 
     // Log which interfaces are active
     const char* eth_ip = get_eth_ip();
@@ -203,9 +196,12 @@ void setup() {
 
     // Start mDNS (also discovers MQTT brokers on LAN)
     setup_mdns();
+    return true;
+}
 
-    // Wait for MQTT broker to be available
-    // In discovery-only mode, only wait for mDNS (ignore configured broker)
+// Wait for MQTT broker to be available
+// In discovery-only mode, only wait for mDNS (ignore configured broker)
+static void wait_for_broker() {
     if (mqtt_mode == MQTT_MODE_DISCOVERY_ONLY) {
         while (!mdns_has_broker()) {
             log_tcp_loop();   // keep the remote monitor fed while setup() blocks here
@@ -225,11 +221,91 @@ void setup() {
             delay(2000);
         }
     }
+}
+
+// Connect to the broker and register the role's reconnect callback, which re-publishes
+// its $state after a reconnection.
+static void setup_broker(mqtt_reconnect_callback_t on_reconnect) {
+#ifndef ENABLE_CONTROLLER
+    // Initialize MQTT publish queue before setup_mqtt (for thread-safe publishing)
+    mqtt_queue_init();
+#endif
+
+    wait_for_broker();
 
     setup_mqtt();
 
-    // Register reconnect callback to re-publish state after reconnection
-    mqtt_set_reconnect_callback(on_mqtt_reconnect);
+    mqtt_set_reconnect_callback(on_reconnect);
+}
+
+// Called first from loop() by both roles; the role's own servicing follows.
+static void loop_housekeeping() {
+    log_tcp_loop();     // accept monitors, push buffered log; never blocks
+    captive_portal_loop();
+
+    // Deferred out of on_state_observed(); see the note at _state_reassert_pending.
+    // Publishing the real state echoes back, matches, and clears; it cannot re-arm itself.
+    if (_state_reassert_pending) {
+        _state_reassert_pending = false;
+        reassert_own_state();
+    }
+    // Handle MQTT reconfiguration from web server
+    if (captive_portal_mqtt_changed()) {
+        Serial.println("PORTAL: MQTT config or network changed, reconnecting MQTT with current settings...");
+        mqtt_restart();
+        setup_mqtt();
+    }
+    loop_ntp();
+    loop_mdns();
+    loop_mqtt();
+}
+
+#ifdef ENABLE_CONTROLLER
+// ============================================================================
+// CONTROLLER MODE - discovers and monitors other Homie devices
+// ============================================================================
+#include <homie/controller.h>
+#include <homie/homie.h>
+
+unsigned long lastDiscoveryPrint = 0;
+unsigned long lastStatsCheck = 0;
+
+static void own_state_topic(char* buf, size_t len) {
+    snprintf(buf, len, "%s/%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID(), HOMIE_$STATE);
+}
+
+static void reassert_own_state() {
+    char state_topic[HOMIE_TOPIC_MAX + 1];
+    own_state_topic(state_topic, sizeof(state_topic));
+    mqtt_client.publish(state_topic, HOMIE_STATE_READY, true, homie_qos(true));  // retained -> QoS 2 (C4)
+}
+
+// Callback to re-publish state and re-subscribe discovery after MQTT reconnection
+void on_mqtt_reconnect() {
+    reassert_own_state();
+    Serial.println("CONTROLLER: Re-published $state after reconnect");
+    // Only schedules the subscriptions; controller_loop() makes them.
+    controller_setup_discovery();
+}
+
+// A running controller is always "ready", so the $state watch compares against that
+// constant rather than a state machine.
+static bool on_state_observed(void* ctx, const char* value) {
+    (void)ctx;
+    if (strcmp(value, HOMIE_STATE_READY) == 0) return true;
+    Serial.printf("CONTROLLER: broker holds $state='%s' but we are running — re-asserting\n", value);
+    _state_reassert_pending = true;
+    return true;   // a watch, not a property: nothing to refuse
+}
+
+void setup() {
+    Serial.begin(115200);
+    delay(1000);
+
+    Serial.println("\n\n===== HOMIE CONTROLLER =====");
+
+    if (!setup_network()) return;
+    setup_broker(on_mqtt_reconnect);
 
     // Publish controller's own state (overrides LWT "lost" from previous session)
     on_mqtt_reconnect();
@@ -252,27 +328,7 @@ void setup() {
 
 void loop() {
     if (_recovery_mode) { loop_recovery(); return; }
-    log_tcp_loop();     // accept monitors, push buffered log; never blocks
-    captive_portal_loop();
-    loop_ntp();
-
-    // Deferred out of on_state_observed() — see the note there.
-    if (_state_reassert_pending) {
-        _state_reassert_pending = false;
-        char state_topic[HOMIE_TOPIC_MAX + 1];
-        controller_state_topic(state_topic, sizeof(state_topic));
-        mqtt_client.publish(state_topic, HOMIE_STATE_READY, true, homie_qos(true));
-    }
-
-    // Handle MQTT reconfiguration from web server
-    if (captive_portal_mqtt_changed()) {
-        Serial.println("PORTAL: MQTT config or network changed, reconnecting MQTT with current settings...");
-        mqtt_restart();
-        setup_mqtt();
-    }
-
-    loop_mdns();
-    loop_mqtt();
+    loop_housekeeping();
     controller_loop();
 
     // Print discovered devices every 30 seconds
@@ -330,21 +386,13 @@ void loop() {
 #include <homie/Device.h>
 #include <homie.h>
 
-// Callback to re-publish state and re-subscribe settable properties after MQTT reconnection.
-// The broker's Last Will marked the ROOT $state "lost" (which cascades lost to every
-// child per Homie 5), so re-assert $state for the whole device tree, not just the root.
+static void own_state_topic(char* buf, size_t len) {
+    snprintf(buf, len, "%s%s", theDevice.topic(), HOMIE_$STATE);
+}
 
-// ── $state self-correction ────────────────────────────────────────────────────
-// Watch our own retained $state and republish whenever the broker's value disagrees
-// with theDevice.state(). A session takeover makes the broker fire the PREVIOUS
-// session's will after we have already published "ready", so re-asserting at reconnect
-// loses the race; $state is only published on a change, so the wrong value then sticks.
-// Subscribing costs nothing until something publishes, catches the retained value at
-// subscribe time as well as later arrivals, and converges in one round trip.
-
-// Runs inside the MQTT receive callback, so it must not publish — that re-enters the
-// client mid-packet. Record here, act from loop(), same as the BLE notify path.
-static volatile bool _state_reassert_pending = false;
+static void reassert_own_state() {
+    theDevice.publishStateTree();
+}
 
 static bool on_state_observed(void* ctx, const char* value) {
     (void)ctx;
@@ -356,17 +404,9 @@ static bool on_state_observed(void* ctx, const char* value) {
     return true;   // a watch, not a property: nothing to refuse
 }
 
-static void watch_own_state() {
-    char state_topic[HOMIE_TOPIC_MAX + 1] = {0};
-    snprintf(state_topic, sizeof(state_topic), "%s%s", theDevice.topic(), HOMIE_$STATE);
-    // The handler table is keyed by exact topic and is re-subscribed wholesale on every
-    // reconnect, so registering here is enough to keep the watch alive across drops.
-    // The explicit subscribe covers the CURRENT connection, which is already up by now.
-    subscribe_settable_handler(state_topic, on_state_observed, nullptr);
-    if (mqtt_connected()) mqtt_client.subscribe(state_topic, homie_qos(true));
-    Serial.printf("DEVICE: watching %s for a stale 'lost'\n", state_topic);
-}
-
+// Callback to re-publish state and re-subscribe settable properties after MQTT reconnection.
+// The broker's Last Will marked the ROOT $state "lost" (which cascades lost to every
+// child per Homie 5), so re-assert $state for the whole device tree, not just the root.
 void on_mqtt_reconnect() {
     theDevice.mqttConnected();  // re-subscribe settable property /set topics
     theDevice.publishStateTree();
@@ -392,85 +432,10 @@ void setup() {
     if (psram_available) Serial.println("BOARD: WARNING — PSRAM detected but build has no PSRAM support. Use esp32-poe-iso-wrover env.");
 #endif
 
-    if (!loadConfiguration()) {
-        Serial.println("CONFIG: **ERROR -- failed to load configuration");
-        setup_recovery();
-        return;
-    }
-
-    // Generate device ID after config (needs device_name from homie.yml)
-    generateDeviceID();
-
-    // Start Ethernet first - initializes lwIP TCP/IP stack (required before HTTP server)
-    setup_ethernet();
-
-    // Start web server (captive portal with WiFi AP, or HTTP API over ethernet)
-    captive_portal_start();
-
-    // Associate STA with the configured credentials BEFORE the wait below. On
-    // CONFIG_WIFI_AP boards client_connected() is STA-only (there is no Ethernet to
-    // satisfy it) and captive_portal_start() only brings up the AP — it never calls
-    // WiFi.begin(). Starting STA after the loop meant the loop could never exit on
-    // its own, so a board with wifi credentials in device.yml still parked at
-    // "Waiting for network connection..." until someone provisioned via the portal.
-    setup_wifi_sta();  // no-op if no wifi_ssid configured
-
-    // Serial log over TCP. Started here — before the wait below, not after — because
-    // the listener binds INADDR_ANY and needs no IP of its own. The AP is already up
-    // at this point, so a failing STA association (bad credentials, absent network)
-    // can be watched from a laptop joined to the device's own AP:
-    //   pio device monitor --port socket://192.168.4.1:23
-    // and, once STA does associate, at the device's LAN address on the same port.
-    log_tcp_begin(log_tcp_port);
-
-    // Wait for at least one network interface to get an IP
-    while (!client_connected()) {
-        log_tcp_loop();         // keep the remote monitor fed while setup() blocks here
-        captive_portal_loop();  // Keep portal responsive while waiting
-        Serial.println("Waiting for network connection...");
-        delay(1000);
-    }
-
-    // Log which interfaces are active
-    const char* eth_ip = get_eth_ip();
-    if (eth_ip[0] != '\0') Serial.printf("Network: Ethernet IP=%s (preferred)\n", eth_ip);
-    const char* wifi_ip = get_wifi_ip();
-    if (wifi_ip[0] != '\0') Serial.printf("Network: WiFi STA IP=%s\n", wifi_ip);
-
-    // Start mDNS (also discovers MQTT brokers on LAN)
-    setup_mdns();
-
-    // Initialize MQTT publish queue before setup_mqtt (for thread-safe publishing)
-    mqtt_queue_init();
-
-    // Wait for MQTT broker to be available
-    // In discovery-only mode, only wait for mDNS (ignore configured broker)
-    if (mqtt_mode == MQTT_MODE_DISCOVERY_ONLY) {
-        while (!mdns_has_broker()) {
-            log_tcp_loop();   // keep the remote monitor fed while setup() blocks here
-            captive_portal_loop();
-            loop_mdns();
-            if (captive_portal_mqtt_changed()) break;
-            Serial.println("Waiting for MQTT broker via mDNS discovery...");
-            delay(2000);
-        }
-    } else {
-        while (!has_mqtt_broker() && !mdns_has_broker()) {
-            log_tcp_loop();   // keep the remote monitor fed while setup() blocks here
-            captive_portal_loop();
-            loop_mdns();
-            if (captive_portal_mqtt_changed()) break;
-            Serial.println("Waiting for MQTT broker configuration (use portal or mDNS)...");
-            delay(2000);
-        }
-    }
-
-    setup_mqtt();
+    if (!setup_network()) return;
+    setup_broker(on_mqtt_reconnect);
 
     // Note: Modbus subsystem is lazily initialized by first ModbusRTUEntity device
-
-    // Register reconnect callback to re-publish state after reconnection
-    mqtt_set_reconnect_callback(on_mqtt_reconnect);
 
     // Initialize the Homie Device from the config
     JsonDocument* dev_conf = get_homie_config();
@@ -495,27 +460,6 @@ void setup() {
     setup_homie();
 
     memstats();
-}
-
-void loop_housekeeping() {
-    log_tcp_loop();     // accept monitors, push buffered log; never blocks
-    captive_portal_loop();
-
-    // Deferred out of on_state_observed() — see the note there. Publishing "ready" here
-    // echoes back, matches, and clears; it cannot re-arm itself.
-    if (_state_reassert_pending) {
-        _state_reassert_pending = false;
-        theDevice.publishStateTree();
-    }
-    // Handle MQTT reconfiguration from web server
-    if (captive_portal_mqtt_changed()) {
-        Serial.println("PORTAL: MQTT config or network changed, reconnecting MQTT with current settings...");
-        mqtt_restart();
-        setup_mqtt();
-    }
-    loop_ntp();
-    loop_mdns();
-    loop_mqtt();
 }
 
 void loop() {
