@@ -42,7 +42,8 @@ jobs:
         run: ./ebus-esp32 test
 
   # The portable core must build with a plain C++17 compiler and nothing but its own
-  # include dir: an Arduino, ESP-IDF or FreeRTOS header in any source or header fails here.
+  # include dir and ArduinoJson (fetched by its CMakeLists.txt): an Arduino, ESP-IDF or
+  # FreeRTOS header in any source or header fails here.
   core-host-build:
     name: Core host build (${{ matrix.cxx }})
     runs-on: ubuntu-latest

@@ -1,62 +1,44 @@
-// Host-side tests for the Homie 5 device lifecycle in src/homie/Device.cpp: the order in
+// Host-side tests for the Homie 5 device lifecycle in the core's Device: the order in
 // which a device tree puts $state, $description and values on the wire. The rules come
 // from the Homie 5 convention: "$description ... may only change when the device $state
 // is either init, disconnected, or lost", and "Adding children" (publish the child
 // init -> details -> ready, then the parent init -> description with the child -> ready).
 //
-// Device.cpp is compiled into this suite directly, against the Arduino.h and MQTT.h
-// stand-ins next to this file, and publishes through a FakeTransport that records every
-// publish. Node, Property and the JSON helpers it links against are stubbed below: a Node
-// publishes one value topic.
+// The real Device, Node and Property (lib/ebus_core) publish through a FakeTransport that
+// records every publish. Each node the tests add carries one property, `value` = "v".
 
 #include <unity.h>
-#include "../../../src/homie/Device.cpp"
+#include <homie/Device.h>
 #include "../support/fake_transport.h"
+#include "../support/log_capture.h"
+#include <homie/homie_settable.h>
 
-// ---- stubs for what Device.cpp links against ------------------------------------------
-
-uint8_t mqtt_qos = 2;
-
-bool jsonExists(JsonVariant variant) { return !variant.isNull(); }
-void property_from_dict(Property& property, JsonObject* props_obj) { (void)property; (void)props_obj; }
-void node_serialize_into(Node& node, JsonObject& obj) { obj[HOMIE_NAME] = node.name(); }
-
-Property::Property() {}
-void Property::setNode(Node* node) { _parent_node = node; }
-void Property::setMQTTClient(HomieTransport* transport) { _transport = transport; }
-bool Property::settable() { return false; }
-void Property::subscribe() {}
-void Property::setSupportsTarget(bool t) { _supports_target = t; }
-
-Node::Node() : _transport(nullptr), _device(nullptr) {}
-Node::~Node() {}
-void Node::addProperty(Property* property) { (void)property; }
-void Node::addProperty(Property* property, const char* id, const char* name, const char* datatype,
-                       const char* unit, bool settable, bool retained, const char* format) {
-    (void)property; (void)id; (void)name; (void)datatype;
-    (void)unit; (void)settable; (void)retained; (void)format;
-}
-void Node::setId(const char* id) { snprintf(_id, sizeof(_id), "%s", id); }
-const char* Node::id() { return _id; }
-void Node::setName(const char* name) { snprintf(_name, sizeof(_name), "%s", name); }
-const char* Node::name() { return _name; }
-void Node::setType(const char* type) { snprintf(_type, sizeof(_type), "%s", type); }
-void Node::setDevice(Device* device) { _device = device; }
-void Node::setMQTTClient(HomieTransport* transport) { _transport = transport; }
-void Node::mqttConnected() {}
-void Node::setTopic(const char* topic) { snprintf(_topic, sizeof(_topic), "%s", topic); }
-void Node::clearRetained() {}
-void Node::publish() {
-    char top[128];
-    snprintf(top, sizeof(top), "%s%s/value", _topic, _id);
-    _transport->publish(top, "v", true, 2);
-}
+// Defined by the ESP32 port until the settable table moves into the core; no test here
+// registers a /set topic.
+void subscribe_for_callbacks(const char*, property_settable_callback_t, Property*) {}
 
 // ---- helpers ----------------------------------------------------------------------------
 
 static FakeTransport client;
 
-void setUp(void) { client.clear(); }
+static Property _values[16];
+static int _num_values = 0;
+
+// A node with one retained string property, `value`, holding "v".
+static Node* add_node(Device& d, const char* id, const char* name) {
+    Node* n = d.addNode(id, name, "generic");
+    Property* p = &_values[_num_values++];
+    n->addProperty(p, "value", "Value", "string");
+    p->setValue("v");
+    return n;
+}
+
+void setUp(void) {
+    client.clear();
+    _num_values = 0;
+    log_capture_bind();
+    g_log.clear();
+}
 void tearDown(void) {}
 
 static void expect(int i, const char* topic, const char* payload) {
@@ -110,10 +92,10 @@ static void test_boot_publishes_child_fully_before_parent(void) {
     Device root;
     Device relay;
     root.init("Root", "root", "generic", &client);
-    root.addNode("status", "Status", "generic");
+    add_node(root, "status", "Status");
     relay.init("Relay", "root-relay", "generic", root.mqttClient());
     root.addChild(&relay);
-    relay.addNode("led", "LED", "generic");
+    add_node(relay, "led", "LED");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, client.count(), "building the tree must not publish");
 
     root.publishTree();
@@ -210,28 +192,26 @@ static void test_over_long_id_is_truncated_and_logged_once(void) {
     want_id[HOMIE_DEVICE_ID_MAX] = '\0';
     char want_topic[HOMIE_DEVICE_TOPIC_MAX + 1];
     snprintf(want_topic, sizeof(want_topic), "homie/5/%s/", want_id);
-    Serial.errors = 0;
 
     Device d;
     d.init("Long", id, "generic", &client);
 
     TEST_ASSERT_EQUAL_STRING(want_id, d.getId());
     TEST_ASSERT_EQUAL_STRING(want_topic, d.topic());
-    TEST_ASSERT_EQUAL_INT(1, Serial.errors);
-    TEST_ASSERT_NOT_NULL(strstr(Serial.last_error, "device id"));
+    TEST_ASSERT_EQUAL_INT(1, g_log.errors);
+    TEST_ASSERT_NOT_NULL(strstr(g_log.last_error, "device id"));
 }
 
 static void test_id_at_the_limit_is_not_logged(void) {
     char id[HOMIE_DEVICE_ID_MAX + 1];
     memset(id, 'b', sizeof(id) - 1);
     id[sizeof(id) - 1] = '\0';
-    Serial.errors = 0;
 
     Device d;
     d.init("Max", id, "generic", &client);
 
     TEST_ASSERT_EQUAL_STRING(id, d.getId());
-    TEST_ASSERT_EQUAL_INT(0, Serial.errors);
+    TEST_ASSERT_EQUAL_INT(0, g_log.errors);
 }
 
 int main(int argc, char** argv) {

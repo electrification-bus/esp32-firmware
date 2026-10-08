@@ -3,6 +3,7 @@
 #include <util/jsonUtils.h>
 #include <homie/homie.h>
 #include <homie/Device.h>
+#include <homie/homie_globals.h>   // theDevice, g_active_setup_device
 #include <platform/broker_discovery.h>
 
 
@@ -135,7 +136,6 @@ JsonDocument* get_node_config();
 JsonDocument* get_platform_config();
 JsonDocument* get_homie_config();
 
-// theDevice and g_active_setup_device now live in homie/Device.h, next to the class they
-// are instances of. config.h includes it, so anything that got them from here still does
-// — but NodeEntity.h and NodeProperty can now reach them without pulling the rest of
-// config.h into every driver translation unit.
+// theDevice and g_active_setup_device live in homie/homie_globals.h. config.h includes it,
+// so anything that got them from here still does — but NodeEntity.h and NodeProperty can
+// reach them without pulling the rest of config.h into every driver translation unit.

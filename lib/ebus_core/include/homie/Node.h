@@ -51,6 +51,5 @@ private:
     HomieTransport* _transport; // MQTT transport for this node
     Property* _properties[MAX_PROPERTIES]; //array of properties, could be a vector or list in a full implementation
     int _num_properties = 0; // Number of properties added to this node
-    int _num_properties_mapped = 0; // Number of properties mapped to a device callback
     Device* _device; // Pointer to the parent device
 };

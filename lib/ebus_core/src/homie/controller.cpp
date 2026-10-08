@@ -1,7 +1,10 @@
 /* A minimally-vibed controller. Claude Code, 12/3/25 drm */
 #include <homie/controller.h>
 #include <homie/homie.h>
-#include <platform/mqtt_client.h>
+#include <homie/homie_clock.h>
+#include <homie/homie_log.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 // Module state
@@ -18,10 +21,10 @@ static bool _discover_all_domains = true;  // If true, use wildcard for domain d
 // from the callback nested one subscribe() per newly seen device and they failed,
 // innermost first. Parsing $description and building Device objects there held the
 // client mid-packet as well. The /set path is deferred the same way (see the note on
-// MqttQueueKind in src/platform/mqtt_client.cpp).
+// MqttQueueKind in the ESP32 port's src/platform/mqtt_client.cpp).
 //
 // So controller_mqtt_callback() only copies the message into _inbox, and controller_loop()
-// handles it after mqtt_client.loop() has returned. Handling makes no client call, and
+// handles it after the client's loop() has returned. Handling makes no client call, and
 // controller_loop() subscribes only once the inbox is empty, one step per pass, so a
 // SUBACK wait can only add to the inbox, never re-enter the controller.
 static_assert(CONTROLLER_INBOX_BYTES >= MAX_DATA_LEN + HOMIE_TOPIC_MAX + 8,
@@ -35,7 +38,7 @@ static bool _discovery_pending = false;
 // controller_loop() makes no subscription before this time: set after a failed subscribe,
 // and after a dropped message so the burst that overflowed the inbox finishes arriving
 // before its topics are re-subscribed.
-static unsigned long _subscribe_hold_until_ms = 0;
+static uint32_t _subscribe_hold_until_ms = 0;
 #define CONTROLLER_SUBSCRIBE_RETRY_MS 1000UL
 #define CONTROLLER_RESYNC_DELAY_MS 5000UL
 
@@ -44,7 +47,7 @@ static ControllerDevice _devices[MAX_DISCOVERED_DEVICES];
 static int _device_count = 0;
 
 // Statistics
-static ControllerStats _stats = {0, 0, 0, 0, 0};
+static ControllerStats _stats = {};
 
 // Forward declarations for internal functions
 static void handle_state_message(const char* domain, const char* device_id, const char* payload);
@@ -67,14 +70,14 @@ void controller_init(HomieTransport* transport, const char* domain, bool discove
 
     controller_reset();
 
-    Serial.printf("CONTROLLER: Initialized for domain '%s', discover_all_domains=%s\n",
+    homie_logf("CONTROLLER: Initialized for domain '%s', discover_all_domains=%s\n",
                   _domain, _discover_all_domains ? "true" : "false");
 }
 
 // Schedule discovery and every known device's subscriptions; controller_loop() makes them.
 void controller_setup_discovery() {
     _discovery_pending = true;
-    _subscribe_hold_until_ms = millis();
+    _subscribe_hold_until_ms = homie_now_ms();
     for (int i = 0; i < MAX_DISCOVERED_DEVICES; i++) {
         if (_devices[i].is_active) _devices[i].properties_subscribed = false;
     }
@@ -103,19 +106,19 @@ void controller_subscribe_device_properties(const char* device_id) {
 bool controller_set_property(const char* device_id, const char* node_id,
                              const char* property_id, const char* value) {
     if (!_transport || !_transport->connected()) {
-        Serial.println("CONTROLLER: Cannot send command - MQTT not connected");
+        homie_logln("CONTROLLER: Cannot send command - MQTT not connected");
         return false;
     }
 
     // Find the property to verify it's settable
     Property* prop = controller_get_property(device_id, node_id, property_id);
     if (!prop) {
-        Serial.printf("CONTROLLER: Property not found: %s/%s/%s\n", device_id, node_id, property_id);
+        homie_logf("CONTROLLER: Property not found: %s/%s/%s\n", device_id, node_id, property_id);
         return false;
     }
 
     if (!prop->settable()) {
-        Serial.printf("CONTROLLER: Property not settable: %s/%s/%s\n", device_id, node_id, property_id);
+        homie_logf("CONTROLLER: Property not settable: %s/%s/%s\n", device_id, node_id, property_id);
         return false;
     }
 
@@ -126,7 +129,7 @@ bool controller_set_property(const char* device_id, const char* node_id,
     int n = snprintf(topic, sizeof(topic), "%s/%s/%s/%s/%s/set",
                      info ? info->domain : _domain, _version, device_id, node_id, property_id);
     if (n < 0 || n >= (int)sizeof(topic)) {
-        Serial.printf("CONTROLLER: /set topic for %s/%s/%s is over %d chars, not sent\n",
+        homie_logf("CONTROLLER: /set topic for %s/%s/%s is over %d chars, not sent\n",
                       device_id, node_id, property_id, HOMIE_TOPIC_MAX);
         return false;
     }
@@ -136,10 +139,10 @@ bool controller_set_property(const char* device_id, const char* node_id,
     bool result = _transport->publish(topic, value, false, 0);
 
     if (result) {
-        Serial.printf("CONTROLLER: Sent command to %s: %s\n", topic, value);
+        homie_logf("CONTROLLER: Sent command to %s: %s\n", topic, value);
         _stats.commands_sent++;
     } else {
-        Serial.printf("CONTROLLER: Failed to send command to %s\n", topic);
+        homie_logf("CONTROLLER: Failed to send command to %s\n", topic);
     }
 
     return result;
@@ -241,8 +244,8 @@ static void note_dropped(const char* topic, unsigned int length) {
     } else {
         _discovery_pending = true;   // a $state, or a device not in the table yet
     }
-    _subscribe_hold_until_ms = millis() + CONTROLLER_RESYNC_DELAY_MS;
-    Serial.printf("CONTROLLER: inbox full (%u of %u bytes, %u messages), DROPPED %u-byte "
+    _subscribe_hold_until_ms = homie_now_ms() + CONTROLLER_RESYNC_DELAY_MS;
+    homie_logf("CONTROLLER: inbox full (%u of %u bytes, %u messages), DROPPED %u-byte "
                   "message on %s (%d dropped so far); re-subscribing in %lu s\n",
                   (unsigned)_inbox.used(), (unsigned)_inbox.size(), (unsigned)_inbox.count(),
                   length, topic, _stats.messages_dropped, CONTROLLER_RESYNC_DELAY_MS / 1000);
@@ -263,7 +266,7 @@ static void handle_message(const char* topic, const char* payload) {
     }
 
     int idx = find_device_index(t.device_id);
-    if (idx >= 0) _devices[idx].last_seen_ms = millis();
+    if (idx >= 0) _devices[idx].last_seen_ms = homie_now_ms();
 
     if (t.kind == CONTROLLER_TOPIC_STATE) {
         handle_state_message(t.domain, t.device_id, payload);
@@ -282,7 +285,7 @@ static void handle_message(const char* topic, const char* payload) {
 static void run_subscriptions() {
     if (!_transport || !_transport->connected()) return;
     if (_inbox.count() > 0) return;
-    if ((long)(millis() - _subscribe_hold_until_ms) < 0) return;
+    if ((int32_t)(homie_now_ms() - _subscribe_hold_until_ms) < 0) return;
 
     char topic[HOMIE_TOPIC_MAX + 1];
 
@@ -297,11 +300,11 @@ static void run_subscriptions() {
         }
         _discovery_pending = false;
         if (_transport->subscribe(topic, 0)) {
-            Serial.printf("CONTROLLER: Subscribed to discovery topic: %s\n", topic);
+            homie_logf("CONTROLLER: Subscribed to discovery topic: %s\n", topic);
         } else {
             _discovery_pending = true;
-            _subscribe_hold_until_ms = millis() + CONTROLLER_SUBSCRIBE_RETRY_MS;
-            Serial.printf("CONTROLLER: Failed to subscribe to: %s (error %d); retrying\n",
+            _subscribe_hold_until_ms = homie_now_ms() + CONTROLLER_SUBSCRIBE_RETRY_MS;
+            homie_logf("CONTROLLER: Failed to subscribe to: %s (error %d); retrying\n",
                           topic, (int)_transport->last_error());
         }
         return;
@@ -316,25 +319,25 @@ static void run_subscriptions() {
         d->properties_subscribed = true;
         snprintf(topic, sizeof(topic), "%s/%s/%s/$description", d->domain, _version, id);
         if (_transport->subscribe(topic, 0)) {
-            Serial.printf("CONTROLLER: Subscribed to device description: %s\n", topic);
+            homie_logf("CONTROLLER: Subscribed to device description: %s\n", topic);
         } else {
             ok = false;
-            Serial.printf("CONTROLLER: Failed to subscribe to: %s (error %d); retrying\n",
+            homie_logf("CONTROLLER: Failed to subscribe to: %s (error %d); retrying\n",
                           topic, (int)_transport->last_error());
         }
         if (ok) {
             snprintf(topic, sizeof(topic), "%s/%s/%s/+/+", d->domain, _version, id);
             if (_transport->subscribe(topic, 0)) {
-                Serial.printf("CONTROLLER: Subscribed to device properties: %s\n", topic);
+                homie_logf("CONTROLLER: Subscribed to device properties: %s\n", topic);
             } else {
                 ok = false;
-                Serial.printf("CONTROLLER: Failed to subscribe to: %s (error %d); retrying\n",
+                homie_logf("CONTROLLER: Failed to subscribe to: %s (error %d); retrying\n",
                               topic, (int)_transport->last_error());
             }
         }
         if (!ok) {
             d->properties_subscribed = false;
-            _subscribe_hold_until_ms = millis() + CONTROLLER_SUBSCRIBE_RETRY_MS;
+            _subscribe_hold_until_ms = homie_now_ms() + CONTROLLER_SUBSCRIBE_RETRY_MS;
         }
         return;
     }
@@ -354,7 +357,7 @@ void controller_reset() {
     memset(&_stats, 0, sizeof(_stats));
     _inbox.clear();
 
-    Serial.println("CONTROLLER: Reset - all discovered data cleared");
+    homie_logln("CONTROLLER: Reset - all discovered data cleared");
 }
 
 // --- Nested-device tree awareness (Homie 5 parent/child) ---
@@ -440,7 +443,7 @@ static void handle_state_message(const char* domain, const char* device_id, cons
     bool is_new = find_device_index(device_id) < 0;
     int idx = find_or_create_device(device_id);
     if (idx < 0) {
-        Serial.printf("CONTROLLER: Device table full (%d), cannot add device %s\n",
+        homie_logf("CONTROLLER: Device table full (%d), cannot add device %s\n",
                       MAX_DISCOVERED_DEVICES, device_id);
         return;
     }
@@ -449,17 +452,17 @@ static void handle_state_message(const char* domain, const char* device_id, cons
 
     snprintf(ctrl_dev->domain, sizeof(ctrl_dev->domain), "%s", domain);
     ctrl_dev->state = state;
-    ctrl_dev->last_seen_ms = millis();
+    ctrl_dev->last_seen_ms = homie_now_ms();
     ctrl_dev->is_active = true;
 
     if (is_new) {
         // controller_loop() subscribes to its $description and properties (still
         // properties_subscribed == false from find_or_create_device()).
-        Serial.printf("CONTROLLER: New device discovered: %s (state: %s)\n",
+        homie_logf("CONTROLLER: New device discovered: %s (state: %s)\n",
                      device_id, payload);
-        _stats.last_discovery_ms = millis();
+        _stats.last_discovery_ms = homie_now_ms();
     } else {
-        Serial.printf("CONTROLLER: Device %s state: %s\n", device_id, payload);
+        homie_logf("CONTROLLER: Device %s state: %s\n", device_id, payload);
     }
 }
 
@@ -483,7 +486,7 @@ static void handle_description_message(const char* domain, const char* device_id
         hash = (hash ^ (uint8_t)*c) * 16777619u;
     }
     if (ctrl_dev->has_description && ctrl_dev->description_hash == hash) {
-        Serial.printf("CONTROLLER: Device %s description unchanged\n", device_id);
+        homie_logf("CONTROLLER: Device %s description unchanged\n", device_id);
         return;
     }
 
@@ -493,31 +496,32 @@ static void handle_description_message(const char* domain, const char* device_id
     DeserializationError error = deserializeJson(doc, payload);
 
     if (error) {
-        Serial.printf("CONTROLLER: Failed to parse description for %s: %s\n",
+        homie_logf("CONTROLLER: Failed to parse description for %s: %s\n",
                      device_id, error.c_str());
         return;
     }
 
     // Create or update Device object from description
     if (ctrl_dev->has_description) {
-        Serial.printf("CONTROLLER: Device %s description changed; adding new nodes, "
+        homie_logf("CONTROLLER: Device %s description changed; adding new nodes, "
                       "keeping existing ones as first described\n", device_id);
     }
     create_device_from_description(ctrl_dev, doc);
     ctrl_dev->has_description = true;
     ctrl_dev->description_hash = hash;
 
-    Serial.printf("CONTROLLER: Device %s description received: %s (%s)\n",
+    homie_logf("CONTROLLER: Device %s description received: %s (%s)\n",
                  device_id, ctrl_dev->device->type(), ctrl_dev->device->type());
 }
 
 static void handle_property_message(const char* domain, const char* device_id,
                                    const char* node_id, const char* property_id,
                                    const char* payload) {
+    (void)domain;   // the property is looked up by device id alone
     // Get the property object
     Property* prop = controller_get_property(device_id, node_id, property_id);
     if (!prop) {
-        Serial.printf("CONTROLLER: Property not found (may not have description yet): %s/%s/%s\n",
+        homie_logf("CONTROLLER: Property not found (may not have description yet): %s/%s/%s\n",
                      device_id, node_id, property_id);
         return;
     }
@@ -535,7 +539,7 @@ static void handle_property_message(const char* domain, const char* device_id,
         prop->setValue(payload);
     }
 
-    Serial.printf("CONTROLLER: Property %s/%s/%s = %s\n",
+    homie_logf("CONTROLLER: Property %s/%s/%s = %s\n",
                  device_id, node_id, property_id, payload);
 }
 
@@ -563,7 +567,7 @@ static int find_or_create_device(const char* device_id) {
             _devices[i].device->setId(device_id);
             _devices[i].device->setMQTTClient(_transport);
             _devices[i].state = DEVICE_STATE_INIT;
-            _devices[i].last_seen_ms = millis();
+            _devices[i].last_seen_ms = homie_now_ms();
             _devices[i].is_active = true;
             _devices[i].has_description = false;
             _devices[i].properties_subscribed = false;
@@ -583,7 +587,7 @@ static int find_or_create_device(const char* device_id) {
 static void copy_topology_id(char (&out)[HOMIE_DEVICE_ID_MAX + 1], const char* id,
                              const char* device_id) {
     if (strlen(id) > HOMIE_DEVICE_ID_MAX) {
-        Serial.printf("CONTROLLER: Device %s names a parent/root id over %d chars, ignored: %s\n",
+        homie_logf("CONTROLLER: Device %s names a parent/root id over %d chars, ignored: %s\n",
                       device_id, HOMIE_DEVICE_ID_MAX, id);
         return;
     }
@@ -670,7 +674,7 @@ static void create_device_from_description(ControllerDevice* ctrl_dev, JsonDocum
             Node* new_node = dev->addNode(node_doc.as<JsonVariant>(), topic);
             if (new_node) {
                 dev->addNodePropertiesFromConfigJson(new_node, node_doc.as<JsonVariant>(), false);
-                Serial.printf("CONTROLLER: Added node %s with properties\n", node_id);
+                homie_logf("CONTROLLER: Added node %s with properties\n", node_id);
             }
         }
     }

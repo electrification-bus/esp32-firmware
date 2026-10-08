@@ -1,5 +1,4 @@
 #pragma once
-#include <Arduino.h>
 #include <homie/homie_transport.h>
 
 #include <ArduinoJson.h>
@@ -15,7 +14,8 @@
 // Bytes held for messages between the MQTT receive callback and controller_loop(). It
 // must hold the largest message the client accepts (a MAX_DATA_LEN $description), and
 // what is left over holds the values that arrive with it. Override with
-// -DCONTROLLER_INBOX_BYTES=<n> in build_src_flags.
+// -DCONTROLLER_INBOX_BYTES=<n> in build_flags (this file's .cpp is in lib/ebus_core, which
+// build_src_flags does not reach).
 #ifndef CONTROLLER_INBOX_BYTES
 #define CONTROLLER_INBOX_BYTES 16384
 #endif

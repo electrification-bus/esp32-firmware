@@ -1,6 +1,6 @@
 #pragma once
 #include <ArduinoJson.h>
-#include <platform/mqtt_client.h>
+#include <homie/homie_transport.h>
 #include <homie/Node.h>
 #include <homie/Property.h>
 #include <homie/homie_descriptor.h>   // PropertyDesc (D2)
@@ -130,7 +130,6 @@ class Device {
     char _id[HOMIE_DEVICE_ID_MAX + 1] = {0};
     char _name[32] = {0};
     char _type[HOMIE_TYPE_MAXLEN] = {0};   // eBus device types up to 41 chars
-    char _version[16] = {0};
     char _topic[HOMIE_DEVICE_TOPIC_MAX + 1] = {0};
     Node* _nodes[MAX_NODES] = {0};
     DeviceState _state = DEVICE_STATE_INIT;
@@ -155,8 +154,3 @@ class Device {
     uint32_t _last_description_hash = 0;
     bool     _has_description_hash  = false;
 };
-
-// theDevice / g_active_setup_device live in homie/homie_globals.h, so that a header
-// needing only the pointer (node/NodeEntity.h) can reach them without this one's
-// ArduinoJson payload. Included here so anything using Device also sees them.
-#include <homie/homie_globals.h>

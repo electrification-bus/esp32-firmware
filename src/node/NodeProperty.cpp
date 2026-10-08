@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <node/NodeProperty.h>
-#include <homie/Device.h>     // theDevice, g_active_setup_device
+#include <homie/Device.h>
+#include <homie/homie_globals.h>   // theDevice, g_active_setup_device
 #include <homie/Node.h>
 #include <homie/homie_id.h>
 

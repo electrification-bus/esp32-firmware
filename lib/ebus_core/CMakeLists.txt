@@ -4,16 +4,39 @@ cmake_minimum_required(VERSION 3.18)
 project(ebus_core LANGUAGES CXX)
 
 add_library(ebus_core STATIC
+    src/homie/controller.cpp
     src/homie/controller_inbox.cpp
+    src/homie/Device.cpp
     src/homie/homie_clock.cpp
     src/homie/homie_datatype.cpp
     src/homie/homie_id.cpp
+    src/homie/homie_json.cpp
     src/homie/homie_log.cpp
     src/homie/homie_transport.cpp
+    src/homie/Node.cpp
+    src/homie/Property.cpp
     src/platform/broker_discovery.cpp
+    src/util/jsonUtils.cpp
 )
 target_include_directories(ebus_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(ebus_core PUBLIC cxx_std_17)
+
+# ArduinoJson, the core's one dependency (header-only). A parent project that already has
+# an ArduinoJson target keeps it. Otherwise the release PlatformIO uses (library.json,
+# platformio.ini) is fetched, pinned by hash, so both builds serialize identically; to
+# build offline, point -DFETCHCONTENT_SOURCE_DIR_ARDUINOJSON=<dir> at a checkout of it.
+if(NOT TARGET ArduinoJson)
+    if(POLICY CMP0135)
+        cmake_policy(SET CMP0135 NEW)   # extracted files get the extraction time
+    endif()
+    include(FetchContent)
+    FetchContent_Declare(ArduinoJson
+        URL https://github.com/bblanchon/ArduinoJson/archive/refs/tags/v7.4.3.tar.gz
+        URL_HASH SHA256=a2a8a277fc3cd0404499199bf1468682ea3688f354be0eaf6af8648366911257
+    )
+    FetchContent_MakeAvailable(ArduinoJson)
+endif()
+target_link_libraries(ebus_core PUBLIC ArduinoJson)
 
 # Topic root: homie/5 by default, ebus/5 with USE_EBUS_TOPIC (include/homie/homie.h).
 # The ESP32 firmware sets it in platformio.ini's build_flags.
