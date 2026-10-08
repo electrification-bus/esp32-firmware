@@ -3,7 +3,11 @@
 #include <homie/Node.h>
 #include <homie/Property.h>
 #include <homie/Device.h>
-Node::Node() : _mqtt_client(nullptr), _device(nullptr) {
+#include <homie/homie_log.h>
+#include <stdio.h>
+#include <string.h>
+
+Node::Node() : _transport(nullptr), _device(nullptr) {
     _num_properties = 0;
 }
 
@@ -12,13 +16,13 @@ Node::~Node() {
 
 void Node::addProperty(Property* property) {
     if (_num_properties >= MAX_PROPERTIES) {
-        Serial.printf("Node '%s': ERROR property limit (%d) reached — '%s' NOT added\n",
+        homie_logf("Node '%s': ERROR property limit (%d) reached — '%s' NOT added\n",
                       _id, MAX_PROPERTIES, property->id());
         return;
     }
-    Serial.printf("Node '%s': Adding property: '%s'\n", _id, property->id());
+    homie_logf("Node '%s': Adding property: '%s'\n", _id, property->id());
     property->setNode(this);
-    if (_mqtt_client) property->setMQTTClient(_mqtt_client);
+    if (_transport) property->setMQTTClient(_transport);
     _properties[_num_properties++] = property;
 }
 
@@ -30,7 +34,7 @@ void Node::addProperty(Property* property, const char* id, const char* name, con
     // exact wire ids.)
     char prop_id[HOMIE_PROPERTY_ID_MAX + 1] = {0};
     if (!sanitize_homie_id(id, prop_id, sizeof(prop_id))) {
-        Serial.printf("Node '%s': **ERROR -- property id '%s' is over %d chars; truncated to '%s'\n",
+        homie_logf("Node '%s': **ERROR -- property id '%s' is over %d chars; truncated to '%s'\n",
                       _id, id, HOMIE_PROPERTY_ID_MAX, prop_id);
     }
     property->setId(prop_id[0] ? prop_id : id);
@@ -51,9 +55,9 @@ void Node::publish() {
 
 void Node::clearRetained() {
     // Remove each property's retained value by publishing a zero-length payload.
-    if (!_mqtt_client) return;
+    if (!_transport) return;
     for (int i = 0; i < _num_properties; i++) {
-        _mqtt_client->publish(_properties[i]->topic(), "", true, homie_qos(true));
+        _transport->publish(_properties[i]->topic(), "", true, homie_qos(true));
     }
 }
 
@@ -75,7 +79,7 @@ const char* Node::type() {
 
 void Node::setId(const char* id) {
     if (snprintf(_id, sizeof(_id), "%s", id) >= (int)sizeof(_id)) {
-        Serial.printf("Node: **ERROR -- node id '%s' is over %d chars; truncated to '%s'\n",
+        homie_logf("Node: **ERROR -- node id '%s' is over %d chars; truncated to '%s'\n",
                       id, HOMIE_NODE_ID_MAX, _id);
     }
 }
@@ -95,7 +99,7 @@ Device* Node::device() {
 void Node::setTopic(const char* top) {
     int n = snprintf(_topic, sizeof(_topic), "%s%s", top, _id);
     if (n >= (int)sizeof(_topic)) {
-        Serial.printf("Node: **ERROR -- topic '%s%s' is %d chars, over %d; truncated to '%s'\n",
+        homie_logf("Node: **ERROR -- topic '%s%s' is %d chars, over %d; truncated to '%s'\n",
                       top, _id, n, (int)sizeof(_topic) - 1, _topic);
     }
 }
@@ -104,10 +108,10 @@ const char* Node::topic() {
     return _topic;
 }
 
-void Node::setMQTTClient(MQTTClient* client) {
-    _mqtt_client = client;
+void Node::setMQTTClient(HomieTransport* transport) {
+    _transport = transport;
     for(int i=0; i < _num_properties; i++) {
-        _properties[i]->setMQTTClient(client); // Set the MQTT client for each property
+        _properties[i]->setMQTTClient(transport); // Set the MQTT transport for each property
     }
 }
 
@@ -126,11 +130,11 @@ Property* Node::getProperty(const char* id) {
             return _properties[i];
         }
     }
-    Serial.printf("Node: '%s' - Property '%s' not found\n", _id, id);
+    homie_logf("Node: '%s' - Property '%s' not found\n", _id, id);
     return nullptr; // Property not found
 }
 
 void Node::settable_callback(Property* property) {
     // Notify the device about the property change
-    Serial.printf("Node: '%s' property '%s' set\n", _id, property->id());
+    homie_logf("Node: '%s' property '%s' set\n", _id, property->id());
 }

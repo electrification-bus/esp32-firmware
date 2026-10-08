@@ -1,6 +1,6 @@
 #pragma once
 #include <ArduinoJson.h>
-#include <platform/mqtt_client.h>
+#include <homie/homie_transport.h>
 #include <homie/Node.h>
 #include <homie/Property.h>
 #include <homie/homie_descriptor.h>   // PropertyDesc (D2)
@@ -28,8 +28,7 @@ class Device {
     Device();
     ~Device() {};
 
-    //void init(const char* name, const char* id, const char* type, MQTTClient* mqtt_client);
-    void init(const char* name, const char* id, const char* type, MQTTClient* mqtt_client);
+    void init(const char* name, const char* id, const char* type, HomieTransport* transport);
     void setState(DeviceState state);
     DeviceState state() { return _state;};
     Node* addNode(const char* id, const char* name, const char* type);
@@ -47,9 +46,8 @@ class Device {
         return addNode(id, name, type, descs, storage, N);
     }
     void addNodePropertiesFromConfigJson(Node* n, JsonVariant node_json, bool subscribe = true);
-    //void setMQTTClient(MQTTClient* client);
-    void setMQTTClient(MQTTClient* client);
-    MQTTClient* mqttClient() { return _mqtt_client; }  // children share the root's client
+    void setMQTTClient(HomieTransport* transport);
+    HomieTransport* mqttClient() { return _transport; }  // children share the root's transport
     void mqttConnected();
     size_t toJson(char* buffer, size_t bufferSize);
     void setId(const char* id);
@@ -132,11 +130,10 @@ class Device {
     char _id[HOMIE_DEVICE_ID_MAX + 1] = {0};
     char _name[32] = {0};
     char _type[HOMIE_TYPE_MAXLEN] = {0};   // eBus device types up to 41 chars
-    char _version[16] = {0};
     char _topic[HOMIE_DEVICE_TOPIC_MAX + 1] = {0};
     Node* _nodes[MAX_NODES] = {0};
     DeviceState _state = DEVICE_STATE_INIT;
-    MQTTClient* _mqtt_client;
+    HomieTransport* _transport = nullptr;
     int _num_nodes;
 
     // Nested-device tree links (intrusive; null for a standalone/root device).
@@ -157,8 +154,3 @@ class Device {
     uint32_t _last_description_hash = 0;
     bool     _has_description_hash  = false;
 };
-
-// theDevice / g_active_setup_device live in homie/homie_globals.h, so that a header
-// needing only the pointer (node/NodeEntity.h) can reach them without this one's
-// ArduinoJson payload. Included here so anything using Device also sees them.
-#include <homie/homie_globals.h>

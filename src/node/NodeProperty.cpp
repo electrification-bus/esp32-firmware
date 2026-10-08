@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <node/NodeProperty.h>
-#include <homie/Device.h>     // theDevice, g_active_setup_device
+#include <homie/Device.h>
+#include <homie/homie_globals.h>   // theDevice, g_active_setup_device
 #include <homie/Node.h>
 #include <homie/homie_id.h>
 
@@ -72,7 +73,7 @@ void NodeProperty::setup(const char* node_id, const char* property_id,
 void NodeProperty::on_set(settable_handler_t handler, void* ctx) {
     char set_topic[HOMIE_TOPIC_MAX + 1] = {0};
     snprintf(set_topic, sizeof(set_topic), "%s/%s", _topic, HOMIE_TOPIC_SET);
-    if (mqtt_client.connected()) mqtt_client.subscribe(set_topic, 0);  // /set is QoS 0 (C4)
+    settable_subscribe_now(set_topic);   // /set is QoS 0 (C4)
     subscribe_settable_handler(set_topic, handler, ctx);
 }
 

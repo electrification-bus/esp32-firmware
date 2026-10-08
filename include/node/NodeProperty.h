@@ -1,13 +1,14 @@
 #pragma once
 // Included ONLY for the entity_settable_callback_t / settable_handler_t typedefs in the
 // signatures below. It forward-declares Property rather than including it, and that is
-// all the Property* member needs.
+// all the Property* member needs. It is the core's (lib/ebus_core), so it brings no MQTT
+// client header into a driver.
 //
 // Deliberately NOT <platform/config.h>: the bodies need theDevice and
 // g_active_setup_device, but config.h drags util/jsonUtils.h and homie/homie.h behind
 // it, and NodeProperty.h reaches every driver through NodeEntity.h.
 // Those includes belong in NodeProperty.cpp, where they are actually used.
-#include <platform/mqtt_client.h>
+#include <homie/homie_settable.h>
 #include <homie/homie_limits.h>
 
 class NodeEntity;

@@ -709,11 +709,12 @@ def registers_to_desc_table(regs, node_id):
 def _cvar_global(s):
     return "".join(c if (c.isalnum() or c == "_") else "_" for c in str(s))
 
-# The firmware's settable subscriber table (src/platform/mqtt_client.cpp) holds one entry
-# per distinct /set topic plus the device's watch on its own $state, which goes through
-# the same table. Drivers register their /set topics against properties their yml
-# declares settable, so the yml count bounds the table; the margin absorbs a driver that
-# registers a /set on a property its yml leaves read-only.
+# The firmware's settable subscriber table (lib/ebus_core/src/homie/homie_settable.cpp,
+# allocated in src/platform/mqtt_client.cpp) holds one entry per distinct /set topic plus
+# the device's watch on its own $state, which goes through the same table. Drivers
+# register their /set topics against properties their yml declares settable, so the yml
+# count bounds the table; the margin absorbs a driver that registers a /set on a property
+# its yml leaves read-only.
 _SETTABLE_TABLE_WATCHES = 1   # the root device's $state watch (main.cpp watch_own_state)
 _SETTABLE_TABLE_MARGIN  = 4
 _SETTABLE_TABLE_FLOOR   = 8

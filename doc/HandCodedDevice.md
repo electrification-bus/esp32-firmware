@@ -172,7 +172,7 @@ Re-flash the filesystem after editing either file: `pio run -c platformio/platfo
 
 ## Controller mode (without the generator)
 
-A controller — a device that discovers and monitors *other* Homie devices instead of publishing its own nodes — is a build-time mode, not a `device.yml` option. It's selected by the **`ENABLE_CONTROLLER`** build flag, which switches `main.cpp` to the controller branch: `controller_init()`, `controller_setup_discovery()`, and the discovery/stats loop, all from [`include/homie/controller.h`](../include/homie/controller.h).
+A controller — a device that discovers and monitors *other* Homie devices instead of publishing its own nodes — is a build-time mode, not a `device.yml` option. It's selected by the **`ENABLE_CONTROLLER`** build flag, which switches `main.cpp` to the controller branch: `controller_init()`, `controller_setup_discovery()`, and the discovery/stats loop, all from [`lib/ebus_core/include/homie/controller.h`](../lib/ebus_core/include/homie/controller.h).
 
 To build a controller, add the flag to your env in a `platformio_local.ini` override. Appending to `build_src_flags` keeps the env's own `build_flags` intact; a `build_flags` key there would replace the env's whole list rather than append to it. Alternatively, uncomment the `;-DENABLE_CONTROLLER` line in `[common]` of `platformio/platformio.ini` to apply it to every env.
 
@@ -189,5 +189,5 @@ In this mode you do **not** implement `register_homie_properties()` / `setup_hom
 
 - [WritingADriver.md](WritingADriver.md) — authoring a `NodeEntity` driver (shared by both paths)
 - [GenerateHomieDevice.md](GenerateHomieDevice.md) — the `device.yml` generator path (the easier default)
-- [`include/homie/Device.h`](../include/homie/Device.h), [`Node.h`](../include/homie/Node.h), [`Property.h`](../include/homie/Property.h) — the registration API
+- [`lib/ebus_core/include/homie/Device.h`](../lib/ebus_core/include/homie/Device.h), [`Node.h`](../lib/ebus_core/include/homie/Node.h), [`Property.h`](../lib/ebus_core/include/homie/Property.h) — the registration API
 - [`include/node/NodeEntity.h`](../include/node/NodeEntity.h) — the node-entity base class

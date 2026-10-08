@@ -1,9 +1,16 @@
 {
   "name": "ebus_core",
   "version": "0.0.1",
-  "description": "Portable eBus / Homie 5 core: id and payload validation, limits, enums, controller inbox, broker discovery. Depends on the C/C++ standard library only; see README.md.",
+  "description": "Portable eBus / Homie 5 core: the Device, Node and Property model, /set dispatch, the controller, id and payload validation, broker discovery. Depends on the C/C++ standard library and ArduinoJson; a port supplies the MQTT transport, log and clock. See README.md.",
   "frameworks": "*",
   "platforms": "*",
+  "dependencies": [
+    {
+      "owner": "bblanchon",
+      "name": "ArduinoJson",
+      "version": "7.4.3"
+    }
+  ],
   "build": {
     "includeDir": "include",
     "srcDir": "src"

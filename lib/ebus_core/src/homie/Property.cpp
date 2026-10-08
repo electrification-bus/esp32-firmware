@@ -1,11 +1,14 @@
-#include <platform/config.h>
-#include "homie/Property.h"
+#include <homie/Property.h>
 #include <homie/Node.h>
 #include <homie/Device.h>
+#include <homie/homie_clock.h>
 #include <homie/homie_datatype.h>
-#include <platform/mqtt_client.h>
+#include <homie/homie_log.h>
+#include <homie/homie_settable.h>
 #include <util/jsonUtils.h>
 #include <ctype.h>
+#include <stdio.h>
+#include <string.h>
 #include <math.h>          // llround(): nearest-step rounding, not truncation
 
 Property::Property() {
@@ -26,14 +29,14 @@ Node* Property::node() {
 
 void Property::setId(const char* id) {
     if (snprintf(_id, sizeof(_id), "%s", id) >= (int)sizeof(_id)) {
-        Serial.printf("Property: **ERROR -- id '%s' is over %d chars; truncated to '%s'\n",
+        homie_logf("Property: **ERROR -- id '%s' is over %d chars; truncated to '%s'\n",
                       id, HOMIE_PROPERTY_ID_MAX, _id);
     }
     // Requires setNode() first — dereferences _parent_node to build topic
     int n = snprintf(_topic, sizeof(_topic), "%s/%s", _parent_node->topic(), _id);
     if (n >= (int)sizeof(_topic)) {
         // A truncated topic publishes and subscribes somewhere that is not this property.
-        Serial.printf("Property: **ERROR -- topic '%s/%s' is %d chars, over %d; truncated to "
+        homie_logf("Property: **ERROR -- topic '%s/%s' is %d chars, over %d; truncated to "
                       "'%s'\n", _parent_node->topic(), _id, n, (int)sizeof(_topic) - 1, _topic);
     }
 }
@@ -112,8 +115,8 @@ const char* Property::datatype() const {
     return _datatype;
 }
 
-MQTTClient* Property::mqttClient() const {
-    return _mqtt_client;
+HomieTransport* Property::mqttClient() const {
+    return _transport;
 }
 
 void Property::start_mqtt_client() {}
@@ -191,8 +194,8 @@ bool Property::publish_value(bool force) {
 
     // A suppressed republish is a success: nothing failed and the broker holds the value.
     if (!gate_allows(payload, len, force)) return true;
-    if (!_mqtt_client) return false;
-    bool ok = _mqtt_client->publish(topic(), payload, len, retained(), homie_qos(retained()));
+    if (!_transport) return false;
+    bool ok = _transport->publish(topic(), payload, len, retained(), homie_qos(retained()));
     if (ok) note_published(payload, len);
     return ok;
 }
@@ -209,9 +212,10 @@ bool Property::publish_queued(bool force) {
     int len = (_value[0] == '\0') ? 1 : (int)strlen(_value);
 
     if (!gate_allows(payload, len, force)) return true;
+    if (!_transport) return false;
     // Counted before the hand-off: the main task may send it before this call returns.
     __atomic_add_fetch(&_in_flight, 1, __ATOMIC_ACQ_REL);
-    bool ok = mqtt_queue_publish(topic(), payload, len, retained(), this);
+    bool ok = _transport->queue_publish(topic(), payload, len, retained(), this);
     if (ok) __atomic_add_fetch(&_queued_count, 1, __ATOMIC_RELAXED);
     return ok;
 }
@@ -224,7 +228,7 @@ void Property::clearValue() {
     // Forget the memo: after a retraction the broker holds nothing, so the next set()
     // must publish even if it happens to repeat the value that was there before.
     _last_pub_len = -1;
-    if (_mqtt_client) _mqtt_client->publish(topic(), "", true, homie_qos(true));
+    if (_transport) _transport->publish(topic(), "", true, homie_qos(true));
 }
 
 // Publish the intended target value to the property's $target topic (C5). Per spec,
@@ -233,7 +237,7 @@ void Property::clearValue() {
 void Property::publish_target_value(const char* payload) {
     char target_topic[HOMIE_TOPIC_MAX + 1] = {0};
     snprintf(target_topic, sizeof(target_topic), "%s/%s", _topic, HOMIE_$TARGET);
-    _mqtt_client->publish(target_topic, payload, true, homie_qos(true));
+    _transport->publish(target_topic, payload, true, homie_qos(true));
 }
 
 void Property::device_new_value_callback(const char* sensor_value) {
@@ -263,18 +267,18 @@ static bool validate_json_payload(const char* node_id, const char* prop_id,
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, reader);
     if (err) {
-        Serial.printf("Node: '%s', Property: '%s' - invalid json payload '%s' (%s)\n",
+        homie_logf("Node: '%s', Property: '%s' - invalid json payload '%s' (%s)\n",
                       node_id, prop_id, payload, err.c_str());
         return false;
     }
     while (reader._pos < reader._end && isspace((unsigned char)*reader._pos)) reader._pos++;
     if (reader._pos != reader._end) {
-        Serial.printf("Node: '%s', Property: '%s' - invalid json payload '%s' (trailing input)\n",
+        homie_logf("Node: '%s', Property: '%s' - invalid json payload '%s' (trailing input)\n",
                       node_id, prop_id, payload);
         return false;
     }
     if (!doc.is<JsonObject>() && !doc.is<JsonArray>()) {
-        Serial.printf("Node: '%s', Property: '%s' - json payload '%s' is not an array or object\n",
+        homie_logf("Node: '%s', Property: '%s' - json payload '%s' is not an array or object\n",
                       node_id, prop_id, payload);
         return false;
     }
@@ -293,7 +297,7 @@ bool Property::store_set_payload(const char* payload) {
         } else if (strcmp(payload, "false") == 0 || strcmp(payload, "0") == 0 || strcmp(payload, "off") == 0 || strcmp(payload, "no") == 0) {
             setValue(false);
         } else {
-            Serial.printf("Node: '%s', Property: '%s' - invalid boolean value '%s'\n", _parent_node->id(), _id, payload);
+            homie_logf("Node: '%s', Property: '%s' - invalid boolean value '%s'\n", _parent_node->id(), _id, payload);
             return false; //invalid value
         }; 
         isValid = true;
@@ -350,7 +354,7 @@ bool Property::store_set_payload(const char* payload) {
         // leaving a value that is no longer valid JSON.
         size_t len = strlen(payload);
         if (len > (size_t)VALUE_MAX) {
-            Serial.printf("Node: '%s', Property: '%s' - json payload is %u chars, longer than "
+            homie_logf("Node: '%s', Property: '%s' - json payload is %u chars, longer than "
                           "the %d a property holds; refused\n",
                           _parent_node->id(), _id, (unsigned)len, VALUE_MAX);
             return false;
@@ -359,16 +363,16 @@ bool Property::store_set_payload(const char* payload) {
         setValue(payload);
         isValid = true;
     } else {
-        Serial.printf("Node: '%s', Property: '%s' - unknown datatype '%s'; /set '%s' refused\n",
+        homie_logf("Node: '%s', Property: '%s' - unknown datatype '%s'; /set '%s' refused\n",
                       _parent_node->id(), _id, datatype(), payload);
         return false;
     }
     if (!isValid) {
-        Serial.printf("Node: '%s', Property: '%s' - invalid %s payload '%s' (format '%s')\n",
+        homie_logf("Node: '%s', Property: '%s' - invalid %s payload '%s' (format '%s')\n",
                       _parent_node->id(), _id, datatype(), payload, _format);
     }
     if (isValid) {
-        Serial.printf("Node: '%s',  Property: '%s': datetype: '%s', new value: '%s'\n",_parent_node->id(), _id, datatype(), payload);
+        homie_logf("Node: '%s',  Property: '%s': datetype: '%s', new value: '%s'\n",_parent_node->id(), _id, datatype(), payload);
     }
     return isValid;
 }
@@ -404,20 +408,20 @@ void Property::restore_value(const ValueSnapshot* s) {
 }
 
 void Property::subscribe() {
-    if (!_mqtt_client || !_mqtt_client->connected()) {
+    if (!_transport || !_transport->connected()) {
         //TODO flag for retry
         return;
     }
     char set[HOMIE_TOPIC_MAX + 1] = {0};
     snprintf(set, sizeof(set), "%s/%s", _topic, HOMIE_TOPIC_SET);
-    Serial.printf("property '%s' settable - subscribe: '%s'\n",_id, set);
+    homie_logf("property '%s' settable - subscribe: '%s'\n",_id, set);
     //TODO pull this out; retry in loop
-    if (!_mqtt_client->subscribe(set, 0)) {   // /set is non-retained -> QoS 0 (C4)
-        delay(250);
-        if (!_mqtt_client->subscribe(set, 0)) {   // /set is non-retained -> QoS 0 (C4)
-            delay(500);
-            if (!_mqtt_client->subscribe(set, 0)) {   // /set is non-retained -> QoS 0 (C4)
-                Serial.printf("MQTT: FAILED TO SUBSCRIBE TO PROPERTY SET TOPIC: %s\r\n", set);
+    if (!_transport->subscribe(set, 0)) {   // /set is non-retained -> QoS 0 (C4)
+        homie_sleep_ms(250);
+        if (!_transport->subscribe(set, 0)) {   // /set is non-retained -> QoS 0 (C4)
+            homie_sleep_ms(500);
+            if (!_transport->subscribe(set, 0)) {   // /set is non-retained -> QoS 0 (C4)
+                homie_logf("MQTT: FAILED TO SUBSCRIBE TO PROPERTY SET TOPIC: %s\r\n", set);
                 return;
             }
         }
@@ -430,7 +434,7 @@ const char* Property::topic() {
     return _topic;
 }
 
-void Property::setMQTTClient(MQTTClient* client) {
-    _mqtt_client = client;
+void Property::setMQTTClient(HomieTransport* transport) {
+    _transport = transport;
 }
 

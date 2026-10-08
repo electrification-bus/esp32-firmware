@@ -1,14 +1,15 @@
 #pragma once
 
-#include <Arduino.h>
-#include <platform/mqtt_client.h>
+#include <stdint.h>
+#include <homie/homie_transport.h>
 #include <homie/homie_limits.h>
 class Node;
 
 class Property {
 public:
     // Longest value, in chars, a property holds and publishes. Matches MQTT_PAYLOAD_MAX in
-    // mqtt_client.cpp, so the property model and the publish queue carry the same payloads.
+    // src/platform/mqtt_client.cpp, so the property model and the ESP32 publish queue carry
+    // the same payloads.
     static const int VALUE_MAX = 256;
 
     Property();
@@ -57,10 +58,8 @@ public:
     const char* unit();
     void setFormat(const char* fmt);
     const char* format();
-    //void setMQTTClient(PubSubClient* client);
-    void setMQTTClient(MQTTClient* client);
-    //PubSubClient* mqttClient() const;
-    MQTTClient* mqttClient() const;
+    void setMQTTClient(HomieTransport* transport);
+    HomieTransport* mqttClient() const;
     void start_mqtt_client();
     void setSettable(bool settable);
     bool settable();
@@ -159,15 +158,11 @@ private:
     char _topic[HOMIE_PROPERTY_TOPIC_MAX + 1] = {0};
     char _format[64] = {0};   // enum/color formats (comma lists) need room (C1)
     bool _settable;
-    void* _callback;
     bool _retained = true;
     char _unit[8] = {0};
-    int _round_to = 0;
     bool _supports_target = false;
     Node* _parent_node = nullptr;
-    //PubSubClient* _mqtt_client;
-    MQTTClient* _mqtt_client;
-    void* _async_loop = nullptr;
+    HomieTransport* _transport = nullptr;
 
     bool _boolValue;
     float _floatValue;
