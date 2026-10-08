@@ -11,7 +11,7 @@ The portable part of the eBus / Homie 5 SDK: the Homie device model, `/set` disp
 | `homie/homie_log.h` | `homie_logf()` / `homie_logln()` and the sink a port binds |
 | `homie/homie_clock.h` | `homie_now_ms()` / `homie_sleep_ms()` and the hooks a port binds |
 | `homie/homie_json.h`, `util/jsonUtils.h` | `$description` (de)serialization helpers (ArduinoJson) |
-| `homie/homie.h` | Homie version, topic domain and prefix, datatype and attribute strings |
+| `homie/homie.h` | Homie version, topic domain and prefix (`USE_EBUS_TOPIC` at build time, `homie_set_topic_domain()` at run time), datatype and attribute strings |
 | `homie/homie_limits.h` | Longest ids and topics; every buffer is sized from these. `./ebus-esp32 generate` reads this file to check `device.yml` |
 | `homie/homie_enums.h` | `PropertyDatatype` and `Unit` enums and their Homie strings |
 | `homie/homie_descriptor.h` | `PropertyDesc`, the declarative property descriptor |
@@ -35,6 +35,8 @@ The portable part of the eBus / Homie 5 SDK: the Homie device model, `/set` disp
 | QoS | Set `mqtt_qos` (default 2) for retained publications, if it is configurable. | `src/platform/config.cpp`, from the `mqtt_qos` config key |
 
 The controller needs `controller_init(&transport, ...)` and the receive callback passing every message the settable table does not claim to `controller_mqtt_callback()`.
+
+The POSIX port in `ports/posix/` implements the same pieces over Eclipse Paho MQTT C; its README maps each one.
 
 ## Rules for code in the core
 

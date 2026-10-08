@@ -319,7 +319,7 @@ void Device::setId(const char* id) {
                       id, HOMIE_DEVICE_ID_MAX, _id);
     }
     //SET-ID SIDE-EFFECT: set topic
-    snprintf(_topic, sizeof(_topic), "%s/%s/", HOMIE_TOPIC_PREFIX, _id);
+    snprintf(_topic, sizeof(_topic), "%s/%s/", homie_topic_prefix(), _id);
 }
 
 void Device::setName(const char* name) {
