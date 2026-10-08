@@ -226,10 +226,10 @@ static void wait_for_broker() {
 // Connect to the broker and register the role's reconnect callback, which re-publishes
 // its $state after a reconnection.
 static void setup_broker(mqtt_reconnect_callback_t on_reconnect) {
-#ifndef ENABLE_CONTROLLER
-    // Initialize MQTT publish queue before setup_mqtt (for thread-safe publishing)
+    // Initialize MQTT publish queue before setup_mqtt (for thread-safe publishing). It
+    // also carries inbound messages for settable topics, the own-$state watch among
+    // them, out of the receive callback; without it they are refused.
     mqtt_queue_init();
-#endif
 
     wait_for_broker();
 
