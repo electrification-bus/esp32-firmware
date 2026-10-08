@@ -8,8 +8,18 @@
 #include <homie/Node.h>
 #include <homie/Property.h>
 #include <homie/homie.h>
+#include <homie/homie_limits.h>
+#include <homie/controller_inbox.h>
 // Maximum discovered devices
 #define MAX_DISCOVERED_DEVICES 16
+
+// Bytes held for messages between the MQTT receive callback and controller_loop(). It
+// must hold the largest message the client accepts (a MAX_DATA_LEN $description), and
+// what is left over holds the values that arrive with it. Override with
+// -DCONTROLLER_INBOX_BYTES=<n> in build_src_flags.
+#ifndef CONTROLLER_INBOX_BYTES
+#define CONTROLLER_INBOX_BYTES 16384
+#endif
 
 // Homie controller - implements device discovery and interaction
 // Following the Homie 5.0 specification for controller role
@@ -17,17 +27,18 @@
 // Discovered device wrapper - uses actual Device class from homie
 typedef struct {
     Device* device;                  // Actual Device object
-    char domain[16];                 // Domain name (e.g., "homie" or "ebus")
+    char domain[CONTROLLER_DOMAIN_MAX + 1];  // Domain name (e.g., "homie" or "ebus")
     DeviceState state;               // Current (own) reported device state
-    unsigned long last_seen_ms;      // Last time we heard from this device
+    unsigned long last_seen_ms;      // When a message from this device was last processed (informational)
     bool has_description;            // Whether we've received $description
     bool is_active;                  // Whether this slot is in use
-    bool properties_subscribed;      // Whether we've subscribed to properties
+    bool properties_subscribed;      // Whether its $description and property subscriptions are made
+    uint32_t description_hash;       // FNV-1a of the last $description, to skip a repeat
     // Homie 5 nested topology (parsed from $description). Empty parent_id => root.
     // Stored as ids (not live pointers) because devices are discovered asynchronously
     // — a child's description may arrive before or after its parent's.
-    char parent_id[32];              // parent device-id, empty if root
-    char root_id[32];                // root device-id, empty if root (root is self)
+    char parent_id[HOMIE_DEVICE_ID_MAX + 1];  // parent device-id, empty if root
+    char root_id[HOMIE_DEVICE_ID_MAX + 1];    // root device-id, empty if root (root is self)
 } ControllerDevice;
 
 // Controller statistics
@@ -35,6 +46,7 @@ typedef struct {
     int devices_discovered;
     int properties_discovered;
     int messages_received;
+    int messages_dropped;            // refused because the inbox was full
     int commands_sent;
     unsigned long last_discovery_ms;
 } ControllerStats;
@@ -46,13 +58,19 @@ typedef struct {
 //void controller_init(PubSubClient* mqtt_client, const char* domain = HOMIE_HOMIE, bool discover_all_domains = true);
 void controller_init(MQTTClient* mqtt_client, const char* domain = top_level_topic(), bool discover_all_domains = true);
 
-// Setup device discovery (subscribes to discovery topics)
+// Schedule the discovery subscription and every known device's subscriptions, which
+// controller_loop() then makes. Call once MQTT is connected and again after every
+// reconnect: the broker may not have kept the subscriptions, and re-subscribing makes it
+// resend the retained topics.
 void controller_setup_discovery();
 
-// Process controller logic (call in main loop)
+// Process controller logic (call in main loop, after the MQTT client's loop()): handles
+// the messages queued by controller_mqtt_callback(), then makes at most one pending
+// subscription step.
 void controller_loop();
 
-// Subscribe to all properties of a discovered device
+// Schedule subscriptions to a discovered device's $description and property values,
+// made by controller_loop().
 void controller_subscribe_device_properties(const char* device_id);
 
 // Send a command to a settable property (non-retained)
@@ -69,7 +87,7 @@ Node* controller_get_node(const char* device_id, const char* node_id);
 Property* controller_get_property(const char* device_id, const char* node_id,
                                   const char* property_id);
 
-// Get the ControllerDevice wrapper (includes state, last_seen, etc.)
+// Get the ControllerDevice wrapper (includes state, topology, etc.)
 ControllerDevice* controller_get_device_info(const char* device_id);
 
 // Get controller statistics
@@ -81,10 +99,13 @@ int controller_list_devices(Device** devices, int max_devices);
 // List all controller device wrappers (returns count)
 int controller_list_device_info(ControllerDevice* devices, int max_devices);
 
-// Callback for MQTT messages (must be registered with PubSubClient)
+// Feed one MQTT message to the controller, from the client's receive callback. It only
+// copies the message into the inbox (the payload need not be NUL-terminated);
+// controller_loop() processes it. A message that does not fit is dropped, counted and
+// logged, and the topics it came from are re-subscribed once the inbox has drained.
 void controller_mqtt_callback(char* topic, uint8_t* payload, unsigned int length);
 
-// Clear all discovered devices (for testing/reset)
+// Clear all discovered devices and queued messages (for testing/reset)
 void controller_reset();
 
 // --- Nested-device tree awareness (Homie 5 parent/child) ---

@@ -119,12 +119,14 @@ static void controller_state_topic(char* buf, size_t len) {
     snprintf(buf, len, "%s/%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID(), HOMIE_$STATE);
 }
 
-// Callback to re-publish state after MQTT reconnection
+// Callback to re-publish state and re-subscribe discovery after MQTT reconnection
 void on_mqtt_reconnect() {
     char state_topic[HOMIE_TOPIC_MAX + 1];
     controller_state_topic(state_topic, sizeof(state_topic));
     mqtt_client.publish(state_topic, HOMIE_STATE_READY, true, homie_qos(true));  // retained -> QoS 2 (C4)
     Serial.println("CONTROLLER: Re-published $state after reconnect");
+    // Only schedules the subscriptions; controller_loop() makes them.
+    controller_setup_discovery();
 }
 
 // Same watch as the device half. A running controller is always "ready", so it compares
@@ -315,9 +317,9 @@ void loop() {
         ControllerStats stats;
         controller_get_stats(&stats);
 
-        Serial.printf("CONTROLLER Stats: %d devices, %d properties, %d messages\n",
+        Serial.printf("CONTROLLER Stats: %d devices, %d properties, %d messages, %d dropped\n",
                      stats.devices_discovered, stats.properties_discovered,
-                     stats.messages_received);
+                     stats.messages_received, stats.messages_dropped);
     }
 }
 

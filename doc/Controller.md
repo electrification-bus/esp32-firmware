@@ -20,19 +20,27 @@ The serial log starts with `===== HOMIE CONTROLLER =====` instead of the device 
 `setup()` brings up the network, portal, network console, mDNS and MQTT exactly as device mode does, using the same configuration (`device.yml`, portal settings in NVS). Then it:
 
 1. Publishes its own retained `$state` of `ready` at `<domain>/5/<device-id>/$state`, republishes it after every MQTT reconnect, and re-asserts it if the broker reports anything else (for example the Last Will's `lost`).
-2. Calls `controller_init(&mqtt_client, top_level_topic(), false)`, so it discovers and commands devices only in this build's domain (`ebus`; `homie` without `-DUSE_EBUS_TOPIC`).
+2. Calls `controller_init(&mqtt_client, top_level_topic(), false)`, so it discovers devices only in this build's domain (`ebus`; `homie` without `-DUSE_EBUS_TOPIC`).
 3. Registers `controller_mqtt_callback` with `mqtt_set_fallback_callback()`, which hands it every message no settable-property handler claimed.
-4. Calls `controller_setup_discovery()`, which subscribes to `<domain>/5/+/$state` and `<domain>/5/+/$description`.
+4. Calls `controller_setup_discovery()`, which schedules the discovery subscription. The reconnect callback calls it again after every MQTT reconnect, which schedules discovery and every known device's subscriptions anew.
 
-`loop()` services the portal, NTP, mDNS and MQTT, calls `controller_loop()`, prints the discovered devices every 30 seconds (own state, effective state, and root or child) and prints `CONTROLLER Stats` every 60 seconds.
+`loop()` services the portal, NTP, mDNS and MQTT, calls `controller_loop()`, prints the discovered devices every 30 seconds (own state, effective state, and root or child) and prints `CONTROLLER Stats` (devices, descriptions, messages received and dropped) every 60 seconds.
 
 To add your own logic, edit the `loop()` in the `ENABLE_CONTROLLER` branch of `src/main.cpp` and call the functions below.
 
 ## Discovery
 
-- A `$state` message from an unknown device creates a `ControllerDevice` entry and subscribes to `<domain>/5/<device-id>/+/+` for its property values (once per device).
-- A `$description` message builds the device's `Node` and `Property` objects (name, datatype, unit, settable, retained) and records `parent` and `root` for nested devices.
+- `controller_loop()` subscribes to `<domain>/5/+/$state` (`+/5/+/$state` when discovering every domain).
+- A `$state` message from an unknown device creates a `ControllerDevice` entry. `controller_loop()` then subscribes to the device's `<domain>/5/<device-id>/$description` and `<domain>/5/<device-id>/+/+`, one device per pass, so the broker resends one device's retained topics at a time.
+- A `$description` message builds the device's `Node` and `Property` objects (name, datatype, unit, settable, retained) and records `parent` and `root` for nested devices. A repeat of the same description, as every re-subscribe brings, is skipped.
 - A property value updates the cached `Property`, parsed by its datatype (boolean, integer, float, otherwise the string).
+- A device's state is what its own `$state` says. `$state` is retained and published on change, so a device that has said `ready` stays `ready` until it publishes something else; a device is `lost` when its `$state` says so, which is what the broker's Last Will publishes. `controller_effective_state()` applies a non-`ready` root's state to its children.
+
+## Message handling
+
+`controller_mqtt_callback()` runs inside the MQTT client's receive callback, which the client also runs while it waits for a SUBACK or a QoS 2 acknowledgment. So it only copies the message into the controller's inbox, a `CONTROLLER_INBOX_BYTES` (16384) byte buffer; `controller_loop()` handles everything queued after the client's `loop()` has returned, and only then makes subscriptions. Handling a message makes no client call.
+
+A message that does not fit in the inbox is dropped and counted in `ControllerStats.messages_dropped`, with a `CONTROLLER: inbox full ... DROPPED` log line. Five seconds later `controller_loop()` re-subscribes the topics it came from (the device's own subscriptions, or discovery for a `$state`), so the broker resends the retained copy. Each message takes its topic and payload length plus 6 bytes, and the inbox must hold the largest message the client accepts (`MAX_DATA_LEN`, 8192 bytes); raise it with `-DCONTROLLER_INBOX_BYTES=<n>` in `build_src_flags`.
 
 ## API
 
@@ -40,11 +48,12 @@ To add your own logic, edit the `loop()` in the `ENABLE_CONTROLLER` branch of `s
 
 | Function | Purpose |
 |---|---|
-| `controller_init(MQTTClient* mqtt_client, const char* domain = top_level_topic(), bool discover_all_domains = true)` | Store the client and the command domain; `true` discovers in every domain via `+/5/+/...`. Property subscriptions and commands always use `domain`, so a device found in another domain gets neither. Clears the device table. |
-| `controller_setup_discovery()` | Subscribe to the `$state` and `$description` topics. Call after MQTT connects. |
-| `controller_mqtt_callback(char* topic, uint8_t* payload, unsigned int length)` | Feed one MQTT message to the controller. The payload must be null-terminated. |
-| `controller_loop()` | Call every loop: marks a device in `init` or `ready` as `lost` when no `$state` has arrived from it for 60 seconds. |
-| `controller_reset()` | Delete every discovered device and zero the statistics. |
+| `controller_init(MQTTClient* mqtt_client, const char* domain = top_level_topic(), bool discover_all_domains = true)` | Store the client and the discovery domain; `true` discovers in every domain via `+/5/+/$state`. A device's subscriptions and commands use the domain it was discovered in. Clears the device table. |
+| `controller_setup_discovery()` | Schedule the discovery subscription and every known device's subscriptions, which `controller_loop()` makes. Call after MQTT connects and after every reconnect. |
+| `controller_mqtt_callback(char* topic, uint8_t* payload, unsigned int length)` | Feed one MQTT message to the controller from the client's receive callback. It copies the message into the inbox; the payload need not be null-terminated. |
+| `controller_loop()` | Call every loop, after the client's `loop()`: handles the queued messages, then makes at most one pending subscription step. |
+| `controller_subscribe_device_properties(device_id)` | Schedule a discovered device's `$description` and property subscriptions again. |
+| `controller_reset()` | Delete every discovered device, drop queued messages and zero the statistics. |
 
 ### Reading discovered devices
 
@@ -58,9 +67,9 @@ To add your own logic, edit the `loop()` in the `ENABLE_CONTROLLER` branch of `s
 | `controller_list_device_info(ControllerDevice* devices, int max_devices)` | Count, copying the wrappers into `devices` |
 | `controller_get_stats(ControllerStats* stats)` | Fills `stats` |
 
-`ControllerDevice` holds the `Device*`, the device's `domain`, its own reported `state`, `last_seen_ms` (time of the last `$state`), `has_description`, `properties_subscribed`, and the `parent_id` and `root_id` from its description (empty for a root).
+`ControllerDevice` holds the `Device*`, the device's `domain`, its own reported `state`, `last_seen_ms` (when a message from the device was last handled; informational only, it changes no state), `has_description`, `properties_subscribed` (its `$description` and property subscriptions are made), `description_hash`, and the `parent_id` and `root_id` from its description (empty for a root).
 
-`ControllerStats` holds `devices_discovered`, `messages_received`, `commands_sent` and `last_discovery_ms`. Its `properties_discovered` field counts devices whose `$description` has arrived, not properties.
+`ControllerStats` holds `devices_discovered`, `messages_received`, `messages_dropped`, `commands_sent` and `last_discovery_ms`. Its `properties_discovered` field counts devices whose `$description` has arrived, not properties.
 
 ### Nested devices
 
@@ -75,7 +84,7 @@ To add your own logic, edit the `loop()` in the `ENABLE_CONTROLLER` branch of `s
 
 ### Sending commands
 
-`controller_set_property(device_id, node_id, property_id, value)` publishes `value` non-retained at QoS 0 to `<domain>/5/<device-id>/<node-id>/<property-id>/set`. It returns `false` without publishing when MQTT is disconnected, or when the property is unknown or not settable.
+`controller_set_property(device_id, node_id, property_id, value)` publishes `value` non-retained at QoS 0 to `<domain>/5/<device-id>/<node-id>/<property-id>/set`. It returns `false` without publishing when MQTT is disconnected, when the property is unknown or not settable, or when the topic is over `HOMIE_TOPIC_MAX` characters.
 
 ```cpp
 Property* state = controller_get_property("relay-device-id", "relay1", "state");
@@ -99,6 +108,7 @@ Remove the override to build the firmware again.
 ## Limits
 
 - At most `MAX_DISCOVERED_DEVICES` (16) devices; further devices are not tracked.
-- Device ids and parent/root ids are stored in 32-byte buffers and domains in 16-byte buffers.
-- Homie devices publish `$state` when it changes, not periodically, so the 60-second timeout in `controller_loop()` also marks an idle, healthy device `lost`.
+- Ids are held up to the limits in [`include/homie/homie_limits.h`](../include/homie/homie_limits.h): device, parent and root ids `HOMIE_DEVICE_ID_MAX` (63), node and property ids 31, domains `HOMIE_TOPIC_PREFIX_MAX` (7). A message whose topic has a longer level is ignored, and a longer parent or root id in a description is left empty, rather than stored truncated.
+- A changed `$description` adds the nodes it names that the device does not have yet; nodes it already has keep the properties first described.
+- A device whose retained topics together exceed the inbox overflows it on every re-subscribe, so it logs a drop and is re-subscribed every five seconds. Raise `CONTROLLER_INBOX_BYTES` for it.
 - Each discovered `Device` is allocated with `new`, and `$description` parsing uses ArduinoJson documents.
