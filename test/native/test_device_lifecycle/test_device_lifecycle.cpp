@@ -11,11 +11,6 @@
 #include <homie/Device.h>
 #include "../support/fake_transport.h"
 #include "../support/log_capture.h"
-#include <homie/homie_settable.h>
-
-// Defined by the ESP32 port until the settable table moves into the core; no test here
-// registers a /set topic.
-void subscribe_for_callbacks(const char*, property_settable_callback_t, Property*) {}
 
 // ---- helpers ----------------------------------------------------------------------------
 

@@ -42,7 +42,6 @@ char topic_device[HOMIE_DEVICE_TOPIC_MAX + 1] = {0};
 // Static LWT topic buffer - must persist after broker_connect() returns
 // (pointer corruption fix per arduino-mqtt issue #89)
 static char lwt_topic[HOMIE_TOPIC_MAX + 1] = {0};
-int num_subscribers = 0;
 
 // ============================================================================
 // MQTT Publish Queue - for thread-safe publishing from other tasks/cores
@@ -98,11 +97,11 @@ struct MqttQueueItem {
 
 static QueueHandle_t mqtt_publish_queue = nullptr;
 
-// Defined below, next to the settable table it walks; mqtt_process_queue() runs it.
-static bool dispatch_settable(const char* topic, const char* value);
+static void settable_table_setup();
 
-// Initialize the MQTT publish queue (call from setup)
+// Initialize the MQTT publish queue and the settable table (call from setup)
 void mqtt_queue_init() {
+    settable_table_setup();
     if (mqtt_publish_queue == nullptr) {
         mqtt_publish_queue = xQueueCreate(MQTT_QUEUE_SIZE, sizeof(MqttQueueItem));
         if (mqtt_publish_queue != nullptr) {
@@ -182,14 +181,14 @@ void mqtt_process_queue() {
         processed++;
         if (item.kind == MQTT_QUEUE_SET) {
             // Runs the full settable contract — validate, store, driver, publish — here
-            // rather than in the receive callback. dispatch_settable() publishes directly,
+            // rather than in the receive callback. settable_dispatch() publishes directly,
             // which is safe and required; see the note on MqttQueueKind.
             // NUL-terminated into a local because the queue carries an explicit length
             // and a 256-byte payload fills item.payload with no room for a terminator.
             char value[MQTT_PAYLOAD_MAX + 1];
             memcpy(value, item.payload, item.length);
             value[item.length] = '\0';
-            if (!dispatch_settable(item.topic, value)) {
+            if (!settable_dispatch(item.topic, value)) {
                 // The property was registered when the message arrived, so losing it in
                 // between means it was torn down — worth saying, not worth retrying.
                 Serial.printf("MQTT: queued /set '%s' no longer has a settable property\n",
@@ -208,9 +207,10 @@ void mqtt_process_queue() {
     }
 }
 
-// Heap-allocated on first subscription (not a static array: see Device.cpp's
-// _description_json comment). settable_properties[i] indexing works unchanged
-// since a pointer subscripts identically to an array.
+// Storage for the core's settable table (homie/homie_settable.h), bound by
+// mqtt_queue_init(), which setup_broker() runs before anything registers a /set topic.
+// Heap, allocated once (not a static array: see the _description_json comment in the
+// core's src/homie/Device.cpp).
 //
 // Sized to the device rather than to a constant. settable_table_capacity() is emitted
 // into src/homie.cpp by ./ebus-esp32 generate (every settable property in device.yml,
@@ -221,29 +221,20 @@ void mqtt_process_queue() {
 #define SETTABLE_TABLE_DEFAULT 32
 __attribute__((weak)) uint16_t settable_table_capacity() { return SETTABLE_TABLE_DEFAULT; }
 
-static int settable_capacity = 0;
-static subscribed_settable_property_t* settable_properties = nullptr;
-static subscribed_settable_property_t* ensure_settable_properties() {
-  if (settable_properties == nullptr) {
+static void settable_table_setup() {
+  static bool done = false;
+  if (done) return;
+  done = true;
 #ifdef MAX_SETTABLE_SUBSCRIBERS
-    settable_capacity = MAX_SETTABLE_SUBSCRIBERS;
+  int capacity = MAX_SETTABLE_SUBSCRIBERS;
 #else
-    settable_capacity = settable_table_capacity();
+  int capacity = settable_table_capacity();
 #endif
-    // (): value-initialise. Belt-and-braces with the struct's member initializers.
-    settable_properties = new subscribed_settable_property_t[settable_capacity]();
-    Serial.printf("MQTT: settable subscriber table: %d entries (%u bytes)\n", settable_capacity,
-                  (unsigned)(settable_capacity * sizeof(subscribed_settable_property_t)));
-  }
-  return settable_properties;
-}
-
-// Every registration path refuses a topic once the table is full; this says how to fix it.
-static void report_settable_table_full(const char* topic) {
-  Serial.printf("MQTT: **ERROR -- settable subscriber table full (%d); /set for '%s' NOT "
-                "registered. ./ebus-esp32 generate sizes it from the settable properties in "
-                "device.yml; for entries added at runtime, build with "
-                "-DMAX_SETTABLE_SUBSCRIBERS=<n> in build_src_flags\n", settable_capacity, topic);
+  // (): value-initialise. Belt-and-braces with the struct's member initializers.
+  subscribed_settable_property_t* storage = new subscribed_settable_property_t[capacity]();
+  Serial.printf("MQTT: settable subscriber table: %d entries (%u bytes)\n", capacity,
+                (unsigned)(capacity * sizeof(subscribed_settable_property_t)));
+  settable_table_bind(storage, capacity, &mqtt_transport, node_entity_settable_call);
 }
 
 // Fallback callback for unhandled messages (used by controller)
@@ -422,186 +413,6 @@ void generateTopics() {
   snprintf(topic_device, sizeof(topic_device), "%s/%s", HOMIE_TOPIC_PREFIX, getDeviceID());
 }
 
-// A table entry holds the topic in a fixed char[]; refuse one that does not fit rather
-// than truncate it (a truncated key never matches an inbound /set).
-static bool settable_topic_fits(const char* topic) {
-  size_t len = strlen(topic);
-  if (len < sizeof(settable_properties[0].topic)) return true;
-  Serial.printf("MQTT: /set topic is %u bytes, over the %u-byte limit; not registered: %s\n",
-                (unsigned)len, (unsigned)(sizeof(settable_properties[0].topic) - 1), topic);
-  return false;
-}
-
-void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb, Property* instance) {
-   ensure_settable_properties();
-   if (!settable_topic_fits(topic)) return;
-   // Check if topic already registered (avoid duplicates on reconnection)
-   for(int i=0; i<num_subscribers; i++) {
-     if (strcmp(settable_properties[i].topic, topic) == 0) {
-       // Already registered, update callback/instance in case they changed
-       settable_properties[i].property_callback = cb;
-       settable_properties[i].instance = instance;
-       return;
-     }
-   }
-   if (num_subscribers >= settable_capacity) {
-     report_settable_table_full(topic);
-     return;
-   }
-   // New subscription. Null the entity fields explicitly: an entry created here may
-   // never be visited by entity_subscribe_for_callbacks(), and dispatch branches on them.
-   strlcpy(settable_properties[num_subscribers].topic, topic, sizeof(settable_properties[0].topic));
-   settable_properties[num_subscribers].property_callback = cb;
-   settable_properties[num_subscribers].instance = instance;
-   settable_properties[num_subscribers].entity_callback = nullptr;
-   settable_properties[num_subscribers].entity = nullptr;
-   num_subscribers++;
-}
-
-// D3: register a per-property fn-ptr handler (+context) for a /set topic. Updates an
-// existing entry's handler in place (reconnect-safe), else appends a new subscriber.
-void subscribe_settable_handler(const char* topic, settable_handler_t handler, void* ctx) {
-   ensure_settable_properties();
-   if (!settable_topic_fits(topic)) return;
-   for (int i = 0; i < num_subscribers; i++) {
-     if (strcmp(settable_properties[i].topic, topic) == 0) {
-       settable_properties[i].handler = handler;
-       settable_properties[i].handler_ctx = ctx;
-       return;
-     }
-   }
-   if (num_subscribers >= settable_capacity) {
-     report_settable_table_full(topic);
-     return;
-   }
-   // Null the property/entity fields explicitly. A topic registered ONLY here — a
-   // NodeProperty::on_set() handler, or a watch on a device attribute like $state — has
-   // no Property or NodeEntity behind it, and dispatch tests both before calling.
-   strlcpy(settable_properties[num_subscribers].topic, topic, sizeof(settable_properties[0].topic));
-   settable_properties[num_subscribers].handler = handler;
-   settable_properties[num_subscribers].handler_ctx = ctx;
-   settable_properties[num_subscribers].property_callback = nullptr;
-   settable_properties[num_subscribers].instance = nullptr;
-   settable_properties[num_subscribers].entity_callback = nullptr;
-   settable_properties[num_subscribers].entity = nullptr;
-   num_subscribers++;
-}
-
-
-void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_t cb, NodeEntity* entity) {
-   ensure_settable_properties();
-   if (!settable_topic_fits(topic)) return;
-   for(int i=0;i<num_subscribers;i++) {
-     if (strcmp(settable_properties[i].topic, topic) == 0) {
-       //add entity pointer
-       Serial.printf("ENTITY: Callback Subscription: %s SUCCESS\n", topic);
-       settable_properties[i].entity_callback = cb;
-       settable_properties[i].entity = entity;
-       return;
-     }
-   }
-   // Topic not found — create entry (Property::subscribe may not have run yet)
-   if (num_subscribers < settable_capacity) {
-     Serial.printf("ENTITY: Callback Subscription: %s CREATED NEW\n", topic);
-     strlcpy(settable_properties[num_subscribers].topic, topic, sizeof(settable_properties[0].topic));
-     settable_properties[num_subscribers].property_callback = nullptr;
-     settable_properties[num_subscribers].instance = nullptr;
-     settable_properties[num_subscribers].entity_callback = cb;
-     settable_properties[num_subscribers].entity = entity;
-     num_subscribers++;
-     if (mqtt_transport.connected()) {
-       mqtt_transport.subscribe(topic, 0);
-     }
-   } else {
-     report_settable_table_full(topic);
-   }
-}
-
-// Call the driver behind one subscriber: the D3 fn-ptr handler, then the entity callback
-// (Property* overload when a Homie Property exists, else the name-based one with the
-// property id parsed back out of the topic). Returns false if a driver refused the value,
-// true if every driver present accepted it or there is none. A handler that refuses stops
-// the chain: the entity callback is not called.
-static bool call_settable_driver(subscribed_settable_property_t* s, const char* topic,
-                                 const char* value) {
-  bool accepted = true;
-  if (s->handler) {
-      Serial.printf("MQTT: Invoking settable handler for topic '%s'\n", topic);
-      accepted = s->handler(s->handler_ctx, value);
-  }
-  if (accepted && s->entity_callback && s->entity) {
-      if (s->instance) {
-          // Homie Property exists — use Property* overload
-          Serial.printf("MQTT: Invoking entity callback for topic '%s'\n", topic);
-          accepted = (s->entity->*s->entity_callback)(s->instance);
-      } else {
-          // NodeProperty settable — extract property ID from topic, call name-based overload
-          const char* set_slash = strrchr(topic, '/');  // /set
-          if (set_slash && set_slash > topic) {
-              const char* p = set_slash - 1;
-              while (p > topic && *p != '/') p--;
-              if (*p == '/') p++;
-              char pid[HOMIE_PROPERTY_ID_MAX + 1];
-              int plen = set_slash - p;
-              if (plen > HOMIE_PROPERTY_ID_MAX) plen = HOMIE_PROPERTY_ID_MAX;
-              strncpy(pid, p, plen);
-              pid[plen] = '\0';
-              Serial.printf("MQTT: Invoking entity callback '%s'='%s'\n", pid, value);
-              accepted = s->entity->entity_settable_callback(pid, value);
-          }
-      }
-  }
-  return accepted;
-}
-
-// Deliver `value` to every settable subscriber registered for `topic`. For one with a
-// Homie Property: validate the payload against its datatype and format (an invalid one is
-// logged and goes no further), store it so the driver can read property->value(), and
-// call the driver. Only if the driver accepts are the value and $target published (the
-// value only if the driver did not queue a publish of it already); if it refuses, the
-// property's previous value is put back and nothing is published.
-// Returns true if at least one subscriber matched.
-//
-// Factored out of subscriber_callback() so deliver_local_set() takes the IDENTICAL route
-// as an inbound message. One dispatch path, so a driver never needs to care where a set
-// came from. Both must run on the main task (the MQTT loop runs in loop(); see
-// deliver_local_set() in mqtt_client.h), which is what lets the snapshot go without a lock.
-static bool dispatch_settable(const char* topic, const char* value) {
-  bool handled = false;
-  for(int i=0;i<num_subscribers;i++) {
-    subscribed_settable_property_t* s = &settable_properties[i];
-    if (strcmp(s->topic, topic) != 0) continue;
-    handled = true;
-    Property* prop = s->property_callback ? s->instance : nullptr;
-    Property::ValueSnapshot before;
-    uint32_t queued_before = 0;
-    if (prop) {
-      prop->save_value(&before);
-      if (!(prop->*s->property_callback)(value)) continue;   // invalid: logged, not stored
-      queued_before = prop->queued_count();
-    }
-    bool accepted = call_settable_driver(s, topic, value);
-    if (!prop) continue;
-    if (accepted) {
-      prop->publish_set(value, prop->queued_count() != queued_before);
-    } else {
-      prop->restore_value(&before);
-      Serial.printf("MQTT: '%s' = '%s' refused by its driver, not published\n", topic, value);
-    }
-  }
-  return handled;
-}
-
-// Is a settable property registered for this topic? subscriber_callback() defers the
-// dispatch but must still decide NOW whether the message is ours or the fallback's,
-// because the payload buffer is only valid until it returns.
-static bool is_settable_topic(const char* topic) {
-  for (int i = 0; i < num_subscribers; i++) {
-    if (strcmp(settable_properties[i].topic, topic) == 0) return true;
-  }
-  return false;
-}
-
 // Record an inbound /set on the publish queue for mqtt_process_queue() to dispatch.
 // Called from the receive callback, so it only copies: no publish, no driver, no client
 // call. A refusal here is logged and the command is dropped — dispatching it from the
@@ -640,24 +451,6 @@ static bool mqtt_queue_set(const char* topic, const char* payload, int length) {
   return true;
 }
 
-// Set a property from INSIDE the firmware — no broker, no network, no loopback publish.
-// Anything that needs to actuate another node by topic uses this, and it keeps working
-// with the broker unreachable. The property's own publish() (called by the driver's
-// setter) is what reports the resulting value back to MQTT, exactly as it would for a
-// remote /set.
-//
-// `topic` is the full /set topic, e.g. "homie/5/<device-id>/relay1/state/set".
-// Returns false if no settable property is registered for it — the caller should treat
-// that as a configuration error (bad node/property id), not a transient failure.
-bool deliver_local_set(const char* topic, const char* value) {
-  Serial.printf("MQTT: local set '%s' = '%s'\n", topic, value);
-  bool handled = dispatch_settable(topic, value);
-  if (!handled) {
-    Serial.printf("MQTT: local set NOT DELIVERED — no settable property registered for '%s'\n", topic);
-  }
-  return handled;
-}
-
 // MQTT Subscriber callback
 //
 // all subscriptions arrive here
@@ -688,7 +481,7 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
   // Route to a subscriber property by RECORDING the message, not by dispatching it: the
   // dispatch publishes and runs driver code, and neither may happen inside this callback.
   // mqtt_process_queue() does it from loop_mqtt(). See the note on MqttQueueKind.
-  if (is_settable_topic(topic)) {
+  if (settable_is_registered(topic)) {
     mqtt_queue_set(topic, payload_buf, length);
   } else if (_fallback_callback) {
     // No property owns this topic: hand it to the fallback (e.g. the controller). Pass
@@ -775,9 +568,9 @@ static bool broker_connect() {
   Serial.printf("MQTT: connected to %s\n", mqtt_host);
 
   // QoS 0, the library default, which /set requires.
-  for (int i = 0; i < num_subscribers; i++) {
-    mqtt_client.subscribe(settable_properties[i].topic);
-    Serial.printf("MQTT: subscribed '%s'\n", settable_properties[i].topic);
+  for (int i = 0; i < settable_count(); i++) {
+    mqtt_client.subscribe(settable_topic(i));
+    Serial.printf("MQTT: subscribed '%s'\n", settable_topic(i));
   }
 
   if (_reconnect_callback) _reconnect_callback();

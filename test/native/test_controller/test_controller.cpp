@@ -4,14 +4,9 @@
 
 #include <unity.h>
 #include <homie/controller.h>
-#include <homie/homie_settable.h>
 #include "../support/fake_clock.h"
 #include "../support/fake_transport.h"
 #include "../support/log_capture.h"
-
-// Defined by the ESP32 port until the settable table moves into the core. A controller
-// builds its devices without subscribing their properties, so nothing calls it here.
-void subscribe_for_callbacks(const char*, property_settable_callback_t, Property*) {}
 
 static FakeTransport t;
 

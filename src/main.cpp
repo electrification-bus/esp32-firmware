@@ -303,7 +303,8 @@ static void wait_for_broker() {
 static void setup_broker(mqtt_reconnect_callback_t on_reconnect) {
     // Initialize MQTT publish queue before setup_mqtt (for thread-safe publishing). It
     // also carries inbound messages for settable topics, the own-$state watch among
-    // them, out of the receive callback; without it they are refused.
+    // them, out of the receive callback; without it they are refused. It sets up the
+    // settable table too, which must exist before anything registers a /set topic.
     mqtt_queue_init();
 
     wait_for_broker();

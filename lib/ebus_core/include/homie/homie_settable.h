@@ -8,6 +8,7 @@
 // both of which an incomplete type satisfies.
 class Property;
 class NodeEntity;
+class HomieTransport;
 
 // Validates and stores a /set payload on the Homie property (Property::store_set_payload).
 typedef bool (Property::*property_settable_callback_t)(const char* payload);
@@ -34,6 +35,40 @@ struct subscribed_settable_property_t {
     settable_handler_t handler = nullptr;   // D3: per-property fn-ptr handler
     void* handler_ctx = nullptr;            // D3: opaque context for handler
 };
+
+// Calls a driver's settable callback for the table. Defined by the code that defines
+// NodeEntity (src/node/NodeEntity.cpp on the ESP32), so the core needs NodeEntity only as
+// a pointer. `instance` is the Homie Property behind the topic, for the
+// entity_settable_callback_t overload; when it is null (a settable known only to a
+// NodeProperty), the name-based overload gets `property_id`, parsed from the topic.
+typedef bool (*settable_entity_call_t)(NodeEntity* entity, entity_settable_callback_t cb,
+                                       Property* instance, const char* property_id,
+                                       const char* value);
+
+// Give the table its storage, `capacity` entries the caller owns for as long as the table
+// is in use (the core never allocates). `transport` is used to subscribe a topic
+// registered while connected; `entity_call` reaches drivers. Binding empties the table, so
+// bind once, before anything registers.
+void settable_table_bind(subscribed_settable_property_t* storage, int capacity,
+                         HomieTransport* transport, settable_entity_call_t entity_call);
+
+// Registered topics, for the port to re-subscribe after a (re)connect.
+int settable_count();
+const char* settable_topic(int i);
+
+// Subscribe `topic` at QoS 0 now if the bound transport is connected. Returns whether it
+// subscribed; a registered topic is re-subscribed at every connect either way.
+bool settable_subscribe_now(const char* topic);
+
+// For the port's receive callback, which must decide at once whether a message is a /set
+// it should queue: is any entry registered for `topic`?
+bool settable_is_registered(const char* topic);
+
+// Run a /set: validate and store it on the Property, call the driver, and publish the
+// value and $target if the driver accepted it (or put the old value back if it refused).
+// Returns false if no entry matches. Main task only, and never from inside the MQTT
+// receive callback: it publishes, and drivers actuate hardware.
+bool settable_dispatch(const char* topic, const char* value);
 
 void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb, Property* instance);
 void entity_subscribe_for_callbacks(const char* topic, entity_settable_callback_t cb, NodeEntity* entity);

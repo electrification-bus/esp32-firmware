@@ -60,3 +60,9 @@ class NodeEntity {
         int _num_nodes = 0;
         int _num_properties_mapped = 0;
 };
+
+// The settable table's driver call (settable_entity_call_t in homie/homie_settable.h): the
+// entity_settable_callback_t overload when `instance` is set, else the name-based one.
+// The port passes it to settable_table_bind().
+bool node_entity_settable_call(NodeEntity* entity, entity_settable_callback_t cb,
+                               Property* instance, const char* property_id, const char* value);

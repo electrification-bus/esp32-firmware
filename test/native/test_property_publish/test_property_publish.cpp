@@ -9,18 +9,8 @@
 #include "../support/fake_transport.h"
 #include "../support/log_capture.h"
 
-// Records what Property::subscribe() registers. The ESP32 port defines the real one until
-// the settable table moves into the core.
-static int _registered = 0;
-static char _registered_topic[HOMIE_TOPIC_MAX + 1];
-void subscribe_for_callbacks(const char* topic, property_settable_callback_t cb, Property* instance) {
-    (void)cb;
-    (void)instance;
-    _registered++;
-    snprintf(_registered_topic, sizeof(_registered_topic), "%s", topic);
-}
-
 static FakeTransport t;
+static subscribed_settable_property_t _table[8];
 static Device dev;
 static Node* node = nullptr;
 
@@ -30,8 +20,7 @@ void setUp(void) {
     g_log.clear();
     fake_clock_bind();
     g_clock.reset();
-    _registered = 0;
-    _registered_topic[0] = '\0';
+    settable_table_bind(_table, 8, &t, nullptr);
     if (!node) {
         dev.init("Dev", "dev", "generic", &t);
         node = dev.addNode("n", "N", "generic");
@@ -164,8 +153,8 @@ static void test_subscribe_registers_the_set_topic_at_qos_0(void) {
     TEST_ASSERT_EQUAL_INT(FakeTransport::SUBSCRIBE, t.at(0).kind);
     TEST_ASSERT_EQUAL_STRING("homie/5/dev/n/relay/set", t.at(0).topic);
     TEST_ASSERT_EQUAL_INT(0, t.at(0).qos);
-    TEST_ASSERT_EQUAL_INT(1, _registered);
-    TEST_ASSERT_EQUAL_STRING("homie/5/dev/n/relay/set", _registered_topic);
+    TEST_ASSERT_EQUAL_INT(1, settable_count());
+    TEST_ASSERT_EQUAL_STRING("homie/5/dev/n/relay/set", settable_topic(0));
     TEST_ASSERT_EQUAL_INT(0, g_clock.sleeps);
 }
 
@@ -179,7 +168,7 @@ static void test_subscribe_retries_twice_then_gives_up(void) {
     TEST_ASSERT_EQUAL_INT(3, t.count_of(FakeTransport::SUBSCRIBE));
     TEST_ASSERT_EQUAL_INT(2, g_clock.sleeps);
     TEST_ASSERT_EQUAL_UINT32(750, g_clock.slept_ms);
-    TEST_ASSERT_EQUAL_INT(0, _registered);
+    TEST_ASSERT_EQUAL_INT(0, settable_count());
     TEST_ASSERT_NOT_NULL(strstr(g_log.last, "FAILED TO SUBSCRIBE TO PROPERTY SET TOPIC"));
 }
 
@@ -191,7 +180,7 @@ static void test_subscribe_while_disconnected_does_nothing(void) {
     p.subscribe();
 
     TEST_ASSERT_EQUAL_INT(0, t.count());
-    TEST_ASSERT_EQUAL_INT(0, _registered);
+    TEST_ASSERT_EQUAL_INT(0, settable_count());
 }
 
 int main(int argc, char** argv) {

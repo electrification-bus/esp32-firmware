@@ -69,3 +69,9 @@ bool NodeEntity::entity_settable_callback(const char* property_id, const char* v
         property_id, value, _homie_node_id);
     return true;
 }
+
+bool node_entity_settable_call(NodeEntity* entity, entity_settable_callback_t cb,
+                               Property* instance, const char* property_id, const char* value) {
+    if (instance) return (entity->*cb)(instance);
+    return entity->entity_settable_callback(property_id, value);
+}
