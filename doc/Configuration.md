@@ -113,7 +113,7 @@ Or skip the bootstrap entirely — if you don't need any overrides, leave `platf
 
 | Override | When to use |
 |---|---|
-| `upload_speed = 115200` | CH340 USB-serial chip (Olimex POE-ISO) sometimes drops bytes at the 921600 default |
+| `upload_speed = 115200` | A USB-serial adapter that fails at the 460800 default |
 | `upload_port = /dev/cu.usbserial-XXXX` | Pin to a specific board when you have multiple plugged in |
 | `monitor_port = /dev/cu.usbserial-XXXX` | Same, for `pio device monitor` |
 | `build_flags = ${common.build_flags} <the env's own flags> -DMY_DEBUG=1` | Add a debug define without modifying the shared base. The key **replaces** the env's whole `build_flags`, so repeat all of the env's own flags from `platformio/platformio.ini` after `${common.build_flags}` (`platformio_local.ini.example` shows the full list for `esp32-poe-iso`). Referring to the env's own value (`${env:esp32-poe-iso.build_flags}`) is an infinite-recursion error |
