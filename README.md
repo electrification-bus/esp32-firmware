@@ -80,6 +80,8 @@ src/                          Implementation files
   main.cpp                    Arduino setup() / loop()
 include/                      Headers for src/ (same subdirectories), plus homie.h
 lib/                          Component libraries, one PlatformIO library per bus
+  ebus_core/                  Portable core (standard library only): Homie ids, payloads,
+                              limits, broker discovery; see lib/ebus_core/README.md
   ble/ gpio/ i2c/ modbus/ spi/  Drivers; each <name>.yml is a component device.yml can use
   sim/                        battery_sim and proxy_info, used by the nested bridge example
   platform/                   Modbus RTU master and queue shared by the modbus/ drivers

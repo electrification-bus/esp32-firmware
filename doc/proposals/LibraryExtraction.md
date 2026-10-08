@@ -32,7 +32,7 @@ Two further details matter:
 
 **The blockers are header hygiene, not architecture.** `<MQTT.h>` and `<Arduino.h>` leak into public headers (`Node.h:3`, `controller.h:2,4`, `mqtt_client.h:2,4`), and that leak — not any real design entanglement — is what makes the layer unusable elsewhere.
 
-Already framework-free today, compiling against libc alone: `homie.h`, `homie_enums.h`, `homie_descriptor.h`, `homie_datatype.h`, `homie_id.h`, `homie_globals.h`, `ebus_vocabulary.h`, `mdns_strings.h`, `src/homie/homie_datatype.cpp`, `src/homie/homie_id.cpp`. The last two have been compiled and unit-tested with Apple clang on macOS, so the portable core is not hypothetical.
+Already framework-free today, compiling against libc alone: `homie.h`, `homie_enums.h`, `homie_descriptor.h`, `homie_datatype.h`, `homie_id.h`, `homie_globals.h`, `ebus_vocabulary.h`, `mdns_strings.h`, `homie_datatype.cpp`, `homie_id.cpp` (now in `lib/ebus_core/`). The last two have been compiled and unit-tested with Apple clang on macOS, so the portable core is not hypothetical.
 
 ## Library boundary — three artifacts
 

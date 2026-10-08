@@ -724,17 +724,18 @@ def settable_table_capacity(settable_count: int) -> int:
 
 # ── id and topic lengths ───────────────────────────────────────────────────────
 #
-# The firmware holds ids and topics in fixed buffers sized from include/homie/homie_limits.h
-# and truncates anything longer, which publishes and subscribes on topics that are not the
+# The firmware holds ids and topics in fixed buffers sized from homie_limits.h in the core
+# library (lib/ebus_core) and truncates anything longer, which publishes and subscribes on topics that are not the
 # property's own. generate computes every id and topic the firmware will build and refuses
 # one that does not fit. Not patched by the test sandbox: these read the real sources.
-_HOMIE_LIMITS_HEADER = ROOT / "include" / "homie" / "homie_limits.h"
+_HOMIE_LIMITS_HEADER = ROOT / "lib" / "ebus_core" / "include" / "homie" / "homie_limits.h"
+_HOMIE_LIMITS_NAME   = _HOMIE_LIMITS_HEADER.relative_to(ROOT).as_posix()   # for messages
 _CONFIG_H            = ROOT / "include" / "platform" / "config.h"
 _CONFIG_CPP          = ROOT / "src" / "platform" / "config.cpp"
 _HOMIE_LIMIT_NAMES   = ("HOMIE_DEVICE_ID_MAX", "HOMIE_NODE_ID_MAX", "HOMIE_PROPERTY_ID_MAX",
                         "HOMIE_TOPIC_MAX")
 # Topics are measured with the longer of the two prefixes (HOMIE_TOPIC_PREFIX in
-# include/homie/homie.h), so a device.yml that passes fits either build.
+# lib/ebus_core/include/homie/homie.h), so a device.yml that passes fits either build.
 _TOPIC_PREFIX        = "homie/5"
 _TARGET_SUFFIX       = "/$target"    # the longest suffix the firmware appends to a property topic
 _CHIP_ID_STANDIN     = "0" * 12      # ${chip_id}: the 6-byte eFuse MAC as 12 hex chars
@@ -763,9 +764,9 @@ def homie_limits() -> dict:
     return limits
 
 def sanitize_homie_id(value) -> str:
-    """sanitize_homie_id() in src/homie/homie_id.cpp, without its buffer limit: lowercase,
-    keep a-z 0-9, turn runs of '_' '.' '-' and whitespace into one '-' between kept
-    characters, drop everything else (non-ASCII bytes included)."""
+    """sanitize_homie_id() in lib/ebus_core/src/homie/homie_id.cpp, without its buffer
+    limit: lowercase, keep a-z 0-9, turn runs of '_' '.' '-' and whitespace into one '-'
+    between kept characters, drop everything else (non-ASCII bytes included)."""
     out, pending = [], False
     for b in str(value).encode("utf-8"):
         c = chr(b).lower() if b < 128 else ""
@@ -825,7 +826,7 @@ class IdLimits:
         if len(value) > limit:
             self.errors.append(f"{kind} id '{value}'{where} is {len(value)} chars; the "
                                f"firmware holds at most {limit} ({limit_name} in "
-                               f"include/homie/homie_limits.h)")
+                               f"{_HOMIE_LIMITS_NAME})")
 
     def check_setting(self, key: str, value: str, limit_key: str, source: str) -> None:
         limit = self.limits[limit_key]
@@ -839,7 +840,7 @@ class IdLimits:
             self.errors.append(f"property topic '{topic}' ({where}) is {len(topic)} chars; "
                                f"the firmware holds at most {limit} (HOMIE_TOPIC_MAX "
                                f"{self.limits['HOMIE_TOPIC_MAX']} in "
-                               f"include/homie/homie_limits.h, less {len(_TARGET_SUFFIX)} "
+                               f"{_HOMIE_LIMITS_NAME}, less {len(_TARGET_SUFFIX)} "
                                f"for '{_TARGET_SUFFIX}')")
 
     def exit_if_any(self, uses_chip_id: bool) -> None:
