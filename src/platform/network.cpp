@@ -794,7 +794,13 @@ void setup_ethernet() {
     esp_sleep_enable_timer_wakeup(10000);
     esp_deep_sleep_start();
   }
+#ifdef EBUS_ETH_PHY_TYPE
+  // The board variant's pins with a different PHY, e.g. ETH_PHY_LAN8720 on a wESP32
+  // older than the RTL8201 revision the framework's wesp32 variant assumes.
+  ETH.begin(EBUS_ETH_PHY_TYPE, ETH_PHY_ADDR, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_POWER, ETH_CLK_MODE);
+#else
   ETH.begin();
+#endif
 #endif
 }
 

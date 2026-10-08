@@ -181,7 +181,8 @@ Defined in [`platformio/platformio.ini`](platformio/platformio.ini). Run `./ebus
 | `esp32-poe-iso-wrover` | Same Olimex board with WROVER-E module (8 MB PSRAM) | Ethernet; NimBLE tuned for memory |
 | `esp32-poe-iso-16mb` | Same Olimex board, 16 MB flash variant | Ethernet; larger partition table |
 | `esp32-s3-devkitc-1` | Espressif ESP32-S3-DevKitC-1 | WiFi with a setup access point and captive portal; console on the UART port |
-| `wesp32-poe` | Silicognition wESP32 | Same OTA partition table and LittleFS filesystem as `esp32-poe-iso`; see [Board targets](doc/GenerateHomieDevice.md#board-targets) |
+| `wesp32-poe` | Silicognition wESP32 (RTL8201 Ethernet) | Same OTA partition table and LittleFS filesystem as `esp32-poe-iso`; see [Board targets](doc/GenerateHomieDevice.md#board-targets) |
+| `wesp32-poe-lan8720` | Silicognition wESP32, earlier revisions (LAN8720 Ethernet) | As `wesp32-poe` |
 | `seeed_xiao_esp32s3` | Seeed XIAO ESP32-S3 | Native USB only; WiFi with a setup access point, no Ethernet. 3.x only (no `-arduino2` twin) |
 | `*-arduino2` | The boards above, except the XIAO, on the legacy platform | arduino-esp32 2.0.17 / ESP-IDF 4.4.7, pinned. Kept for A/B until the 3.x port is verified on every board |
 
