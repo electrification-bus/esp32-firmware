@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - uses: actions/setup-python@v5
         with:
@@ -29,6 +31,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - uses: actions/setup-python@v5
         with:
@@ -41,67 +45,25 @@ jobs:
       - name: Run tests
         run: ./ebus-esp32 test
 
-  # The portable core must build with a plain C++17 compiler and nothing but its own
-  # include dir and ArduinoJson (fetched by its CMakeLists.txt): an Arduino, ESP-IDF or
-  # FreeRTOS header in any source or header fails here.
-  core-host-build:
-    name: Core host build (${{ matrix.cxx }})
+  # lib/ebus_core is a submodule of electrification-bus/cpp-sdk, whose own CI builds the
+  # core with GCC and Clang and runs the POSIX port. Here, only check that the pinned
+  # commit is a cpp-sdk release tag.
+  core-pin:
+    name: Core submodule is at a cpp-sdk tag
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        cxx: [g++, clang++]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure
-        run: >
-          cmake -S lib/ebus_core -B build-core
-          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
-          -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
-
-      - name: Build
-        run: cmake --build build-core --verbose
-
-  # The POSIX port (ports/posix): the core on Linux over Paho MQTT C, its demo programs,
-  # and end-to-end tests against a mosquitto each test starts on a free localhost port.
-  posix-port:
-    name: POSIX port (${{ matrix.cc }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - cc: gcc
-            cxx: g++
-          - cc: clang
-            cxx: clang++
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install mosquitto
-        run: sudo apt-get update && sudo apt-get install -y mosquitto
-
-      - name: Configure
-        run: >
-          cmake -S ports/posix -B build-posix
-          -DCMAKE_C_COMPILER=${{ matrix.cc }}
-          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
-          -DEBUS_POSIX_PAHO=fetch
-          -DEBUS_POSIX_WERROR=ON
-
-      - name: Build
-        run: cmake --build build-posix -j
-
-      - name: Test
-        run: ctest --test-dir build-posix --output-on-failure
-
-      - name: Upload test logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: posix-e2e-logs-${{ matrix.cc }}
-          path: build-posix/e2e
+      - name: Check the pinned commit
+        run: |
+          sha=$(git rev-parse HEAD:lib/ebus_core)
+          url=$(git config -f .gitmodules submodule.lib/ebus_core.url)
+          tag=$(git ls-remote --tags "$url" | awk -v s="$sha" '$1 == s { sub("refs/tags/", "", $2); sub("\\^\\{\\}", "", $2); print $2 }' | head -n 1)
+          if [ -z "$tag" ]; then
+            echo "::error::lib/ebus_core is at $sha, which is not a tag in $url"
+            exit 1
+          fi
+          echo "lib/ebus_core is at cpp-sdk $tag ($sha)"
 
   build:
     name: ${{ matrix.env }}
@@ -116,6 +78,8 @@ jobs:
           - esp32-s3-devkitc-1-arduino2
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - uses: actions/setup-python@v5
         with:

@@ -66,6 +66,9 @@ INCLUDE_DIR  = ROOT / "include"
 BUILD_DIR    = ROOT / "build"   # gitignored — generator scratch space, e.g. platformio.ini
 PLATFORMIO_INI = ROOT / "platformio" / "platformio.ini"
 NATIVE_TEST_DIR = ROOT / "test" / "native"   # Unity suites for [env:native]
+# The portable core is the git submodule lib/ebus_core (electrification-bus/cpp-sdk); its
+# own Unity suites in test/ also run under [env:native], with PLATFORMIO_TEST_DIR set.
+CORE_TEST_DIR  = LIB_DIR / "ebus_core" / "test"
 NATIVE_ENV     = "native"                     # host unit tests, not a board
 
 # The CLI builds into .pio/cli, never the .pio/build + .pio/libdeps the VSCode
@@ -872,6 +875,7 @@ def cmd_generate(args) -> None:
     os.environ[_GENERATED_ENV] = "1"
 
 def _generate(args) -> None:
+    require_core()
     device_yml = Path(args.device_yml)
     cfg        = load_device_yml(device_yml)
     device     = cfg.get("device", {})
@@ -2467,6 +2471,22 @@ def cmd_envs(args) -> None:
 # suite's runner looks the platform up from the default ./platformio.ini, which this
 # repo deliberately does not have.
 
+def require_core() -> None:
+    """Exit with a hint when the lib/ebus_core submodule is not checked out."""
+    if not (LIB_DIR / "ebus_core" / "library.json").is_file():
+        print("ERROR: lib/ebus_core is empty. It is a git submodule holding the eBus core "
+              "(electrification-bus/cpp-sdk); fetch it with:\n"
+              "  git submodule update --init", file=sys.stderr)
+        sys.exit(1)
+
+def core_test_suites() -> list:
+    """Names of the core's Unity suites in the submodule's test/, as `pio test -f`
+    filters relative to CORE_TEST_DIR."""
+    if not CORE_TEST_DIR.is_dir():
+        return []
+    return [d.name for d in sorted(CORE_TEST_DIR.iterdir())
+            if d.is_dir() and d.name.startswith("test_")]
+
 def native_test_suites() -> list:
     """Names of the Unity suites under test/native/, as `pio test -f` filters."""
     if not NATIVE_TEST_DIR.is_dir():
@@ -2475,15 +2495,22 @@ def native_test_suites() -> list:
             if d.is_dir() and d.name.startswith("test_")]
 
 def cmd_test(args) -> None:
-    suites = native_test_suites()
-    if not suites:
-        sys.exit(f"ERROR: no test suites under {NATIVE_TEST_DIR.relative_to(ROOT)}")
+    require_core()
+    core_env = pio_env()
+    core_env["PLATFORMIO_TEST_DIR"] = str(CORE_TEST_DIR)
+    # (label, pio -f filter, environment)
+    runs = [(s, s, pio_env()) for s in native_test_suites()]
+    runs += [(f"core/{s}", s, core_env) for s in core_test_suites()]
+    if not runs:
+        sys.exit(f"ERROR: no test suites under {NATIVE_TEST_DIR.relative_to(ROOT)} or "
+                 f"{CORE_TEST_DIR.relative_to(ROOT)}")
+    suites = [label for label, _, _ in runs]
     pio = find_pio()
     failed = []
-    for suite in suites:
+    for label, suite, env in runs:
         cmd = [pio, "test", "-e", NATIVE_ENV, "-c", str(PLATFORMIO_INI), "-f", suite]
-        if subprocess.run(cmd, cwd=ROOT, env=pio_env()).returncode != 0:
-            failed.append(suite)
+        if subprocess.run(cmd, cwd=ROOT, env=env).returncode != 0:
+            failed.append(label)
     print(f"\n--- {len(suites) - len(failed)}/{len(suites)} native test suites passed ---")
     for suite in failed:
         print(f"  FAILED: {suite}")

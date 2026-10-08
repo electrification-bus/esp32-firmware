@@ -1,6 +1,6 @@
 # Homie Controller
 
-A controller build discovers, monitors and commands other Homie 5 devices on the MQTT broker. Controller mode is exclusive: when `ENABLE_CONTROLLER` is defined, `src/main.cpp` compiles its controller branch instead of the device branch, so the board publishes no nodes or properties of its own. The controller API is declared in [`lib/ebus_core/include/homie/controller.h`](../lib/ebus_core/include/homie/controller.h) and implemented in `lib/ebus_core/src/homie/controller.cpp`, part of the portable core; it stores what it discovers in the same `Device`, `Node` and `Property` classes the device role uses.
+A controller build discovers, monitors and commands other Homie 5 devices on the MQTT broker. Controller mode is exclusive: when `ENABLE_CONTROLLER` is defined, `src/main.cpp` compiles its controller branch instead of the device branch, so the board publishes no nodes or properties of its own. The controller API is declared in [`lib/ebus_core/include/homie/controller.h`](https://github.com/electrification-bus/cpp-sdk/blob/main/include/homie/controller.h) and implemented in `lib/ebus_core/src/homie/controller.cpp`, part of the portable core; it stores what it discovers in the same `Device`, `Node` and `Property` classes the device role uses.
 
 ## Enabling it
 
@@ -108,7 +108,7 @@ Remove the override to build the firmware again.
 ## Limits
 
 - At most `MAX_DISCOVERED_DEVICES` (16) devices; further devices are not tracked.
-- Ids are held up to the limits in [`lib/ebus_core/include/homie/homie_limits.h`](../lib/ebus_core/include/homie/homie_limits.h): device, parent and root ids `HOMIE_DEVICE_ID_MAX` (63), node and property ids 31, domains `HOMIE_TOPIC_PREFIX_MAX` (7). A message whose topic has a longer level is ignored, and a longer parent or root id in a description is left empty, rather than stored truncated.
+- Ids are held up to the limits in [`lib/ebus_core/include/homie/homie_limits.h`](https://github.com/electrification-bus/cpp-sdk/blob/main/include/homie/homie_limits.h): device, parent and root ids `HOMIE_DEVICE_ID_MAX` (63), node and property ids 31, domains `HOMIE_TOPIC_PREFIX_MAX` (7). A message whose topic has a longer level is ignored, and a longer parent or root id in a description is left empty, rather than stored truncated.
 - A changed `$description` adds the nodes it names that the device does not have yet; nodes it already has keep the properties first described.
 - A device whose retained topics together exceed the inbox overflows it on every re-subscribe, so it logs a drop and is re-subscribed every five seconds. Raise `CONTROLLER_INBOX_BYTES` for it.
 - Each discovered `Device` is allocated with `new`, and `$description` parsing uses ArduinoJson documents.
