@@ -483,9 +483,8 @@ static bool on_state_observed(void* ctx, const char* value) {
 }
 
 // Publish `d` and its descendants again, children first as in publishTree(): $state init,
-// $description (the core skips one identical to the last it sent), every property value,
-// then the device's own state back. Unlike publishTree() it keeps each device's state, so
-// a proxied child that is "lost" stays lost.
+// $description, every property value, then the device's own state back. Unlike
+// publishTree() it keeps each device's state, so a proxied child that is "lost" stays lost.
 static void republish_tree(Device* d) {
     for (Device* c = d->firstChild(); c; c = c->nextSibling()) republish_tree(c);
     DeviceState state = d->state();
@@ -494,18 +493,28 @@ static void republish_tree(Device* d) {
     d->setState(state);
 }
 
-// Callback to re-publish state and re-subscribe settable properties after MQTT reconnection.
+// Device::publish() skips a $description identical to the last one the device sent,
+// trusting the broker to still hold the retained copy; this makes the next publish send it.
+static void forget_description_hashes(Device* d) {
+    d->forgetDescriptionHash();
+    for (Device* c = d->firstChild(); c; c = c->nextSibling()) forget_description_hashes(c);
+}
+
+// Callback to re-publish the tree and re-subscribe settable properties after MQTT
+// reconnection. Every reconnect republishes every $description and value, not only when
+// a held publish was lost (held_lost). Nothing on the connection says whether the broker
+// still holds the retained messages: CONNACK's session-present flag reports the session
+// (subscriptions, queued messages), not the retained store, and a broker restarted without
+// persistence has lost every retained message. A controller cannot use a device without
+// its $description, so the cost of one init -> ready cycle per device is taken every time.
 // The broker's Last Will marked the ROOT $state "lost" (which cascades lost to every
-// child per Homie 5), so re-assert $state for the whole device tree, not just the root.
-// The publishes held while the link was down have already been sent; when one could not
-// be held (a $description is larger than a hold entry), publish the whole tree again.
+// child per Homie 5), so $state is re-asserted for the whole device tree afterwards.
 void on_mqtt_reconnect(bool held_lost) {
     theDevice.mqttConnected();  // re-subscribe settable property /set topics
-    if (held_lost) {
-        republish_tree(&theDevice);
-        Serial.println("DEVICE: Re-published $description and values (whole tree): a "
-                       "retained publish was lost while the link was down");
-    }
+    forget_description_hashes(&theDevice);
+    republish_tree(&theDevice);
+    Serial.printf("DEVICE: Re-published $description and values (whole tree) after reconnect%s\n",
+                  held_lost ? "; a retained publish was lost while the link was down" : "");
     theDevice.publishStateTree();
     Serial.println("DEVICE: Re-published $state (whole tree) after reconnect");
 }
