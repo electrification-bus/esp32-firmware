@@ -230,7 +230,7 @@ A hand-coded `src/homie.cpp` is not checked. When the firmware has to cut a node
 
 ### Lifecycle: the `lost` cascade
 
-The whole tree shares one MQTT connection, so there is exactly one **Last Will**, set on the **root** device's `$state`. If the firmware dies ungracefully, the broker publishes `lost` to the root `$state`, and per Homie 5 every child in the tree is then `lost` too (consumers derive a child's effective state from both its own `$state` and its root's). Child devices neither need nor can have their own will. On MQTT reconnect the firmware re-asserts `$state` for the whole tree (`publishStateTree()`), clearing the cascade.
+The whole tree shares one MQTT connection, so there is exactly one **Last Will**, set on the **root** device's `$state`. If the firmware dies ungracefully, the broker publishes `lost` to the root `$state`, and per Homie 5 every child in the tree is then `lost` too (consumers derive a child's effective state from both its own `$state` and its root's). Child devices neither need nor can have their own will. On MQTT reconnect the firmware re-asserts `$state` for the whole tree (`publishStateTree()`), clearing the cascade. Before that it sends the retained publishes held while the link was down (the newest value per topic, up to `EBUS_MQTT_HOLD_ENTRIES`), and when one could not be held (a `$description` over `EBUS_MQTT_HOLD_PAYLOAD_MAX`, or the oldest entry of a full hold) it publishes every device's `$description` and values again, keeping each device's `$state`.
 
 ---
 
