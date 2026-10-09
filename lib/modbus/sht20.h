@@ -22,6 +22,6 @@ class SHT20 : public ModbusRegisterDevice {
     public:
         SHT20(const char* homie_node_id, Stream& serial,
                      int pin_rs485_a, int pin_rs485_b,
-                     uint8_t addr = SHT20_ADDR, bool useAsyncQueue = true);
+                     uint8_t addr, bool useAsyncQueue = true);
         ~SHT20() {};
 };

@@ -42,7 +42,7 @@ Add `-DENABLE_CONTROLLER` to the env's `build_src_flags` in `platformio_local.in
 
 ### 2. poe16-a — `esp32-poe-iso-16mb` — Modbus SHT20 + Eletechsup32
 
-Both devices share the RS485 bus at their default Modbus addresses, which differ: SHT20 `0x01` (`SHT20_ADDR`) and Eletechsup32 `0x04` (`INPUT32_ADDR`), both in `lib/platform/modbus/modbus_master.h`.
+Both devices share the RS485 bus and must differ in `config.address`, the Modbus slave address each one answers to. The `config_defaults` in their component ymls already differ — SHT20 `1`, Eletechsup32 `4` — so this pair works without stating either, but a second unit of the same part needs its own `address:` in `device.yml`.
 
 ```yaml
 nodes:

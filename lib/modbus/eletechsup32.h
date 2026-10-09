@@ -4,7 +4,7 @@
 
 class Eletechsup32 : public ModbusRTUEntity {
     public:
-        Eletechsup32(const char* homie_node_id, Stream& serial, int pin_rs485_a, int pin_rs485_b, uint8_t addr = INPUT32_ADDR);
+        Eletechsup32(const char* homie_node_id, Stream& serial, int pin_rs485_a, int pin_rs485_b, uint8_t addr);
         ~Eletechsup32(){};
         bool setup() override;
         uint8_t poll() override;

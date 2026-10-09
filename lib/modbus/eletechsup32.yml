@@ -32,8 +32,19 @@ implementation: homie-esp32-sdk
 #   nodes:
 #     - component: modbus/eletechsup32
 #       id: voltage-current-detector
+#       config:
+#         address: 4
+#
+# config.address is REQUIRED: the Modbus slave address this node answers to, 1..247, and
+# distinct per device on the bus. These modules ship as 4. There is no default here on
+# purpose — the address is a fact about the wiring, so a bus with two of anything is
+# described in device.yml rather than inherited from a component.
+#
+# Changing a unit's address is done on the unit — holding register 0x0101, function code
+# 0x06 on the XY-MD02 family — one at a time on an otherwise empty bus, since they all
+# ship answering the same address.
 generator:
   class: Eletechsup32
   header: modbus/eletechsup32.h
-  constructor: '("{id}", get_serial1(), {bus.rs485.pin_a}, {bus.rs485.pin_b})'
+  constructor: '("{id}", get_serial1(), {bus.rs485.pin_a}, {bus.rs485.pin_b}, {config.address})'
   # No lib_deps: modbus deps come from lib/platform/library.json (see sht20.yml).

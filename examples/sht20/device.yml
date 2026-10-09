@@ -45,3 +45,5 @@ buses:
 nodes:
   - component: modbus/sht20
     id: environment-sht20
+    config:
+      address: 1              # Modbus slave address, 1..247; distinct per device on the bus
