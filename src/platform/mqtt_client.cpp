@@ -10,6 +10,7 @@
 #include <node/NodeEntity.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include <ebus/mqtt/reconnect.h>
 
 // Fetching the broker's root CA needs a TLS handshake (~50 KB of heap). The POE-ISO
 // has no PSRAM; on arduino-esp32 2.0.x that was too tight, on 3.x it leaves room.
@@ -68,7 +69,9 @@ struct MqttQueueItem {
     char payload[MQTT_PAYLOAD_MAX];
     int  length;        // explicit byte count — carries 0x00 (empty-string value, C3)
     bool retained;
-    Property* source;   // told when this is sent or dropped (publish-on-change memo), or null
+    int8_t qos;
+    mqtt_publish_done_fn done;   // called once when this is sent or dropped, or null
+    void* ctx;                   // for done
     MqttQueueKind kind = MQTT_QUEUE_PUBLISH;   // every producer sets it; see the note below
 };
 
@@ -98,10 +101,32 @@ struct MqttQueueItem {
 static QueueHandle_t mqtt_publish_queue = nullptr;
 
 static void settable_table_setup();
+static void on_transport_connected(void* ctx, bool first, bool held_lost);
 
-// Initialize the MQTT publish queue and the settable table (call from setup)
+// The flash order needs every Homie topic and every property value to fit an entry.
+static_assert(EBUS_MQTT_HOLD_TOPIC_MAX >= HOMIE_TOPIC_MAX,
+              "the publish hold must take every Homie topic");
+static_assert(EBUS_MQTT_HOLD_PAYLOAD_MAX >= Property::VALUE_MAX,
+              "the publish hold must take every property value");
+
+// The publishes held while the broker link is down, sized by EBUS_MQTT_HOLD_* in
+// platformio.ini. Heap, allocated once, for the reason the settable table below is.
+static void publish_hold_setup() {
+  static bool done = false;
+  if (done) return;
+  done = true;
+  PublishHold* hold = new PublishHold();
+  mqtt_transport.set_hold(hold);
+  Serial.printf("MQTT: publish hold: %d entries, payload up to %d bytes (%u bytes)\n",
+                EBUS_MQTT_HOLD_ENTRIES, EBUS_MQTT_HOLD_PAYLOAD_MAX, (unsigned)sizeof(*hold));
+}
+
+// Initialize the MQTT publish queue, the publish hold and the settable table (call from
+// setup)
 void mqtt_queue_init() {
     settable_table_setup();
+    publish_hold_setup();
+    mqtt_transport.on_connected(on_transport_connected, nullptr);
     if (mqtt_publish_queue == nullptr) {
         mqtt_publish_queue = xQueueCreate(MQTT_QUEUE_SIZE, sizeof(MqttQueueItem));
         if (mqtt_publish_queue != nullptr) {
@@ -118,11 +143,17 @@ bool mqtt_queue_publish(const char* topic, const char* payload, bool retained) {
     return mqtt_queue_publish(topic, payload, (int)strlen(payload), retained);
 }
 
-// Length-aware variant: publishes exactly `length` bytes, so a single 0x00 byte
-// (the Homie empty-string value, C3) survives instead of being treated as a
-// null-terminated zero-length payload. memcpy (not strncpy) preserves embedded NULs.
 bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool retained,
                         Property* source) {
+    return mqtt_transport.queue_publish(topic, payload, length, retained, source);
+}
+
+// Length-aware: publishes exactly `length` bytes, so a single 0x00 byte (the Homie
+// empty-string value, C3) survives instead of being treated as a null-terminated
+// zero-length payload. memcpy (not strncpy) preserves embedded NULs.
+bool MqttClientTransport::queue_publish(const char* topic, const char* payload, int length,
+                                        bool retained, int qos, mqtt_publish_done_fn done,
+                                        void* ctx) {
     if (length < 0) length = 0;
     if (length > MQTT_PAYLOAD_MAX) {
         // Truncating a payload silently produces a subtly wrong retained value that looks
@@ -133,9 +164,10 @@ bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool
         length = MQTT_PAYLOAD_MAX;
     }
     if (mqtt_publish_queue == nullptr) {
+        // Before setup, so on the main task.
         Serial.println("MQTT: Queue not initialized, publishing directly");
-        bool ok = mqtt_client.publish(topic, payload, length, retained, homie_qos(retained));
-        if (source) source->queued_publish_done(payload, length, ok);
+        bool ok = mqtt_transport.publish(topic, payload, length, retained, qos);
+        if (done) done(ctx, payload, length, ok);
         return ok;
     }
 
@@ -149,7 +181,7 @@ bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool
             Serial.printf("MQTT: **ERROR -- topic is %u chars, over %d; publish refused: %s\n",
                           (unsigned)topic_len, MQTT_TOPIC_MAX - 1, topic);
         }
-        if (source) source->queued_publish_done(payload, length, false);
+        if (done) done(ctx, payload, length, false);
         return false;
     }
 
@@ -158,13 +190,15 @@ bool mqtt_queue_publish(const char* topic, const char* payload, int length, bool
     memcpy(item.payload, payload, length);
     item.length = length;
     item.retained = retained;
-    item.source = source;
+    item.qos = (int8_t)qos;
+    item.done = done;
+    item.ctx = ctx;
     item.kind = MQTT_QUEUE_PUBLISH;
 
     // Non-blocking queue send (don't wait if queue is full)
     if (xQueueSend(mqtt_publish_queue, &item, 0) != pdTRUE) {
         Serial.println("MQTT: Queue full, message dropped");
-        if (source) source->queued_publish_done(payload, length, false);
+        if (done) done(ctx, payload, length, false);
         return false;
     }
     return true;
@@ -196,14 +230,12 @@ void mqtt_process_queue() {
             }
             continue;
         }
-        bool ok = false;
-        if (mqtt_client.connected()) {
-            // Length-aware publish so an empty-string value (single 0x00 byte) is sent
-            // intact rather than collapsing to a zero-length (retract) payload (C3).
-            // Retained -> configured QoS (default 2), non-retained -> QoS 0 (C4).
-            ok = mqtt_client.publish(item.topic, item.payload, item.length, item.retained, homie_qos(item.retained));
-        }
-        if (item.source) item.source->queued_publish_done(item.payload, item.length, ok);
+        // Length-aware publish so an empty-string value (single 0x00 byte) is sent intact
+        // rather than collapsing to a zero-length (retract) payload (C3). While the link
+        // is down the transport holds or drops it and reports it not sent.
+        bool ok = mqtt_transport.publish(item.topic, item.payload, item.length,
+                                         item.retained, item.qos);
+        if (item.done) item.done(item.ctx, item.payload, item.length, ok);
     }
 }
 
@@ -247,8 +279,114 @@ void mqtt_set_fallback_callback(mqtt_fallback_callback_t callback) {
 // Reconnect callback (to re-publish state after reconnection)
 static mqtt_reconnect_callback_t _reconnect_callback = nullptr;
 
+static void on_transport_connected(void* ctx, bool first, bool held_lost) {
+    (void)ctx;
+    Serial.printf("MQTT: connected (%s)%s\n", first ? "first" : "reconnect",
+                  held_lost ? ", a retained publish was lost while down" : "");
+    if (_reconnect_callback) _reconnect_callback(held_lost);
+}
+
 void mqtt_set_reconnect_callback(mqtt_reconnect_callback_t callback) {
     _reconnect_callback = callback;
+}
+
+// ============================================================================
+// MqttClientTransport: ebus_mqtt's disconnected-link rules over arduino-mqtt
+// ============================================================================
+
+bool MqttClientTransport::publish(const char* topic, const char* payload, int length,
+                                  bool retained, int qos) {
+    if (_link_ready && _client.connected()) {
+        if (_client.publish(topic, payload, length, retained, qos)) return true;
+        // arduino-mqtt closes the session when a publish fails.
+        if (_client.connected()) return false;
+    }
+    _link_ready = false;
+    hold_or_drop(topic, payload, length, retained, qos);
+    return false;
+}
+
+void MqttClientTransport::hold_or_drop(const char* topic, const char* payload, int length,
+                                       bool retained, int qos) {
+    if (_hold == nullptr) {
+        if (retained) _held_lost = true;
+        return;
+    }
+    switch (_hold->hold(topic, payload, length, retained, qos)) {
+        case PublishHold::DROPPED_TOO_LARGE:
+            _held_lost = true;
+            Serial.printf("MQTT: %d-byte publish to '%s' is too large to hold; dropped\n",
+                          length, topic);
+            break;
+        case PublishHold::EVICTED_OLDEST:
+            _held_lost = true;
+            if (_hold->evicted() == 1 || _hold->evicted() % 100 == 0) {
+                Serial.printf("MQTT: hold full (%d entries), evicted the oldest; %u evicted "
+                              "so far\n", EBUS_MQTT_HOLD_ENTRIES, (unsigned)_hold->evicted());
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+bool MqttClientTransport::subscribe(const char* topic, int qos) {
+    if (!connected()) return false;
+    return _client.subscribe(topic, qos);
+}
+
+bool MqttClientTransport::send_held(void* ctx, const char* topic, const char* payload,
+                                    int length, bool retained, int qos) {
+    MqttClientTransport* self = (MqttClientTransport*)ctx;
+    if (self->_client.publish(topic, payload, length, retained, qos)) return true;
+    if (!self->_client.connected()) return false;   // keep it held
+    // Refused on a live link: retrying would block every flush.
+    Serial.printf("MQTT: held publish to '%s' refused (%d); dropped\n", topic,
+                  (int)self->_client.lastError());
+    return true;
+}
+
+bool MqttClientTransport::resubscribe_all(void* ctx) {
+    MqttClientTransport* self = (MqttClientTransport*)ctx;
+    Serial.printf("MQTT: flushed %d held publishes (%u evicted since boot)\n",
+                  self->_held_at_connect,
+                  (unsigned)(self->_hold ? self->_hold->evicted() : 0));
+    // From here publish() and subscribe() go to the wire.
+    self->_link_ready = true;
+    int subscribed = 0;
+    for (int i = 0; i < settable_count(); i++) {
+        if (self->_client.subscribe(settable_topic(i), 0)) {   // /set is QoS 0
+            subscribed++;
+        } else {
+            Serial.printf("MQTT: subscribe '%s' failed (%d)\n", settable_topic(i),
+                          (int)self->_client.lastError());
+        }
+    }
+    Serial.printf("MQTT: resubscribed %d of %d settable topics\n", subscribed,
+                  settable_count());
+    if (!self->_client.connected()) self->_link_ready = false;
+    return self->_link_ready;
+}
+
+void MqttClientTransport::notify_connected(void* ctx, bool first) {
+    MqttClientTransport* self = (MqttClientTransport*)ctx;
+    bool held_lost = self->_held_lost;
+    self->_held_lost = false;
+    if (self->_connected_fn) self->_connected_fn(self->_connected_ctx, first, held_lost);
+}
+
+bool MqttClientTransport::after_connect() {
+    _link_ready = false;   // until the flush has finished, new publishes join the hold
+    MqttConnectSteps steps = {send_held, resubscribe_all, notify_connected, this};
+    MqttConnectReport report;
+    _held_at_connect = _hold ? _hold->count() : 0;
+    bool ready = mqtt_after_connect(_hold, steps, !_ever_connected, &report);
+    if (report.flushed < report.held) {
+        Serial.printf("MQTT: flushed %d of %d held publishes; the link dropped during the "
+                      "flush, the rest stays held\n", report.flushed, report.held);
+    }
+    if (ready) _ever_connected = true;
+    return ready;
 }
 
 #ifdef MQTT_FETCH_ROOT_CA
@@ -441,7 +579,9 @@ static bool mqtt_queue_set(const char* topic, const char* payload, int length) {
   memcpy(item.payload, payload, (size_t)length);
   item.length = length;
   item.retained = false;      // unused for a set
-  item.source = nullptr;      // no publish-on-change memo to report back to
+  item.qos = 0;
+  item.done = nullptr;        // no publish-on-change memo to report back to
+  item.ctx = nullptr;
   item.kind = MQTT_QUEUE_SET;
 
   if (xQueueSend(mqtt_publish_queue, &item, 0) != pdTRUE) {
@@ -491,9 +631,10 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
 }
 
 // Open a broker session on the configured host. Returns true when connected.
-// Called by setup_mqtt() and by loop_mqtt()'s reconnect path. On success it re-subscribes
-// every settable topic (the session may be new) and then runs the reconnect callback,
-// which re-publishes $state over the "lost" the broker may hold from the will.
+// Called by setup_mqtt() and by loop_mqtt()'s reconnect path. On success
+// mqtt_transport.after_connect() sends what was held while the link was down,
+// re-subscribes every settable topic (the session may be new) and then runs the reconnect
+// callback, which re-publishes $state over the "lost" the broker may hold from the will.
 
 static bool broker_connect() {
   if (!client_connected()) {
@@ -507,6 +648,7 @@ static bool broker_connect() {
 
   // Transport selection may rewrite mqtt_port (POE-ISO without a CA falls back to 1883),
   // so port and TLS state are read only after it.
+  mqtt_transport.link_down();
   if (transportClient == nullptr && !mqtt_init_transport()) {
     Serial.println("MQTT: transport setup failed, not connecting");
     return false;
@@ -567,13 +709,10 @@ static bool broker_connect() {
   }
   Serial.printf("MQTT: connected to %s\n", mqtt_host);
 
-  // QoS 0, the library default, which /set requires.
-  for (int i = 0; i < settable_count(); i++) {
-    mqtt_client.subscribe(settable_topic(i));
-    Serial.printf("MQTT: subscribed '%s'\n", settable_topic(i));
+  if (!mqtt_transport.after_connect()) {
+    Serial.println("MQTT: link dropped while sending held publishes or re-subscribing");
+    return false;
   }
-
-  if (_reconnect_callback) _reconnect_callback();
   return true;
 }
 
@@ -664,7 +803,7 @@ void loop_mqtt() {
   static uint32_t last_status_ms = 0;
 
   bool serviced = _mqtt_begun && mqtt_client.loop();
-  bool up = serviced && mqtt_client.connected();
+  bool up = serviced && mqtt_transport.connected();
   uint32_t now = millis();
 
   if (up) {
@@ -678,9 +817,10 @@ void loop_mqtt() {
   } else {
     if (was_up) {
       was_up = false;
-      Serial.printf("MQTT: DISCONNECTED! error %d, loop %s, up %lu s\n",
-                    (int)mqtt_client.lastError(), serviced ? "ok" : "failed",
-                    (unsigned long)(now / 1000));
+      mqtt_transport.link_down();
+      Serial.printf("MQTT: DISCONNECTED! error %d, loop %s, up %lu s; holding retained "
+                    "and QoS 1/2 publishes\n", (int)mqtt_client.lastError(),
+                    serviced ? "ok" : "failed", (unsigned long)(now / 1000));
     }
     if (now - last_attempt_ms >= MQTT_RECONNECT_INTERVAL_MS) {
       last_attempt_ms = now;
@@ -702,7 +842,8 @@ void loop_mqtt() {
     }
   }
 
-  // Runs while disconnected too: queued items are then dropped and reported failed.
+  // Runs while disconnected too: queued items then go to the hold (or are dropped) and
+  // are reported not sent.
   mqtt_process_queue();
 }
 
@@ -710,10 +851,11 @@ void loop_mqtt() {
 // the transport, so the next connect re-selects it for the possibly changed port and CA.
 // The caller follows with setup_mqtt().
 void mqtt_restart() {
-  if (mqtt_connected()) mqtt_client.disconnect();
+  mqtt_transport.link_down();
+  if (_mqtt_begun && mqtt_client.connected()) mqtt_client.disconnect();
   transportClient = nullptr;
 }
 
 boolean mqtt_connected() {
-  return _mqtt_begun && mqtt_client.connected();
+  return _mqtt_begun && mqtt_transport.connected();
 }

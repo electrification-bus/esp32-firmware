@@ -212,7 +212,7 @@ static void watch_own_state() {
     // reconnect, so registering here is enough to keep the watch alive across drops.
     // The explicit subscribe covers the CURRENT connection, which is already up by now.
     subscribe_settable_handler(state_topic, on_state_observed, nullptr);
-    if (mqtt_connected()) mqtt_client.subscribe(state_topic, homie_qos(true));
+    if (mqtt_transport.connected()) mqtt_transport.subscribe(state_topic, homie_qos(true));
     Serial.printf(ROLE_TAG ": watching %s for a stale 'lost'\n", state_topic);
 }
 
@@ -353,11 +353,13 @@ static void own_state_topic(char* buf, size_t len) {
 static void reassert_own_state() {
     char state_topic[HOMIE_TOPIC_MAX + 1];
     own_state_topic(state_topic, sizeof(state_topic));
-    mqtt_client.publish(state_topic, HOMIE_STATE_READY, true, homie_qos(true));  // retained -> QoS 2 (C4)
+    mqtt_transport.publish(state_topic, HOMIE_STATE_READY, true, homie_qos(true));  // retained -> QoS 2 (C4)
 }
 
-// Callback to re-publish state and re-subscribe discovery after MQTT reconnection
-void on_mqtt_reconnect() {
+// Callback to re-publish state and re-subscribe discovery after MQTT reconnection. The
+// controller's only retained publication is its $state, re-asserted here regardless.
+void on_mqtt_reconnect(bool held_lost) {
+    (void)held_lost;
     reassert_own_state();
     Serial.println("CONTROLLER: Re-published $state after reconnect");
     // Only schedules the subscriptions; controller_loop() makes them.
@@ -384,7 +386,7 @@ void setup() {
     setup_broker(on_mqtt_reconnect);
 
     // Publish controller's own state (overrides LWT "lost" from previous session)
-    on_mqtt_reconnect();
+    on_mqtt_reconnect(false);
     watch_own_state();
 
     // Initialize the Homie controller
@@ -480,11 +482,30 @@ static bool on_state_observed(void* ctx, const char* value) {
     return true;   // a watch, not a property: nothing to refuse
 }
 
+// Publish `d` and its descendants again, children first as in publishTree(): $state init,
+// $description (the core skips one identical to the last it sent), every property value,
+// then the device's own state back. Unlike publishTree() it keeps each device's state, so
+// a proxied child that is "lost" stays lost.
+static void republish_tree(Device* d) {
+    for (Device* c = d->firstChild(); c; c = c->nextSibling()) republish_tree(c);
+    DeviceState state = d->state();
+    d->setState(DEVICE_STATE_INIT);
+    d->publish();
+    d->setState(state);
+}
+
 // Callback to re-publish state and re-subscribe settable properties after MQTT reconnection.
 // The broker's Last Will marked the ROOT $state "lost" (which cascades lost to every
 // child per Homie 5), so re-assert $state for the whole device tree, not just the root.
-void on_mqtt_reconnect() {
+// The publishes held while the link was down have already been sent; when one could not
+// be held (a $description is larger than a hold entry), publish the whole tree again.
+void on_mqtt_reconnect(bool held_lost) {
     theDevice.mqttConnected();  // re-subscribe settable property /set topics
+    if (held_lost) {
+        republish_tree(&theDevice);
+        Serial.println("DEVICE: Re-published $description and values (whole tree): a "
+                       "retained publish was lost while the link was down");
+    }
     theDevice.publishStateTree();
     Serial.println("DEVICE: Re-published $state (whole tree) after reconnect");
 }

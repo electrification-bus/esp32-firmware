@@ -79,6 +79,9 @@ static void mqtt_reconnect() {
         if (_mqtt.connect(MQTT_CLIENT_ID, user, pass)) {
             Serial.println("connected");
 
+            // Mark the link usable: until this, _transport.publish() and subscribe()
+            // treat the broker as down.
+            _transport.after_connect();
             // A clean session drops every subscription. Schedule discovery and every
             // known device's subscriptions again; controller_loop() makes them.
             controller_setup_discovery();
