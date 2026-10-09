@@ -15,11 +15,13 @@
 #include <time.h>
 #include <platform/config.h>
 #include <platform/network.h>
-#include <platform/broker_discovery.h>
+#include <ebus/discovery/broker_browse.h>
+#include <ebus/discovery/mdns_strings.h>
 #include <homie/homie.h>
 #include <homie/homie_id.h>
-#include <platform/mdns_strings.h>
 #include <platform/log_stream.h>
+#include <platform/mdns_backend_esp32.h>
+#include <platform/mdns_services.h>
 
 // Forward declaration to avoid circular include with mqtt_client.h
 extern boolean mqtt_connected();
@@ -108,10 +110,9 @@ static void sanitize_hostname(const char* input, char* output, size_t max_len) {
   sanitize_homie_id(input, output, max_len);
 }
 
-// Helper function to add mDNS service TXT record (resolves overload ambiguity)
-static void mdns_add_txt(const char* service, const char* proto, const char* key, const char* value) {
-  MDNS.addServiceTxt(service, proto, key, value);
-}
+// The mDNS stack behind the core's discovery code (ebus/discovery): advertising
+// (mdns_register_services()), broker browsing and re-resolution.
+static Esp32MdnsBackend mdns_backend;
 
 // Forward declaration - registers all mDNS services
 void mdns_register_services();
@@ -119,82 +120,26 @@ void mdns_register_services();
 // mDNS-discovered MQTT broker (separate from config broker). The connection goes to the
 // resolved IP address; the host name is kept so the address can be resolved again when
 // the broker stops answering there (mdns_reresolve_broker()).
-static char mdns_broker_host[64] = {0};
-static char mdns_broker_hostname[64] = {0};   // bare mDNS name, without ".local"
-static uint16_t mdns_broker_port = 0;
+static BrokerFound mdns_broker = {};
 
 #define MDNS_DISCOVERY_ATTEMPTS 3
 #define MDNS_DISCOVERY_DELAY_MS 3000
+#define MDNS_BROWSE_TIMEOUT_MS 3000   // ESPmDNS's queryService() waits this long itself
 #define MDNS_RERESOLVE_TIMEOUT_MS 2000
 
-static void format_ip(IPAddress ip, char* out, size_t out_size) {
-  snprintf(out, out_size, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-}
-
-// Browse one DNS-SD service type; on the first result with a resolvable IP, store the
-// broker in mdns_broker_host/hostname/port and return true. The service's default port
-// is used when the SRV record carries none. Does not modify mqtt_host/mqtt_port globals.
-static bool mdns_query_one_service(uint8_t svc) {
-  const char* service = broker_service_name(svc);
-  int num_found = MDNS.queryService(service, MDNS_QUERY_TCP);
-  if (num_found <= 0) {
-    Serial.printf("mDNS: No _%s._tcp services found\n", service);
-    return false;
-  }
-
-  Serial.printf("mDNS: Found %d _%s._tcp broker(s)\n", num_found, service);
-
-  for (int i = 0; i < num_found; i++) {
-    // Copied within the statement, while the String temporary is still alive.
-    char hostname[64];
-    snprintf(hostname, sizeof(hostname), "%s", MDNS.hostname(i).c_str());
-    uint16_t svc_port = MDNS.port(i);
-    Serial.printf("mDNS:   [%d] host=%s port=%u\n", i, hostname, svc_port);
-
-    // Log TXT records for debugging
-    int txt_count = MDNS.numTxt(i);
-    for (int j = 0; j < txt_count; j++) {
-      Serial.printf("mDNS:     TXT %s=%s\n",
-                     MDNS.txtKey(i, j).c_str(), MDNS.txt(i, j).c_str());
-    }
-
-    // Use the broker's IP address directly. Renamed IP() -> address() between
-    // arduino-esp32 2.0.x and 3.x's ESPmDNS.
-#if ESP_ARDUINO_VERSION_MAJOR >= 3
-    IPAddress broker_ip = MDNS.address(i);
-#else
-    IPAddress broker_ip = MDNS.IP(i);
-#endif
-    if (broker_ip == IPAddress(0, 0, 0, 0)) {
-      Serial.printf("mDNS:   [%d] No IP resolved, skipping\n", i);
-      continue;
-    }
-
-    format_ip(broker_ip, mdns_broker_host, sizeof(mdns_broker_host));
-    mdns_broker_port = svc_port > 0 ? svc_port : broker_service_default_port(svc);
-    if (!broker_copy_hostname(hostname, mdns_broker_hostname, sizeof(mdns_broker_hostname))) {
-      Serial.printf("mDNS:   [%d] Host name '%s' unusable, the address cannot be re-resolved\n",
-                     i, hostname);
-    }
-
-    Serial.printf("mDNS: Discovered %s broker via _%s._tcp: %s:%u (host=%s)\n",
-                   mdns_broker_port == MQTT_SECURE_PORT ? "MQTTS" : "MQTT", service,
-                   mdns_broker_host, mdns_broker_port, hostname);
-    return true;
-  }
-  return false;
-}
-
-// Discover an MQTT broker via mDNS, storing the result in mdns_broker_host/port. Browses
-// the service types in mqtt_discover (config.yml mqtt.discover) in order; the default is
+// Discover an MQTT broker via mDNS, storing the result in mdns_broker. Browses the
+// service types in mqtt_discover (config.yml mqtt.discover) in order; the default is
 // _secure-mqtt._tcp (TLS, 8883), the form TLS-only brokers (e.g. SPAN) advertise, then
 // _mqtt._tcp (plain, 1883), which the eBus spec only expects when TLS isn't feasible.
+// The first result with a resolved address wins; the service's default port is used when
+// the SRV record carries none. A failed search leaves an earlier result in place. Does
+// not modify mqtt_host/mqtt_port globals.
 static bool mdns_query_mqtt_broker() {
   char order[96] = {0};
   size_t pos = 0;
   for (uint8_t k = 0; k < mqtt_discover.count && pos < sizeof(order); k++) {
-    pos += snprintf(order + pos, sizeof(order) - pos, "%s_%s._tcp", k == 0 ? "" : ", then ",
-                    broker_service_name(mqtt_discover.services[k]));
+    pos += snprintf(order + pos, sizeof(order) - pos, "%s%s", k == 0 ? "" : ", then ",
+                    broker_service_type(mqtt_discover.services[k]));
   }
   Serial.printf("mDNS: Searching for MQTT brokers (%s)...\n", order);
 
@@ -204,9 +149,17 @@ static bool mdns_query_mqtt_broker() {
       delay(MDNS_DISCOVERY_DELAY_MS);
     }
 
-    for (uint8_t k = 0; k < mqtt_discover.count; k++) {
-      if (mdns_query_one_service(mqtt_discover.services[k])) return true;
+    BrokerFound found;
+    if (!broker_browse(&mdns_backend, &mqtt_discover, MDNS_BROWSE_TIMEOUT_MS, &found)) continue;
+    mdns_broker = found;
+    if (mdns_broker.hostname[0] == '\0') {
+      Serial.println("mDNS: Broker host name unusable, the address cannot be re-resolved");
     }
+    Serial.printf("mDNS: Discovered %s broker via %s: %s:%u (host=%s)\n",
+                   mdns_broker.port == MQTT_SECURE_PORT ? "MQTTS" : "MQTT",
+                   broker_service_type(mdns_broker.service), mdns_broker.address,
+                   mdns_broker.port, mdns_broker.hostname);
+    return true;
   }
 
   Serial.println("mDNS: No MQTT broker found via mDNS");
@@ -214,41 +167,39 @@ static bool mdns_query_mqtt_broker() {
 }
 
 bool mdns_reresolve_broker() {
-  if (mdns_broker_hostname[0] == '\0') {
+  if (mdns_broker.hostname[0] == '\0') {
     Serial.println("mDNS: Broker has no host name to re-resolve");
     return false;
   }
   Serial.printf("mDNS: Re-resolving broker %s.local (last at %s)\n",
-                 mdns_broker_hostname, mdns_broker_host);
-  IPAddress ip = MDNS.queryHost(mdns_broker_hostname, MDNS_RERESOLVE_TIMEOUT_MS);
-  if (ip == IPAddress(0, 0, 0, 0)) {
-    Serial.printf("mDNS: No answer for %s.local, keeping %s\n",
-                   mdns_broker_hostname, mdns_broker_host);
-    return false;
+                 mdns_broker.hostname, mdns_broker.address);
+  char previous[sizeof(mdns_broker.address)];
+  memcpy(previous, mdns_broker.address, sizeof(previous));
+  switch (broker_reresolve(&mdns_backend, &mdns_broker, MDNS_RERESOLVE_TIMEOUT_MS)) {
+    case BROKER_RERESOLVE_MOVED:
+      Serial.printf("mDNS: %s.local moved from %s to %s\n",
+                     mdns_broker.hostname, previous, mdns_broker.address);
+      return true;
+    case BROKER_RERESOLVE_UNCHANGED:
+      Serial.printf("mDNS: %s.local is still at %s\n", mdns_broker.hostname, mdns_broker.address);
+      return false;
+    default:
+      Serial.printf("mDNS: No answer for %s.local, keeping %s\n",
+                     mdns_broker.hostname, mdns_broker.address);
+      return false;
   }
-  char ip_str[sizeof(mdns_broker_host)];
-  format_ip(ip, ip_str, sizeof(ip_str));
-  if (strcmp(ip_str, mdns_broker_host) == 0) {
-    Serial.printf("mDNS: %s.local is still at %s\n", mdns_broker_hostname, mdns_broker_host);
-    return false;
-  }
-  Serial.printf("mDNS: %s.local moved from %s to %s\n",
-                 mdns_broker_hostname, mdns_broker_host, ip_str);
-  strncpy(mdns_broker_host, ip_str, sizeof(mdns_broker_host) - 1);
-  mdns_broker_host[sizeof(mdns_broker_host) - 1] = '\0';
-  return true;
 }
 
 const char* mdns_get_broker_host() {
-  return mdns_broker_host;
+  return mdns_broker.address;
 }
 
 uint16_t mdns_get_broker_port() {
-  return mdns_broker_port;
+  return mdns_broker.port;
 }
 
 bool mdns_has_broker() {
-  return mdns_broker_host[0] != '\0';
+  return mdns_broker.address[0] != '\0';
 }
 
 // With mdns_enabled on, arduino-esp32 3.x always claims <device id>.local; the gates
@@ -355,77 +306,58 @@ static const char* get_os_version() {
   return os_str;
 }
 
-// Add a recommended TXT key only when its value is non-empty.
-static void mdns_add_txt_if_set(const char* service, const char* key, const char* value) {
-  if (value[0] != '\0') {
-    mdns_add_txt(service, MDNS_PROTO_TCP, key, value);
-  }
-}
-
-// Register all mDNS services - called from setup_mdns() and after WiFi STA connects.
-// TXT keys follow framework.md "Detail: mDNS Discovery", plus the homie_* compatibility
-// keys on _ebus._tcp; doc/MDNS.md maps each one.
+// Register all mDNS services - called from setup_mdns() when mdns_advertise is on.
+// The TXT records come from the core's builders (ebus/discovery/txt_records.h), which
+// follow framework.md "Detail: mDNS Discovery", plus the homie_* compatibility keys on
+// _ebus._tcp; doc/MDNS.md maps each one.
 void mdns_register_services() {
-  const char* serial = device_serial[0] != '\0' ? (const char*)device_serial : getDeviceID();
+  MdnsServicesConfig cfg = {};
+  cfg.device_id = getDeviceID();
+  cfg.homie_role = homie_role;
+  cfg.manufacturer = device_manufacturer;
+  cfg.model = device_model;
+  cfg.serial = device_serial;
+  cfg.device_type = device_type;
+  cfg.name = device_name;
+  cfg.fw_version = firmware_version;
+  cfg.os_version = get_os_version();
+  cfg.mac = get_primary_mac();
+  cfg.http_port = 80;
+  cfg.ebus_port = mqtt_port;
+  // _telnet._tcp, the serial log stream, so a monitor can find the device by name
+  // instead of by IP. Only advertised when the listener is actually up.
+  cfg.log_port = log_tcp_running() ? log_tcp_get_port() : 0;
 
-  // ============================================================
-  // _device-info._tcp service - Hardware/firmware information
-  // ============================================================
-  MDNS.addService(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, 80);
-  mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_TXTVERS, MDNS_VAL_TXTVERS);
-  mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_MANUFACTURER, device_manufacturer);
-  mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_MODEL, device_model);
-  mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_SERIAL_NUMBER, serial);
-  mdns_add_txt_if_set(MDNS_SVC_DEVICE_INFO, MDNS_TXT_FW_VERSION, firmware_version);
-  mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_OS_VERSION, get_os_version());
-  mdns_add_txt(MDNS_SVC_DEVICE_INFO, MDNS_PROTO_TCP, MDNS_TXT_MAC, get_primary_mac());
-  Serial.printf("mDNS: Added _device-info._tcp service\n");
+  MdnsServicesResult result;
+  mdns_services_advertise(&mdns_backend, &cfg, &result);
+  EbusIdentity id;
+  mdns_services_identity(&cfg, &id);
 
-  // ============================================================
-  // _http._tcp service - HTTP REST API with OpenAPI specification
-  // ============================================================
-  MDNS.addService(MDNS_SVC_HTTP, MDNS_PROTO_TCP, 80);
-  mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_TXTVERS, MDNS_VAL_TXTVERS);
-  mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_HTTP_PATH, MDNS_VAL_HTTP_PATH);
-  mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_HTTP_VERSION, MDNS_VAL_HTTP_VERSION);
-  mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_DEVICE_ID, getDeviceID());
-  mdns_add_txt_if_set(MDNS_SVC_HTTP, MDNS_TXT_DEVICE_TYPE, device_type);
-  mdns_add_txt(MDNS_SVC_HTTP, MDNS_PROTO_TCP, MDNS_TXT_HTTP_OPENAPI, MDNS_VAL_HTTP_OPENAPI);
-  Serial.printf("mDNS: Added _http._tcp service (path=%s)\n", MDNS_VAL_HTTP_PATH);
-
-  // ============================================================
-  // _telnet._tcp service - serial log stream, so a monitor can find the device
-  // by name instead of by IP. Only advertised when the listener is actually up.
-  // ============================================================
-  if (log_tcp_running()) {
-    MDNS.addService(MDNS_SVC_LOG, MDNS_PROTO_TCP, log_tcp_get_port());
-    mdns_add_txt(MDNS_SVC_LOG, MDNS_PROTO_TCP, MDNS_TXT_TXTVERS, MDNS_VAL_TXTVERS);
-    mdns_add_txt(MDNS_SVC_LOG, MDNS_PROTO_TCP, MDNS_TXT_DEVICE_ID, getDeviceID());
-    mdns_add_txt(MDNS_SVC_LOG, MDNS_PROTO_TCP, MDNS_TXT_LOG_KIND, MDNS_VAL_LOG_KIND);
-    Serial.printf("mDNS: Added _telnet._tcp service (serial log, port %u)\n", log_tcp_get_port());
+  for (uint8_t i = 0; i < MDNS_SERVICE_COUNT; i++) {
+    const char* type = mdns_service_type(i);
+    switch (result.status[i]) {
+      case MDNS_SERVICE_ADVERTISED:
+        if (i == MDNS_SERVICE_HTTP) {
+          Serial.printf("mDNS: Added %s service (path=%s)\n", type, MDNS_VAL_HTTP_PATH);
+        } else if (i == MDNS_SERVICE_LOG) {
+          Serial.printf("mDNS: Added %s service (serial log, port %u)\n", type, cfg.log_port);
+        } else if (i == MDNS_SERVICE_EBUS) {
+          Serial.printf("mDNS: Added %s service (roles=%s)\n", type, ebus_roles_string(id.roles));
+        } else {
+          Serial.printf("mDNS: Added %s service\n", type);
+        }
+        break;
+      case MDNS_SERVICE_BUILD_FAILED:
+        Serial.printf("mDNS: **ERROR -- %s TXT record not built (TxtResult %u); not advertised\n",
+                      type, (unsigned)result.txt[i]);
+        break;
+      case MDNS_SERVICE_REFUSED:
+        Serial.printf("mDNS: **ERROR -- the mDNS stack refused %s\n", type);
+        break;
+      default:
+        break;
+    }
   }
-
-  // ============================================================
-  // _ebus._tcp service - eBus entity discovery
-  // ============================================================
-  const char* role = strcmp(homie_role, MDNS_VAL_ROLE_CONTROLLER) == 0
-                         ? MDNS_VAL_ROLE_CONTROLLER : MDNS_VAL_ROLE_DEVICE;
-  MDNS.addService(MDNS_SVC_EBUS, MDNS_PROTO_TCP, mqtt_port);
-  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_TXTVERS, MDNS_VAL_TXTVERS);
-  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_EBUS_VERSION, EBUS_SPEC_VERSION);
-  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_ROLES, role);
-  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_DEVICE_ID, getDeviceID());
-  mdns_add_txt_if_set(MDNS_SVC_EBUS, MDNS_TXT_DEVICE_TYPE, device_type);
-  mdns_add_txt_if_set(MDNS_SVC_EBUS, MDNS_TXT_NAME, device_name);
-  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_MANUFACTURER, device_manufacturer);
-  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_MODEL, device_model);
-  mdns_add_txt_if_set(MDNS_SVC_EBUS, MDNS_TXT_FW_VERSION, firmware_version);
-  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_REGISTER, MDNS_VAL_REGISTER);
-  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_AUTH_METHODS, MDNS_VAL_AUTH_METHODS);
-  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_DOMAIN, HOMIE_TOPIC_DOMAIN);
-  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_VERSION, HOMIE_VERSION_NUM);
-  mdns_add_txt(MDNS_SVC_EBUS, MDNS_PROTO_TCP, MDNS_TXT_HOMIE_ROLES, role);
-  Serial.printf("mDNS: Added _ebus._tcp service (roles=%s)\n", role);
 }
 
 bool setup_wifi() {
