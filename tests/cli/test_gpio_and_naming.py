@@ -34,8 +34,12 @@ def test_node_pin_clashing_with_bus_pin_fails_generate(sandbox, capsys):
 
 
 def test_two_nodes_on_one_bus_share_its_pins(sandbox):
-    doc = device_doc([{"component": "modbus/sht20", "id": "t1"},
-                      {"component": "modbus/eletechsup32", "id": "v1"}],
+    # Distinct addresses: these are two devices on ONE bus, which is what the test is
+    # about, and the address is how the master tells them apart.
+    doc = device_doc([{"component": "modbus/sht20", "id": "t1",
+                       "config": {"address": 1}},
+                      {"component": "modbus/eletechsup32", "id": "v1",
+                       "config": {"address": 4}}],
                      buses={"rs485": {"pin_a": 44, "pin_b": 43}})
     sandbox.generate(doc)
 

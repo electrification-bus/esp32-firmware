@@ -128,7 +128,8 @@ def test_generate_emits_table_and_properties_for_register_device(sandbox):
 
 
 def test_registers_on_another_component_are_ignored_with_a_warning(sandbox, capsys):
-    node = {"component": "modbus/sht20", "id": "t1", "registers": [{"id": "x", "reg": 1}]}
+    node = {"component": "modbus/sht20", "id": "t1", "config": {"address": 1},
+            "registers": [{"id": "x", "reg": 1}]}
     sandbox.generate(device_doc([node], buses=RS485))
     assert "the list is IGNORED" in capsys.readouterr().err
 
@@ -153,7 +154,8 @@ def test_boolean_property_needs_no_unit(sandbox, capsys):
 
 
 def test_shipped_components_declare_units_on_numeric_properties(sandbox, capsys):
-    doc = device_doc([{"component": "modbus/sht20", "id": "t1"},
+    doc = device_doc([{"component": "modbus/sht20", "id": "t1",
+                       "config": {"address": 1}},
                       {"component": "sim/battery_sim", "id": "bat"}], buses=RS485)
     sandbox.generate(doc)
     assert "has no 'unit'" not in capsys.readouterr().err

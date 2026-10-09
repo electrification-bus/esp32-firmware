@@ -630,12 +630,17 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
   }
 }
 
+// How long THIS session has lasted, and how many there have been. Device uptime alone
+// cannot tell a link that has been up for an hour from one reconnecting every minute,
+// which is the question asked of this log most often.
+static uint32_t _session_start_ms = 0;
+static uint16_t _reconnects       = 0;
+
 // Open a broker session on the configured host. Returns true when connected.
 // Called by setup_mqtt() and by loop_mqtt()'s reconnect path. On success
 // mqtt_transport.after_connect() sends what was held while the link was down,
 // re-subscribes every settable topic (the session may be new) and then runs the reconnect
 // callback, which re-publishes $state over the "lost" the broker may hold from the will.
-
 static bool broker_connect() {
   if (!client_connected()) {
     Serial.println("MQTT: no network interface up, not connecting");
@@ -707,6 +712,7 @@ static bool broker_connect() {
                   (int)mqtt_client.lastError(), (int)mqtt_client.returnCode());
     return false;
   }
+  _session_start_ms = millis();
   Serial.printf("MQTT: connected to %s\n", mqtt_host);
 
   if (!mqtt_transport.after_connect()) {
@@ -809,8 +815,11 @@ void loop_mqtt() {
   if (up) {
     if (now - last_status_ms >= MQTT_STATUS_INTERVAL_MS) {
       last_status_ms = now;
-      Serial.printf("MQTT: connected OK%s, up %lu s, broker %s, device %s\n",
+      Serial.printf("MQTT: connected OK%s, up %lu s, session %lu s (%u reconnect%s), "
+                    "broker %s, device %s\n",
                     mqtt_using_secure ? " [TLS]" : "", (unsigned long)(now / 1000),
+                    (unsigned long)((now - _session_start_ms) / 1000),
+                    (unsigned)_reconnects, _reconnects == 1 ? "" : "s",
                     mqtt_host, topic_device);
     }
     was_up = true;
@@ -818,15 +827,17 @@ void loop_mqtt() {
     if (was_up) {
       was_up = false;
       mqtt_transport.link_down();
-      Serial.printf("MQTT: DISCONNECTED! error %d, loop %s, up %lu s; holding retained "
-                    "and QoS 1/2 publishes\n", (int)mqtt_client.lastError(),
-                    serviced ? "ok" : "failed", (unsigned long)(now / 1000));
+      Serial.printf("MQTT: DISCONNECTED! error %d, loop %s, up %lu s, session lasted %lu s; "
+                    "holding retained and QoS 1/2 publishes\n", (int)mqtt_client.lastError(),
+                    serviced ? "ok" : "failed", (unsigned long)(now / 1000),
+                    (unsigned long)((now - _session_start_ms) / 1000));
     }
     if (now - last_attempt_ms >= MQTT_RECONNECT_INTERVAL_MS) {
       last_attempt_ms = now;
       Serial.printf("MQTT: not connected (error %d), reconnecting to %s\n",
                     (int)mqtt_client.lastError(), mqtt_host);
       if (broker_connect()) {
+        _reconnects++;
         broker_reconnect_succeeded(&_reconnect_state);
       } else if (_broker_from_mdns && broker_reconnect_failed(&_reconnect_state)) {
         // The discovered broker may have a new DHCP lease: ask for its .local name again.
@@ -836,7 +847,7 @@ void loop_mqtt() {
           use_discovered_broker();
           transportClient = nullptr;   // re-select the transport and CA for the new address
           Serial.printf("MQTT: reconnecting to re-resolved broker %s:%u\n", mqtt_host, mqtt_port);
-          if (broker_connect()) broker_reconnect_succeeded(&_reconnect_state);
+          if (broker_connect()) { _reconnects++; broker_reconnect_succeeded(&_reconnect_state); }
         }
       }
     }
