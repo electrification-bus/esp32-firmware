@@ -630,18 +630,17 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
   }
 }
 
-// Open a broker session on the configured host. Returns true when connected.
-// Called by setup_mqtt() and by loop_mqtt()'s reconnect path. On success
-// mqtt_transport.after_connect() sends what was held while the link was down,
-// re-subscribes every settable topic (the session may be new) and then runs the reconnect
-// callback, which re-publishes $state over the "lost" the broker may hold from the will.
 // How long THIS session has lasted, and how many there have been. Device uptime alone
 // cannot tell a link that has been up for an hour from one reconnecting every minute,
 // which is the question asked of this log most often.
 static uint32_t _session_start_ms = 0;
 static uint16_t _reconnects       = 0;
 
-
+// Open a broker session on the configured host. Returns true when connected.
+// Called by setup_mqtt() and by loop_mqtt()'s reconnect path. On success
+// mqtt_transport.after_connect() sends what was held while the link was down,
+// re-subscribes every settable topic (the session may be new) and then runs the reconnect
+// callback, which re-publishes $state over the "lost" the broker may hold from the will.
 static bool broker_connect() {
   if (!client_connected()) {
     Serial.println("MQTT: no network interface up, not connecting");
@@ -727,7 +726,6 @@ static bool broker_connect() {
 // re-resolve; false for a configured broker.
 static bool _broker_from_mdns = false;
 static BrokerReconnect _reconnect_state = {0};
-
 
 // Point mqtt_host/mqtt_port at the mDNS-discovered broker. Discovered brokers are used
 // anonymously (temporary until credential negotiation), and the CA cert is re-read for

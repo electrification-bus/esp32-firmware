@@ -42,14 +42,18 @@ Add `-DENABLE_CONTROLLER` to the env's `build_src_flags` in `platformio_local.in
 
 ### 2. poe16-a — `esp32-poe-iso-16mb` — Modbus SHT20 + Eletechsup32
 
-Both devices share the RS485 bus and must differ in `config.address`, the Modbus slave address each one answers to. The `config_defaults` in their component ymls already differ — SHT20 `1`, Eletechsup32 `4` — so this pair works without stating either, but a second unit of the same part needs its own `address:` in `device.yml`.
+Both devices share the RS485 bus and must differ in `config.address`, the Modbus slave address each one answers to. Neither component yml carries a default, so `address` is required for both — leaving it out fails `generate` with `missing required key(s): address`. The values below are what each part ships answering.
 
 ```yaml
 nodes:
   - component: modbus/sht20
     id: environment-sht20
+    config:
+      address: 1
   - component: modbus/eletechsup32
     id: voltage-current-detector
+    config:
+      address: 4
 ```
 
 ### 3. poe16-b — `esp32-poe-iso-16mb` — EnergyMeter

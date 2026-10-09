@@ -40,9 +40,8 @@ implementation: homie-esp32-sdk
 # purpose — the address is a fact about the wiring, so a bus with two of anything is
 # described in device.yml rather than inherited from a component.
 #
-# Changing a unit's address is done on the unit — holding register 0x0101, function code
-# 0x06 on the XY-MD02 family — one at a time on an otherwise empty bus, since they all
-# ship answering the same address.
+# Changing a unit's address is done on the unit, by whatever method its own datasheet
+# gives — do it one at a time on an otherwise empty bus, since they all ship answering 4.
 generator:
   class: Eletechsup32
   header: modbus/eletechsup32.h
