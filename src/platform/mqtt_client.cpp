@@ -682,8 +682,9 @@ static bool broker_connect() {
     insecureClient.setTimeout(socket_timeout_s);
   }
 #endif
-  // Clean session off: the broker keeps our subscriptions across a reconnect.
-  mqtt_client.setOptions(keepalive_s, false, op_timeout_ms);
+  // Clean session: every subscription is QoS 0 and is renewed after each connect, so a
+  // broker-kept session would hold nothing we need.
+  mqtt_client.setOptions(keepalive_s, true, op_timeout_ms);
   Serial.printf("MQTT: keepalive %d s, operation timeout %d ms\n", keepalive_s, op_timeout_ms);
 
   // Will on the root device only; child devices share this connection and are treated
