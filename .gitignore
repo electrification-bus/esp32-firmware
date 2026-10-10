@@ -16,10 +16,9 @@ compile_commands.json
 # macOS Finder metadata — never track
 .DS_Store
 
-# Personal LLM coding-assistant configs. See the README's "Personal LLM
-# configuration" section.
-CLAUDE.md
-AGENTS.md
+# Personal LLM coding-assistant configs. AGENTS.md and CLAUDE.md are tracked
+# (shared project instructions); see the README's "Using LLMs" section.
+CLAUDE.local.md
 GEMINI.md
 .claude/
 .cursor/

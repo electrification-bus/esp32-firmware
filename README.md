@@ -196,22 +196,28 @@ Envs are named after the **arduino-esp32 core** they build against, because that
 
 ## Using LLMs
 
-This project is friendly to LLM-assisted development, in two distinct ways: a running device can be made directly accessible to an LLM over MQTT, and developers can use any LLM coding assistant against the source — provided personal LLM configs stay out of the shared repo.
+This project is friendly to LLM-assisted development, in two distinct ways: a running device can be made directly accessible to an LLM over MQTT, and developers can use any LLM coding assistant against the source, with shared project instructions in `AGENTS.md`.
 
 ### Talking to a running device (MCP)
 
 Once your ESP32 is running this firmware and publishing as a Homie 5 device, you can give Claude Code (or any MCP-compatible client) read/write access to the device's topic tree via the [`Tieske/homie5-mcp-server`](https://github.com/Tieske/homie5-mcp-server) MCP server. The LLM can list discovered devices, inspect node/property trees, read current property values, and write to settable properties — useful for testing, exploratory poking, and having an LLM reason about the device's *actual* live state instead of you describing it in prose. See [doc/Homie5MCPServer.md](doc/Homie5MCPServer.md) for setup instructions specific to this project (including the `HOMIE_DOMAIN=ebus` setting, which is easy to miss).
 
-### Personal LLM configuration — keep it out of the repo
+### Project instructions for coding assistants
 
-If you use an LLM coding assistant (Claude Code, Cursor, Aider, etc.), please **do not commit your personal LLM config files** (`CLAUDE.md`, `AGENTS.md`, `.claude/`, `.cursor/`, etc.) into this repo. Personal LLM configs trample on each other the same way personal `config.yml` files do — different contributors have different setups, different memory, different tool permissions, and nobody benefits from seeing yours in their working tree.
+[`AGENTS.md`](AGENTS.md) is the shared briefing for LLM coding assistants: what the repository is, its key files, the Python environment, the build and test commands, and the coding standards. Codex, Cursor, GitHub Copilot and other tools read `AGENTS.md`; [`CLAUDE.md`](CLAUDE.md) imports it for Claude Code. Both are tracked and change by pull request like any other doc. Keep them to what every contributor needs.
 
-Two patterns we recommend:
+### Personal configuration
 
-- **Shadow repo** — Keep your personal LLM configs in a separate git repo and symlink them into this working tree. Gives you version control over your own configs without polluting the project repo.
-- **Local exclude** — Add the paths to `.git/info/exclude` (the per-clone gitignore that's never tracked or shared). Simpler, but doesn't survive a fresh clone.
+Your own setup (the virtual environment you use, your serial port, your broker, local tooling and preferences) goes in a gitignored local file: `CLAUDE.local.md` for Claude Code, which loads it alongside `CLAUDE.md`, or your tool's equivalent. `.claude/`, `.cursor/` and the other per-tool directories are gitignored too.
 
-The project `.gitignore` already lists common personal-LLM paths as a defensive measure, so accidental commits are caught even without either pattern above. If you have a use case for project-wide LLM context that *should* be tracked (e.g. a shared coding-standards `CLAUDE.md`), discuss with the maintainers first.
+To keep those files under version control without committing them here, keep them in a separate private "shadow" repository and symlink them into your working tree:
+
+```sh
+ln -s ~/path/to/shadow-repo/esp32-firmware/CLAUDE.local.md CLAUDE.local.md
+ln -s ~/path/to/shadow-repo/esp32-firmware/.claude .claude
+```
+
+For a file you don't need to version, `.git/info/exclude` (the per-clone ignore list) works too.
 
 ## License
 

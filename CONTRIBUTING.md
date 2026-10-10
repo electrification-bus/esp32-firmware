@@ -46,9 +46,9 @@ Pull requests are welcome.
 - **Don't hard-wrap Markdown prose.** Write each paragraph in docs as a single continuous line; reserve hard breaks for list items, headings, code fences, and tables.
 - One commit per logical change is fine; we don't require squash or any particular branch naming.
 
-## Keep your personal LLM config out of the repo
+## LLM coding assistants
 
-If you use an LLM coding assistant (Claude Code, Cursor, Aider, etc.), do **not** commit your personal LLM config files (`CLAUDE.md`, `AGENTS.md`, `.claude/`, `.cursor/`, etc.). They trample on each other the same way personal `config.yml` files do — different contributors have different setups. Keep them in a separate shadow repo symlinked into your working tree, or add the paths to `.git/info/exclude`. The project `.gitignore` already lists the common ones defensively. See the README's "Using LLMs" section for the full rationale. If you have a use case for project-wide LLM context that *should* be tracked (e.g. a shared coding-standards `CLAUDE.md`), discuss with the maintainers first.
+[`AGENTS.md`](AGENTS.md) (imported by `CLAUDE.md`) holds the shared instructions for LLM coding assistants; change it by pull request when the project's conventions change. Keep your personal configuration (`CLAUDE.local.md`, `.claude/`, `.cursor/` and the like) out of the repo: those paths are gitignored, and the README's "Using LLMs" section shows the shadow-repo symlink pattern.
 
 ## Code of conduct
 
