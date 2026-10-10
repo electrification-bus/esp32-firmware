@@ -49,7 +49,7 @@ nodes:
         retained: true
         value: 0.0
 extensions: []
-implementation: homie-esp32-sdk
+implementation: homie-esp32-firmware
 generator:
   class: BatterySim
   header: sim/battery_sim.h

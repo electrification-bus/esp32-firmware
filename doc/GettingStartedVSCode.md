@@ -41,7 +41,7 @@ The project's `./ebus-esp32 generate` step runs automatically as a PlatformIO pr
 1. Open a terminal/command prompt
 2. Navigate to the directory where you want to store the project
 3. Clone the repository using git:
-4. `git clone https://github.com/electrification-bus/esp32-sdk.git`
+4. `git clone https://github.com/electrification-bus/esp32-firmware.git`
 
 ### Step 4: Open the Project in VSCode
 1. In VSCode, choose **File → Open Folder…** and select the cloned repository folder. Use this rather than PlatformIO's "Open Project"; the note at the top of this page explains why.

@@ -1,12 +1,12 @@
-# Contributing to esp32-sdk
+# Contributing to esp32-firmware
 
-Thanks for your interest in contributing! `esp32-sdk` is firmware that lets ESP32-class hardware act as an eBus-compatible device (or controller) using the [Homie 5 MQTT convention](https://homieiot.github.io/). It targets PlatformIO + the Arduino framework on ESP32 / ESP32-S3 / Olimex ESP32-POE-ISO, with pluggable nodes for sensors, actuators, Modbus devices, and energy metering. A device is described declaratively in `device.yml`, and the build generates the Homie node/property tree from it.
+Thanks for your interest in contributing! `esp32-firmware` is firmware that lets ESP32-class hardware act as an eBus-compatible device (or controller) using the [Homie 5 MQTT convention](https://homieiot.github.io/). It targets PlatformIO + the Arduino framework on ESP32 / ESP32-S3 / Olimex ESP32-POE-ISO, with pluggable nodes for sensors, actuators, Modbus devices, and energy metering. A device is described declaratively in `device.yml`, and the build generates the Homie node/property tree from it.
 
 ## How to contribute
 
 ### Discussions
 
-Use [Discussions](https://github.com/electrification-bus/esp32-sdk/discussions) for:
+Use [Discussions](https://github.com/electrification-bus/esp32-firmware/discussions) for:
 
 - Open-ended questions about the firmware's design, scope, or intent ("should the bridge/proxy model handle X, or does that belong upstream?")
 - Proposed new node types, bus drivers, or hardware targets — worth aligning on the `device.yml` shape and the runtime API before writing the code
@@ -17,7 +17,7 @@ Discussions are open-ended — a good place to align on direction before somethi
 
 ### Issues
 
-Use [Issues](https://github.com/electrification-bus/esp32-sdk/issues) for actionable changes:
+Use [Issues](https://github.com/electrification-bus/esp32-firmware/issues) for actionable changes:
 
 - Bug reports with reproduction steps (board, build env, `device.yml`, broker, and ideally a serial-log snippet)
 - Concrete feature requests with a clear scope and a use case
@@ -56,4 +56,4 @@ Be respectful and constructive. We appreciate everyone who takes the time to fil
 
 ## Maintenance posture
 
-`esp32-sdk` is an active alpha project. Updates and maintenance, including responses to issues filed on GitHub, will take place on an "as time and resources permit" basis. The firmware is maintained alongside the rest of the eBus ecosystem — the [Electrification Bus specification](https://github.com/electrification-bus/specification), [`python-sdk`](https://github.com/electrification-bus/python-sdk), and [`ebus-mqtt-client`](https://github.com/electrification-bus/ebus-mqtt-client) — see the specification repo's README §Governance for the project's long-term governance context.
+`esp32-firmware` is an active alpha project. Updates and maintenance, including responses to issues filed on GitHub, will take place on an "as time and resources permit" basis. The firmware is maintained alongside the rest of the eBus ecosystem — the [Electrification Bus specification](https://github.com/electrification-bus/specification), [`python-sdk`](https://github.com/electrification-bus/python-sdk), and [`ebus-mqtt-client`](https://github.com/electrification-bus/ebus-mqtt-client) — see the specification repo's README §Governance for the project's long-term governance context.

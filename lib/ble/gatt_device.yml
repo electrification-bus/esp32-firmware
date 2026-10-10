@@ -54,7 +54,7 @@ nodes:
         retained: false
         description: "Publish true to drop the cached address and scan again."
 extensions: []
-implementation: homie-esp32-sdk
+implementation: homie-esp32-firmware
 # A GENERIC BLE GATT node — it knows no device protocol at all. Give it a service and a
 # notify characteristic (plus a write characteristic if the device accepts commands) and
 # it publishes every notification as hex and sends hex you publish to `write`.

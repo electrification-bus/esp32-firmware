@@ -1433,7 +1433,7 @@ def _generate(args) -> None:
         "state":          "init",
         "nodes":          homie_nodes,
         "extensions":     [],
-        "implementation": "homie-esp32-sdk",
+        "implementation": "homie-esp32-firmware",
     }
     out_homie = DATA_DIR / "homie.yml"
     with open(out_homie, "w", encoding="utf-8") as f:

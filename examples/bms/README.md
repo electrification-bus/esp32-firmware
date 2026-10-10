@@ -1,6 +1,6 @@
 # JBD / Xiaoxiang Smart BMS over BLE
 
-A worked protocol driver: BLE transport from the SDK, JBD framing and a charging policy
+A worked protocol driver: BLE transport from the firmware, JBD framing and a charging policy
 from this folder.
 
 **This is copy/paste reference, not a buildable component.** `ebus-esp32 generate` only

@@ -15,7 +15,7 @@ nodes:
         value: false
         description: "True when the load is energised. Logical, not electrical — active_low inverts the pin, never this."
 extensions: []
-implementation: homie-esp32-sdk
+implementation: homie-esp32-firmware
 # One GPIO driven as a digital output, published as a settable boolean.
 #
 # Generic on purpose: pinMode(OUTPUT) + digitalWrite() is the same code for a solid-state

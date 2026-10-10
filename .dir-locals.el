@@ -1,4 +1,4 @@
-;;; Directory-local Emacs settings for esp32-sdk.
+;;; Directory-local Emacs settings for esp32-firmware.
 ;;; Applies to all files under this directory.
 ;;;
 ;;; Counterpart to .vscode/ for Emacs users:

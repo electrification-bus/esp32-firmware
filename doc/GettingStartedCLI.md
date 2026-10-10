@@ -27,8 +27,8 @@ This is the command-line counterpart to [`GettingStartedVSCode.md`](GettingStart
 ## First-time bootstrap (after a fresh clone)
 
 ```sh
-git clone https://github.com/electrification-bus/esp32-sdk.git
-cd esp32-sdk
+git clone https://github.com/electrification-bus/esp32-firmware.git
+cd esp32-firmware
 
 # Create a personal config overlay with only the keys you want to override.
 # It uses device.yml's own sections and key names, so copy the block you care
