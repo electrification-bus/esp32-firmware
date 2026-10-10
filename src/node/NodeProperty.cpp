@@ -4,6 +4,7 @@
 #include <homie/homie_globals.h>   // theDevice, g_active_setup_device
 #include <homie/Node.h>
 #include <homie/homie_id.h>
+#include <homie/homie_datatype.h>
 
 // ---- setup ------------------------------------------------------------------
 
@@ -90,14 +91,13 @@ void NodeProperty::store(const char* text) {
     else report_unbound("set");
 }
 
-// Rendering here (rather than calling Property's numeric overloads) preserves the exact
-// payloads drivers have always published — notably %.4f for float, where
-// Property::setValue(float) would emit %f.
+// Floats and doubles use the core's shortest round-trip text ("21.4", "40.0"), the same
+// as Property::setValue(float) and python-sdk.
 void NodeProperty::set(int value)          { char b[32]; snprintf(b, sizeof(b), "%d", value);   store(b); }
 void NodeProperty::set(int64_t value)      { char b[32]; snprintf(b, sizeof(b), "%lld", (long long)value); store(b); }
 void NodeProperty::set(unsigned int value) { char b[32]; snprintf(b, sizeof(b), "%u", value);   store(b); }
-void NodeProperty::set(float value)        { char b[32]; snprintf(b, sizeof(b), "%.4f", value); store(b); }
-void NodeProperty::set(double value)       { char b[32]; snprintf(b, sizeof(b), "%f", value);   store(b); }
+void NodeProperty::set(float value)        { char b[32]; homie_format_float(value, b, sizeof(b));  store(b); }
+void NodeProperty::set(double value)       { char b[32]; homie_format_double(value, b, sizeof(b)); store(b); }
 void NodeProperty::set(bool value)         { store(value ? "true" : "false"); }
 void NodeProperty::set(const char* value)  { store(value); }
 
