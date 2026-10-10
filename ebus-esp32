@@ -760,13 +760,13 @@ def count_remote_sources(link_entries: list) -> int:
     return sum(1 for _, cfg in link_entries for ref in link_refs(cfg.get("source"))
                if remote_source_topic_key(ref) is not None)
 
-_LINK_MAX_SOURCES = 3            # Link::MAX_SOURCES in lib/logic/link.h
+_LINK_MAX_SOURCES = 3            # EbusLink::MAX_SOURCES in <ebus/link/link.h>
 _LINK_PATTERN_RE  = re.compile(r"[a-z0-9*-]+")
 _LINK_PART_LIMITS = {3: ("HOMIE_DEVICE_ID_MAX", "HOMIE_NODE_ID_MAX", "HOMIE_PROPERTY_ID_MAX"),
                      2: ("HOMIE_NODE_ID_MAX", "HOMIE_PROPERTY_ID_MAX")}
 
 def link_ref_problem(ref: str, controller: bool, limits: dict):
-    """Why Link::setup() (link_parse_ref() in lib/logic/link_core.cpp) would refuse `ref`,
+    """Why Link::setup() (ebus_link_parse_ref() in the core) would refuse `ref`,
     or None. Returns (problem, parts), the parts sanitized as the firmware does."""
     raw = ref.split("/")
     if not ref or len(raw) not in (2, 3) or any(not p for p in raw):

@@ -215,7 +215,7 @@ retained-delivery order, and differs between boots. So a link with a pattern sta
 sending nothing, until every discovered device has a description. It says so when the wait starts, and again at most once a minute:
 
 ```
-LINK[pressure-to-display]: waiting for discovery to settle — 1 of 3 device(s) without
+LINK[pressure-to-display]: waiting for discovery to settle: 1 of 3 device(s) without
 $description (a4cf12e8d0b4)
 ```
 
@@ -229,7 +229,7 @@ If a pattern matches more than one node, on several devices or on one, the link 
 
 ```
 LINK[pressure-to-display]: source %1 '*/environment-*/air-pressure' matches more than one
-node (b0b21c90f570/environment-bme280, a4cf12e8d0b4/environment-bme280) — not bound;
+node (b0b21c90f570/environment-bme280, a4cf12e8d0b4/environment-bme280); not bound;
 name the device, or narrow the node
 ```
 
@@ -253,9 +253,9 @@ both on the local board does not need one: name the nodes directly.
 What the log looks like once it binds:
 
 ```
-LINK[pressure-to-display]: source %1 = */environment-*/air-pressure — pattern, binds once discovery settles
+LINK[pressure-to-display]: source %1 = */environment-*/air-pressure: pattern, binds once discovery settles
 LINK[pressure-to-display]: source %1 bound to b0b21c90f570/environment-bme280/air-pressure
-LINK[pressure-to-display]: target bound to b0b21c90f570 -> ebus/5/b0b21c90f570/display-gme12864/line-two/set
+LINK[pressure-to-display]: target bound to b0b21c90f570 -> b0b21c90f570/display-gme12864/line-two
 ```
 
 ---
@@ -291,7 +291,7 @@ LINK[climate-to-display]: -> ebus/5/b0b21c90f570/display-gme12864/two-line/set
 | `delivery to … failed; retrying, backing off from N ms to 30000 ms` | A remote target with the broker down, or a local target not registered yet. `delivered to …` follows when it recovers. |
 | `expected <device-id>/<node>/<property> (controller link)` | A controller link has a two-part reference. A controller has no nodes, so both ends must name a device. |
 | `… matched no discovered …; retrying` / `… matches more than one node` | Controller only: a `*` reference found no match yet, or more than one, which leaves it unbound for the boot. |
-| `target … is ready — sending current text` | Controller only: the target device came (back) to `ready`, and the link is catching it up. |
+| `target … is ready; sending current text` | Controller only: the target device came (back) to `ready`, and the link is catching it up. |
 | Nothing happens, no errors | A source has never had a value yet — a sensor not answering, or a remote device not online. |
 
 ---
@@ -304,6 +304,7 @@ A link does not convert units; a linear `scale`/`offset` conversion is proposed 
 
 ## See also
 
-- [`lib/logic/link.h`](../lib/logic/link.h) — the implementation's own reference comment
+- [cpp-sdk `doc/link.md`](https://github.com/electrification-bus/cpp-sdk/blob/main/doc/link.md): the core's link, which `logic/link` runs
+- [`lib/ebus_core/link/include/ebus/link/link.h`](../lib/ebus_core/link/include/ebus/link/link.h): `EbusLink`'s reference comment
 - [GenerateHomieDevice.md](GenerateHomieDevice.md) — `device.yml`, components and `config:`
 - `deliver_local_set()` in [`include/platform/mqtt_client.h`](../include/platform/mqtt_client.h) — how one component actuates another
