@@ -107,6 +107,7 @@ class NodeProperty {
     private:
         void store(const char* text);
         void report_unbound(const char* what);
+        void report_non_finite(double value);
 
         Property* _prop = nullptr;      // the one place this property's value lives
         bool _unbound_reported = false; // report_unbound() has logged for this handle

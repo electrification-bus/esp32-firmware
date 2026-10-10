@@ -91,13 +91,27 @@ void NodeProperty::store(const char* text) {
     else report_unbound("set");
 }
 
+void NodeProperty::report_non_finite(double value) {
+    Serial.printf("NodeProperty: '%s' - %f is not a float payload; keeping the previous value\n",
+                  _topic, value);
+}
+
 // Floats and doubles use the core's shortest round-trip text ("21.4", "40.0"), the same
-// as Property::setValue(float) and python-sdk.
+// as Property::setValue(float) and python-sdk. A NaN or infinity has no float payload,
+// so the property keeps its previous value.
 void NodeProperty::set(int value)          { char b[32]; snprintf(b, sizeof(b), "%d", value);   store(b); }
 void NodeProperty::set(int64_t value)      { char b[32]; snprintf(b, sizeof(b), "%lld", (long long)value); store(b); }
 void NodeProperty::set(unsigned int value) { char b[32]; snprintf(b, sizeof(b), "%u", value);   store(b); }
-void NodeProperty::set(float value)        { char b[32]; homie_format_float(value, b, sizeof(b));  store(b); }
-void NodeProperty::set(double value)       { char b[32]; homie_format_double(value, b, sizeof(b)); store(b); }
+void NodeProperty::set(float value) {
+    char b[32];
+    if (homie_format_float(value, b, sizeof(b))) store(b);
+    else report_non_finite(value);
+}
+void NodeProperty::set(double value) {
+    char b[32];
+    if (homie_format_double(value, b, sizeof(b))) store(b);
+    else report_non_finite(value);
+}
 void NodeProperty::set(bool value)         { store(value ? "true" : "false"); }
 void NodeProperty::set(const char* value)  { store(value); }
 
