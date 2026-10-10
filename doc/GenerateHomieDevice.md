@@ -99,6 +99,7 @@ nodes:
 | `id`    | no  | Device-id **template** (see below); defaults to `${chip_id}` |
 | `type`  | yes | Homie device `$type` string — how consumers identify the device |
 | `environment` | yes | PlatformIO environment name (`[env:…]`) from `platformio/platformio.ini` — **not** a PlatformIO `board` id; an env pins platform, board, PSRAM, flash size, partitions and build flags together |
+| `homie_role` | no | `device` (default) or `controller`. A controller build discovers other devices and runs the top-level `links:` list; it has no `nodes:`/`children:`, and the generator adds `-DENABLE_CONTROLLER` to the build. See [Controller role](#controller-role-links) |
 
 #### The `id` template
 
@@ -165,6 +166,42 @@ Bus pins are a fact about the board, shared by every node on that bus, so they a
 | `sim/proxy_info` | `ProxyInfo` | none; the `info` capability node of a proxied device |
 
 Multiple instances of the same component are allowed; give each a unique `id`.
+
+---
+
+## Controller role: `links:`
+
+With `homie_role: controller` the board is a Homie **controller**, not a device: it
+publishes only its own `$state`, discovers the devices on the broker, and does its
+configured work through a top-level `links:` list. Each link watches up to three
+properties on other devices and drives one settable property on another:
+
+```yaml
+device:
+  name: climate-controller
+  environment: esp32-poe-iso
+  homie_role: controller
+
+links:
+  - id: sht20-to-display
+    source: b0b21c90f570/environment-sht20/temperature, b0b21c90f570/environment-sht20/relative-humidity
+    target: a4cf12e8d0b4/display-gme12864/two-line
+    format: "%1 °C|%2 %%"
+    decimals: 1
+```
+
+Each entry takes the same keys as a `logic/link` node's `config:` (`source`, `target`,
+`format`, `decimals`, `interval_ms`) plus its `id`, and the generator builds it from the
+same component. The generator enforces the role:
+
+- `nodes:` or `children:` in a controller → error (a controller has no nodes).
+- A controller link reference that is not `<device-id>/<node>/<property>` → error.
+- A `links:` list in a **device** build → error; a device declares each link as a
+  `logic/link` node instead, so there is one way to write each.
+
+The flag lands in the generated `build/platformio.ini`, so build with `./ebus-esp32`.
+Behaviour — presence gating, re-send when a target returns to `ready` — is described in
+[Controller.md](Controller.md#controller-links) and [Link.md](Link.md#on-a-controller).
 
 ---
 
@@ -377,6 +414,22 @@ constructor: '("{id}", {config.cs_pin})'         # SpiDev dev("dev", 15);
 constructor: '("{id}", {config.addr}, true)'     # ModDev dev("dev", 0x01, true);
 constructor: '("{id}", {bus.i2c.pin_sda}, {bus.i2c.pin_scl}, {config.addr})'   # I2CDev dev("dev", 13, 16, 0x76);
 ```
+
+Every `{config.KEY}` the template uses is **required** — the generator errors if a
+`device.yml` entry leaves one out, or adds one the template does not use. To make a key
+optional, give it a default in the generator block; a value in `device.yml` still wins:
+
+```yaml
+generator:
+  constructor: '("{id}", "{config.source}", "{config.format}", {config.decimals})'
+  config_defaults:
+    format: "%s"
+    decimals: -1
+```
+
+A string value is inserted as-is, so put the placeholder inside quotes in the template
+(`"{config.format}"`) — the generator escapes any `"` or `\` in the value so it cannot end
+the C++ string early.
 
 #### multi-node components
 

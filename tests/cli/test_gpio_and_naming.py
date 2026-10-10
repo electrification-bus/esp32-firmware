@@ -1,5 +1,8 @@
 """GPIO conflict detection, constructor templating and C identifier naming."""
 
+import shutil
+import subprocess
+
 import pytest
 
 from helpers import device_doc, relay
@@ -67,6 +70,32 @@ def test_required_keys_are_read_from_the_template(cli):
                                            ("0x76", "0x76"), (0.5, "0.5")])
 def test_cpp_literal(cli, value, literal):
     assert cli._cpp_literal(value) == literal
+
+
+@pytest.mark.parametrize("value,literal", [
+    ('say "hi"', 'say \\"hi\\"'),
+    ("a\\b", "a\\\\b"),
+    ("%1|%2\n", "%1|%2\\n"),
+    ("tab\there\r", "tab\\there\\r"),
+    ("\x01" "1", "\\0011"),          # octal: the digit after it stays a digit
+    ("\x1b[1m", "\\033[1m"),
+    ("del\x7f", "del\\177"),
+    ("21 \u00b0C", "21 \u00b0C"),     # UTF-8 text passes through
+])
+def test_cpp_literal_escapes_strings(cli, value, literal):
+    assert cli._cpp_literal(value) == literal
+
+
+@pytest.mark.skipif(shutil.which("c++") is None, reason="needs a host C++ compiler")
+def test_cpp_literal_round_trips_through_the_compiler(cli, tmp_path):
+    value = 'q"b\\s\n\r\t\x01' "7\x1f" "f\x7f \u00b0 %1|%%"
+    src = tmp_path / "lit.cpp"
+    src.write_text('#include <cstdio>\nint main() { std::fputs("' + cli._cpp_literal(value)
+                   + '", stdout); }\n', encoding="utf-8")
+    exe = tmp_path / "lit"
+    subprocess.run(["c++", "-std=gnu++17", "-o", str(exe), str(src)], check=True)
+    out = subprocess.run([str(exe)], check=True, capture_output=True).stdout
+    assert out == value.encode("utf-8")
 
 
 def test_fmt_ctor_substitutes_id_config_and_bus(cli):

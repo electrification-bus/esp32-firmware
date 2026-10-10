@@ -162,6 +162,7 @@ VSCode users: run `./ebus-esp32` in the integrated terminal. The PlatformIO exte
 - **Examples**: [examples/sht20/](examples/sht20/device.yml) (Modbus sensor), [examples/ssr/](examples/ssr/README.md) (relay on a GPIO), [examples/bms/](examples/bms/README.md) (BLE driver), [examples/bridge-bess.device.yml](examples/bridge-bess.device.yml) (nested bridge)
 - **Writing a driver** (authoring a `NodeEntity` subclass — the reusable hardware unit, shared by both paths above): [WritingADriver.md](doc/WritingADriver.md)
 - **Picking pins for a board** (what Ethernet/PSRAM/flash have already taken, and this SDK's reference values): [GPIOPins.md](doc/GPIOPins.md)
+- **Wiring one property into another** (a reading onto a display, a state onto a relay, a value from another device — `logic/link`, no code): [Link.md](doc/Link.md)
 - **Nested / proxied devices** (bridge role, the `{proxier}-{proxied}` model): [NestedBridgeExample.md](doc/NestedBridgeExample.md)
 - **Configuration overlays** (incl. `${chip_id}` device-id templating, `mqtt_qos`, `mdns_discovery` / `mdns_advertise`): [Configuration.md](doc/Configuration.md)
 - **LLM access to a running device via MCP**: [Homie5MCPServer.md](doc/Homie5MCPServer.md)

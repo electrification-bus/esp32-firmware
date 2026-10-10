@@ -64,3 +64,20 @@ def test_settables_on_nested_child_devices_are_counted(sandbox):
     sandbox.generate(doc)
     assert "// 6 settable properties" in sandbox.homie_cpp
     assert capacity(sandbox.homie_cpp) == 11
+
+
+def test_device_build_link_remote_sources_take_table_slots(sandbox):
+    links = [{"component": "logic/link", "id": f"l{i}",
+              "config": {"source": f"dev{i}/env/t, dev{i}/env/h, r1/state", "target": "r1/state"}}
+             for i in range(3)]
+    sandbox.generate(device_doc([relay("r1", 14)] + links))
+    assert "// 1 settable property + 6 link source watches + 1 $state watch" in sandbox.homie_cpp
+    assert capacity(sandbox.homie_cpp) == 12
+
+
+def test_controller_links_take_no_table_slots(sandbox):
+    doc = {"device": {"name": "c", "environment": "esp32-poe-iso-wrover",
+                      "homie_role": "controller"},
+           "links": [{"id": "l", "source": "dev/env/t", "target": "disp/d/one-line"}]}
+    sandbox.generate(doc)
+    assert "// 0 settable properties + 1 $state watch" in sandbox.homie_cpp

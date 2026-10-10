@@ -60,6 +60,60 @@ Everything not listed is either SPI flash (6-11) or consumed by the Ethernet RMI
 
 **WROVER variants (`esp32-poe-iso-wrover`)**: the PSRAM uses GPIO 16 and 17, so SCL must move. `lib/i2c/bme280.yml` documents the substitution — SDA 13 / SCL **14** instead of SDA 13 / SCL 16.
 
+### UEXT connector
+
+The 10-pin UEXT header (2×5, 0.1") is Olimex's standard module connector: power plus one
+UART, one I2C bus and one SPI bus, always in the same positions. On this board
+([Olimex pinout](https://github.com/OLIMEX/ESP32-POE-ISO/blob/master/DOCUMENTS/ESP32-POE-ISO-PINOUT.png)):
+
+```
+                       UEXT  (2 x 5, 0.1")
+                     +-----------------+
+         +3.3V    1  |  [1]       [2]  |  2    GND
+     TXD GPIO4    3  |  [3]       [4]  |  4    GPI36  RXD  (input-only)
+     SCL GPIO16   5  |  [5]       [6]  |  6    GPIO13 SDA
+    MISO GPIO15   7  |  [7]       [8]  |  8    GPIO2  MOSI
+     SCK GPIO14   9  |  [9]      [10]  |  10   GPIO5  SSEL (CS)
+                     +-----------------+
+             odd pins: one row        even pins: the other
+```
+
+| Pin | UEXT signal | ESP32 | On-board pull-up | Notes |
+|---|---|---|---|---|
+| 1 | +3.3V | — | — | **Output only**, 0.3 A max; +3.3V and +5V together must stay under 2 W |
+| 2 | GND | — | — | |
+| 3 | TXD | GPIO4 | — | SDK default `buses.rs485.pin_b` (TX) |
+| 4 | RXD | GPI36 | 2.2k | **input-only**; SDK default `buses.rs485.pin_a` (RX) |
+| 5 | SCL | GPIO16 | 2.2k | SDK default `buses.i2c.pin_scl` — **not on WROVER** (see below) |
+| 6 | SDA | GPIO13 | 2.2k | SDK default `buses.i2c.pin_sda` |
+| 7 | MISO | GPIO15 | 10k | strapping pin; shared with the SD card |
+| 8 | MOSI | GPIO2 | 2.2k | boot strapping pin; shared with the SD card |
+| 9 | SCK | GPIO14 | — | shared with the SD card |
+| 10 | SSEL (CS) | GPIO5 | 10k | strapping pin |
+
+Check orientation with a meter before plugging anything in: pin 1 is +3.3V and pin 2 is
+GND.
+
+What this means in `device.yml`:
+
+- **The SDK's PoE-ISO defaults are the UEXT pins.** `buses.rs485: { pin_a: 36, pin_b: 4 }`
+  and `buses.i2c: { pin_sda: 13, pin_scl: 16 }` put a UEXT RS485 module or a UEXT I2C
+  sensor/display (such as the GME12864 at 0x3C) on the connector with no rewiring. The
+  I2C lines already have 2.2k pull-ups on the board.
+- **UEXT SPI is not the SPI placement suggested below.** A UEXT SPI module expects
+  `buses.spi: { pin_sck: 14, pin_miso: 15, pin_mosi: 2 }` with its chip-select on 5. The
+  reference values below use MISO 34 / MOSI 15 instead, to keep the strapping pin GPIO2
+  out of the bus; use the UEXT set only for a module on the connector.
+- **GPIO2, 14 and 15 are shared with the SD card** — free only while no card is
+  inserted. GPIO2, 5 and 15 are boot strapping pins: a module that pulls one of them the
+  wrong way at power-up can stop the board booting.
+- **Every UEXT signal pin is also on the long EXT header** (GPIO2, 4, 5, 13, 14, 15, 16,
+  36). Using a pin on one connector means not using it on the other.
+- **WROVER variants:** GPIO16 is taken by the PSRAM and Olimex brings out **GPIO33** in
+  its place (and GPIO0 for GPIO17), so on `esp32-poe-iso-wrover` UEXT pin 5 is GPIO33.
+  Check your board revision's schematic before relying on it; the SDK's WROVER reference
+  value for SCL (14) predates this note.
+
 ## ESP32-S3-DevKitC-1 (`esp32-s3-devkitc-1`)
 
 A development kit, so most pins are broken out. What to avoid:

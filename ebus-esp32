@@ -322,6 +322,11 @@ def find_component_yml(component: str):
                 return candidate
     return None
 
+# _cpp_literal()'s named escapes. Any other control character becomes a three-digit octal
+# escape, which ends after three digits, so a digit that follows is not swallowed (a hex
+# escape \xNN would take every hex digit after it).
+_CPP_ESCAPES = {"\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t"}
+
 def _cpp_literal(v) -> str:
     """Render a YAML config value as a C++ source literal.
 
@@ -336,6 +341,13 @@ def _cpp_literal(v) -> str:
     """
     if isinstance(v, bool):
         return "true" if v else "false"
+    if isinstance(v, str):
+        # Strings land inside the template's own quotes ("{config.format}"), so a quote
+        # or backslash in the value must not end the C++ literal early, and a control
+        # character (a YAML "\n", or a raw newline in a block scalar) must not break the
+        # line. Identifiers and numbers spelled as strings pass through unchanged.
+        return "".join(_CPP_ESCAPES.get(c) or (f"\\{ord(c):03o}" if ord(c) < 0x20 or c == "\x7f"
+                                                else c) for c in v)
     return str(v)
 
 def fmt_ctor(template: str, node_id: str, config: dict, registers: list = None,
@@ -510,7 +522,7 @@ def component_source_closure(used_components: list) -> list:
     return sorted(found)
 
 def write_lean_platformio_ini(env_name: str, used_lib_deps: list,
-                              used_components: list) -> None:
+                              used_components: list, controller: bool = False) -> None:
     """Write build/platformio.ini: a standalone copy of platformio.ini containing
     only [platformio], [env], [common] (lib_deps pruned+extended), and this one
     environment's [env:<name>] — everything `pio_run()` needs, nothing device.yml's
@@ -570,6 +582,12 @@ def write_lean_platformio_ini(env_name: str, used_lib_deps: list,
     out.add_section(env_section)
     for key, val in src.items(env_section):
         out.set(env_section, key, val)
+    # homie_role: controller selects the controller build. Set here, from device.yml, so
+    # the role and the compiled firmware cannot disagree the way a hand-edited flag could.
+    if controller:
+        flags = out.get(env_section, "build_flags") if out.has_option(env_section, "build_flags") else ""
+        if "-DENABLE_CONTROLLER" not in flags:
+            out.set(env_section, "build_flags", (flags + "\n" if flags else "") + "-DENABLE_CONTROLLER")
     # Read by scripts/lib_src_filter.py, so a lib/<bus> library compiles only these
     # components' sources: an unused component's #include would otherwise need a
     # library that kept_deps left out.
@@ -714,7 +732,8 @@ def _cvar_global(s):
 
 # The firmware's settable subscriber table (lib/ebus_core/src/homie/homie_settable.cpp,
 # allocated in src/platform/mqtt_client.cpp) holds one entry per distinct /set topic plus
-# the device's watch on its own $state, which goes through the same table. Drivers
+# the device's watch on its own $state and one per remote source of a device-build
+# logic/link, which go through the same table. Drivers
 # register their /set topics against properties their yml declares settable, so the yml
 # count bounds the table; the margin absorbs a driver that registers a /set on a property
 # its yml leaves read-only.
@@ -722,9 +741,126 @@ _SETTABLE_TABLE_WATCHES = 1   # the root device's $state watch (main.cpp watch_o
 _SETTABLE_TABLE_MARGIN  = 4
 _SETTABLE_TABLE_FLOOR   = 8
 
-def settable_table_capacity(settable_count: int) -> int:
+# ── logic/link references ─────────────────────────────────────────────────────
+
+def link_refs(value) -> list:
+    """The comma-separated references in a link's source: or target:, stripped."""
+    return [r.strip() for r in str(value if value is not None else "").split(",")]
+
+def remote_source_topic_key(ref: str):
+    """'<device>/<node>/<property>' as the firmware subscribes it (each part sanitized),
+    or None for a local or * reference."""
+    parts = ref.split("/")
+    if len(parts) != 3 or "*" in ref:
+        return None
+    return "/".join(sanitize_homie_id(p) for p in parts)
+
+def count_remote_sources(link_entries: list) -> int:
+    """Settable-table entries a device build's links register: one per remote source."""
+    return sum(1 for _, cfg in link_entries for ref in link_refs(cfg.get("source"))
+               if remote_source_topic_key(ref) is not None)
+
+_LINK_MAX_SOURCES = 3            # Link::MAX_SOURCES in lib/logic/link.h
+_LINK_PATTERN_RE  = re.compile(r"[a-z0-9*-]+")
+_LINK_PART_LIMITS = {3: ("HOMIE_DEVICE_ID_MAX", "HOMIE_NODE_ID_MAX", "HOMIE_PROPERTY_ID_MAX"),
+                     2: ("HOMIE_NODE_ID_MAX", "HOMIE_PROPERTY_ID_MAX")}
+
+def link_ref_problem(ref: str, controller: bool, limits: dict):
+    """Why Link::setup() (link_parse_ref() in lib/logic/link_core.cpp) would refuse `ref`,
+    or None. Returns (problem, parts), the parts sanitized as the firmware does."""
+    raw = ref.split("/")
+    if not ref or len(raw) not in (2, 3) or any(not p for p in raw):
+        return "must be <node>/<property> or <device-id>/<node>/<property>", None
+    if controller and len(raw) != 3:
+        return ("must be <device-id>/<node>/<property>: a controller has no nodes of its "
+                "own"), None
+    if "*" in raw[-1]:
+        return "has * in the property, which is never resolved", None
+    parts = []
+    for p, limit_name in zip(raw, _LINK_PART_LIMITS[len(raw)]):
+        if "*" in p:
+            if not controller:
+                return ("uses *, which only a controller build resolves (homie_role: "
+                        "controller)"), None
+            part = p.lower()
+            if not _LINK_PATTERN_RE.fullmatch(part):
+                return f"has a malformed pattern '{p}': only a-z, 0-9, - and *", None
+        else:
+            part = sanitize_homie_id(p)
+            if not part:
+                return f"has a part '{p}' with no Homie id characters", None
+        if len(part) > limits[limit_name]:
+            return (f"has a part '{part}' of {len(part)} chars; the firmware holds at most "
+                    f"{limits[limit_name]} ({limit_name} in {_HOMIE_LIMITS_NAME})"), None
+        parts.append(part)
+    return None, parts
+
+def check_link_refs(link_entries: list, controller: bool, root_id: str, limits: dict) -> None:
+    """Refuse the references Link::setup() would refuse at boot, and topics over
+    HOMIE_TOPIC_MAX, which it would disable."""
+    errors = []
+    topic_max = limits["HOMIE_TOPIC_MAX"]
+    kind = "controller link" if controller else "link"
+    for link_id, cfg in link_entries:
+        for key in ("source", "target"):
+            refs = link_refs(cfg.get(key))
+            if key == "target" and len(refs) != 1:
+                errors.append(f"{kind} '{link_id}' target: must be one reference (got "
+                              f"{cfg.get(key)!r})")
+                continue
+            if key == "source" and len(refs) > _LINK_MAX_SOURCES:
+                errors.append(f"{kind} '{link_id}' source: at most {_LINK_MAX_SOURCES} "
+                              f"references (got {len(refs)})")
+                continue
+            for ref in refs:
+                problem, parts = link_ref_problem(ref, controller, limits)
+                if problem:
+                    errors.append(f"{kind} '{link_id}' {key}: '{ref}' {problem}")
+                    continue
+                if any("*" in p for p in parts):
+                    continue   # its topic is known only once it binds; the firmware checks it then
+                if len(parts) == 3:
+                    topic = f"{_TOPIC_PREFIX}/{'/'.join(parts)}"
+                elif key == "target":
+                    topic = f"{_TOPIC_PREFIX}/{root_id}/{'/'.join(parts)}"
+                else:
+                    continue   # a local source is read directly, with no topic
+                if key == "target":
+                    topic += "/set"
+                if len(topic) > topic_max:
+                    errors.append(f"{kind} '{link_id}' {key}: topic '{topic}' is {len(topic)} "
+                                  f"chars; the firmware holds at most {topic_max} "
+                                  f"(HOMIE_TOPIC_MAX in {_HOMIE_LIMITS_NAME}; measured with "
+                                  f"the longer prefix '{_TOPIC_PREFIX}')")
+    for e in errors:
+        print(f"ERROR: {e}", file=sys.stderr)
+    if errors:
+        print("       See doc/Link.md, 'References'.", file=sys.stderr)
+        sys.exit(1)
+
+def check_shared_remote_sources(link_entries: list) -> None:
+    """A device build's link watches a remote source through the settable table, which
+    keeps one handler per topic: a second link source on the same topic would take it
+    over and leave the first without values. Link::setup() refuses it at boot; refuse it
+    here first."""
+    seen = {}
+    for link_id, cfg in link_entries:
+        for ref in link_refs(cfg.get("source")):
+            key = remote_source_topic_key(ref)
+            if key is None:
+                continue
+            if key in seen:
+                where = ("twice in its source:" if seen[key] == link_id
+                         else f"in links '{seen[key]}' and '{link_id}'")
+                print(f"ERROR: remote source '{key}' is used {where}. In a device build a "
+                      f"topic can feed only one link source; use it in one link (see "
+                      f"doc/Link.md, 'Several links').", file=sys.stderr)
+                sys.exit(1)
+            seen[key] = link_id
+
+def settable_table_capacity(settable_count: int, link_watches: int = 0) -> int:
     return max(_SETTABLE_TABLE_FLOOR,
-               settable_count + _SETTABLE_TABLE_WATCHES + _SETTABLE_TABLE_MARGIN)
+               settable_count + link_watches + _SETTABLE_TABLE_WATCHES + _SETTABLE_TABLE_MARGIN)
 
 # ── id and topic lengths ───────────────────────────────────────────────────────
 #
@@ -925,6 +1061,7 @@ def _generate(args) -> None:
     used_components   = []   # 'bus/name' of every used component (dedup, ordered)
     pin_uses          = {}   # label -> GPIO, for every bus and node pin in use (conflict check)
     settable_count    = [0]  # settable properties across the whole device tree
+    link_entries      = []   # (node id, config) of every logic/link node and controller link
 
     def _cvar(s):
         return "".join(c if (c.isalnum() or c == "_") else "_" for c in str(s))
@@ -1016,6 +1153,11 @@ def _generate(args) -> None:
         # nothing is left.
         entity_node_id = sanitize_homie_id(node_id) or str(node_id)
         id_limits.check_id("node", entity_node_id, "HOMIE_NODE_ID_MAX", f" ({dev_label})")
+        # Optional constructor keys: generator.config_defaults fills in whatever the
+        # device.yml entry leaves out, so a template can reference a key without every
+        # instance having to spell it. Merged before the check, so a defaulted key counts
+        # as provided and an explicit device.yml value still wins.
+        node_cfg = {**(gen.get("config_defaults") or {}), **node_cfg}
         check_config_keys(node_id, component, comp_path, ctor_tmpl, node_cfg)
         check_bus_keys(node_id, component, comp_path, ctor_tmpl, buses_cfg)
         for bus, key in required_bus_keys(ctor_tmpl):
@@ -1028,6 +1170,8 @@ def _generate(args) -> None:
             if dep not in used_lib_deps:
                 used_lib_deps.append(dep)
         comp_name = f"{comp_path.parent.name}/{comp_path.stem}"
+        if comp_name == "logic/link":
+            link_entries.append((str(node_id), node_cfg))
         if comp_name not in used_components:
             used_components.append(comp_name)
         includes.append(f"#include <{header}>")
@@ -1161,8 +1305,67 @@ def _generate(args) -> None:
             prop_reg_body.append(f"    {dev_access}addChild(&{cvar});")
             emit_device(child, f"{cvar}.", f"&{cvar}", cidbuf, False, child_id, child_label)
 
-    emit_device(cfg, "device->", "device", "device->getId()", True, root_id, "root device")
+    # homie_role decides what this build IS. A device publishes nodes; a controller (Homie's
+    # other role — it discovers devices and commands them over /set) publishes no nodes of
+    # its own and instead runs the top-level links: list, each a logic/link whose ends are
+    # both on other devices. Local links stay logic/link NODES in a device build, so each
+    # thing has one way to be written.
+    #
+    # links: is OPTIONAL for both roles. A device never has one; a controller without one
+    # still builds and runs, it just discovers devices without driving any.
+    role = (device.get("homie_role") or "device").strip()
+    links_cfg = cfg.get("links") or []
+    # links: is top-level only. Indented under another section it parses as that
+    # section's key and would be ignored without a word — the controller then runs with
+    # no links and nothing says why.
+    for section, body in cfg.items():
+        if isinstance(body, dict) and "links" in body:
+            print(f"ERROR: device.yml has links: inside the {section}: section — it must be "
+                  f"top-level (no indentation before 'links:')", file=sys.stderr)
+            sys.exit(1)
+    if role not in ("device", "controller"):
+        print(f"ERROR: device.homie_role must be 'device' or 'controller' (got {role!r})",
+              file=sys.stderr)
+        sys.exit(1)
+    if not isinstance(links_cfg, list):
+        print(f"ERROR: device.yml links: must be a list of link entries (got "
+              f"{type(links_cfg).__name__})", file=sys.stderr)
+        sys.exit(1)
+    if role == "device" and links_cfg:
+        print("ERROR: device.yml has a top-level links: list, which only a controller runs "
+              "(homie_role: controller). In a device build, declare each link as a node:\n"
+              "         - component: logic/link   (see doc/Link.md)", file=sys.stderr)
+        sys.exit(1)
+    if role == "controller":
+        if nodes_cfg or cfg.get("children"):
+            print("ERROR: homie_role: controller publishes no nodes of its own — remove "
+                  "nodes:/children:, or set homie_role: device.\n"
+                  "       A controller's work goes under a top-level links: list, with both "
+                  "ends on other devices\n"
+                  "       (<device-id>/<node>/<property>) — see doc/Controller.md#controller-links.",
+                  file=sys.stderr)
+            sys.exit(1)
+        if not links_cfg:
+            # Not an error: links: is optional. Said once so a controller that drives
+            # nothing is a choice rather than a surprise.
+            print("  NOTE: homie_role: controller with no links: — it will discover devices "
+                  "but drive none")
+        for link in links_cfg:
+            if not isinstance(link, dict) or not link.get("id"):
+                print(f"ERROR: device.yml links: entry needs at least an id (got {link!r})",
+                      file=sys.stderr)
+                sys.exit(1)
+            # Same component, same constructor and defaults as a logic/link node. is_root
+            # is False so links stay out of data/homie.yml — a controller publishes no nodes.
+            entry = {"component": "logic/link", "id": link["id"],
+                     "config": {k: v for k, v in link.items() if k != "id"}}
+            emit_node(entry, "device->", None, False, root_id, "controller link")
+    else:
+        emit_device(cfg, "device->", "device", "device->getId()", True, root_id, "root device")
     check_gpio_conflicts(pin_uses)
+    check_link_refs(link_entries, role == "controller", root_id, id_limits.limits)
+    if role == "device":
+        check_shared_remote_sources(link_entries)
     id_limits.exit_if_any("${chip_id" in (id_template or "${chip_id}"))
 
     # src/homie.cpp
@@ -1183,15 +1386,29 @@ def _generate(args) -> None:
         lines.append("    Node* _node;")
         lines += prop_reg_body
     lines += ["}"]
-    capacity = settable_table_capacity(settable_count[0])
+    # A device build's link registers one table entry per remote source; a controller
+    # build's links read the discovery cache and register none.
+    link_watches = count_remote_sources(link_entries) if role == "device" else 0
+    capacity = settable_table_capacity(settable_count[0], link_watches)
+    watches_text = (f"+ {link_watches} link source watch{'' if link_watches == 1 else 'es'} "
+                    if link_watches else "")
     lines += ["", f"// {settable_count[0]} settable propert{'y' if settable_count[0] == 1 else 'ies'} "
+                  f"{watches_text}"
                   f"+ {_SETTABLE_TABLE_WATCHES} $state watch + {_SETTABLE_TABLE_MARGIN} spare "
                   f"(at least {_SETTABLE_TABLE_FLOOR})",
               "uint16_t settable_table_capacity() {",
               f"    return {capacity};",
               "}"]
-    lines += ["", "void setup_homie() {"] + (setups or ["    // no nodes configured"]) + ["}"]
-    lines += ["", "void loop_homie() {"] + (loops or ["    // no nodes configured"]) + ["}", ""]
+    # A controller build's objects are its links: main.cpp's controller path drives them
+    # through these. Both pairs are always emitted, empty when unused, so either path links.
+    if role == "controller":
+        node_setups, node_loops, link_setups, link_loops = [], [], setups, loops
+    else:
+        node_setups, node_loops, link_setups, link_loops = setups, loops, [], []
+    lines += ["", "void setup_homie() {"] + (node_setups or ["    // no nodes configured"]) + ["}"]
+    lines += ["", "void loop_homie() {"] + (node_loops or ["    // no nodes configured"]) + ["}"]
+    lines += ["", "void setup_controller_links() {"] + (link_setups or ["    // no controller links"]) + ["}"]
+    lines += ["", "void loop_controller_links() {"] + (link_loops or ["    // no controller links"]) + ["}", ""]
 
     out_cpp = SRC_DIR / "homie.cpp"
     out_cpp.write_text("\n".join(lines), encoding="utf-8")
@@ -1205,7 +1422,8 @@ def _generate(args) -> None:
     # see write_lean_platformio_ini().
     env_for_ini = device.get("environment")
     if env_for_ini:
-        write_lean_platformio_ini(env_for_ini, used_lib_deps, used_components)
+        write_lean_platformio_ini(env_for_ini, used_lib_deps, used_components,
+                                  controller=(role == "controller"))
 
     # data/homie.yml
     homie_doc = {
@@ -1303,7 +1521,10 @@ def _generate(args) -> None:
     _warn_no_broker(out_config)
 
     env_name = device.get("environment", "<environment>")
-    print(f"\n{len(nodes_cfg)} node(s), environment: {env_name}")
+    if role == "controller":
+        print(f"\ncontroller: {len(links_cfg)} link(s), environment: {env_name}")
+    else:
+        print(f"\n{len(nodes_cfg)} node(s), environment: {env_name}")
 
 # ── build ──────────────────────────────────────────────────────────────────────
 

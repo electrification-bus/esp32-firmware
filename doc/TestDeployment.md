@@ -38,7 +38,7 @@ Create one device file per board (for example `poe16-a.yml`), with `device.envir
 
 ### 1. controller — `esp32-s3-devkitc-1`
 
-Add `-DENABLE_CONTROLLER` to the env's `build_src_flags` in `platformio_local.ini` (see [Controller.md](Controller.md#enabling-it)), set `homie_role: controller` in the `device:` section, and declare no nodes.
+Set `homie_role: controller` in the `device:` section and declare no nodes; generate adds `-DENABLE_CONTROLLER` to the build (see [Controller.md](Controller.md#enabling-it)). Remove any `-DENABLE_CONTROLLER` from `platformio_local.ini`.
 
 ### 2. poe16-a — `esp32-poe-iso-16mb` — Modbus SHT20 + Eletechsup32
 

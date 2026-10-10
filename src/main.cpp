@@ -399,6 +399,10 @@ void setup() {
     // Setup device discovery
     controller_setup_discovery();
 
+    // device.yml links: — each watches a property on one device and drives a settable one
+    // on another, through the discovery cache above (see doc/Link.md).
+    setup_controller_links();
+
     memstats();
 
     Serial.println("CONTROLLER: Ready - discovering devices...");
@@ -408,6 +412,7 @@ void loop() {
     if (_recovery_mode) { loop_recovery(); return; }
     loop_housekeeping();
     controller_loop();
+    loop_controller_links();
 
     // Print discovered devices every 30 seconds
     if (millis() - lastDiscoveryPrint > 30000) {

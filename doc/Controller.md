@@ -1,17 +1,12 @@
 # Homie Controller
 
-A controller build discovers, monitors and commands other Homie 5 devices on the MQTT broker. Controller mode is exclusive: when `ENABLE_CONTROLLER` is defined, `src/main.cpp` compiles its controller branch instead of the device branch, so the board publishes no nodes or properties of its own. The controller API is declared in [`lib/ebus_core/include/homie/controller.h`](https://github.com/electrification-bus/cpp-sdk/blob/main/include/homie/controller.h) and implemented in `lib/ebus_core/src/homie/controller.cpp`, part of the portable core; it stores what it discovers in the same `Device`, `Node` and `Property` classes the device role uses.
+A controller build discovers, monitors and commands other Homie 5 devices on the MQTT broker. Controller mode is exclusive: when `ENABLE_CONTROLLER` is defined (generate defines it for `homie_role: controller`), `src/main.cpp` compiles its controller branch instead of the device branch, so the board publishes no nodes or properties of its own. The controller API is declared in [`lib/ebus_core/include/homie/controller.h`](https://github.com/electrification-bus/cpp-sdk/blob/main/include/homie/controller.h) and implemented in `lib/ebus_core/src/homie/controller.cpp`, part of the portable core; it stores what it discovers in the same `Device`, `Node` and `Property` classes the device role uses.
 
 ## Enabling it
 
-`ENABLE_CONTROLLER` is a build flag that only `src/main.cpp` reads. Add it for your board's env in `platformio_local.ini` at the repo root (gitignored; see [Configuration.md](Configuration.md)). Appending to `build_src_flags` keeps the env's own `build_flags` intact:
+Set `homie_role: controller` in the `device:` section of `device.yml` and declare no `nodes:` or `children:`. generate then adds `-DENABLE_CONTROLLER` to the env's `build_flags` in the generated `build/platformio.ini`, so both `src/main.cpp` and the `logic/link` component under `lib/` compile as a controller. Build and flash as usual (`./ebus-esp32 build`, `./ebus-esp32 run`). The firmware also reports the role in the mDNS TXT record and the portal status.
 
-```ini
-[env:esp32-poe-iso]
-build_src_flags = ${env.build_src_flags} -DENABLE_CONTROLLER
-```
-
-Use the env named by `device.environment` in your `device.yml`, then build and flash as usual (`./ebus-esp32 build`, `./ebus-esp32 run`). Also set `homie_role: controller` in the `device:` section; the firmware reports it in the mDNS TXT record and the portal status, and it does not select the mode.
+Do not add `-DENABLE_CONTROLLER` by hand to `build_src_flags` (in `platformio_local.ini` or elsewhere). That flag reaches only `src/`, so with `homie_role: device` it gives a split build: `main.cpp` runs the controller branch while `lib/logic/link.cpp` and the generated `src/homie.cpp` are built for a device, and the device's nodes and links are never set up.
 
 The serial log starts with `===== HOMIE CONTROLLER =====` instead of the device banner, and `CONTROLLER: Ready - discovering devices...` once discovery is subscribed.
 
@@ -27,6 +22,28 @@ The serial log starts with `===== HOMIE CONTROLLER =====` instead of the device 
 `loop()` services the portal, NTP, mDNS and MQTT, calls `controller_loop()`, prints the discovered devices every 30 seconds (own state, effective state, and root or child) and prints `CONTROLLER Stats` (devices, descriptions, messages received and dropped) every 60 seconds.
 
 To add your own logic, edit the `loop()` in the `ENABLE_CONTROLLER` branch of `src/main.cpp` and call the functions below.
+
+## Controller links
+
+A controller's configured work is a top-level `links:` list in `device.yml`. Each entry is a `logic/link` ([Link.md](Link.md)) with the same keys as a link node's `config:` plus its `id`, and generate builds it from the same component. `setup()` calls `setup_controller_links()` after `controller_setup_discovery()`, and `loop()` calls `loop_controller_links()` after `controller_loop()`.
+
+```yaml
+device:
+  homie_role: controller
+
+links:
+  - id: pressure-to-display
+    source: '*/environment-bme280/air-pressure'
+    target: a4cf12e8d0b4/display-gme12864/line-two
+    decimals: 0
+```
+
+- **Both ends are on other devices.** A controller has no nodes, so every reference is `<device-id>/<node>/<property>`. generate refuses a two-part reference, and `nodes:` or `children:` in a controller build.
+- **Sources come from the discovery cache** (`controller_get_property()`), polled every `interval_ms`. A link makes no subscription of its own.
+- **The target is commanded only while it is `ready`.** `controller_set_property()` is called only while `controller_effective_state()` of the target device is `ready`, and the current text is sent again each time it returns to `ready`.
+- **`*` binds at runtime.** A `*` in the device or node part matches against the discovered devices: the reference binds to the one device and node that match and have the property (settable, for a target), and keeps that binding for the rest of the boot. `*` in the property is refused. Quote such a reference in YAML.
+- **Ambiguity is refused.** A pattern that matches more than one node, on one device or several, stays unbound for the boot and the link sends nothing. A pattern that matches nothing is retried every `interval_ms`.
+- **Binding waits for discovery to settle**, which is when every discovered device has a `$description`. Until then a link with a pattern sends nothing. [Link.md](Link.md#it-binds-only-once-discovery-has-settled) lists what keeps discovery from settling.
 
 ## Discovery
 

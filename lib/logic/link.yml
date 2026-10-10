@@ -1,0 +1,40 @@
+homie: 5.0.1
+name: EBUS
+type: ebus
+state: init
+nodes: []
+extensions: []
+implementation: homie-esp32-sdk
+# Copies property values into a settable property, configured here instead of in code.
+# No Homie node of its own — it only moves values between other nodes.
+#
+# config: keys
+#   source       up to 3, comma-separated: <node>/<property> on this device, or
+#                <device-id>/<node>/<property> on another device (read off the broker —
+#                no controller build needed). Sources may mix local and remote.
+#   target       a settable <node>/<property> on this device (local, works with the
+#                broker down), or <device-id>/<node>/<property> on another device
+#   format       optional, default "%s" — %1, %2, %3 are the sources' values in order,
+#                %s is %1, %% is a literal '%'
+#   decimals     optional, default -1 (as published) — round numeric values first
+#   interval_ms  optional, default 1000 — how often a local source is polled
+#
+#   - component: logic/link
+#     id: temp-to-display
+#     config:
+#       source: environment-sht20/temperature, environment-sht20/relative-humidity
+#       target: display-gme12864/two-line
+#       format: "%1 °C|%2 %%"
+#       decimals: 1
+#
+# Several links are several nodes: entries, each with its own id — but give each its own
+# target, or they overwrite one another. Nothing is sent until every source has a value;
+# after that the target gets a value only when the rendered text changes.
+generator:
+  class: Link
+  header: logic/link.h
+  constructor: '("{id}", "{config.source}", "{config.target}", "{config.format}", {config.decimals}, {config.interval_ms})'
+  config_defaults:
+    format: "%s"
+    decimals: -1
+    interval_ms: 1000
