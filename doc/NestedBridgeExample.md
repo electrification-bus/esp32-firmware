@@ -49,7 +49,7 @@ ebus/5/<root>-bms/battery/voltage          = 51.56
 ...
 ```
 
-Note the things the SDK does for you:
+Note the things the firmware does for you:
 
 - **`<root>-bms` id** — the child's runtime id is `{root-id}-{child-suffix}`, the eBus `{proxier}-{proxied}` naming convention, applied automatically by the generator.
 - **`root` / `parent`** — set on the child's `$description` so consumers can resolve the tree.

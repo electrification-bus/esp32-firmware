@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
   - name: Report a security vulnerability
-    url: https://github.com/electrification-bus/esp32-sdk/security/advisories/new
+    url: https://github.com/electrification-bus/esp32-firmware/security/advisories/new
     about: Report vulnerabilities privately, not as a public issue.
   - name: Questions and design discussion
-    url: https://github.com/electrification-bus/esp32-sdk/discussions
+    url: https://github.com/electrification-bus/esp32-firmware/discussions
     about: Open-ended questions and proposals belong in Discussions.

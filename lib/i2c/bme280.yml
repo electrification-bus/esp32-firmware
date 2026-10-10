@@ -29,7 +29,7 @@ nodes:
         retained: true
         value: 0.0
 extensions: []
-implementation: homie-esp32-sdk
+implementation: homie-esp32-firmware
 # I2C pins come from device.yml's top-level buses: block, shared by every i2c/* node.
 # The only per-node config is the sensor's I2C address: 0x76 (SDO low, the usual
 # breakout default) or 0x77 (SDO high). Example:

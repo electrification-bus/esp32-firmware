@@ -4,7 +4,7 @@ type: ebus
 state: init
 nodes: []
 extensions: []
-implementation: homie-esp32-sdk
+implementation: homie-esp32-firmware
 # Copies property values into a settable property, configured here instead of in code.
 # No Homie node of its own — it only moves values between other nodes.
 #

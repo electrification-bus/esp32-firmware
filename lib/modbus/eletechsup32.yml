@@ -21,7 +21,7 @@ nodes:
         value: ''
         description: "32-bit hex mask of input states, bit n = input n (e.g. 0x00000042)"
 extensions: []
-implementation: homie-esp32-sdk
+implementation: homie-esp32-firmware
 # RS485 pins come from device.yml's top-level buses: block, shared by every modbus/*
 # node (they are ONE physical bus — only the first node's setup() configures the UART).
 # pin_a -> the RS485 module's "RXD" silk-screen pin, pin_b -> its "TXD" pin. Reference

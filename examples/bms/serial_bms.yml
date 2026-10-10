@@ -139,7 +139,7 @@ nodes:
         retained: true
         description: "When true, discharge to low SOC threshold before charging at off-peak start"
 extensions: []
-implementation: homie-esp32-sdk
+implementation: homie-esp32-firmware
 generator:
   class: SerialBMS
   header: ble/serial_bms.h

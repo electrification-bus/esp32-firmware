@@ -1,6 +1,6 @@
 # GPIO Pins by Board
 
-Which pins are actually free on each board this SDK builds for, and what to put on them.
+Which pins are actually free on each board this firmware builds for, and what to put on them.
 
 Pin data used to live scattered across the component ymls — `lib/modbus/sht20.yml` knows its own reference values, `lib/i2c/bme280.yml` knows its own — which is fine when you are adding one sensor and useless when you are laying out a whole board. This page is the board-first view: start from the board you are building, see what is left.
 
@@ -96,7 +96,7 @@ GND.
 
 What this means in `device.yml`:
 
-- **The SDK's PoE-ISO defaults are the UEXT pins.** `buses.rs485: { pin_a: 36, pin_b: 4 }`
+- **The firmware's PoE-ISO defaults are the UEXT pins.** `buses.rs485: { pin_a: 36, pin_b: 4 }`
   and `buses.i2c: { pin_sda: 13, pin_scl: 16 }` put a UEXT RS485 module or a UEXT I2C
   sensor/display (such as the GME12864 at 0x3C) on the connector with no rewiring. The
   I2C lines already have 2.2k pull-ups on the board.
@@ -111,7 +111,7 @@ What this means in `device.yml`:
   36). Using a pin on one connector means not using it on the other.
 - **WROVER variants:** GPIO16 is taken by the PSRAM and Olimex brings out **GPIO33** in
   its place (and GPIO0 for GPIO17), so on `esp32-poe-iso-wrover` UEXT pin 5 is GPIO33.
-  Check your board revision's schematic before relying on it; the SDK's WROVER reference
+  Check your board revision's schematic before relying on it; the firmware's WROVER reference
   value for SCL (14) predates this note.
 
 ## ESP32-S3-DevKitC-1 (`esp32-s3-devkitc-1`)
@@ -131,7 +131,7 @@ SDK reference values put Modbus on 6/7, I2C on 8/9 (the core's default SDA/SCL f
 
 Another Ethernet board, so the RMII pins are spoken for in the same way as the PoE-ISO. **This page does not yet carry a verified free-pin list for it** — check the vendor pinout before laying out a wESP32 build rather than assuming the PoE-ISO numbers transfer.
 
-## This SDK's reference values
+## This firmware's reference values
 
 Bus pins go in device.yml's top-level `buses:` block, once per physical bus; only chip-selects and output pins are per node:
 
@@ -173,7 +173,7 @@ Modbus does not necessarily use a hardware UART. `lib/platform/modbus/modbus_mas
 
 The WROVER envs deliberately comment `USE_SOFTWARE_SERIAL` out, with the note "SoftwareSerial crashes with PSRAM". Note that **the XIAO ESP32S3 hits both conditions at once**: its env sets `USE_SOFTWARE_SERIAL` while its board JSON sets `BOARD_HAS_PSRAM`, so it takes the SoftwareSerial path with PSRAM enabled.
 
-That may well be fine — the WROVER problem is most likely the classic-ESP32 PSRAM cache erratum (the reason the 2.0.x `esp32-poe-iso-wrover-arduino2` env carries `-mfix-esp32-psram-cache-issue`; the 3.x env leaves it out), which does not apply to the S3 at all. But it is the one combination this SDK elsewhere warns against, so treat a XIAO + Modbus bring-up as unproven until you have watched it run. If it does misbehave, the fix is to invert that `#if` ordering so `BOARD_HAS_PSRAM` wins.
+That may well be fine — the WROVER problem is most likely the classic-ESP32 PSRAM cache erratum (the reason the 2.0.x `esp32-poe-iso-wrover-arduino2` env carries `-mfix-esp32-psram-cache-issue`; the 3.x env leaves it out), which does not apply to the S3 at all. But it is the one combination this firmware elsewhere warns against, so treat a XIAO + Modbus bring-up as unproven until you have watched it run. If it does misbehave, the fix is to invert that `#if` ordering so `BOARD_HAS_PSRAM` wins.
 
 ## See also
 

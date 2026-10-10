@@ -1,12 +1,12 @@
-# eBus ESP32 SDK
+# eBus ESP32 Firmware
 
-eBus on the ESP32. This SDK (the `esp32-sdk` repository) lets ESP32-class hardware act as a device or controller on the [Electrification Bus](https://github.com/electrification-bus/specification) (eBus), which builds on the [Homie 5 MQTT convention](https://homieiot.github.io/). Devices publish under the `ebus/5/` topic root, with pluggable nodes for sensors, actuators, Modbus devices, and energy metering. Currently targets PlatformIO + Arduino-framework on ESP32 / ESP32-S3 / Olimex ESP32-POE-ISO; a future ESPHome variant is a stretch goal.
+eBus on the ESP32. This firmware (the `esp32-firmware` repository) lets ESP32-class hardware act as a device or controller on the [Electrification Bus](https://github.com/electrification-bus/specification) (eBus), which builds on the [Homie 5 MQTT convention](https://homieiot.github.io/). Devices publish under the `ebus/5/` topic root, with pluggable nodes for sensors, actuators, Modbus devices, and energy metering. Currently targets PlatformIO + Arduino-framework on ESP32 / ESP32-S3 / Olimex ESP32-POE-ISO; a future ESPHome variant is a stretch goal.
 
 ## Status
 
 Working firmware with Homie 5 device representation, Modbus RTU, captive-portal HTTP OTA, LittleFS-based config, and the start of a CLI developer-experience layer. See [doc/](doc/) for design notes and proposals.
 
-[`.ebus-spec.json`](.ebus-spec.json) records the specification commit, `framework.md` version, and framework features this SDK implements.
+[`.ebus-spec.json`](.ebus-spec.json) records the specification commit, `framework.md` version, and framework features this firmware implements.
 
 ## Quick start
 
@@ -19,8 +19,8 @@ You need:
 Clone with `--recursive`, because the portable core in `lib/ebus_core/` is a git submodule of [cpp-sdk](https://github.com/electrification-bus/cpp-sdk), and install PyYAML for the `./ebus-esp32` CLI in a virtual environment (Homebrew and most Linux distributions refuse `pip install` into the system Python):
 
 ```sh
-git clone --recursive https://github.com/electrification-bus/esp32-sdk.git
-cd esp32-sdk
+git clone --recursive https://github.com/electrification-bus/esp32-firmware.git
+cd esp32-firmware
 python3 -m venv .venv
 . .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install pyyaml
@@ -161,7 +161,7 @@ VSCode users: run `./ebus-esp32` in the integrated terminal. The PlatformIO exte
   - **In code** (hand-coded device/controller, no generator; type-safe descriptor tables + `on_set` handlers): [HandCodedDevice.md](doc/HandCodedDevice.md)
 - **Examples**: [examples/sht20/](examples/sht20/device.yml) (Modbus sensor), [examples/ssr/](examples/ssr/README.md) (relay on a GPIO), [examples/bms/](examples/bms/README.md) (BLE driver), [examples/bridge-bess.device.yml](examples/bridge-bess.device.yml) (nested bridge)
 - **Writing a driver** (authoring a `NodeEntity` subclass — the reusable hardware unit, shared by both paths above): [WritingADriver.md](doc/WritingADriver.md)
-- **Picking pins for a board** (what Ethernet/PSRAM/flash have already taken, and this SDK's reference values): [GPIOPins.md](doc/GPIOPins.md)
+- **Picking pins for a board** (what Ethernet/PSRAM/flash have already taken, and this firmware's reference values): [GPIOPins.md](doc/GPIOPins.md)
 - **Wiring one property into another** (a reading onto a display, a state onto a relay, a value from another device — `logic/link`, no code): [Link.md](doc/Link.md)
 - **Nested / proxied devices** (bridge role, the `{proxier}-{proxied}` model): [NestedBridgeExample.md](doc/NestedBridgeExample.md)
 - **Configuration overlays** (incl. `${chip_id}` device-id templating, `mqtt_qos`, `mdns_discovery` / `mdns_advertise`): [Configuration.md](doc/Configuration.md)

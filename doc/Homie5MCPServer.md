@@ -19,7 +19,7 @@ The LLM never touches your firmware directly — it goes through MQTT, exactly l
 ## Setup
 
 ```sh
-# Clone alongside esp32-sdk (a sibling directory is convenient but not required)
+# Clone alongside esp32-firmware (a sibling directory is convenient but not required)
 cd <your-workspace>                                     # wherever your clones live
 git clone https://github.com/Tieske/homie5-mcp-server.git
 

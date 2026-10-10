@@ -30,7 +30,7 @@ nodes:
         retained: true
         value: ''
 extensions: []
-implementation: homie-esp32-sdk
+implementation: homie-esp32-firmware
 generator:
   class: ProxyInfo
   header: sim/proxy_info.h

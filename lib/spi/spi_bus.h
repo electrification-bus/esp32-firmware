@@ -7,5 +7,5 @@
 //
 // Explicit pins, not the core's defaults: the ESP32 VSPI defaults (18/19/23) are the
 // Ethernet PHY's MDIO/MDC on the PoE-ISO boards, so a silent default would be wrong on
-// the boards this SDK targets first.
+// the boards this firmware targets first.
 SPIClass& ensure_spi_bus(int pin_sck, int pin_miso, int pin_mosi);

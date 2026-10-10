@@ -194,7 +194,7 @@ Every bus in `lib/` now has the same shape, and the class names say which layer 
 | **bus entity** — `NodeEntity` that owns the `buses.<bus>` pins and brings the transport up in `setup()` | `ModbusRTUEntity` | `I2CEntity` | `SPIEntity` | — | — |
 | **component** — the concrete Homie node, named for what it is | `SHT20`, `Eletechsup32`, `ModbusRegisterDevice` | `BME280` | `EnergyMeter` | `DigitalOutput` | `GattDevice` |
 
-- **"Entity" is the SDK's word for a Homie node with `setup()`/`loop()`** (`NodeEntity`), so `<Bus>Entity` means "a node bound to that bus" — not an I2C-specific term.
+- **"Entity" is the firmware's word for a Homie node with `setup()`/`loop()`** (`NodeEntity`), so `<Bus>Entity` means "a node bound to that bus" — not an I2C-specific term.
 - The bus entity's job is fixed: hold the pins from `device.yml`'s `buses:` block, start the shared transport once, hand the component a handle (`wire()`, `spi()`, the Modbus master). Binding the *device library* to that handle stays in the component, because each library does it differently (`begin(address(), &wire())` for Adafruit; the ATM90E32 library just uses the global `SPI`).
 - There is deliberately **no `GPIOEntity`** (a pin is not shared; nothing to ensure) and **no `BLEEntity`** (a link is per device; `BLEClientLink` already is that layer).
 - Components are named for the thing (`BME280`, `EnergyMeter`, `DigitalOutput`). The `Device` suffix is reserved for the generic, data-described ones — `ModbusRegisterDevice` (a register map), `GattDevice` (a UUID triple). The old `Modbus_` prefix is gone; the `component: modbus/…` path already names the bus.

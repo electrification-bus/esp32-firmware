@@ -4,7 +4,7 @@ Switching a mains load with an SSR, using the generic [`gpio/digital_output`](..
 
 ## There is no SSR driver, and that is the point
 
-An SSR is a load on a digital output. Driving one is `pinMode(OUTPUT)` plus `digitalWrite()` — byte for byte the same code as a mechanical relay, a contactor coil, a MOSFET gate, an LED or a valve. So the SDK ships one generic component and this folder carries the part that actually differs: **polarity, sizing and wiring**.
+An SSR is a load on a digital output. Driving one is `pinMode(OUTPUT)` plus `digitalWrite()` — byte for byte the same code as a mechanical relay, a contactor coil, a MOSFET gate, an LED or a valve. So the firmware ships one generic component and this folder carries the part that actually differs: **polarity, sizing and wiring**.
 
 That is the test for whether something earns its own driver. [`examples/bms/`](../bms/) has one because a JBD BMS needs ~300 lines of frame encoding and register decoding that are useless to anything else. An SSR needs a config value and a wiring diagram.
 

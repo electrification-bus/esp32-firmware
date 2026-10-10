@@ -49,7 +49,7 @@ pip install paho-mqtt pyyaml
 
 ### Device Requirements
 
-- ESP32 device running homie-esp32-sdk firmware
+- ESP32 device running esp32-firmware
 - Device connected to MQTT broker
 - `homie.yml` file describing expected nodes/properties
 - `config.yml` with MQTT broker settings
@@ -396,5 +396,5 @@ if state.spec.property_id in ('firmware-url', 'checksum', 'dangerous-prop'):
 ## Related Documentation
 
 - [Homie Convention](https://homieiot.github.io/) - Official Homie MQTT convention
-- [homie-esp32-sdk](../README.md) - Main project documentation
+- [homie-esp32-firmware](../README.md) - Main project documentation
 - [CONTRIBUTING.md](../CONTRIBUTING.md) - Coding standards for this project

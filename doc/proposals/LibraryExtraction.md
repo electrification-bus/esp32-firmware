@@ -138,7 +138,7 @@ library.json          # PlatformIO consumer — same tree, no conflict
 test/cpp/             # host tests
 ```
 
-One tree carries `CMakeLists.txt` and `library.json` simultaneously; they do not collide. esp32-sdk consumes it back as a git submodule plus `lib_extra_dirs` during co-development (editable in place), switching to a versioned `lib_deps` git URL once it stabilizes. Every `drivers/<bus>/library.json` must stay byte-identical — the `"includeDir": ".."` trick is what makes `#include <modbus/sht20.h>` resolve.
+One tree carries `CMakeLists.txt` and `library.json` simultaneously; they do not collide. esp32-firmware consumes it back as a git submodule plus `lib_extra_dirs` during co-development (editable in place), switching to a versioned `lib_deps` git URL once it stabilizes. Every `drivers/<bus>/library.json` must stay byte-identical — the `"includeDir": ".."` trick is what makes `#include <modbus/sht20.h>` resolve.
 
 ## Risks
 
@@ -167,7 +167,7 @@ Per stage, in order:
 2. `./ebus-esp32 compiledb`, then diff `compile_commands.json` flag sets — catches an LDF reaction and confirms no include path moved.
 3. Stage 2 only: preprocess a driver TU, grep for `logStream` — proves the tee survived.
 4. Stage 4: `cmake -B build-host && cmake --build build-host && ctest` — passes on a Mac with no ESP32 attached.
-5. Stage 5: build esp32-sdk against the submodule, flash the POE-ISO, confirm a node still publishes and a `/set` still actuates — end-to-end proof that the change gate and the settable dispatch came through the move intact.
+5. Stage 5: build esp32-firmware against the submodule, flash the POE-ISO, confirm a node still publishes and a `/set` still actuates — end-to-end proof that the change gate and the settable dispatch came through the move intact.
 
 ## Decisions on record
 

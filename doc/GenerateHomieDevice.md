@@ -1,6 +1,6 @@
 # Building a Homie Device from Library Components
 
-The SDK ships a code generator that turns a single `device.yml` file into a working PlatformIO firmware project. The workflow is the same as ESPHome: write one YAML file, run one command, flash the resulting binary.
+The firmware ships a code generator that turns a single `device.yml` file into a working PlatformIO firmware project. The workflow is the same as ESPHome: write one YAML file, run one command, flash the resulting binary.
 
 ```
 device.yml   →   ./ebus-esp32 run   →   (regenerates src/homie.cpp + data/*.yml)
@@ -388,7 +388,7 @@ nodes:
         retained: true
         value: 0.0
 extensions: []
-implementation: homie-esp32-sdk
+implementation: homie-esp32-firmware
 generator:
   class: MyDevice                   # C++ class name
   header: i2c/mydevice.h            # include path (relative to include/ or lib/)

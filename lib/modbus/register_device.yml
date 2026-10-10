@@ -9,7 +9,7 @@ nodes:
     name: Modbus Device
     type: modbus
 extensions: []
-implementation: homie-esp32-sdk
+implementation: homie-esp32-firmware
 # A Modbus RTU device described by its REGISTER MAP rather than by C++.
 #
 # Most simple Modbus sensors are "read these registers, scale them, publish them" —

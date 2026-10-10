@@ -46,7 +46,7 @@ nodes:
         retained: true
         description: "Text on line 3 of the three-line grid. Lines 1 and 2 keep what they were showing. A '|' or newline becomes a space. Empty when a whole-screen layout, or nothing, is showing."
 extensions: []
-implementation: homie-esp32-sdk
+implementation: homie-esp32-firmware
 # 0.96" 128x64 SSD1306 OLED. I2C pins come from device.yml's top-level buses: block,
 # shared by every i2c/* node; the only per-node config is the address — 0x3C on these
 # modules (0x3D if the address jumper is moved). Example:
