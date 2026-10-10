@@ -1,6 +1,6 @@
 #include <i2c/gme12864.h>
 #include <homie/Property.h>   // entity_settable_callback(Property*) dereferences it
-#include <util/utf8.h>
+#include <ebus/link/utf8.h>
 
 static const uint8_t DISPLAY_WIDTH  = 128;
 static const uint8_t DISPLAY_HEIGHT = 64;
@@ -163,7 +163,7 @@ static uint8_t split_lines(U8G2& u8g2, const char* text, uint8_t max_lines,
             if (n == max_lines) { *complete = false; break; }   // more segments than lines
             size_t len = strcspn(p, "|\n");
             if (len >= GME12864_LINE_MAX) {
-                len = utf8_fit(p, len, GME12864_LINE_MAX - 1);
+                len = ebus_utf8_fit(p, len, GME12864_LINE_MAX - 1);
                 *complete = false;
             }
             memcpy(out[n], p, len);
@@ -190,7 +190,7 @@ static uint8_t split_lines(U8G2& u8g2, const char* text, uint8_t max_lines,
             size_t need = used + (used ? 1 : 0) + word_len;
             if (need >= GME12864_LINE_MAX) {
                 if (used) break;
-                word_len = utf8_fit(p, word_len, GME12864_LINE_MAX - 1);   // one oversized word: truncate it
+                word_len = ebus_utf8_fit(p, word_len, GME12864_LINE_MAX - 1);   // one oversized word: truncate it
                 need = word_len;
                 *complete = false;
             }
@@ -285,7 +285,7 @@ bool GME12864::setLine(const char* text, uint8_t index) {
     // One line by definition: a '|' or newline in the value would otherwise split it into
     // further rows and push the lines below it off the grid.
     char* dst = _line_text[index];
-    size_t n = utf8_fit(text, strlen(text), LINE_TEXT_MAX - 1);
+    size_t n = ebus_utf8_fit(text, strlen(text), LINE_TEXT_MAX - 1);
     for (size_t i = 0; i < n; i++) {
         char c = text[i];
         dst[i] = (c == '|' || c == '\n' || c == '\r') ? ' ' : c;
