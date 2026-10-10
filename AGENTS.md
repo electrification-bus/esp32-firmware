@@ -45,6 +45,17 @@ Build or flash only when the developer asks. Behavior changes are verified on a 
 
 Devices publish under `ebus/5/` (built with `-DUSE_EBUS_TOPIC`), not `homie/5/`; watch them with `mosquitto_sub -t 'ebus/5/#' -v`.
 
+## Working with a real board
+
+`./ebus-esp32` drives real hardware, and a behavior change is verified on a board. Ask before flashing: a board on the bench may be in use.
+
+- Find the board: `./ebus-esp32 devices` lists serial ports. A `./ebus-esp32 monitor --serial` session learns the board's Device ID and IP (cached in `build/monitor-hosts.json`), after which `push --ota` and `monitor` reach it over the network. `--host` takes an IP or `<device-id>.local`.
+- Flash over the network: `./ebus-esp32 build`, then `./ebus-esp32 push --ota --host <ip>`. It authenticates with `device.device_passphrase` from `config-overlay.yml`.
+- Confirm the board came back: it reboots after a flash; `curl http://<ip>/api/ota` answers with a small `uptime_s` once it is up, and the device's `ebus/5/<device-id>/$state` returns to `ready`. Allow for DHCP and the broker connection, which can take tens of seconds. A successful push alone does not show the new firmware runs.
+- Read the log over the network: `./ebus-esp32 monitor --net --host <ip>`, or `nc <ip> 23`. Opening the USB serial port can reset the board. A USB monitor and a USB flash share the port: the monitor pauses while the flash runs (see `doc/GettingStartedCLI.md`).
+- Check behavior on MQTT: `mosquitto_sub -t 'ebus/5/<device-id>/#' -v` for published values, and `mosquitto_pub -t 'ebus/5/<device-id>/<node>/<property>/set' -m <value>` to exercise a settable property.
+- Leave things as you found them: restore `device.yml` after building a test image from a modified copy, remove retained topics a test created (`mosquitto_pub -r -n -t <topic>`), and put the board back on the firmware it was running.
+
 ## Coding standards
 
 The firmware and drivers run on microcontrollers:
