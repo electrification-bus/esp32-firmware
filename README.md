@@ -62,6 +62,18 @@ mosquitto_pub -h 192.168.1.10 -t 'ebus/5/<id>/led/state/set' -m true
 
 Every command takes a project directory, or its `device.yml`, in place of the current directory: `ebus-esp32 build ~/my-device`. The comments in the demo's [`device.yml`](examples/demo/device.yml) list the available components and explain how to switch to a real sensor.
 
+## Building your firmware
+
+Your device is a project outside this clone; the build compiles it against the clone's firmware and drivers. The project can live in its own repository.
+
+| You want to | You write | Where | Guide |
+|---|---|---|---|
+| Assemble a device from existing drivers | `device.yml` with `nodes:` | your project | [GenerateHomieDevice.md](doc/GenerateHomieDevice.md) |
+| Write the device in C++ | `device.yml` without `nodes:`, plus `src/` | your project | [HandCodedDevice.md](doc/HandCodedDevice.md) |
+| Support new hardware or add a capability | a driver, `lib/<bus>/<name>.{h,cpp,yml}` | this repo, contributed by pull request | [WritingADriver.md](doc/WritingADriver.md), [CONTRIBUTING.md](CONTRIBUTING.md) |
+
+A driver in your clone is available to every project you build with it: name it as a node's `component: <bus>/<name>` in `device.yml`, or `#include <<bus>/<name>.h>` from a hand-coded project's `src/`, and `ebus-esp32 build` compiles it in. Develop the driver against your own project, then open a pull request for the `lib/` files; the project stays yours.
+
 ## Finding the device on the network
 
 Every board claims the mDNS hostname `<id>.local`, where `<id>` is the `Device ID` from its boot log, and advertises its eBus, device-info, HTTP and log-console services (on by default in arduino-esp32 3.x builds). Try `ping <id>.local`, or browse with `dns-sd -B _ebus._tcp` (macOS) or `avahi-browse -rt _ebus._tcp` (Linux). [doc/MDNS.md](doc/MDNS.md) covers the services and TXT records, the configuration switches, and broker discovery.
@@ -163,7 +175,7 @@ VSCode users: run `ebus-esp32` in the integrated terminal. The PlatformIO extens
 - **Specifying a device**
   - **Declaratively** (`device.yml` + the generator; the default path): [GenerateHomieDevice.md](doc/GenerateHomieDevice.md)
   - **In code** (hand-coded device/controller, no generator; type-safe descriptor tables + `on_set` handlers): [HandCodedDevice.md](doc/HandCodedDevice.md)
-- **Examples**: [examples/sht20/](examples/sht20/device.yml) (Modbus sensor), [examples/ssr/](examples/ssr/README.md) (relay on a GPIO), [examples/bms/](examples/bms/README.md) (BLE driver), [examples/bridge-bess.device.yml](examples/bridge-bess.device.yml) (nested bridge)
+- **Examples**: [examples/sht20/](examples/sht20/device.yml) (Modbus sensor), [examples/ssr/](examples/ssr/README.md) (relay on a GPIO), [examples/bms/](examples/bms/README.md) (BLE protocol, copy/paste), [examples/bridge-bess/](examples/bridge-bess/device.yml) (nested bridge)
 - **Writing a driver** (authoring a `NodeEntity` subclass — the reusable hardware unit, shared by both paths above): [WritingADriver.md](doc/WritingADriver.md)
 - **Picking pins for a board** (what Ethernet/PSRAM/flash have already taken, and this firmware's reference values): [GPIOPins.md](doc/GPIOPins.md)
 - **Wiring one property into another** (a reading onto a display, a state onto a relay, a value from another device — `logic/link`, no code): [Link.md](doc/Link.md)
@@ -174,6 +186,7 @@ VSCode users: run `ebus-esp32` in the integrated terminal. The PlatformIO extens
 - **Design proposals**: [proposals/README.md](doc/proposals/README.md) lists each proposal and its status
 - **Subsystem notes**
   - [ESP32OTA.md](doc/ESP32OTA.md) — OTA push over TCP, pull from URL, partitions
+  - [DeviceContract.md](doc/DeviceContract.md): what the CLI, setup page and tests rely on from any firmware
   - [MDNS.md](doc/MDNS.md)
   - [Authentication.md](doc/Authentication.md)
   - [Controller.md](doc/Controller.md)

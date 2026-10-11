@@ -4,14 +4,16 @@ Homie Device Test - Standalone MQTT monitor and validator for Homie convention d
 
 This test:
 1. Connects to MQTT broker and subscribes to device topics
-2. Loads expected properties from homie.yml
+2. Loads expected properties from homie.yml, or from the device's $description when
+   homie.yml lists no nodes (a hand-coded device)
 3. Monitors property values and validates against datatype/format
 4. Tests settable properties by publishing to /set topic
 5. Reports errors only (not good values)
 6. Emits pass/fail summary with diagnostics
 
 Usage:
-    python device_test.py [--project DIR | --config config.yml --homie homie.yml] [--timeout 30]
+    python device_test.py [--project DIR | --config config.yml --homie homie.yml] [--device ID]
+                          [--timeout 30]
                           [--domain ebus|homie] [--host H] [--port N]
                           [--username U] [--password P] [--tls [--cafile F] [--insecure]]
 """
@@ -107,6 +109,8 @@ class HomieDeviceTest:
         self.timeout = timeout
         self.domain = domain  # topic root: "ebus" with -DUSE_EBUS_TOPIC (default build), else "homie"
         self.overrides = overrides or {}  # command-line mqtt_* values that win over config.yml
+        self.properties_from_description = False  # set by load_homie_spec()
+        self.only_device = None  # test only this device id (--device)
         self.start_time = 0
 
         # MQTT client
@@ -253,6 +257,9 @@ class HomieDeviceTest:
                     self.device.properties[key] = PropertyState(spec=spec)
 
             self.log(LogLevel.INFO, f"Loaded {len(self.expected_properties)} properties from {len(nodes)} nodes")
+            # A hand-coded device's nodes are in its code, not in homie.yml; its published
+            # $description is then the specification (see setup_device_for_testing).
+            self.properties_from_description = not nodes
             return True
 
         except Exception as e:
@@ -305,6 +312,9 @@ class HomieDeviceTest:
             if desc_major != expected_major:
                 self.log(LogLevel.WARN, f"Homie version mismatch: broker={desc_version} homie.yml={self.device.homie_version}")
 
+        if self.properties_from_description:
+            self.load_properties_from_description(description)
+
         # Validate nodes exist
         desc_nodes = description.get('nodes', {})
         if isinstance(desc_nodes, dict):
@@ -325,6 +335,35 @@ class HomieDeviceTest:
             self.log(LogLevel.INFO, f"Nodes on broker not in homie.yml: {extra_nodes}")
 
         self.log(LogLevel.PASS, f"Device '{device_id}' validated")
+
+    def load_properties_from_description(self, description: dict):
+        """Expected properties from a device's Homie 5 $description, for a device whose
+        homie.yml lists no nodes."""
+        self.expected_properties.clear()
+        self.device.properties.clear()
+        self.device.nodes = []
+        nodes = description.get('nodes', {})
+        if not isinstance(nodes, dict):
+            return
+        for node_id, node in nodes.items():
+            self.device.nodes.append(node_id)
+            properties = node.get('properties', {}) if isinstance(node, dict) else {}
+            for prop_id, prop in (properties.items() if isinstance(properties, dict) else []):
+                spec = PropertySpec(
+                    node_id=node_id,
+                    property_id=prop_id,
+                    name=prop.get('name', ''),
+                    datatype=prop.get('datatype', 'string'),
+                    settable=bool(prop.get('settable', False)),
+                    retained=prop.get('retained', True),
+                    unit=prop.get('unit', ''),
+                    format=prop.get('format', ''),
+                )
+                key = f"{node_id}/{prop_id}"
+                self.expected_properties[key] = spec
+                self.device.properties[key] = PropertyState(spec=spec)
+        self.log(LogLevel.INFO, f"homie.yml lists no nodes; testing the "
+                                f"{len(self.expected_properties)} properties in the device's $description")
 
     def reset_device_state(self):
         """Reset device state for testing next device"""
@@ -585,8 +624,12 @@ class HomieDeviceTest:
         self.log(LogLevel.INFO, f"Discovering devices for {self.discovery_timeout} seconds...")
         time.sleep(self.discovery_timeout)
 
+        if self.only_device:
+            self.discovered_devices = {d: desc for d, desc in self.discovered_devices.items()
+                                       if d == self.only_device}
         if not self.discovered_devices:
-            self.log(LogLevel.ERROR, f"No Homie devices found at {self.base_topic}/+/$description")
+            self.log(LogLevel.ERROR, f"No Homie devices found at {self.base_topic}/"
+                                     f"{self.only_device or '+'}/$description")
             self.log(LogLevel.ERROR, "Check that device is running and publishing to the correct broker/topic")
             self.client.loop_stop()
             self.client.disconnect()
@@ -670,7 +713,8 @@ class HomieDeviceTest:
         print(f"Homie Version: {self.device.homie_version}")
         print(f"Device State: {self.device.state}")
         print(f"Device Discovered: {'Yes' if self.device_discovered else 'No'}")
-        print(f"Nodes (from homie.yml): {', '.join(self.device.nodes)}")
+        source = "$description" if self.properties_from_description else "homie.yml"
+        print(f"Nodes (from {source}): {', '.join(self.device.nodes)}")
 
         # Property reception stats
         print(f"\n--- Property Status ---")
@@ -761,6 +805,7 @@ def main():
                              'and homie.yml (default: the current directory)')
     parser.add_argument('--config', help='Path to config.yml (default: <project>/.ebus/data/config.yml)')
     parser.add_argument('--homie', help='Path to homie.yml (default: <project>/.ebus/data/homie.yml)')
+    parser.add_argument('--device', help='Test only this device id (default: every device found)')
     parser.add_argument('--timeout', type=int, default=30, help='Test timeout in seconds')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
     parser.add_argument('--domain', default='ebus', choices=['ebus', 'homie'],
@@ -786,6 +831,7 @@ def main():
     overrides = {'host': args.host, 'port': args.port,
                  'username': args.username, 'password': args.password}
     test = HomieDeviceTest(args.config, args.homie, args.timeout, args.domain, overrides)
+    test.only_device = args.device
     test.mqtt_tls = args.tls
     test.mqtt_cafile = args.cafile
     test.mqtt_insecure = args.insecure
