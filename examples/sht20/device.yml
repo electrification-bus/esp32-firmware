@@ -4,8 +4,8 @@
 # "RXD" pin, pin_b to its "TXD" pin) and an SHT20 at Modbus address 1 on that bus. Other
 # boards' reference pins are in doc/GPIOPins.md.
 #
-# Build it in place:  ./ebus-esp32 build examples/sht20/device.yml
-# or flash it:        ./ebus-esp32 run examples/sht20/device.yml
+# Build it in place:  ebus-esp32 build examples/sht20
+# or flash it:        ebus-esp32 run examples/sht20
 #
 #   mosquitto_sub -t 'ebus/5/<device-id>/environment-sht20/#' -v
 

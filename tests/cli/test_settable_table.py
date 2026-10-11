@@ -24,8 +24,8 @@ def test_capacity_is_count_plus_state_watch_plus_margin_with_a_floor(cli, settab
     assert cli.settable_table_capacity(settables) == expected
 
 
-def test_default_device_yml(sandbox):
-    sandbox.generate(load("device.yml"))
+def test_demo_example(sandbox):
+    sandbox.generate(load("examples/demo/device.yml"))
     assert "// 1 settable property + 1 $state watch" in sandbox.homie_cpp
     assert capacity(sandbox.homie_cpp) == 8
 
@@ -40,7 +40,7 @@ def test_device_with_no_settables_gets_the_floor(sandbox):
 
 
 def test_bridge_bess_example_with_a_read_only_child(sandbox):
-    sandbox.generate(load("examples/bridge-bess.device.yml"))
+    sandbox.generate(load("examples/bridge-bess/device.yml"))
     assert "// 0 settable properties" in sandbox.homie_cpp
     assert capacity(sandbox.homie_cpp) == 8
 

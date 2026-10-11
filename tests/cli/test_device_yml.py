@@ -281,4 +281,4 @@ def test_cmd_generate_quiets_stdout_when_already_generated(cli, sandbox, capsys,
     monkeypatch.setenv("EBUS_GENERATED", "1")
     cli.cmd_generate(Namespace(device_yml=str(path)))
     assert capsys.readouterr().out == ""
-    assert (cli.SRC_DIR / "homie.cpp").exists()
+    assert (cli.GEN_SRC_DIR / "homie.cpp").exists()

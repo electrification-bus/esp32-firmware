@@ -1,8 +1,9 @@
 """Fixtures for the ./ebus-esp32 CLI tests.
 
 The CLI is one extensionless script, loaded here once as a module. Tests that touch the
-filesystem run against `sandbox`, a throwaway repo root whose lib/ and platformio/ link
-to the real ones, with every path constant the CLI writes through pointed into it.
+filesystem run against `sandbox`: a throwaway repo root whose lib/ and platformio/ link
+to the real ones, and a project directory beside it, with every path constant the CLI
+writes through pointed into them.
 """
 
 import importlib.machinery
@@ -34,12 +35,13 @@ def cli():
 
 
 class Sandbox:
-    def __init__(self, cli, root: Path):
+    def __init__(self, cli, root: Path, project: Path):
         self.cli = cli
         self.root = root
+        self.project = project
 
     def write_device(self, doc, name="device.yml") -> Path:
-        path = self.root / name
+        path = self.project / name
         text = doc if isinstance(doc, str) else yaml.safe_dump(doc, sort_keys=False)
         path.write_text(text, encoding="utf-8")
         return path
@@ -63,15 +65,15 @@ class Sandbox:
 
     @property
     def homie_cpp(self) -> str:
-        return (self.cli.SRC_DIR / "homie.cpp").read_text(encoding="utf-8")
+        return (self.cli.GEN_SRC_DIR / "homie.cpp").read_text(encoding="utf-8")
 
     @property
     def config_yml(self) -> dict:
-        return yaml.safe_load((self.cli.DATA_DIR / "config.yml").read_text(encoding="utf-8"))
+        return yaml.safe_load((self.cli.GEN_DATA_DIR / "config.yml").read_text(encoding="utf-8"))
 
     @property
     def homie_yml(self) -> dict:
-        return yaml.safe_load((self.cli.DATA_DIR / "homie.yml").read_text(encoding="utf-8"))
+        return yaml.safe_load((self.cli.GEN_DATA_DIR / "homie.yml").read_text(encoding="utf-8"))
 
 
 @pytest.fixture
@@ -83,6 +85,9 @@ def sandbox(cli, tmp_path, monkeypatch):
     for d in ("src", "data", "build"):
         (root / d).mkdir()
     build = root / "build"
+    project = tmp_path / "project"
+    project.mkdir()
+    out = project / ".ebus"
     patches = {
         "ROOT": root,
         "LIB_DIR": root / "lib",
@@ -91,10 +96,15 @@ def sandbox(cli, tmp_path, monkeypatch):
         "INCLUDE_DIR": root / "include",
         "BUILD_DIR": build,
         "PLATFORMIO_INI": root / "platformio" / "platformio.ini",
-        "PIO_BUILD_DIR": root / ".pio" / "cli" / "build",
         "PIO_LIBDEPS_DIR": root / ".pio" / "cli" / "libdeps",
-        "GENERATED_INI": build / "platformio.ini",
-        "CONFIG_OVERLAY": root / "config-overlay.yml",
+        "PROJECT_DIR": project,
+        "OUT_DIR": out,
+        "GEN_SRC_DIR": out / "src",
+        "GEN_DATA_DIR": out / "data",
+        "GENERATED_INI": out / "platformio.ini",
+        "PIO_BUILD_DIR": out / "build",
+        "CONFIG_OVERLAY": project / "config-overlay.yml",
+        "CONFIG_OVERLAY_REPO": root / "config-overlay.yml",
         "CONFIG_OVERLAY_LEGACY": tmp_path / "home" / ".config" / "eBus" / "config.yml",
         "MONITOR_HOSTS": build / "monitor-hosts.json",
         "_REGDEV_HEADER": root / "lib" / "modbus" / "register_device.h",
@@ -102,7 +112,7 @@ def sandbox(cli, tmp_path, monkeypatch):
     for name, value in patches.items():
         monkeypatch.setattr(cli, name, value)
     monkeypatch.delenv("EBUS_GENERATED", raising=False)
-    return Sandbox(cli, root)
+    return Sandbox(cli, root, project)
 
 
 class FakeClock:

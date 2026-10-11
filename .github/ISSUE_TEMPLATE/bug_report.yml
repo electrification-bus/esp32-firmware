@@ -1,5 +1,5 @@
 name: Bug report
-description: Report firmware or ./ebus-esp32 behavior that is wrong
+description: Report firmware or ebus-esp32 behavior that is wrong
 labels: [bug]
 body:
   - type: markdown
@@ -16,7 +16,7 @@ body:
     id: environment
     attributes:
       label: PlatformIO environment
-      description: "`device.environment` in device.yml; `./ebus-esp32 envs` lists them."
+      description: "`device.environment` in device.yml; `ebus-esp32 envs` lists them."
       placeholder: esp32-poe-iso
     validations:
       required: true
@@ -45,5 +45,5 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: Serial or network console output (`./ebus-esp32 monitor`), or the failing `./ebus-esp32` command's output.
+      description: Serial or network console output (`ebus-esp32 monitor`), or the failing `ebus-esp32` command's output.
       render: text

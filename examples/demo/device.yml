@@ -1,7 +1,9 @@
-# Homie device definition — single source of truth.
-# Edit this file, then run `./ebus-esp32 run` to generate, build, and flash.
-# src/homie.cpp + data/*.yml are regenerated from here automatically before every
-# build (they are gitignored); `./ebus-esp32 generate` regenerates them on their own.
+# Homie device definition — single source of truth for this project.
+# Copy this directory to start a project of your own (cp -R examples/demo ~/my-device),
+# add a config-overlay.yml beside this file, then run `ebus-esp32 run` there to generate,
+# build, and flash. The project's .ebus/ (device code, config.yml, homie.yml, build
+# output) is regenerated from here automatically before every build;
+# `ebus-esp32 generate` regenerates it on its own.
 #
 # Available components (lib/<bus>/<name>.yml):
 #   i2c/bme280                  — BME280 temp/pressure/humidity (I2C); needs buses.i2c, config: address
@@ -23,7 +25,7 @@
 # As shipped this device needs no extra hardware: its one node drives GPIO 14, which is
 # free on the Olimex ESP32-POE-ISO. To use a real sensor, uncomment its bus under buses:
 # and replace the node under nodes:. examples/sht20/device.yml is an SHT20 on RS485, and
-# examples/ has more; `./ebus-esp32 build examples/<name>/device.yml` builds one in place.
+# examples/ has more; `ebus-esp32 build examples/<name>` builds one in place.
 
 device:
   name: ebus-demo
@@ -39,7 +41,7 @@ device:
   # sanitized to Homie-legal characters on its own, so "Lab 1" yields "lab-1". Empty or
   # omitted = no prefix. It adds NO per-unit uniqueness (every board on a site shares it) —
   # keep a ${chip_id} in `id:`. Usually set from config-overlay.yml so a site can namespace
-  # its fleet without touching this tracked file.
+  # its fleet without touching this file.
   id_prefix: ''
   type: control
   # environment names a [env:…] section in platformio.ini — NOT a PlatformIO `board`.
@@ -51,7 +53,7 @@ device:
   firmware_name: ESP32-POE-ISO Firmware
   firmware_version: 1.0.0
   # Pull-OTA sources: the device downloads these itself when told to (portal, or
-  # ./ebus-esp32 push --pull). Both are optional — `push --pull` supplies its own URLs.
+  # ebus-esp32 push --pull). Both are optional — `push --pull` supplies its own URLs.
   # https works if a CA for the host is at data/certs/<Host>.ca; without one the
   # transfer is encrypted but the server is not verified.
   firmware_url: http://example.com/firmware.bin
@@ -113,9 +115,9 @@ mqtt:
 
 # Serial console over TCP. The firmware tees every Serial.printf() to this port as
 # well as the UART, so an installed board can be watched without a USB cable:
-#   ./ebus-esp32 monitor --host 10.0.0.5   (explicit IP; --host implies the network)
-#   ./ebus-esp32 monitor --net             (address learned from a previous USB session)
-#   ./ebus-esp32 run --monitor             (flash, then attach)
+#   ebus-esp32 monitor --host 10.0.0.5   (explicit IP; --host implies the network)
+#   ebus-esp32 monitor --net             (address learned from a previous USB session)
+#   ebus-esp32 run --monitor             (flash, then attach)
 #   pio device monitor --port socket://<device-ip>:23
 # A new client is replayed the ring buffer first, so the boot log is not lost.
 # 0 disables the listener. UNAUTHENTICATED — use 0 on networks where the log should

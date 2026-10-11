@@ -162,11 +162,11 @@ This keeps the license clean and keeps the driver in the firmware's idiom — wh
 Once the driver compiles, wire it into a device by either path:
 
 - **Generator** — add a `lib/<bus>/<name>.yml` with a `generator:` block, then reference it from `device.yml`. See [GenerateHomieDevice.md § Adding a new library component](GenerateHomieDevice.md#adding-a-new-library-component).
-- **Hand-coded** — instantiate it and register its properties in `src/homie.cpp` yourself. See [HandCodedDevice.md](HandCodedDevice.md).
+- **Hand-coded** — instantiate it and register its properties in your project's `src/` yourself. See [HandCodedDevice.md](HandCodedDevice.md).
 
 ## See also
 
 - [GenerateHomieDevice.md](GenerateHomieDevice.md) — assemble a device from drivers via `device.yml` (the easy default)
-- [HandCodedDevice.md](HandCodedDevice.md) — wire drivers into `src/homie.cpp` by hand
+- [HandCodedDevice.md](HandCodedDevice.md) — wire drivers into your project's `src/` by hand
 - [`include/node/NodeEntity.h`](../include/node/NodeEntity.h) — the node-entity base class
 - [`include/node/NodeProperty.h`](../include/node/NodeProperty.h) — the runtime value API

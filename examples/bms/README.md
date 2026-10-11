@@ -13,7 +13,7 @@ files where they sit.
 cp examples/bms/serial_bms.{h,cpp,yml} lib/ble/
 ```
 
-then add the node to `device.yml`:
+then add the node to your project's `device.yml`:
 
 ```yaml
 nodes:
@@ -22,10 +22,10 @@ nodes:
 ```
 
 `serial_bms.yml` already declares its own `generator.lib_deps` (NimBLE), so
-`./ebus-esp32 build` pulls the BLE stack in once the component is actually used — and
+`ebus-esp32 build` pulls the BLE stack in once the component is actually used — and
 leaves it out of every build that isn't.
 
-`device.yml` in this folder is a complete example device you can copy over the top level.
+This folder is a complete example project: with the driver copied in, `ebus-esp32 build examples/bms` builds it.
 
 ## Why it lives here and not in `lib/`
 
@@ -98,7 +98,7 @@ worth reading before adapting it.
 
 **`setContactor()` only works hand-coded.** The AC contactor is reached through a raw `DigitalOutput*`
 pointer, and the generator cannot wire a pointer between two nodes — so it is only
-settable from a hand-coded `src/homie.cpp` ([HandCodedDevice.md](../../doc/HandCodedDevice.md)).
+settable from hand-coded device code ([HandCodedDevice.md](../../doc/HandCodedDevice.md)).
 The better route is `deliver_local_set()`: address the relay as `<node>/<property>`, the
 same pair an MQTT controller would publish to, and drop the pointer entirely. That is a
 straightforward change to make when adapting this driver.

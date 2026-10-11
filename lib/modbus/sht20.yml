@@ -52,4 +52,4 @@ generator:
   # are declared in lib/platform/library.json — PlatformIO auto-installs them only
   # when a modbus/* component pulls in lib/platform via <platform/modbus/...>.
   # (Components whose deps aren't covered by a library.json list them under
-  # generator.lib_deps and `ebus-esp32 generate` adds them to build/platformio.ini.)
+  # generator.lib_deps and `ebus-esp32 generate` adds them to .ebus/platformio.ini.)

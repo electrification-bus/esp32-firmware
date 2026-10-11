@@ -4,9 +4,9 @@ A controller build discovers, monitors and commands other Homie 5 devices on the
 
 ## Enabling it
 
-Set `homie_role: controller` in the `device:` section of `device.yml` and declare no `nodes:` or `children:`. generate then adds `-DENABLE_CONTROLLER` to the env's `build_flags` in the generated `build/platformio.ini`, so both `src/main.cpp` and the `logic/link` component under `lib/` compile as a controller. Build and flash as usual (`./ebus-esp32 build`, `./ebus-esp32 run`). The firmware also reports the role in the mDNS TXT record and the portal status.
+Set `homie_role: controller` in the `device:` section of `device.yml` and declare no `nodes:` or `children:`. generate then adds `-DENABLE_CONTROLLER` to the env's `build_flags` in the generated `.ebus/platformio.ini`, so both `src/main.cpp` and the `logic/link` component under `lib/` compile as a controller. Build and flash as usual (`ebus-esp32 build`, `ebus-esp32 run`). The firmware also reports the role in the mDNS TXT record and the portal status.
 
-Do not add `-DENABLE_CONTROLLER` by hand to `build_src_flags` (in `platformio_local.ini` or elsewhere). That flag reaches only `src/`, so with `homie_role: device` it gives a split build: `main.cpp` runs the controller branch while `lib/logic/link.cpp` and the generated `src/homie.cpp` are built for a device, and the device's nodes and links are never set up.
+Do not add `-DENABLE_CONTROLLER` by hand to `build_src_flags` (in `platformio_local.ini` or elsewhere). That flag reaches only `src/`, so with `homie_role: device` it gives a split build: `main.cpp` runs the controller branch while `lib/logic/link.cpp` and the generated `homie.cpp` are built for a device, and the device's nodes and links are never set up.
 
 The serial log starts with `===== HOMIE CONTROLLER =====` instead of the device banner, and `CONTROLLER: Ready - discovering devices...` once discovery is subscribed.
 
@@ -113,11 +113,11 @@ if (state && controller_effective_state("relay-device-id") == DEVICE_STATE_READY
 
 ## Standalone sketch
 
-[`examples/controller_example.cpp`](../examples/controller_example.cpp) uses the same API on its own WiFi and `MQTTClient` connection, wrapped in a `MqttClientTransport`, without the firmware's configuration, portal or mDNS. It defines its own `setup()` and `loop()`, so it replaces `src/main.cpp` rather than running beside it. To build it, set its WiFi, broker and device-id constants, then swap it in for `src/main.cpp` in `platformio_local.ini` for the env named by `device.environment` and run `./ebus-esp32 build`:
+[`examples/controller_example.cpp`](../examples/controller_example.cpp) uses the same API on its own WiFi and `MQTTClient` connection, wrapped in a `MqttClientTransport`, without the firmware's configuration, portal or mDNS. It defines its own `setup()` and `loop()`, so it replaces `src/main.cpp` rather than running beside it. To build it, copy it into the `src/` of a project whose `device.yml` has no `nodes:`, set its WiFi, broker and device-id constants, then leave `main.cpp` out in `platformio_local.ini` for the env named by `device.environment` and run `ebus-esp32 build` in the project:
 
 ```ini
 [env:esp32-poe-iso]
-build_src_filter = +<*> -<main.cpp> +<../examples/controller_example.cpp>
+build_src_filter = +<*> -<main.cpp>
 ```
 
 Remove the override to build the firmware again.

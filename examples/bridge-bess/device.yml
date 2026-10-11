@@ -12,7 +12,7 @@
 # device is a CHILD DEVICE, whereas an on-board peripheral (a BME280 on the I2C bus)
 # would be a NODE on the root. See doc/NestedBridgeExample.md.
 #
-# To try it:  cp examples/bridge-bess.device.yml device.yml  &&  ./ebus-esp32 run
+# To try it:  ebus-esp32 run examples/bridge-bess
 # To bridge a REAL JBD BMS instead of the simulator, replace the child's component
 # `sim/battery_sim` with `ble/serial_bms`, first copying it in from examples/bms/
 # (cp examples/bms/serial_bms.{h,cpp,yml} lib/ble/) — its yml carries the NimBLE dep.

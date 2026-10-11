@@ -1,4 +1,4 @@
-"""The lean build/platformio.ini: lib_deps pruning and per-component source filtering."""
+"""The lean .ebus/platformio.ini: lib_deps pruning and per-component source filtering."""
 
 import configparser
 

@@ -4,11 +4,11 @@
 # first — see README.md in this folder:
 #
 #   cp examples/bms/serial_bms.{h,cpp,yml} lib/ble/
-#   cp examples/bms/device.yml device.yml
-#   ./ebus-esp32 run
+#   cp -R examples/bms ~/bms          # a project of your own; add its config-overlay.yml
+#   ebus-esp32 run ~/bms
 #
 # The BMS is a NODE on the root device here. To publish it as a nested CHILD device
-# instead (the eBus bridge pattern), see examples/bridge-bess.device.yml.
+# instead (the eBus bridge pattern), see examples/bridge-bess/device.yml.
 
 device:
   name: BESS
@@ -64,7 +64,7 @@ nodes:
   # NOTE serial_bms reaches the relay through a raw DigitalOutput* set by setContactor(),
   # which the
   # generator cannot wire — adding this node is NOT enough on its own; it needs a
-  # hand-coded src/homie.cpp (doc/HandCodedDevice.md). See README.md § Known rough edges.
+  # hand-coded device code (doc/HandCodedDevice.md). See README.md § Known rough edges.
   #
   #- component: gpio/digital_output
   #  id: contactor

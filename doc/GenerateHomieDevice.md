@@ -1,16 +1,16 @@
 # Building a Homie Device from Library Components
 
-The firmware ships a code generator that turns a single `device.yml` file into a working PlatformIO firmware project. The workflow is the same as ESPHome: write one YAML file, run one command, flash the resulting binary.
+The firmware ships a code generator that turns a single `device.yml` file, in a project directory of your own, into a working PlatformIO firmware project. The workflow is the same as ESPHome: write one YAML file, run one command, flash the resulting binary.
 
 ```
-device.yml   →   ./ebus-esp32 run   →   (regenerates src/homie.cpp + data/*.yml)
+device.yml   →   ebus-esp32 run   →   (regenerates .ebus/src/homie.cpp + .ebus/data/*.yml)
                                               ↓
                                          compile + flash firmware + filesystem
                                               ↓
                                          running device
 ```
 
-`src/homie.cpp`, `data/homie.yml`, and `data/config.yml` are *generated outputs* — they are gitignored and regenerated from `device.yml` automatically before every build (a PlatformIO pre-build hook, `scripts/generate_homie.py`, runs `generate` on every `pio run`). You never edit or commit them. `device.yml` and the component YAMLs under `lib/` are the only files you touch and the only ones tracked in git.
+The project's `.ebus/src/homie.cpp`, `.ebus/data/homie.yml`, and `.ebus/data/config.yml` are *generated outputs* — regenerated from `device.yml` automatically before every build (a PlatformIO pre-build hook, `scripts/generate_homie.py`, runs `generate` on every `pio run`). You never edit or commit them; `.ebus/` carries its own `.gitignore`. `device.yml` is the file you touch, with the component YAMLs under this repo's `lib/` when you write a driver, and the only ones tracked in git.
 
 ---
 
@@ -18,8 +18,8 @@ device.yml   →   ./ebus-esp32 run   →   (regenerates src/homie.cpp + data/*.
 
 ```cmd
 1. edit device.yml            pick a board, list the nodes (sensors/actuators) you want
-2. ./ebus-esp32 run           generate + build + flash firmware AND filesystem over USB
-3. ./ebus-esp32 monitor       watch it boot and publish to MQTT
+2. ebus-esp32 run           generate + build + flash firmware AND filesystem over USB
+3. ebus-esp32 monitor       watch it boot and publish to MQTT
 ```
 
 That is the whole loop. The commands below are for finer control.
@@ -29,18 +29,18 @@ That is the whole loop. The commands below are for finer control.
 ## CLI reference
 
 ```
-./ebus-esp32 generate [device.yml]                          regenerate src/homie.cpp + data/*.yml (inspect without building)
-./ebus-esp32 build    [device.yml]                          compile firmware + filesystem image (regenerates first)
-./ebus-esp32 run      [--port PORT] [device.yml]            build and flash firmware + filesystem
-./ebus-esp32 push     [--port PORT] [--fs-only] [device.yml]  flash without forcing a rebuild
-./ebus-esp32 monitor  [--net|--serial] [--host ADDR] [--port PORT] [device.yml]
-                                                            watch the device (network by default)
-./ebus-esp32 clean    [device.yml]                          clean PlatformIO build artifacts
-./ebus-esp32 devices                                        list attached serial devices
-./ebus-esp32 envs     [device.yml]                          list available board environments
+ebus-esp32 generate [PROJECT]                          regenerate .ebus/ (inspect without building)
+ebus-esp32 build    [PROJECT]                          compile firmware + filesystem image (regenerates first)
+ebus-esp32 run      [--port PORT] [PROJECT]            build and flash firmware + filesystem
+ebus-esp32 push     [--port PORT] [--fs-only] [PROJECT]  flash without forcing a rebuild
+ebus-esp32 monitor  [--net|--serial] [--host ADDR] [--port PORT] [PROJECT]
+                                                         watch the device (network by default)
+ebus-esp32 clean    [PROJECT]                          clean PlatformIO build artifacts
+ebus-esp32 devices                                     list attached serial devices
+ebus-esp32 envs     [PROJECT]                          list available board environments
 ```
 
-Every build path regenerates from `device.yml` first (the pre-build hook), so `generate` on its own is only needed when you want to read the generated files without compiling. All commands accept an optional path to `device.yml` as the last argument (default: `device.yml` in the project root). The pre-build hook regenerates from that same file: the CLI passes its path in the `EBUS_DEVICE_YML` environment variable, which you can also set for a bare `pio run`. On Windows, use `ebus-esp32.bat run` (or `python ebus-esp32 run`).
+Every build path regenerates from `device.yml` first (the pre-build hook), so `generate` on its own is only needed when you want to read the generated files without compiling. All commands take the project as an optional last argument, a directory or its `device.yml` (default: the current directory). The pre-build hook regenerates from that same file, named by `custom_ebus_device_yml` in the generated `.ebus/platformio.ini`. On Windows, use `ebus-esp32.bat run` (or `python <repo>\ebus-esp32 run`).
 
 ---
 
@@ -132,9 +132,9 @@ id: panel-main            # fixed literal — logs a warning (two units collide 
 
 A component yml (`lib/<bus>/<name>.yml`) describes a driver **type**: what is true of every BME280 — its Homie node and properties, and the `generator:` block (class, header, constructor template, `lib_deps`). `device.yml` lists the **instances** this board actually has. `component:` is the link between the two, which is why it lives in `device.yml` and not in the component yml: the generator resolves `component: i2c/bme280` to `lib/i2c/bme280.yml`, so until it reads that line it does not know which yml to open, and a component yml is already identified by its own path.
 
-Information flows one way — the generator reads each instance's component yml and merges in the instance's `id:`, `config:` and the bus pins; the result is `src/homie.cpp` and `data/homie.yml`. Three things follow:
+Information flows one way — the generator reads each instance's component yml and merges in the instance's `id:`, `config:` and the bus pins; the result is `.ebus/src/homie.cpp` and `.ebus/data/homie.yml`. Three things follow:
 
-- **Only what you list is built.** A component not named in `device.yml` is not compiled in, and its `lib_deps` are not added to the generated `build/platformio.ini`. Each `lib/<bus>/` folder is one PlatformIO library, so `generate` writes the components in use to `build/platformio.ini` as `custom_ebus_components`, and `scripts/lib_src_filter.py` (the folder's `library.json` `extraScript`) leaves every other component's `<name>.cpp` out of that library. A component whose header another one includes (`modbus/register_device`, under `modbus/sht20`) is kept, and files that belong to no component (`i2c_bus.cpp`) always build. A build from the tracked `platformio/platformio.ini` compiles every source in the folder.
+- **Only what you list is built.** A component not named in `device.yml` is not compiled in, and its `lib_deps` are not added to the generated `.ebus/platformio.ini`. Each `lib/<bus>/` folder is one PlatformIO library, so `generate` writes the components in use to `.ebus/platformio.ini` as `custom_ebus_components`, and `scripts/lib_src_filter.py` (the folder's `library.json` `extraScript`) leaves every other component's `<name>.cpp` out of that library. A component whose header another one includes (`modbus/register_device`, under `modbus/sht20`) is kept, and files that belong to no component (`i2c_bus.cpp`) always build. A build from the tracked `platformio/platformio.ini` compiles every source in the folder.
 - **One type, many instances.** Two relays are two `nodes:` entries with the same `component: gpio/digital_output` and different `id:` and `pin:` — a component cannot know how many of itself a board has.
 - **The component yml supplies defaults; the instance overrides them.** Its node `id` is only used when the `nodes:` entry gives none.
 
@@ -199,7 +199,7 @@ same component. The generator enforces the role:
 - A `links:` list in a **device** build → error; a device declares each link as a
   `logic/link` node instead, so there is one way to write each.
 
-The flag lands in the generated `build/platformio.ini`, so build with `./ebus-esp32`.
+The flag lands in the generated `.ebus/platformio.ini`, so build with `ebus-esp32`.
 Behaviour — presence gating, re-send when a target returns to `ready` — is described in
 [Controller.md](Controller.md#controller-links) and [Link.md](Link.md#on-a-controller).
 
@@ -263,7 +263,7 @@ The firmware holds ids and topics in fixed buffers sized in [`lib/ebus_core/incl
 
 Lengths are measured as the firmware builds them. The root id is `device.id` after substitution (`${chip_id}` is 12 characters, `${chip_id_short}` 6), with `device.id_prefix` and a hyphen in front when set; both may come from `config-overlay.yml`. A child id is `<parent-runtime-id>-<id>`, so with the default `id: ${chip_id}` a top-level child's own `id` can be up to 50 characters. Node and property ids are measured after sanitizing, and a `registers:` entry's `id` is a property id. Topics are measured with the longer prefix, `homie/5`, so a `device.yml` that passes also fits the `ebus/5` build.
 
-A hand-coded `src/homie.cpp` is not checked. When the firmware has to cut a node or property id or a property topic to fit, it logs an `**ERROR` line naming it at boot.
+Hand-coded device code is not checked. When the firmware has to cut a node or property id or a property topic to fit, it logs an `**ERROR` line naming it at boot.
 
 ### Lifecycle: the `lost` cascade
 
@@ -273,7 +273,16 @@ The whole tree shares one MQTT connection, so there is exactly one **Last Will**
 
 ## What the generator produces
 
-### src/homie.cpp
+Everything goes under the project's `.ebus/`:
+
+| Path | Contents |
+|---|---|
+| `src/` | `homie.cpp`, with links to the firmware's sources and to the project's own `src/` |
+| `data/` | the filesystem image source: this repo's `data/`, the project's `data/`, `homie.yml` and `config.yml` |
+| `platformio.ini` | the PlatformIO config for this build |
+| `build/<environment>/` | `firmware.bin` and `littlefs.bin` |
+
+### homie.cpp
 
 Static C++ object declarations, `register_homie_properties()`, `setup_homie()`, and `loop_homie()`.  `main.cpp` calls these functions at the appropriate points in the Arduino lifecycle.  All objects are statically allocated — no heap allocations, no null-pointer risk, constructors fire before `setup()`.
 
@@ -283,7 +292,7 @@ Example output for the quickstart config above:
 
 ```cpp
 // AUTO-GENERATED by `ebus-esp32 generate` — do not edit manually.
-// Regenerate with: ./ebus-esp32 generate
+// Regenerate with: ebus-esp32 generate
 //
 // Static node instances for this Homie device.
 // All objects are statically allocated; constructors run before setup().
@@ -340,11 +349,11 @@ void loop_homie() {
 
 The `0x76` address is emitted in decimal (`118`).
 
-### data/homie.yml
+### homie.yml
 
 Merged Homie 5 topology assembled from each selected component's node and property definitions.  This file is uploaded to the device filesystem (LittleFS) and read at boot (`src/platform/config.cpp`) for the device's Homie version, name and type.
 
-### data/config.yml
+### config.yml
 
 Runtime configuration (wifi, mqtt, device identity) written from the `device:`, `wifi:`, `mqtt:`, `log:`, and `mdns:` sections of `device.yml`, then uploaded to the filesystem. It keeps those same sections and key names, so the generated file, `device.yml`, and the overlay all read alike. If a per-developer overlay exists at `config-overlay.yml`, its non-empty fields are merged in on top during `generate` — that is how your real broker and credentials stay out of the tracked `device.yml`. See [Configuration.md](Configuration.md) and [GettingStartedCLI.md](GettingStartedCLI.md) for the overlay model.
 
@@ -445,7 +454,7 @@ nodes:
       addr: 0x76
 ```
 
-Run `./ebus-esp32 generate` (or just build — the pre-build hook regenerates) and the new component will appear in `src/homie.cpp` and `data/homie.yml` automatically.
+Run `ebus-esp32 generate` (or just build — the pre-build hook regenerates) and the new component will appear in `.ebus/src/homie.cpp` and `.ebus/data/homie.yml` automatically.
 
 ---
 
@@ -465,4 +474,4 @@ Available boards (defined in `platformio/platformio.ini`):
 
 The unsuffixed envs build on arduino-esp32 3.x; each `-arduino2` twin builds the same board on 2.0.x. The `wesp32-poe*` envs use the same `partitions/partitions_ota.csv` partition table and LittleFS filesystem as `esp32-poe-iso`.
 
-List all boards: `./ebus-esp32 envs`
+List all boards: `ebus-esp32 envs`

@@ -68,11 +68,11 @@ mosquitto_sub -h public.cloud.shiftr.io -u public -P public -t "ebus/5/esp32poei
 
 ### 2. Run the Test
 
-From the project root directory:
+From this repo's root, naming the project whose device is under test:
 
 ```bash
 # Basic test (30 second timeout)
-python test/device_test.py
+python test/device_test.py --project ~/my-device
 
 # With custom timeout
 python test/device_test.py --timeout 60
@@ -80,8 +80,8 @@ python test/device_test.py --timeout 60
 # With verbose logging
 python test/device_test.py -v --timeout 45
 
-# With custom config paths
-python test/device_test.py --config data/config.yml --homie data/homie.yml
+# With explicit config paths
+python test/device_test.py --config path/to/config.yml --homie path/to/homie.yml
 
 # Firmware built without -DUSE_EBUS_TOPIC publishes homie/5 instead of ebus/5
 python test/device_test.py --domain homie
@@ -147,8 +147,9 @@ Total: 1/2 devices passed
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--config` | `data/config.yml` | Path to MQTT configuration file |
-| `--homie` | `data/homie.yml` | Path to Homie device specification |
+| `--project` | `.` | Project directory; the defaults below are in its `.ebus/data/` |
+| `--config` | `<project>/.ebus/data/config.yml` | Path to MQTT configuration file |
+| `--homie` | `<project>/.ebus/data/homie.yml` | Path to Homie device specification |
 | `--timeout` | `30` | Test duration in seconds |
 | `-v, --verbose` | off | Enable debug-level logging |
 | `--domain` | `ebus` | Topic domain: `ebus` (firmware built with `-DUSE_EBUS_TOPIC`) or `homie` |
@@ -238,7 +239,7 @@ device:
   id: esp32poeiso  # For reference only - test discovers all devices via wildcard
 ```
 
-This is the section layout `./ebus-esp32 generate` writes. The test also reads the older flat keys (`mqtt_host:`, `device_id:`) at the top level. A file still wrapped in the removed `config:` list matches neither, and the test falls back to `localhost`.
+This is the section layout `ebus-esp32 generate` writes. The test also reads the older flat keys (`mqtt_host:`, `device_id:`) at the top level. A file still wrapped in the removed `config:` list matches neither, and the test falls back to `localhost`.
 
 Note: `device.id` is used only for logging; the test discovers and tests **all** Homie devices found on the broker via wildcard subscription.
 

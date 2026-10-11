@@ -5,7 +5,7 @@
 # sizing, which is what README.md in this folder is about. Read it before connecting
 # anything to mains.
 #
-# To try it:  ./ebus-esp32 run examples/ssr/device.yml
+# To try it:  ebus-esp32 run examples/ssr
 #
 #   mosquitto_pub -t 'ebus/5/<device-id>/relay1/state/set' -m true
 #   mosquitto_sub -t 'ebus/5/<device-id>/relay1/#' -v

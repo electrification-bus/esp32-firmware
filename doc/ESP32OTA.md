@@ -52,10 +52,10 @@ The CLI opens the OTA window, pushes the filesystem staged, then the firmware ca
 curl -u admin:<passphrase> -H 'Content-Type: application/json' -d '{"enabled":true}' \
      http://192.168.1.42/api/v1/ota
 curl -u admin:<passphrase> -H 'Content-Type: application/octet-stream' \
-     --data-binary @.pio/cli/build/<env>/littlefs.bin \
+     --data-binary @<project>/.ebus/build/<env>/littlefs.bin \
      "http://192.168.1.42/api/v1/ota/filesystem?reboot=0"
 curl -u admin:<passphrase> -H 'Content-Type: application/octet-stream' \
-     --data-binary @.pio/cli/build/<env>/firmware.bin \
+     --data-binary @<project>/.ebus/build/<env>/firmware.bin \
      http://192.168.1.42/api/v1/ota/firmware
 ```
 
@@ -116,12 +116,12 @@ The device downloads the images itself. This is the shape that works when the de
 The image server is yours to run and configure — a release server, an S3 bucket, an nginx on the LAN. For development, `serve` publishes the current build without setting anything up:
 
 ```sh
-./ebus-esp32 serve                 # http://<this machine>:8080
-./ebus-esp32 serve --port 8443 --cert server.pem --key server.key    # https
+ebus-esp32 serve                 # http://<this machine>:8080
+ebus-esp32 serve --port 8443 --cert server.pem --key server.key    # https
 ```
 
 ```
---- serving .pio/cli/build/esp32-poe-iso (env esp32-poe-iso) ---
+--- serving .ebus/build/esp32-poe-iso (env esp32-poe-iso) ---
   http://192.168.1.91:8080/firmware.bin    (1418896 bytes)
   http://192.168.1.91:8080/littlefs.bin    (196608 bytes)
 ```
@@ -133,7 +133,7 @@ It serves **exactly those two paths**, not the build directory — which also ho
 ### Driving the pull from the CLI
 
 ```sh
-./ebus-esp32 push --pull --url https://releases.example.com/ebus/v1.2 --host 192.168.1.42
+ebus-esp32 push --pull --url https://releases.example.com/ebus/v1.2 --host 192.168.1.42
 ```
 
 `--url` is the base the **device** downloads from — it is required, since the server is separate from this tool. The CLI stages both images, arms them, then polls `GET /api/v1/ota` and prints the device's progress until it completes or reboots. `--fs-only` sends just the filesystem; `--pull-wait` bounds the poll (default 300s).

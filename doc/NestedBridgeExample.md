@@ -19,7 +19,7 @@ A BME280's `temperature` / `humidity` / `pressure` are **three properties of one
 
 ## The example
 
-[`examples/bridge-bess.device.yml`](../examples/bridge-bess.device.yml) models:
+[`examples/bridge-bess/device.yml`](../examples/bridge-bess/device.yml) models:
 
 ```
 root device   ESP32       type energy.ebus.device.bridge     (the firmware instance)
@@ -33,8 +33,8 @@ The data source is [`lib/sim/battery_sim`](../lib/sim/) — a tiny `NodeEntity` 
 Run it:
 
 ```bash
-cp examples/bridge-bess.device.yml device.yml
-./ebus-esp32 run            # generate + build + flash
+cp -R examples/bridge-bess ~/bridge-bess    # a project of your own; add its config-overlay.yml
+ebus-esp32 run ~/bridge-bess                # generate + build + flash
 ```
 
 ### What you get on the broker
@@ -82,7 +82,7 @@ children:
         id: battery-bms
 ```
 
-`serial_bms` is a copy/paste example rather than a shipped component, so copy it into place first (`cp examples/bms/serial_bms.{h,cpp,yml} lib/ble/` — see [examples/bms/README.md](../examples/bms/README.md)). Its yml declares the NimBLE dependency itself, so `./ebus-esp32 build` pulls the stack in automatically. BLE needs internal DRAM, so keep `CONFIG_WIFI_AP` off on non-PSRAM boards. The driver scans for and connects to a JBD BMS over BLE and publishes its real readings under the same `<root>-bms` child topics.
+`serial_bms` is a copy/paste example rather than a shipped component, so copy it into place first (`cp examples/bms/serial_bms.{h,cpp,yml} lib/ble/` — see [examples/bms/README.md](../examples/bms/README.md)). Its yml declares the NimBLE dependency itself, so `ebus-esp32 build` pulls the stack in automatically. BLE needs internal DRAM, so keep `CONFIG_WIFI_AP` off on non-PSRAM boards. The driver scans for and connects to a JBD BMS over BLE and publishes its real readings under the same `<root>-bms` child topics.
 
 ## Why this shapes the device API
 

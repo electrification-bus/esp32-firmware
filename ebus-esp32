@@ -2,21 +2,21 @@
 """
 ebus-esp32 — eBus ESP32 firmware CLI
 
-  ./ebus-esp32 generate                  Generate src/homie.cpp + data/*.yml from device.yml
-  ./ebus-esp32 build                     Generate, then compile firmware + filesystem
-  ./ebus-esp32 run                       Generate, build, and flash firmware + filesystem
-  ./ebus-esp32 run --port COM3           Specify serial port
-  ./ebus-esp32 push                      Flash pre-built firmware + filesystem (no build)
-  ./ebus-esp32 push --fs-only            Flash filesystem only (no build)
-  ./ebus-esp32 monitor                   Watch the device — over the network if its
+  ebus-esp32 generate                  Generate the project's .ebus/ from its device.yml
+  ebus-esp32 build                     Generate, then compile firmware + filesystem
+  ebus-esp32 run                       Generate, build, and flash firmware + filesystem
+  ebus-esp32 run --port COM3           Specify serial port
+  ebus-esp32 push                      Flash pre-built firmware + filesystem (no build)
+  ebus-esp32 push --fs-only            Flash filesystem only (no build)
+  ebus-esp32 monitor                   Watch the device — over the network if its
                                          address is known, else over USB
-  ./ebus-esp32 monitor --serial          Force USB (and learn the device's IP)
-  ./ebus-esp32 monitor --net --host IP   Force the network console at a given address
-  ./ebus-esp32 run --monitor             Flash, then watch over the network
-  ./ebus-esp32 clean                     Clean build artifacts
-  ./ebus-esp32 devices                   List attached serial devices
-  ./ebus-esp32 envs                      List available PlatformIO board environments
-  ./ebus-esp32 test                      Run the host-side unit tests (pio test -e native)
+  ebus-esp32 monitor --serial          Force USB (and learn the device's IP)
+  ebus-esp32 monitor --net --host IP   Force the network console at a given address
+  ebus-esp32 run --monitor             Flash, then watch over the network
+  ebus-esp32 clean                     Clean build artifacts
+  ebus-esp32 devices                   List attached serial devices
+  ebus-esp32 envs                      List available PlatformIO board environments
+  ebus-esp32 test                      Run the host-side unit tests (pio test -e native)
 
 On Windows, invoke via the wrapper: `ebus-esp32.bat run` (or `python ebus-esp32 run`).
 """
@@ -54,7 +54,7 @@ def require_yaml() -> None:
              "  . .venv/bin/activate          (Windows: .venv\\Scripts\\activate)\n"
              "  pip install pyyaml\n"
              "\n"
-             "then run ./ebus-esp32 again from that shell.")
+             "then run ebus-esp32 again from that shell.")
 
 # ── paths ──────────────────────────────────────────────────────────────────────
 
@@ -63,7 +63,7 @@ LIB_DIR      = ROOT / "lib"
 SRC_DIR      = ROOT / "src"
 DATA_DIR     = ROOT / "data"
 INCLUDE_DIR  = ROOT / "include"
-BUILD_DIR    = ROOT / "build"   # gitignored — generator scratch space, e.g. platformio.ini
+BUILD_DIR    = ROOT / "build"   # gitignored: the learned-address cache
 PLATFORMIO_INI = ROOT / "platformio" / "platformio.ini"
 NATIVE_TEST_DIR = ROOT / "test" / "native"   # Unity suites for [env:native]
 # The portable core is the git submodule lib/ebus_core (electrification-bus/cpp-sdk); its
@@ -71,24 +71,63 @@ NATIVE_TEST_DIR = ROOT / "test" / "native"   # Unity suites for [env:native]
 CORE_TEST_DIR  = LIB_DIR / "ebus_core" / "test"
 NATIVE_ENV     = "native"                     # host unit tests, not a board
 
-# The CLI builds into .pio/cli, never the .pio/build + .pio/libdeps the VSCode
+# The CLI installs libraries into .pio/cli/libdeps, never the .pio/libdeps the VSCode
 # PlatformIO extension uses. Moving platformio.ini out of the repo root was not enough
 # on its own: the extension remembers the folder as its project and writes a stub
 # platformio.ini back at the root within a minute, so it can revive at any time and
 # prune libraries the CLI installed. Separate trees make that harmless. Set as
-# [platformio] build_dir/libdeps_dir in the generated ini (write_lean_platformio_ini).
-PIO_BUILD_DIR   = ROOT / ".pio" / "cli" / "build"
+# [platformio] libdeps_dir in the generated ini (write_lean_platformio_ini).
 PIO_LIBDEPS_DIR = ROOT / ".pio" / "cli" / "libdeps"
-GENERATED_INI  = BUILD_DIR / "platformio.ini"
-# Per-developer config overlay: gitignored, repo-root, merged into the generated
-# data/config.yml on every generate. No template and no init step — the file either
-# exists and is overlaid, or it doesn't. Sits beside platformio_local.ini, which solves
-# the same problem the same way. NOT under data/: that is the LittleFS payload and every
-# byte there is flashed to a 192KB partition.
-# Legacy: this used to live at ~/.config/eBus/config.yml; config-status warns if one is
-# still lying around so it isn't silently ignored.
-CONFIG_OVERLAY        = ROOT / "config-overlay.yml"
+# Legacy: the per-developer overlay used to live at ~/.config/eBus/config.yml, then at
+# the repo root. config-status warns about the first; use_project() still reads the
+# second for a project that has no overlay of its own.
+CONFIG_OVERLAY_REPO   = ROOT / "config-overlay.yml"
 CONFIG_OVERLAY_LEGACY = Path.home() / ".config" / "eBus" / "config.yml"
+
+# The project being built: a directory the user owns, holding device.yml, an optional
+# config-overlay.yml (gitignored there), and optional src/ and data/. Everything generated
+# for it lands in its .ebus/ directory. use_project() points these at the project named on
+# the command line.
+PROJECT_DIR    = Path.cwd()
+OUT_DIR        = PROJECT_DIR / ".ebus"
+GEN_SRC_DIR    = OUT_DIR / "src"            # PlatformIO src_dir: links to src/, plus homie.cpp
+GEN_DATA_DIR   = OUT_DIR / "data"           # PlatformIO data_dir: the filesystem image source
+GENERATED_INI  = OUT_DIR / "platformio.ini"
+PIO_BUILD_DIR  = OUT_DIR / "build"          # <env>/firmware.bin, <env>/littlefs.bin
+CONFIG_OVERLAY = PROJECT_DIR / "config-overlay.yml"
+
+def use_project(project_dir: Path) -> None:
+    """Point the project paths above at project_dir."""
+    global PROJECT_DIR, OUT_DIR, GEN_SRC_DIR, GEN_DATA_DIR, GENERATED_INI, PIO_BUILD_DIR
+    global CONFIG_OVERLAY
+    PROJECT_DIR    = project_dir.resolve()
+    OUT_DIR        = PROJECT_DIR / ".ebus"
+    GEN_SRC_DIR    = OUT_DIR / "src"
+    GEN_DATA_DIR   = OUT_DIR / "data"
+    GENERATED_INI  = OUT_DIR / "platformio.ini"
+    PIO_BUILD_DIR  = OUT_DIR / "build"
+    CONFIG_OVERLAY = PROJECT_DIR / "config-overlay.yml"
+    if not CONFIG_OVERLAY.exists() and CONFIG_OVERLAY_REPO.exists():
+        CONFIG_OVERLAY = CONFIG_OVERLAY_REPO
+
+def project_paths(arg: str):
+    """(project directory, device.yml) for a command-line argument naming either."""
+    path = Path(arg)
+    if path.is_dir():
+        return path, path / "device.yml"
+    return path.parent, path
+
+def shown(path) -> str:
+    """A path for messages: relative to the current directory or the repo when under
+    one of them, else absolute."""
+    path = Path(path).resolve()
+    for base in (Path.cwd(), ROOT):
+        try:
+            return str(path.relative_to(base.resolve()))
+        except ValueError:
+            pass
+    return str(path)
+
 MONITOR_HOSTS  = BUILD_DIR / "monitor-hosts.json"  # learned Device ID -> last-known IP
 
 # ── pio helper ─────────────────────────────────────────────────────────────────
@@ -223,8 +262,10 @@ def load_yaml_file(path: Path, *, require_mapping: bool = True) -> dict:
 
 def load_device_yml(path: Path) -> dict:
     if not path.exists():
-        print(f"ERROR: {path} not found.", file=sys.stderr)
-        print("Create one from the format in doc/GenerateHomieDevice.md", file=sys.stderr)
+        print(f"ERROR: {shown(path)} not found.", file=sys.stderr)
+        print("A project is a directory holding device.yml (format: doc/GenerateHomieDevice.md).\n"
+              f"examples/ has some to start from: {shown(ROOT / 'ebus-esp32')} build "
+              f"{shown(ROOT / 'examples' / 'demo')}", file=sys.stderr)
         sys.exit(1)
     return load_yaml_file(path)
 
@@ -235,7 +276,7 @@ def get_environment(cfg: dict) -> str:
         sys.exit(1)
     if env_name == NATIVE_ENV:
         print(f"ERROR: device.environment '{NATIVE_ENV}' is the host unit-test env, not a "
-              "board; run its tests with ./ebus-esp32 test", file=sys.stderr)
+              "board; run its tests with ebus-esp32 test", file=sys.stderr)
         sys.exit(1)
     return env_name
 
@@ -299,7 +340,7 @@ def _check_broker_discovery(config_path: Path) -> None:
 
 _HOMIE_CPP_HEADER = """\
 // AUTO-GENERATED by `ebus-esp32 generate` — do not edit manually.
-// Regenerate with: ./ebus-esp32 generate
+// Regenerate with: ebus-esp32 generate
 //
 // Static node instances for this Homie device.
 // All objects are statically allocated; constructors run before setup().
@@ -521,9 +562,101 @@ def component_source_closure(used_components: list) -> list:
             found.add(f"{path.parent.name}/{path.stem}")
     return sorted(found)
 
+# ── project staging ─────────────────────────────────────────────────────────────
+#
+# PlatformIO compiles one src_dir and packs one data_dir, so both are assembled under the
+# project's .ebus/. src/ links to the firmware's own sources, to the project's src/ (as
+# src/project) and holds the generated homie.cpp. data/ is a copy of the repo's data/ with
+# the project's data/ over it, plus the generated config.yml and homie.yml.
+
+# Written by the generator, never staged from a data/ directory: an older clone may still
+# hold a generated data/config.yml, secrets included.
+_GENERATED_DATA = ("config.yml", "homie.yml")
+_PROJECT_SRC_LINK = "project"
+_SOURCE_SUFFIXES = (".h", ".hpp", ".c", ".cc", ".cpp")
+
+def _link_or_copy(target: Path, link: Path) -> None:
+    """Make link a symlink to target, or a copy where symlinks are unavailable (Windows
+    without Developer Mode). A link that already points at target is left alone."""
+    if link.is_symlink() and Path(os.readlink(link)) == target:
+        return
+    if link.is_symlink() or link.is_file():
+        link.unlink()
+    elif link.is_dir():
+        shutil.rmtree(link)
+    try:
+        link.symlink_to(target, target_is_directory=target.is_dir())
+    except OSError:
+        if target.is_dir():
+            shutil.copytree(target, link)
+        else:
+            shutil.copy2(target, link)
+
+def stage_sources() -> None:
+    """Populate GEN_SRC_DIR with links to the firmware sources and the project's src/.
+    The pioarduino platform writes its own idf_component.yml there."""
+    wanted = {e.name: e for e in sorted(SRC_DIR.iterdir())
+              if e.name != "homie.cpp" and (e.is_dir() or e.suffix in _SOURCE_SUFFIXES)}
+    project_src = PROJECT_DIR / "src"
+    if project_src.is_dir():
+        wanted[_PROJECT_SRC_LINK] = project_src
+    GEN_SRC_DIR.mkdir(parents=True, exist_ok=True)
+    for entry in GEN_SRC_DIR.iterdir():
+        if entry.name in wanted or entry.name == "homie.cpp" or entry.name.startswith("idf_component"):
+            continue
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()
+    for name, target in wanted.items():
+        _link_or_copy(target, GEN_SRC_DIR / name)
+
+def _skip_data(top: Path):
+    """copytree ignore function: editor leftovers anywhere, and the generated files at the
+    top of the data/ directory being copied."""
+    def ignore(directory, names):
+        skip = {n for n in names if n.endswith(("~", ".bak")) or n == ".DS_Store"}
+        if Path(directory) == top:
+            skip |= {n for n in names if n in _GENERATED_DATA}
+        return skip
+    return ignore
+
+def stage_data() -> None:
+    """Rebuild GEN_DATA_DIR from the repo's data/ and the project's data/."""
+    if GEN_DATA_DIR.exists():
+        shutil.rmtree(GEN_DATA_DIR)
+    shutil.copytree(DATA_DIR, GEN_DATA_DIR, ignore=_skip_data(DATA_DIR))
+    project_data = PROJECT_DIR / "data"
+    if project_data.is_dir():
+        for name in _GENERATED_DATA:
+            if (project_data / name).exists():
+                print(f"  NOTE: {shown(project_data / name)} is not used: {name} is generated "
+                      f"from device.yml and config-overlay.yml")
+        shutil.copytree(project_data, GEN_DATA_DIR, dirs_exist_ok=True,
+                        ignore=_skip_data(project_data))
+
+def project_components() -> list:
+    """The lib/<bus>/<name> components the project's own src/ includes, as 'bus/name', so
+    their sources and libraries are part of the build."""
+    src = PROJECT_DIR / "src"
+    if not src.is_dir():
+        return []
+    found = []
+    for path in sorted(src.rglob("*")):
+        if not path.is_file() or path.suffix not in _SOURCE_SUFFIXES:
+            continue
+        for inc in _INCLUDE_RE.findall(path.read_text(encoding="utf-8", errors="replace")):
+            target = LIB_DIR / inc
+            if target.suffix == ".h" and target.with_suffix(".yml").is_file():
+                name = f"{target.parent.name}/{target.stem}"
+                if name not in found:
+                    found.append(name)
+    return found
+
 def write_lean_platformio_ini(env_name: str, used_lib_deps: list,
-                              used_components: list, controller: bool = False) -> None:
-    """Write build/platformio.ini: a standalone copy of platformio.ini containing
+                              used_components: list, controller: bool = False,
+                              device_yml: Path = None) -> None:
+    """Write .ebus/platformio.ini: a standalone copy of platformio.ini containing
     only [platformio], [env], [common] (lib_deps pruned+extended), and this one
     environment's [env:<name>] — everything `pio_run()` needs, nothing device.yml's
     components don't actually use. Silently skipped if platformio.ini doesn't
@@ -544,7 +677,7 @@ def write_lean_platformio_ini(env_name: str, used_lib_deps: list,
         if dep not in kept_deps:
             kept_deps.append(dep)
 
-    # If this build's lib_deps set differs from the PREVIOUS build/platformio.ini
+    # If this build's lib_deps set differs from the PREVIOUS .ebus/platformio.ini
     # for this environment, PlatformIO will reassign different short-hash library build
     # subdirectories (lib5d2, lib836, ...) for the same source files. .pio/build/
     # doesn't get pruned when a library drops out, so its stale SCons dependency
@@ -563,7 +696,7 @@ def write_lean_platformio_ini(env_name: str, used_lib_deps: list,
         env_build_dir = PIO_BUILD_DIR / env_name
         if env_build_dir.exists():
             shutil.rmtree(env_build_dir)
-            print(f"  lib_deps changed for env:{env_name} — removed stale {env_build_dir.relative_to(ROOT)} "
+            print(f"  lib_deps changed for env:{env_name} — removed stale {shown(env_build_dir)} "
                   f"to avoid a mismatched incremental build")
 
     out = configparser.RawConfigParser()
@@ -572,12 +705,14 @@ def write_lean_platformio_ini(env_name: str, used_lib_deps: list,
             out.add_section(section)
             for key, val in src.items(section):
                 out.set(section, key, val)
-    # Build into the CLI's own tree (see PIO_BUILD_DIR) so the IDE extension and this
-    # CLI never share object files or an installed-library set.
+    # Build into the project's .ebus/ and install libraries into the CLI's own tree (see
+    # PIO_LIBDEPS_DIR), compiling the staged sources and packing the staged data/.
     if not out.has_section("platformio"):
         out.add_section("platformio")
     out.set("platformio", "build_dir", str(PIO_BUILD_DIR))
     out.set("platformio", "libdeps_dir", str(PIO_LIBDEPS_DIR))
+    out.set("platformio", "src_dir", str(GEN_SRC_DIR))
+    out.set("platformio", "data_dir", str(GEN_DATA_DIR))
     out.set("common", "lib_deps", "\n" + "\n".join(kept_deps))
     out.add_section(env_section)
     for key, val in src.items(env_section):
@@ -593,14 +728,18 @@ def write_lean_platformio_ini(env_name: str, used_lib_deps: list,
     # library that kept_deps left out.
     out.set(env_section, "custom_ebus_components",
             " ".join(component_source_closure(used_components)))
+    # Read by scripts/generate_homie.py, which regenerates from it at the start of every
+    # `pio run`, raw ones included.
+    if device_yml is not None:
+        out.set(env_section, "custom_ebus_device_yml", str(Path(device_yml).resolve()))
 
-    BUILD_DIR.mkdir(parents=True, exist_ok=True)
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
     with open(GENERATED_INI, "w", encoding="utf-8") as f:
         f.write("; AUTO-GENERATED by `ebus-esp32 generate` — do not edit manually.\n")
         f.write(f"; Lean copy of platformio.ini for env:{env_name} — [common].lib_deps pruned to\n")
         f.write("; drop unused optional libraries, extended with what device.yml needs.\n")
         out.write(f)
-    print(f"  generated: {GENERATED_INI.relative_to(ROOT)}  (env:{env_name}, "
+    print(f"  generated: {shown(GENERATED_INI)}  (env:{env_name}, "
           f"{len(kept_deps)} lib_deps, {len(base_deps) - len([d for d in base_deps if d in kept_deps])} pruned)")
 
 # ── properties synthesized from device.yml ─────────────────────────────────────
@@ -1013,6 +1152,12 @@ def cmd_generate(args) -> None:
 def _generate(args) -> None:
     require_core()
     device_yml = Path(args.device_yml)
+    if PROJECT_DIR == ROOT:
+        print("ERROR: this repo is the firmware, not a project. Keep the project in a "
+              "directory of its own and name it:\n"
+              f"         {shown(ROOT / 'ebus-esp32')} build path/to/my-device",
+              file=sys.stderr)
+        sys.exit(1)
     cfg        = load_device_yml(device_yml)
     device     = cfg.get("device", {})
     nodes_cfg  = cfg.get("nodes", [])
@@ -1023,7 +1168,7 @@ def _generate(args) -> None:
     if isinstance(device, dict) and "board" in device:
         print(f"ERROR: {device_yml} sets device.board, which is no longer read. Rename it "
               f"to device.environment (a PlatformIO env name; list them with "
-              f"'./ebus-esp32 envs').", file=sys.stderr)
+              f"'ebus-esp32 envs').", file=sys.stderr)
         sys.exit(1)
     _require_passphrase(cfg, device_yml)
     broker_discovery = broker_discovery_list((cfg.get("mqtt") or {}).get("discover"),
@@ -1368,7 +1513,30 @@ def _generate(args) -> None:
         check_shared_remote_sources(link_entries)
     id_limits.exit_if_any("${chip_id" in (id_template or "${chip_id}"))
 
-    # src/homie.cpp
+    # A device.yml with no nodes: (and no children:) describes a device whose code the
+    # project writes by hand in its src/, so no homie.cpp is generated.
+    hand_coded = role == "device" and "nodes" not in cfg and not cfg.get("children")
+    if hand_coded and not (PROJECT_DIR / "src").is_dir():
+        print(f"ERROR: {shown(device_yml)} has no nodes:, so the device code is hand-written, "
+              f"but {shown(PROJECT_DIR / 'src')} does not exist.\n"
+              f"       Add nodes: to generate the device, or write it in src/ "
+              f"(see doc/HandCodedDevice.md).", file=sys.stderr)
+        sys.exit(1)
+    for comp in project_components():
+        if comp not in used_components:
+            used_components.append(comp)
+            gen = load_yaml_file(LIB_DIR / f"{comp}.yml").get("generator") or {}
+            for dep in gen.get("lib_deps") or []:
+                if dep not in used_lib_deps:
+                    used_lib_deps.append(dep)
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUT_DIR / ".gitignore").write_text("# Build output of ebus-esp32; regenerated on every build.\n*\n",
+                                        encoding="utf-8")
+    stage_sources()
+    stage_data()
+
+    # .ebus/src/homie.cpp
     lines = [_HOMIE_CPP_HEADER]
     lines.append("#include <homie/Device.h>")
     lines.append("#include <homie/Property.h>")
@@ -1410,11 +1578,16 @@ def _generate(args) -> None:
     lines += ["", "void setup_controller_links() {"] + (link_setups or ["    // no controller links"]) + ["}"]
     lines += ["", "void loop_controller_links() {"] + (link_loops or ["    // no controller links"]) + ["}", ""]
 
-    out_cpp = SRC_DIR / "homie.cpp"
-    out_cpp.write_text("\n".join(lines), encoding="utf-8")
-    print(f"  generated: {out_cpp.relative_to(ROOT)}")
+    out_cpp = GEN_SRC_DIR / "homie.cpp"
+    if hand_coded:
+        if out_cpp.exists():
+            out_cpp.unlink()
+        print(f"  hand-coded: the device code is in {shown(PROJECT_DIR / 'src')}")
+    else:
+        out_cpp.write_text("\n".join(lines), encoding="utf-8")
+        print(f"  generated: {shown(out_cpp)}")
 
-    # build/platformio.ini — a lean, standalone PlatformIO project config: the
+    # .ebus/platformio.ini — a lean, standalone PlatformIO project config: the
     # active environment copied from platformio.ini, with [common].lib_deps pruned
     # of any library that's in some component's lib_deps catalog but wasn't actually
     # needed this build, then extended with what device.yml's components DO need.
@@ -1423,7 +1596,7 @@ def _generate(args) -> None:
     env_for_ini = device.get("environment")
     if env_for_ini:
         write_lean_platformio_ini(env_for_ini, used_lib_deps, used_components,
-                                  controller=(role == "controller"))
+                                  controller=(role == "controller"), device_yml=device_yml)
 
     # data/homie.yml
     homie_doc = {
@@ -1435,10 +1608,10 @@ def _generate(args) -> None:
         "extensions":     [],
         "implementation": "homie-esp32-firmware",
     }
-    out_homie = DATA_DIR / "homie.yml"
+    out_homie = GEN_DATA_DIR / "homie.yml"
     with open(out_homie, "w", encoding="utf-8") as f:
         yaml.dump(homie_doc, f, allow_unicode=True, sort_keys=False)
-    print(f"  generated: {out_homie.relative_to(ROOT)}")
+    print(f"  generated: {shown(out_homie)}")
 
     # data/config.yml
     wifi     = cfg.get("wifi")  or {}
@@ -1511,10 +1684,10 @@ def _generate(args) -> None:
     if wifi.get("enabled") is not None:
         config_doc["wifi"]["enabled"] = wifi["enabled"]
 
-    out_config = DATA_DIR / "config.yml"
+    out_config = GEN_DATA_DIR / "config.yml"
     with open(out_config, "w", encoding="utf-8") as f:
         yaml.dump(config_doc, f, allow_unicode=True, sort_keys=False)
-    print(f"  generated: {out_config.relative_to(ROOT)}")
+    print(f"  generated: {shown(out_config)}")
     _apply_overlay(out_config)
     _check_broker_discovery(out_config)
     _check_network_keys(out_config, device.get("environment"))
@@ -1523,14 +1696,16 @@ def _generate(args) -> None:
     env_name = device.get("environment", "<environment>")
     if role == "controller":
         print(f"\ncontroller: {len(links_cfg)} link(s), environment: {env_name}")
+    elif hand_coded:
+        print(f"\nhand-coded device, environment: {env_name}")
     else:
         print(f"\n{len(nodes_cfg)} node(s), environment: {env_name}")
 
 # ── build ──────────────────────────────────────────────────────────────────────
 
 def cmd_build(args) -> None:
-    # Explicit generate here (unlike src/homie.cpp/data/*.yml, which the PlatformIO
-    # pre-build hook also regenerates during `pio run` itself): build/platformio.ini
+    # Explicit generate here (unlike the device code and data/*.yml, which the PlatformIO
+    # pre-build hook also regenerates during `pio run` itself): .ebus/platformio.ini
     # must exist and be current BEFORE pio starts parsing config — that parsing
     # happens before the pre: hook ever runs, so regenerating from inside it would
     # be one run too late for -c to pick up.
@@ -1682,7 +1857,7 @@ def _ota_unreachable(host: str, detail: str, unresolved: bool = False) -> None:
     # Only worth saying when they did not already give one.
     bare = host.split(":")[0]
     if not re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}", bare):
-        print( "       Try an IP instead: ./ebus-esp32 push --ota --host <ip>", file=sys.stderr)
+        print( "       Try an IP instead: ebus-esp32 push --ota --host <ip>", file=sys.stderr)
     cached = _hosts_load()
     learned = [f"{d}={e.get('host')}" for d, e in sorted(cached["devices"].items())]
     learned += [f"{k}={e.get('host')}" for k, e in sorted(cached["ymls"].items()) if e.get("host")]
@@ -1763,7 +1938,7 @@ def _ota_request(host: str, path: str, passphrase: str, payload: bytes,
                                f"is not on the network")
     except ConnectionResetError:
         _ota_unreachable(host, "connection reset by the device mid-transfer — retry, and "
-                               "watch the console (./ebus-esp32 monitor --net)")
+                               "watch the console (ebus-esp32 monitor --net)")
     except OSError as e:
         _ota_unreachable(host, f"{e.__class__.__name__}: {e}")
     except http.client.HTTPException as e:
@@ -1836,7 +2011,7 @@ def _ota_push_image(host: str, path: str, passphrase: str, image: Path,
         # sooner could reach the old image before it restarts.
         time.sleep(6)
         outcome, back = _ota_wait_reboot(host, OTA_COMEBACK_TIMEOUT, started)
-        console = f"./ebus-esp32 monitor --host {host.split(':')[0]}"
+        console = f"ebus-esp32 monitor --host {host.split(':')[0]}"
         if outcome == "rebooted":
             print(f"  -> reply lost, but the device restarted after the upload began (it\n"
                   f"     reports {back}). It does not report which image it booted; check the\n"
@@ -1952,7 +2127,7 @@ def _pull_watch(host: str, passphrase: str, timeout: int) -> int:
                       f"  but never reported completion. Older firmware can reboot before a\n"
                       f"  poll sees it, so the update may have landed; check the version in\n"
                       f"  its Homie $description, or watch the console:\n"
-                      f"  ./ebus-esp32 monitor --host {host.split(':')[0]}", file=sys.stderr)
+                      f"  ebus-esp32 monitor --host {host.split(':')[0]}", file=sys.stderr)
             return 1
         status, text = reply
         state = ""
@@ -1972,9 +2147,17 @@ def _pull_watch(host: str, passphrase: str, timeout: int) -> int:
             return 1
         time.sleep(1.0)
     print(f"\nGave up after {timeout}s — the device never reported completion.\n"
-          f"  Watch it directly: ./ebus-esp32 monitor --host {host.split(':')[0]}",
+          f"  Watch it directly: ebus-esp32 monitor --host {host.split(':')[0]}",
           file=sys.stderr)
     return 1
+
+def _fs_inputs_mtime(device_yml) -> float:
+    """Newest modification time among the files a filesystem image is packed from: the
+    repo's data/, the project's data/, device.yml and the overlay."""
+    inputs = [q for d in (DATA_DIR, PROJECT_DIR / "data") if d.is_dir()
+              for q in d.rglob("*") if q.is_file()]
+    inputs += [q for q in (Path(device_yml), CONFIG_OVERLAY) if q.exists()]
+    return max((q.stat().st_mtime for q in inputs), default=0)
 
 def _ota_passphrase(cfg: dict, args) -> str:
     passphrase = getattr(args, "passphrase", None) or _configured_passphrase(cfg)
@@ -1994,8 +2177,8 @@ def _require_images(args, fw: Path, fs: Path) -> None:
     if missing:
         for label, path in missing:
             print(f"ERROR: no {label} image at {path}", file=sys.stderr)
-        print("       push flashes pre-built images — run './ebus-esp32 build' first\n"
-              "       (or use './ebus-esp32 run --ota', which builds then pushes).",
+        print("       push flashes pre-built images — run 'ebus-esp32 build' first\n"
+              "       (or use 'ebus-esp32 run --ota', which builds then pushes).",
               file=sys.stderr)
         sys.exit(1)
 
@@ -2009,7 +2192,7 @@ def ota_pull(cfg: dict, args, host: str, source: str) -> None:
     if not base:
         print("ERROR: --pull needs --url <base>, the server the DEVICE downloads from.\n"
               "       e.g. --url https://releases.example.com/ebus/v1.2\n"
-              "       To serve this build for development: ./ebus-esp32 serve",
+              "       To serve this build for development: ebus-esp32 serve",
               file=sys.stderr)
         sys.exit(1)
 
@@ -2098,7 +2281,7 @@ def cmd_serve(args) -> None:
     images = {name: build_dir / name for name in ("firmware.bin", "littlefs.bin")}
     present = {n: p for n, p in images.items() if p.exists()}
     if not present:
-        print(f"ERROR: no images in {build_dir} — run './ebus-esp32 build' first",
+        print(f"ERROR: no images in {build_dir} — run 'ebus-esp32 build' first",
               file=sys.stderr)
         sys.exit(1)
     for name in images:
@@ -2109,11 +2292,9 @@ def cmd_serve(args) -> None:
     # packed from flashes cleanly and leaves the device running yesterday's data/.
     fs_image = present.get("littlefs.bin")
     if fs_image:
-        fs_inputs  = [q for q in DATA_DIR.rglob("*") if q.is_file()]
-        fs_inputs += [q for q in (Path(args.device_yml), CONFIG_OVERLAY) if q.exists()]
-        if max((q.stat().st_mtime for q in fs_inputs), default=0) > fs_image.stat().st_mtime:
+        if _fs_inputs_mtime(args.device_yml) > fs_image.stat().st_mtime:
             print("WARNING: littlefs.bin is older than the config it is packed from — "
-                  "run './ebus-esp32 build' to repack it", file=sys.stderr)
+                  "run 'ebus-esp32 build' to repack it", file=sys.stderr)
 
     handler = type("_BoundImageHandler", (_ImageRequestHandler,), {"images": present})
     try:
@@ -2139,11 +2320,11 @@ def cmd_serve(args) -> None:
 
     host = args.url_host or _outbound_ip()
     base = f"{scheme}://{host}:{httpd.server_address[1]}"
-    print(f"\n--- serving {build_dir.relative_to(ROOT)} (env {env_name}) ---")
+    print(f"\n--- serving {shown(build_dir)} (env {env_name}) ---")
     for name, path in sorted(present.items()):
         print(f"  {base}/{name}    ({path.stat().st_size} bytes)")
     print("\nPaste those into the device's portal (Firmware / Filesystem URL), or:")
-    print(f"  ./ebus-esp32 push --pull --url {base} --host <device>")
+    print(f"  ebus-esp32 push --pull --url {base} --host <device>")
     print("\nCtrl-C to stop.\n")
     try:
         httpd.serve_forever()
@@ -2166,13 +2347,10 @@ def ota_push(cfg: dict, args, host: str, source: str) -> None:
     # cheap and exact. Firmware staleness is deliberately NOT second-guessed — that
     # would mean stat()ing every source in src/ and lib/ to re-derive what the build
     # system already knows, and `build` is the answer to it.
-    fs_inputs = [q for q in DATA_DIR.rglob("*") if q.is_file()]
-    fs_inputs += [q for q in (Path(args.device_yml), CONFIG_OVERLAY) if q.exists()]
-    newest = max((q.stat().st_mtime for q in fs_inputs), default=0)
-    if newest > fs.stat().st_mtime:
+    if _fs_inputs_mtime(args.device_yml) > fs.stat().st_mtime:
         print(f"WARNING: {fs.name} is older than the config it is packed from — the "
               f"device will get stale data/.\n"
-              f"         Run './ebus-esp32 build' to repack it.", file=sys.stderr)
+              f"         Run 'ebus-esp32 build' to repack it.", file=sys.stderr)
 
     print(f"\n--- OTA push to {host} (host {source}, env {env_name}) ---")
 
@@ -2215,7 +2393,7 @@ def _ota_target(cfg, args):
     return host, source
 
 def cmd_run(args) -> None:
-    # Explicit generate here — see cmd_build for why build/platformio.ini needs to
+    # Explicit generate here — see cmd_build for why .ebus/platformio.ini needs to
     # exist before pio starts, not just via the pre-build hook.
     cmd_generate(args)
     cfg = load_device_yml(Path(args.device_yml))
@@ -2224,7 +2402,7 @@ def cmd_run(args) -> None:
 
 def cmd_push(args) -> None:
     # No generate here: push is explicitly "flash pre-built artifacts, no rebuild" —
-    # it doesn't compile, so build/platformio.ini isn't consulted either way.
+    # it doesn't compile, so .ebus/platformio.ini isn't consulted either way.
     cfg = load_device_yml(Path(args.device_yml))
     _upload(cfg, args, build=False)
     post_monitor(cfg, args)
@@ -2564,7 +2742,7 @@ def monitor_serial(cfg: dict, env_name: str, port: str, key: str, learn: bool = 
             if m:
                 _host_learn(key, env_name, m.group(1), device_id)
 
-    resume = f"./ebus-esp32 monitor --port {port}" + ("" if learn else " --no-learn")
+    resume = f"ebus-esp32 monitor --port {port}" + ("" if learn else " --no-learn")
     sup = serial_handoff.Supervisor(RUN_DIR, port, spawn, drain,
                                     env_name=env_name, monitor_cmd=resume)
     print(f"(a flash to {port} from any terminal pauses and resumes this monitor)",
@@ -2631,9 +2809,9 @@ def cmd_clean(args) -> None:
     builddir = PIO_BUILD_DIR / env_name
     if builddir.exists():
         shutil.rmtree(builddir)
-        print(f"removed {builddir.relative_to(ROOT)}")
+        print(f"removed {shown(builddir)}")
     else:
-        print(f"nothing to clean ({builddir.relative_to(ROOT)} absent)")
+        print(f"nothing to clean ({shown(builddir)} absent)")
 
 # ── devices ────────────────────────────────────────────────────────────────────
 
@@ -2680,7 +2858,7 @@ def cmd_envs(args) -> None:
         if name.endswith("-arduino2"):
             notes.append("legacy: arduino-esp32 2.0.17")
         if name == NATIVE_ENV:
-            notes.append("host unit tests, not a board: ./ebus-esp32 test")
+            notes.append("host unit tests, not a board: ebus-esp32 test")
         mark = "*" if name == selected else " "
         print(f"{mark} {name:<{width}}  {', '.join(notes)}".rstrip())
 
@@ -2740,14 +2918,31 @@ def cmd_test(args) -> None:
 # ── compiledb / check ──────────────────────────────────────────────────────────
 
 def cmd_compiledb(args) -> None:
-    cmd_generate(args)   # build/platformio.ini must exist before pio parses config
+    cmd_generate(args)   # .ebus/platformio.ini must exist before pio parses config
     cfg = load_device_yml(Path(args.device_yml))
     env_name = get_environment(cfg)
     print(f"--- compiledb (env: {env_name}) — regenerating compile_commands.json for clangd/LSP ---")
-    sys.exit(pio_run(env_name, ["compiledb"]))
+    rc = pio_run(env_name, ["compiledb"])
+    if rc == 0:
+        _resolve_compiledb_links(ROOT / "compile_commands.json")
+    sys.exit(rc)
+
+def _resolve_compiledb_links(path: Path) -> None:
+    """Rewrite the staged .ebus/src/ paths in compile_commands.json to the files they link
+    to, so an editor matches src/main.cpp and the project's own sources."""
+    try:
+        entries = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    staged = str(GEN_SRC_DIR) + os.sep
+    for entry in entries:
+        file = os.path.join(entry.get("directory", ""), entry.get("file", ""))
+        if os.path.abspath(file).startswith(staged):
+            entry["file"] = os.path.realpath(file)
+    path.write_text(json.dumps(entries, indent=2) + "\n", encoding="utf-8")
 
 def cmd_check(args) -> None:
-    cmd_generate(args)   # build/platformio.ini must exist before pio parses config
+    cmd_generate(args)   # .ebus/platformio.ini must exist before pio parses config
     cfg = load_device_yml(Path(args.device_yml))
     env_name = get_environment(cfg)
     pio = find_pio()
@@ -2764,8 +2959,8 @@ def cmd_monitors(args) -> None:
 
 # ── config overlay ───────────────────────────────────────────────────────────
 #
-# config-overlay.yml (repo root, gitignored) is merged into the generated data/config.yml
-# on every generate — non-empty overlay fields win, everything else keeps its
+# The project's config-overlay.yml (kept out of version control) is merged into the
+# generated .ebus/data/config.yml on every generate — non-empty overlay fields win, everything else keeps its
 # device.yml-derived value. There is deliberately NO init step and NO tracked template:
 # an overlay is either there and applied, or absent and ignored.
 #
@@ -2835,7 +3030,8 @@ def _require_passphrase(cfg: dict, device_yml: Path) -> None:
     print(f"ERROR: device.device_passphrase is {what} (after merging "
           f"{CONFIG_OVERLAY.name} over {device_yml}).\n"
           f"       It is the password for the device's admin and OTA endpoints. Set your own\n"
-          f"       in {CONFIG_OVERLAY} (gitignored), for example:\n\n"
+          f"       in {shown(PROJECT_DIR / 'config-overlay.yml')} (keep it out of version "
+          f"control), for example:\n\n"
           f"         device:\n"
           f"           device_passphrase: <a passphrase of your own>\n", file=sys.stderr)
     sys.exit(1)
@@ -2871,7 +3067,10 @@ def _apply_overlay(config_path: Path) -> None:
     applied = _deep_merge(doc, overrides)
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.dump(doc, f, allow_unicode=True, sort_keys=False)
-    print(f"  overlay:   {CONFIG_OVERLAY} ({applied} field(s))")
+    print(f"  overlay:   {shown(CONFIG_OVERLAY)} ({applied} field(s))")
+    if CONFIG_OVERLAY == CONFIG_OVERLAY_REPO:
+        print(f"  NOTE: the project has no config-overlay.yml, so the one at the repo root is "
+              f"used; move it to {shown(PROJECT_DIR / 'config-overlay.yml')}")
 
 def _warn_no_broker(config_path: Path) -> None:
     """configured-only with an empty host leaves the device nothing to connect to."""
@@ -2939,10 +3138,13 @@ def _check_network_keys(config_path: Path, env_name) -> None:
               f"joins no network at boot and waits on its setup AP until one is chosen there.")
 
 def cmd_config_status(args) -> None:
-    print(f"overlay path:    {CONFIG_OVERLAY}")
+    print(f"overlay path:    {shown(CONFIG_OVERLAY)}")
     if CONFIG_OVERLAY.exists():
         print(f"overlay state:   ACTIVE ({CONFIG_OVERLAY.stat().st_size} bytes) — merged into "
-              f"data/config.yml on every build")
+              f"{shown(GEN_DATA_DIR / 'config.yml')} on every build")
+        if CONFIG_OVERLAY == CONFIG_OVERLAY_REPO:
+            print(f"NOTE: this is the repo-root overlay, used because the project has none; "
+                  f"move it to {shown(PROJECT_DIR / 'config-overlay.yml')}")
     else:
         print("overlay state:   none (put device.device_passphrase in one; generate refuses an empty or 'changeme' value)")
         print()
@@ -2961,7 +3163,7 @@ def cmd_config_status(args) -> None:
     if CONFIG_OVERLAY_LEGACY.exists():
         print(f"NOTE: a legacy overlay exists at {CONFIG_OVERLAY_LEGACY}")
         print("      it is NO LONGER READ — move its contents to config-overlay.yml")
-    print("data/config.yml: generated from device.yml + overlay by the pre-build hook (gitignored)")
+    print(f"{shown(GEN_DATA_DIR / 'config.yml')}: generated from device.yml + overlay by the pre-build hook")
 
 # ── main ───────────────────────────────────────────────────────────────────────
 
@@ -2974,30 +3176,31 @@ def main():
             # Alphabetical, matching the subcommand list; bare form of each command first,
             # then its flag variants in flag order.
             "examples:",
-            "  ./ebus-esp32 build",
-            "  ./ebus-esp32 clean",
-            "  ./ebus-esp32 devices",
-            "  ./ebus-esp32 envs",
-            "  ./ebus-esp32 generate",
-            "  ./ebus-esp32 monitor                            (network if an address is known, else USB)",
-            "  ./ebus-esp32 monitor --net --host 192.168.1.42",
-            "  ./ebus-esp32 monitor --serial                   (force USB; also learns the device IP)",
-            "  ./ebus-esp32 push",
-            "  ./ebus-esp32 push --fs-only",
-            "  ./ebus-esp32 push --ota --host 192.168.1.42     (flash fw+fs over TCP, no cable)",
-            "  ./ebus-esp32 push --pull --url http://10.0.0.5:8080 --host 192.168.1.42",
+            "  ebus-esp32 build",
+            "  ebus-esp32 clean",
+            "  ebus-esp32 devices",
+            "  ebus-esp32 envs",
+            "  ebus-esp32 generate",
+            "  ebus-esp32 monitor                            (network if an address is known, else USB)",
+            "  ebus-esp32 monitor --net --host 192.168.1.42",
+            "  ebus-esp32 monitor --serial                   (force USB; also learns the device IP)",
+            "  ebus-esp32 push",
+            "  ebus-esp32 push --fs-only",
+            "  ebus-esp32 push --ota --host 192.168.1.42     (flash fw+fs over TCP, no cable)",
+            "  ebus-esp32 push --pull --url http://10.0.0.5:8080 --host 192.168.1.42",
             "                                                 (device downloads the images instead)",
-            "  ./ebus-esp32 serve                             (serve the images for a portal-driven pull)",
-            "  ./ebus-esp32 run",
-            "  ./ebus-esp32 run --monitor                      (flash, then watch over the network)",
-            "  ./ebus-esp32 run --ota --monitor                (build, flash over TCP, then watch)",
-            "  ./ebus-esp32 run --port COM3",
-            "  ./ebus-esp32 test                               (host unit tests, no board)",
+            "  ebus-esp32 serve                             (serve the images for a portal-driven pull)",
+            "  ebus-esp32 run",
+            "  ebus-esp32 run --monitor                      (flash, then watch over the network)",
+            "  ebus-esp32 run --ota --monitor                (build, flash over TCP, then watch)",
+            "  ebus-esp32 run --port COM3",
+            "  ebus-esp32 test                               (host unit tests, no board)",
         ]),
     )
 
-    dev_yml_arg = dict(nargs="?", default="device.yml", metavar="device.yml",
-                       help="device config file (default: device.yml)")
+    dev_yml_arg = dict(nargs="?", default=".", metavar="PROJECT",
+                       help="the project directory, or its device.yml "
+                            "(default: the current directory)")
     port_arg    = dict(default=None, metavar="PORT",
                        help="serial port, e.g. COM3 or /dev/ttyUSB0 (auto-detected if omitted)")
     host_arg    = dict(default=None, metavar="ADDR",
@@ -3052,14 +3255,15 @@ def main():
     p = sub.add_parser("compiledb", help="Regenerate compile_commands.json for clangd / LSP")
     p.add_argument("device_yml", **dev_yml_arg)
 
-    sub.add_parser("config-status", help="Show whether a config-overlay.yml is active")
+    p = sub.add_parser("config-status", help="Show whether a config-overlay.yml is active")
+    p.add_argument("device_yml", **dev_yml_arg)
 
     sub.add_parser("devices", help="List attached serial devices")
 
     p = sub.add_parser("envs", help="List available PlatformIO board environments")
     p.add_argument("device_yml", **dev_yml_arg)
 
-    p = sub.add_parser("generate", help="Generate src/homie.cpp + data/*.yml from device.yml")
+    p = sub.add_parser("generate", help="Generate the project's .ebus/ (device code, config.yml, homie.yml) from device.yml")
     p.add_argument("device_yml", **dev_yml_arg)
 
     p = sub.add_parser("monitor", help="Open the device monitor (network by default, USB with --serial)")
@@ -3113,10 +3317,13 @@ def main():
 
     args = parser.parse_args()
 
-    # Every `pio run` re-runs generate from scripts/generate_homie.py; this tells that
-    # hook which device.yml we were given, so it does not regenerate from ./device.yml.
     if getattr(args, "device_yml", None):
-        os.environ["EBUS_DEVICE_YML"] = str(Path(args.device_yml).resolve())
+        project_dir, device_yml = project_paths(args.device_yml)
+        use_project(project_dir)
+        args.device_yml = str(device_yml)
+        # Read by scripts/generate_homie.py when a `pio run` starts without the
+        # custom_ebus_device_yml option the generated ini carries.
+        os.environ["EBUS_DEVICE_YML"] = str(device_yml.resolve())
 
     dispatch = {                       # same alphabetical order as the parsers above
         "build":         cmd_build,
