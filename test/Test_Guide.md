@@ -80,6 +80,9 @@ python test/device_test.py --timeout 60
 # With verbose logging
 python test/device_test.py -v --timeout 45
 
+# One device only
+python test/device_test.py --project ~/my-device --device b0b21c90f570
+
 # With explicit config paths
 python test/device_test.py --config path/to/config.yml --homie path/to/homie.yml
 
@@ -148,6 +151,7 @@ Total: 1/2 devices passed
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--project` | `.` | Project directory; the defaults below are in its `.ebus/data/` |
+| `--device` | every device found | Test only this device id |
 | `--config` | `<project>/.ebus/data/config.yml` | Path to MQTT configuration file |
 | `--homie` | `<project>/.ebus/data/homie.yml` | Path to Homie device specification |
 | `--timeout` | `30` | Test duration in seconds |
