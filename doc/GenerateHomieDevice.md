@@ -471,6 +471,7 @@ Available boards (defined in `platformio/platformio.ini`):
 | `wesp32-poe` | Silicognition wESP32, RTL8201 Ethernet | 4 MB | no | `wesp32-poe-arduino2` |
 | `wesp32-poe-lan8720` | Silicognition wESP32, LAN8720 Ethernet (earlier revisions, e.g. 2018 boards) | 4 MB | no | none |
 | `waveshare-esp32-s3-poe-eth` | Waveshare ESP32-S3-POE-ETH / ESP32-S3-ETH, W5500 Ethernet on SPI | 16 MB | 8 MB (octal) | none |
+| `olimex-esp32-p4-devkit` | Olimex ESP32-P4-DevKit, TLK110 Ethernet, no WiFi | 16 MB | 32 MB | none |
 | `seeed_xiao_esp32s3` | Seeed XIAO ESP32S3 | 8 MB | yes (octal) | none |
 
 The unsuffixed envs build on arduino-esp32 3.x; each `-arduino2` twin builds the same board on 2.0.x. The `wesp32-poe*` envs use the same `partitions/partitions_ota.csv` partition table and LittleFS filesystem as `esp32-poe-iso`.

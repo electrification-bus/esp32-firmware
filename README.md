@@ -207,6 +207,7 @@ Defined in [`platformio/platformio.ini`](platformio/platformio.ini). Run `ebus-e
 | `wesp32-poe` | Silicognition wESP32 (RTL8201 Ethernet) | Same OTA partition table and LittleFS filesystem as `esp32-poe-iso`; see [Board targets](doc/GenerateHomieDevice.md#board-targets) |
 | `wesp32-poe-lan8720` | Silicognition wESP32, earlier revisions (LAN8720 Ethernet) | As `wesp32-poe` |
 | `waveshare-esp32-s3-poe-eth` | Waveshare ESP32-S3-POE-ETH / ESP32-S3-ETH (ESP32-S3R8, 16 MB flash) | Ethernet through a W5500 on SPI; console on the native USB port |
+| `olimex-esp32-p4-devkit` | Olimex ESP32-P4-DevKit (ESP32-P4, 16 MB flash, 32 MB PSRAM) | Ethernet (TLK110); no WiFi or Bluetooth; PoE through the non-isolated POEv3 module; console on the native USB port |
 | `seeed_xiao_esp32s3` | Seeed XIAO ESP32-S3 | Native USB only; WiFi with a setup access point, no Ethernet. 3.x only (no `-arduino2` twin) |
 | `*-arduino2` | The boards above, except the XIAO, on the legacy platform | arduino-esp32 2.0.17 / ESP-IDF 4.4.7, pinned. Kept for A/B until the 3.x port is verified on every board |
 

@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <platform/log_stream.h>
 #include <LittleFS.h>
+#include <soc/soc_caps.h>
 #include <ArduinoYaml.h>
 #include <util/jsonUtils.h>
 #include <platform/portal_prefs.h>
@@ -236,7 +237,9 @@ bool loadConfiguration() {
 
   // Emit MAC addresses for debugging/identification
   Serial.printf("CONFIG: Ethernet MAC: %s\n", get_eth_mac());
+#if SOC_WIFI_SUPPORTED   // the ESP32-P4 has no WiFi, and no WiFi MAC to read
   Serial.printf("CONFIG: WiFi MAC: %s\n", get_wlan_mac());
+#endif
 
   return true;
 }

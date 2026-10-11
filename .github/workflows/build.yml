@@ -77,6 +77,7 @@ jobs:
           - esp32-s3-devkitc-1
           - esp32-s3-devkitc-1-arduino2
           - waveshare-esp32-s3-poe-eth
+          - olimex-esp32-p4-devkit
     steps:
       - uses: actions/checkout@v4
         with:
