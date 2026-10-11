@@ -280,6 +280,17 @@ def get_environment(cfg: dict) -> str:
         sys.exit(1)
     return env_name
 
+def load_device_yml_if_present(path) -> dict:
+    """device.yml when the project has one, else {}: push, monitor and serve also drive
+    firmware built elsewhere, named by --host and image paths."""
+    path = Path(path)
+    return load_device_yml(path) if path.exists() else {}
+
+def environment_or_none(cfg: dict):
+    """device.environment, or None when there is no project or it names none."""
+    device = cfg.get("device") if isinstance(cfg.get("device"), dict) else {}
+    return device.get("environment") or None
+
 def get_log_port(cfg: dict) -> int:
     """Port the firmware's serial-over-TCP console listens on (device.yml
     `log.tcp_port`, default 23; 0 disables it). Single source for both the
@@ -1741,7 +1752,6 @@ def cmd_build(args) -> None:
 # ── run / push ─────────────────────────────────────────────────────────────────
 
 def _upload(cfg, args, build: bool) -> None:
-    env_name = get_environment(cfg)
     port  = getattr(args, "port", None)
 
     # --ota replaces the USB upload entirely: no serial port, so none of the serial
@@ -1754,6 +1764,7 @@ def _upload(cfg, args, build: bool) -> None:
     target = _ota_target(cfg, args)
     if target:
         if build:
+            env_name = get_environment(cfg)
             print(f"\n--- build (env: {env_name}) ---")
             if not args.fs_only:
                 rc = pio_run(env_name, [])
@@ -1769,6 +1780,14 @@ def _upload(cfg, args, build: bool) -> None:
         else:
             ota_push(cfg, args, *target)
         return
+
+    if not cfg:
+        print(f"ERROR: no project at {shown(args.device_yml)}. A USB flash goes through the "
+              f"project's PlatformIO build;\n       firmware built elsewhere goes over the "
+              f"network: push --ota --host <ip> --firmware <file> [--filesystem <file>]",
+              file=sys.stderr)
+        sys.exit(1)
+    env_name = get_environment(cfg)
 
     # Pause a serial monitor holding the port (no-op if none is running); it resumes
     # when the upload ends, whether it succeeded or not.
@@ -2168,24 +2187,40 @@ def _ota_passphrase(cfg: dict, args) -> str:
         sys.exit(1)
     return passphrase
 
-def _require_images(args, fw: Path, fs: Path) -> None:
-    """Both OTA transports move images that are already on disk, so check they exist
-    before opening an OTA window on the device."""
-    missing = [(label, path) for label, path in
-               ((("firmware", fw),) if not args.fs_only else ()) + (("filesystem", fs),)
-               if not path.exists()]
+def _push_images(cfg: dict, args):
+    """(filesystem, firmware, explicit): the images a push sends, each a Path or None.
+    --filesystem and --firmware name them; otherwise they are the project's build output."""
+    fw_arg, fs_arg = getattr(args, "firmware", None), getattr(args, "filesystem", None)
+    if fw_arg or fs_arg:
+        if fw_arg and args.fs_only:
+            print("ERROR: --fs-only and --firmware contradict each other", file=sys.stderr)
+            sys.exit(2)
+        return (Path(fs_arg) if fs_arg else None, Path(fw_arg) if fw_arg else None, True)
+    if not cfg:
+        print(f"ERROR: no project at {shown(args.device_yml)}. Name one, or pass the images: "
+              f"--firmware <file> and/or --filesystem <file>", file=sys.stderr)
+        sys.exit(1)
+    build_dir = PIO_BUILD_DIR / get_environment(cfg)
+    return (build_dir / "littlefs.bin",
+            None if args.fs_only else build_dir / "firmware.bin", False)
+
+def _require_images(images: list, explicit: bool) -> None:
+    """A push moves images that are already on disk, so check they exist before opening
+    an OTA window on the device. images: (label, path) pairs."""
+    missing = [(label, path) for label, path in images if not path.exists()]
     if missing:
         for label, path in missing:
-            print(f"ERROR: no {label} image at {path}", file=sys.stderr)
-        print("       push flashes pre-built images — run 'ebus-esp32 build' first\n"
-              "       (or use 'ebus-esp32 run --ota', which builds then pushes).",
-              file=sys.stderr)
+            print(f"ERROR: no {label} image at {shown(path)}", file=sys.stderr)
+        if not explicit:
+            print("       push flashes pre-built images — run 'ebus-esp32 build' first\n"
+                  "       (or use 'ebus-esp32 run --ota', which builds then pushes).",
+                  file=sys.stderr)
         sys.exit(1)
 
 def ota_pull(cfg: dict, args, host: str, source: str) -> None:
     """Point the device at an image server and watch it download. The server is yours —
     `ebus-esp32 serve` runs one over the build directory for development."""
-    env_name   = get_environment(cfg)
+    env_name   = environment_or_none(cfg) or "none"
     passphrase = _ota_passphrase(cfg, args)
 
     base = (getattr(args, "url", None) or "").rstrip("/")
@@ -2274,24 +2309,38 @@ def _outbound_ip() -> str:
         s.close()
 
 def cmd_serve(args) -> None:
-    cfg       = load_device_yml(Path(args.device_yml))
-    env_name  = get_environment(cfg)
-    build_dir = PIO_BUILD_DIR / env_name
-
-    images = {name: build_dir / name for name in ("firmware.bin", "littlefs.bin")}
-    present = {n: p for n, p in images.items() if p.exists()}
-    if not present:
-        print(f"ERROR: no images in {build_dir} — run 'ebus-esp32 build' first",
-              file=sys.stderr)
-        sys.exit(1)
-    for name in images:
-        if name not in present:
-            print(f"WARNING: no {name} in {build_dir} — it will 404", file=sys.stderr)
+    cfg = load_device_yml_if_present(args.device_yml)
+    if args.firmware or args.filesystem:
+        # Served under the names push --pull asks for, whatever the files are called.
+        images = {name: Path(arg) for name, arg in (("firmware.bin", args.firmware),
+                                                    ("littlefs.bin", args.filesystem)) if arg}
+        for name, path in images.items():
+            if not path.is_file():
+                print(f"ERROR: no image at {shown(path)}", file=sys.stderr)
+                sys.exit(1)
+        label = ", ".join(shown(p) for p in images.values())
+        present = images
+    else:
+        if not cfg:
+            print(f"ERROR: no project at {shown(args.device_yml)}. Name one, or pass the "
+                  f"images: --firmware <file> and/or --filesystem <file>", file=sys.stderr)
+            sys.exit(1)
+        build_dir = PIO_BUILD_DIR / get_environment(cfg)
+        images = {name: build_dir / name for name in ("firmware.bin", "littlefs.bin")}
+        present = {n: p for n, p in images.items() if p.exists()}
+        if not present:
+            print(f"ERROR: no images in {build_dir} — run 'ebus-esp32 build' first",
+                  file=sys.stderr)
+            sys.exit(1)
+        for name in images:
+            if name not in present:
+                print(f"WARNING: no {name} in {build_dir} — it will 404", file=sys.stderr)
+        label = f"{shown(build_dir)} (env {get_environment(cfg)})"
 
     # Same staleness check `push` makes: a littlefs.bin older than the config it was
     # packed from flashes cleanly and leaves the device running yesterday's data/.
     fs_image = present.get("littlefs.bin")
-    if fs_image:
+    if fs_image and not (args.firmware or args.filesystem):
         if _fs_inputs_mtime(args.device_yml) > fs_image.stat().st_mtime:
             print("WARNING: littlefs.bin is older than the config it is packed from — "
                   "run 'ebus-esp32 build' to repack it", file=sys.stderr)
@@ -2320,7 +2369,7 @@ def cmd_serve(args) -> None:
 
     host = args.url_host or _outbound_ip()
     base = f"{scheme}://{host}:{httpd.server_address[1]}"
-    print(f"\n--- serving {shown(build_dir)} (env {env_name}) ---")
+    print(f"\n--- serving {label} ---")
     for name, path in sorted(present.items()):
         print(f"  {base}/{name}    ({path.stat().st_size} bytes)")
     print("\nPaste those into the device's portal (Firmware / Filesystem URL), or:")
@@ -2334,12 +2383,10 @@ def cmd_serve(args) -> None:
         httpd.server_close()
 
 def ota_push(cfg: dict, args, host: str, source: str) -> None:
-    env_name  = get_environment(cfg)
     passphrase = _ota_passphrase(cfg, args)
-
-    build_dir = PIO_BUILD_DIR / env_name
-    fw, fs = build_dir / "firmware.bin", build_dir / "littlefs.bin"
-    _require_images(args, fw, fs)
+    fs, fw, explicit = _push_images(cfg, args)
+    images = [(label, path) for label, path in (("filesystem", fs), ("firmware", fw)) if path]
+    _require_images(images, explicit)
 
     # Staleness matters more than absence here: a littlefs.bin older than the config it
     # was packed from flashes cleanly, reports success, and leaves the device running
@@ -2347,12 +2394,14 @@ def ota_push(cfg: dict, args, host: str, source: str) -> None:
     # cheap and exact. Firmware staleness is deliberately NOT second-guessed — that
     # would mean stat()ing every source in src/ and lib/ to re-derive what the build
     # system already knows, and `build` is the answer to it.
-    if _fs_inputs_mtime(args.device_yml) > fs.stat().st_mtime:
+    if not explicit and _fs_inputs_mtime(args.device_yml) > fs.stat().st_mtime:
         print(f"WARNING: {fs.name} is older than the config it is packed from — the "
               f"device will get stale data/.\n"
               f"         Run 'ebus-esp32 build' to repack it.", file=sys.stderr)
 
-    print(f"\n--- OTA push to {host} (host {source}, env {env_name}) ---")
+    env_name = environment_or_none(cfg)
+    print(f"\n--- OTA push to {host} (host {source}"
+          + (f", env {env_name}" if env_name else "") + ") ---")
 
     # The endpoints are gated on ota_is_enabled(), which is a timed window — open it
     # first or every push comes back "OTA not enabled".
@@ -2366,13 +2415,11 @@ def ota_push(cfg: dict, args, host: str, source: str) -> None:
                   "or pass --passphrase)", file=sys.stderr)
         sys.exit(1)
 
-    # Filesystem first, staged; firmware last and it carries the reboot. With
-    # --fs-only there is no second image, so the filesystem push reboots instead.
-    if not args.fs_only:
-        _ota_push_image(host, f"{api}/ota/filesystem", passphrase, fs, "filesystem", reboot=False)
-        _ota_push_image(host, f"{api}/ota/firmware",   passphrase, fw, "firmware",   reboot=True)
-    else:
-        _ota_push_image(host, f"{api}/ota/filesystem", passphrase, fs, "filesystem", reboot=True)
+    # Filesystem first, staged; firmware last and it carries the reboot. A single image
+    # reboots itself.
+    for i, (label, path) in enumerate(images):
+        _ota_push_image(host, f"{api}/ota/{label}", passphrase, path, label,
+                        reboot=(i == len(images) - 1))
 
     print("\ndone — device rebooting.")
 
@@ -2382,7 +2429,7 @@ def _ota_target(cfg, args):
     fetch them."""
     if not (getattr(args, "ota", False) or getattr(args, "pull", False)):
         return None
-    host, source = resolve_host(cfg, get_environment(cfg), _host_key(cfg, args.device_yml),
+    host, source = resolve_host(cfg, environment_or_none(cfg), _host_key(cfg, args.device_yml),
                                 getattr(args, "host", None), unique=True)
     if not host:
         flag = "--pull" if getattr(args, "pull", False) else "--ota"
@@ -2403,7 +2450,7 @@ def cmd_run(args) -> None:
 def cmd_push(args) -> None:
     # No generate here: push is explicitly "flash pre-built artifacts, no rebuild" —
     # it doesn't compile, so .ebus/platformio.ini isn't consulted either way.
-    cfg = load_device_yml(Path(args.device_yml))
+    cfg = load_device_yml_if_present(args.device_yml)
     _upload(cfg, args, build=False)
     post_monitor(cfg, args)
 
@@ -2644,9 +2691,10 @@ def _wait_for_log_port(host: str, port: int, timeout: int) -> bool:
             time.sleep(1.0)
     return False
 
-def monitor_net(cfg: dict, env_name: str, host: str, source: str, wait: int) -> int:
+def monitor_net(cfg: dict, env_name: str, host: str, source: str, wait: int,
+                log_port: int = None) -> int:
     """Attach pio's monitor to the device's TCP console. Returns a process rc."""
-    port = get_log_port(cfg)
+    port = log_port if log_port is not None else get_log_port(cfg)
     if port == 0:
         print("ERROR: device.yml sets log.tcp_port: 0 — the firmware's TCP console is "
               "disabled.\n       Set a port (default 23), then re-flash the filesystem: "
@@ -2744,7 +2792,7 @@ def monitor_serial(cfg: dict, env_name: str, port: str, key: str, learn: bool = 
 
     resume = f"ebus-esp32 monitor --port {port}" + ("" if learn else " --no-learn")
     sup = serial_handoff.Supervisor(RUN_DIR, port, spawn, drain,
-                                    env_name=env_name, monitor_cmd=resume)
+                                    env_name=env_name or "", monitor_cmd=resume)
     print(f"(a flash to {port} from any terminal pauses and resumes this monitor)",
           flush=True)
     try:
@@ -2754,8 +2802,8 @@ def monitor_serial(cfg: dict, env_name: str, port: str, key: str, learn: bool = 
         return 1
 
 def cmd_monitor(args) -> None:
-    cfg   = load_device_yml(Path(args.device_yml))
-    env_name = get_environment(cfg)
+    cfg   = load_device_yml_if_present(args.device_yml)
+    env_name = environment_or_none(cfg)
     key   = _host_key(cfg, args.device_yml)
 
     if args.serial and (args.net or args.host):
@@ -2779,7 +2827,7 @@ def cmd_monitor(args) -> None:
         print("No device address known yet — falling back to the USB monitor.")
         print("Its IP will be learned from the boot log and used by later --net runs.\n")
         sys.exit(monitor_serial(cfg, env_name, args.port, key, learn=not args.no_learn))
-    sys.exit(monitor_net(cfg, env_name, host, source, args.monitor_wait))
+    sys.exit(monitor_net(cfg, env_name, host, source, args.monitor_wait, args.log_port))
 
 def post_monitor(cfg: dict, args) -> None:
     """Shared tail for build/run/push --monitor. Never fails the command that ran
@@ -2787,7 +2835,7 @@ def post_monitor(cfg: dict, args) -> None:
     reportable annoyance, not a reason to exit non-zero."""
     if not getattr(args, "monitor", False):
         return
-    env_name = get_environment(cfg)
+    env_name = environment_or_none(cfg)
     host, source = resolve_host(cfg, env_name, _host_key(cfg, args.device_yml),
                                 getattr(args, "host", None))
     if not host:
@@ -2797,7 +2845,8 @@ def post_monitor(cfg: dict, args) -> None:
         print("  Or name it directly:  ebus-esp32 monitor --net --host <ip>")
         return
     print()
-    monitor_net(cfg, env_name, host, source, getattr(args, "monitor_wait", 90))
+    monitor_net(cfg, env_name, host, source, getattr(args, "monitor_wait", 90),
+                getattr(args, "log_port", None))
 
 # ── clean ──────────────────────────────────────────────────────────────────────
 
@@ -3208,6 +3257,18 @@ def main():
                             "serial session (default: the address learned for device.yml)")
     wait_arg    = dict(type=int, default=90, metavar="SECONDS",
                        help="how long to wait for the device's TCP console to answer (default: 90)")
+    log_port_arg = dict(type=int, default=None, metavar="PORT",
+                        help="the device's TCP console port (default: log.tcp_port from "
+                             "device.yml, else 23)")
+
+    def add_image_flags(p):
+        """Images built elsewhere, in place of the project's build output."""
+        p.add_argument("--firmware", default=None, metavar="FILE",
+                       help="firmware image to send instead of the project's build "
+                            "(no project needed)")
+        p.add_argument("--filesystem", default=None, metavar="FILE",
+                       help="LittleFS image to send instead of the project's build "
+                            "(no project needed)")
 
     def add_monitor_flags(p, wait_default: int):
         """--monitor tail shared by build/run/push."""
@@ -3215,6 +3276,7 @@ def main():
                        help="when finished, attach the network monitor to the device's TCP console")
         p.add_argument("--host", **host_arg)
         p.add_argument("--monitor-wait", **dict(wait_arg, default=wait_default))
+        p.add_argument("--log-port", **log_port_arg)
 
     def add_ota_flags(p):
         """--ota upload transport, shared by run/push."""
@@ -3278,6 +3340,7 @@ def main():
                    help="serial only: do not relay the stream through this CLI to learn the "
                         "device IP — keeps the monitor fully interactive")
     p.add_argument("--monitor-wait", **wait_arg)
+    p.add_argument("--log-port", **log_port_arg)
 
     sub.add_parser("monitors", help="List active serial-monitor sessions (port-sharing breadcrumbs)")
 
@@ -3287,6 +3350,7 @@ def main():
     p.add_argument("--fs-only", action="store_true", help="flash filesystem only (skip firmware)")
     p.add_argument("--erase", action="store_true", help="full chip erase first (recover from a stale-boot OTA slot)")
     add_ota_flags(p)
+    add_image_flags(p)
     add_monitor_flags(p, 90)
 
     p = sub.add_parser("run", help="Generate, build, and flash firmware + filesystem to device")
@@ -3312,6 +3376,7 @@ def main():
     p.add_argument("--url-host", default=None, metavar="HOST",
                    help="hostname to print in the URLs (default: this machine's address "
                         "on the default route) — use it when the device reaches you by name")
+    add_image_flags(p)
 
     sub.add_parser("test", help="Run the host-side unit tests (Unity, PlatformIO native env)")
 
