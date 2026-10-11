@@ -135,6 +135,12 @@ Another Ethernet board, so the RMII pins are spoken for in the same way as the P
 
 The W5500 Ethernet chip takes **GPIO 9** (RST), **10** (INT), **11** (MOSI), **12** (MISO), **13** (SCLK) and **14** (CS), so the demo's GPIO 14 output must move; GPIO 18 is free. **GPIO 21** drives the on-board WS2812 RGB LED. GPIO 19/20 are the native USB port. Pins from the [Waveshare wiki](https://www.waveshare.com/wiki/ESP32-S3-ETH).
 
+## Olimex ESP32-P4-DevKit (`olimex-esp32-p4-devkit`)
+
+The TLK110 PHY's management and power pins are **GPIO 31** (MDC), **52** (MDIO) and **51** (PHY power). The on-board LED is **GPIO 2**, active low. Pins from Olimex's [Ethernet-TLK110-demo](https://github.com/OLIMEX/ESP32-P4-DevKit/tree/main/SOFTWARE/Arduino/Ethernet-TLK110-demo).
+
+The POEv3 module is not galvanically isolated: on PoE, disconnect USB, or connect it only through a USB isolator.
+
 ## This firmware's reference values
 
 Bus pins go in device.yml's top-level `buses:` block, once per physical bus; only chip-selects and output pins are per node:

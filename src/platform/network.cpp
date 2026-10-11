@@ -725,15 +725,18 @@ void setup_ethernet() {
   SPI.begin(EBUS_ETH_SPI_SCK, EBUS_ETH_SPI_MISO, EBUS_ETH_SPI_MOSI);
   ETH.begin(ETH_PHY_W5500, 1, EBUS_ETH_SPI_CS, EBUS_ETH_SPI_INT, EBUS_ETH_SPI_RST, SPI);
 #elif !defined(CONFIG_WIFI_AP)
-  // ESP.restart() (OTA, /reboot) is a CPU reset that leaves the Ethernet MAC as it was,
-  // and about one boot in four after one never gets a working link. A deep-sleep wake
-  // resets the whole digital domain, so turn a software restart into one before ETH.begin().
+#if CONFIG_IDF_TARGET_ESP32
+  // ESP.restart() (OTA, /reboot) is a CPU reset that leaves the ESP32's Ethernet MAC as
+  // it was, and about one boot in four after one never gets a working link. A deep-sleep
+  // wake resets the whole digital domain, so turn a software restart into one before
+  // ETH.begin(). Not on the ESP32-P4, which does not come back from it.
   if (esp_reset_reason() == ESP_RST_SW) {
     Serial.println("ETH: software restart; resetting through a 10 ms deep sleep");
     Serial.flush();
     esp_sleep_enable_timer_wakeup(10000);
     esp_deep_sleep_start();
   }
+#endif
 #ifdef EBUS_ETH_PHY_TYPE
   // The board variant's pins with a different PHY, e.g. ETH_PHY_LAN8720 on a wESP32
   // older than the RTL8201 revision the framework's wesp32 variant assumes.
