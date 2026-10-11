@@ -44,6 +44,13 @@ ebus-esp32 run  --ota --monitor             # build, flash over TCP, then watch 
 ebus-esp32 push --ota --host 10.0.0.5:8080  # non-default port
 ```
 
+Firmware built elsewhere needs no project: name the images and the device, and the last image sent carries the reboot. `serve` takes the same flags.
+
+```sh
+ebus-esp32 push --ota --host 192.168.1.42 --firmware app.bin --filesystem fs.bin --passphrase <passphrase>
+ebus-esp32 push --ota --host 192.168.1.42 --firmware app.bin --passphrase <passphrase>
+```
+
 The CLI opens the OTA window, pushes the filesystem staged, then the firmware carrying the reboot. It uses the `/api/v1` paths, and the old `/api` paths when the device answers `GET /api/v1/ota` with a 404 or a redirect, as firmware from before `/api/v1` does. The passphrase is `--passphrase` if given, else `device.device_passphrase` from `config-overlay.yml`, else from `device.yml`. See [GettingStartedCLI.md](GettingStartedCLI.md).
 
 ### With curl

@@ -165,11 +165,84 @@ def test_staged_image_does_not_accept_a_lost_reply(cli, sandbox, monkeypatch):
 def test_missing_images_are_reported_before_contacting_the_device(cli, sandbox, capsys):
     fw, fs = sandbox.root / "firmware.bin", sandbox.root / "littlefs.bin"
     with pytest.raises(SystemExit):
-        cli._require_images(Namespace(fs_only=False), fw, fs)
+        cli._require_images([("filesystem", fs), ("firmware", fw)], explicit=False)
     err = capsys.readouterr().err
     assert "no firmware image" in err and "no filesystem image" in err
+    assert "ebus-esp32 build" in err
     fs.write_bytes(b"\0")
-    cli._require_images(Namespace(fs_only=True), fw, fs)
+    cli._require_images([("filesystem", fs)], explicit=False)
+
+
+def test_a_missing_named_image_is_not_blamed_on_the_build(cli, sandbox, capsys):
+    with pytest.raises(SystemExit):
+        cli._require_images([("firmware", sandbox.root / "app.bin")], explicit=True)
+    err = capsys.readouterr().err
+    assert "no firmware image" in err and "ebus-esp32 build" not in err
+
+
+# ── images named on the command line ──────────────────────────────────────────
+
+def push_args(sandbox, **kw):
+    base = dict(device_yml=str(sandbox.project / "device.yml"), fs_only=False,
+                firmware=None, filesystem=None, passphrase="p")
+    return Namespace(**{**base, **kw})
+
+
+def test_push_images_default_to_the_project_build(cli, sandbox):
+    cfg = {"device": {"environment": "esp32-poe-iso"}}
+    build = cli.PIO_BUILD_DIR / "esp32-poe-iso"
+    assert cli._push_images(cfg, push_args(sandbox)) == \
+        (build / "littlefs.bin", build / "firmware.bin", False)
+    assert cli._push_images(cfg, push_args(sandbox, fs_only=True)) == \
+        (build / "littlefs.bin", None, False)
+
+
+def test_named_images_need_no_project(cli, sandbox, tmp_path):
+    fw = tmp_path / "app.bin"
+    assert cli._push_images({}, push_args(sandbox, firmware=str(fw))) == (None, fw, True)
+
+
+def test_no_project_and_no_images_is_an_error(cli, sandbox, capsys):
+    with pytest.raises(SystemExit):
+        cli._push_images({}, push_args(sandbox))
+    assert "--firmware" in capsys.readouterr().err
+
+
+def test_fs_only_with_a_firmware_image_is_refused(cli, sandbox, tmp_path):
+    with pytest.raises(SystemExit):
+        cli._push_images({}, push_args(sandbox, fs_only=True, firmware=str(tmp_path / "a.bin")))
+
+
+@pytest.mark.parametrize("names,expected", [
+    (("firmware",), ["/api/v1/ota", "/api/v1/ota/firmware"]),
+    (("filesystem",), ["/api/v1/ota", "/api/v1/ota/filesystem"]),
+    (("filesystem", "firmware"),
+     ["/api/v1/ota", "/api/v1/ota/filesystem?reboot=0", "/api/v1/ota/firmware"]),
+])
+def test_named_images_are_pushed_with_the_last_one_rebooting(cli, sandbox, monkeypatch,
+                                                             tmp_path, names, expected):
+    files = {}
+    for name in names:
+        files[name] = tmp_path / f"{name}.bin"
+        files[name].write_bytes(b"\xe9")
+    monkeypatch.setattr(cli, "_ota_get", PathDevice(CURRENT))
+    sent = []
+
+    def fake_request(host, url, passphrase, payload, ctype, label, **kw):
+        sent.append(url)
+        return 200, "ok"
+    monkeypatch.setattr(cli, "_ota_request", fake_request)
+    args = push_args(sandbox, **{n: str(f) for n, f in files.items()})
+    cli.ota_push({}, args, HOST, "test")
+    assert sent == expected
+
+
+def test_usb_flash_without_a_project_points_at_the_network(cli, sandbox, capsys):
+    args = Namespace(device_yml=str(sandbox.project / "device.yml"), port=None,
+                     ota=False, pull=False, fs_only=False)
+    with pytest.raises(SystemExit):
+        cli._upload({}, args, build=False)
+    assert "push --ota" in capsys.readouterr().err
 
 
 # ── _pull_watch ───────────────────────────────────────────────────────────────
