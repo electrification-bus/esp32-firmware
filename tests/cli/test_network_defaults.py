@@ -6,7 +6,7 @@ import pytest
 from helpers import device_doc
 
 PASS = {"device": {"device_passphrase": "test-passphrase"}}
-ETHERNET_ENVS = ["esp32-poe-iso", "esp32-poe-iso-arduino2", "wesp32-poe"]
+ETHERNET_ENVS = ["esp32-poe-iso", "esp32-poe-iso-arduino2", "wesp32-poe", "waveshare-esp32-s3-poe-eth"]
 WIFI_AP_ENVS = ["esp32-s3-devkitc-1", "esp32-s3-devkitc-1-arduino2", "seeed_xiao_esp32s3"]
 
 

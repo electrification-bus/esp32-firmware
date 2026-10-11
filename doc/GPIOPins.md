@@ -131,6 +131,10 @@ SDK reference values put Modbus on 6/7, I2C on 8/9 (the core's default SDA/SCL f
 
 Another Ethernet board, so the RMII pins are spoken for in the same way as the PoE-ISO. **This page does not yet carry a verified free-pin list for it** — check the vendor pinout before laying out a wESP32 build rather than assuming the PoE-ISO numbers transfer.
 
+## Waveshare ESP32-S3-POE-ETH (`waveshare-esp32-s3-poe-eth`)
+
+The W5500 Ethernet chip takes **GPIO 9** (RST), **10** (INT), **11** (MOSI), **12** (MISO), **13** (SCLK) and **14** (CS), so the demo's GPIO 14 output must move; GPIO 18 is free. **GPIO 21** drives the on-board WS2812 RGB LED. GPIO 19/20 are the native USB port. Pins from the [Waveshare wiki](https://www.waveshare.com/wiki/ESP32-S3-ETH).
+
 ## This firmware's reference values
 
 Bus pins go in device.yml's top-level `buses:` block, once per physical bus; only chip-selects and output pins are per node:

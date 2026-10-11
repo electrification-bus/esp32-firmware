@@ -12,6 +12,9 @@
 #ifndef CONFIG_WIFI_AP
 #include <ETH.h>
 #endif
+#ifdef EBUS_ETH_W5500
+#include <SPI.h>
+#endif
 #include <time.h>
 #include <platform/config.h>
 #include <platform/network.h>
@@ -716,7 +719,12 @@ void setup_ethernet() {
   sanitize_hostname(getDeviceID(), mdns_hostname, sizeof(mdns_hostname));
   WiFi.setHostname(mdns_hostname);
   WiFi.onEvent(WiFiEvent);
-#ifndef CONFIG_WIFI_AP
+#ifdef EBUS_ETH_W5500
+  // SPI Ethernet (boards without an EMAC, such as the ESP32-S3); ETH.begin() resets the
+  // W5500 through its RST pin.
+  SPI.begin(EBUS_ETH_SPI_SCK, EBUS_ETH_SPI_MISO, EBUS_ETH_SPI_MOSI);
+  ETH.begin(ETH_PHY_W5500, 1, EBUS_ETH_SPI_CS, EBUS_ETH_SPI_INT, EBUS_ETH_SPI_RST, SPI);
+#elif !defined(CONFIG_WIFI_AP)
   // ESP.restart() (OTA, /reboot) is a CPU reset that leaves the Ethernet MAC as it was,
   // and about one boot in four after one never gets a working link. A deep-sleep wake
   // resets the whole digital domain, so turn a software restart into one before ETH.begin().

@@ -76,6 +76,7 @@ jobs:
           - esp32-poe-iso-arduino2
           - esp32-s3-devkitc-1
           - esp32-s3-devkitc-1-arduino2
+          - waveshare-esp32-s3-poe-eth
     steps:
       - uses: actions/checkout@v4
         with:
