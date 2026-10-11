@@ -12,5 +12,6 @@ Forward-looking design notes for features that are **not yet shipped** (or only 
 | [ControllerLinks.md](ControllerLinks.md) | partially implemented | Stub: controller links shipped (see [Controller.md](../Controller.md#controller-links)); name addressing, `link_format.h`, `stale_text` and moving the link logic into cpp-sdk are outstanding. |
 | [LinkUnitConversion.md](LinkUnitConversion.md) | not implemented | An optional per-source `scale` and `offset` on a link, applied before rounding (°C to °F and similar). |
 | [RustFirmware.md](RustFirmware.md) | not implemented | A hand-written Rust application as a project outside this repo, on a Rust ESP32 platform crate in this repo's `rust/`, built with cargo and flashed and tested with `ebus-esp32`. |
+| [OTAFleet.md](OTAFleet.md) | not implemented | Per-device OTA credentials derived from a fleet secret, signed images, a LAN update server for a fleet, and devices outside the developer's network that phone home for updates. |
 
 When a proposal ships, fold its real behavior into the relevant `doc/` page and either delete the proposal or leave a one-line "implemented in X" stub here.
