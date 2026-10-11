@@ -174,6 +174,7 @@ VSCode users: run `ebus-esp32` in the integrated terminal. The PlatformIO extens
 - **Design proposals**: [proposals/README.md](doc/proposals/README.md) lists each proposal and its status
 - **Subsystem notes**
   - [ESP32OTA.md](doc/ESP32OTA.md) — OTA push over TCP, pull from URL, partitions
+  - [DeviceContract.md](doc/DeviceContract.md): what the CLI, setup page and tests rely on from any firmware
   - [MDNS.md](doc/MDNS.md)
   - [Authentication.md](doc/Authentication.md)
   - [Controller.md](doc/Controller.md)
