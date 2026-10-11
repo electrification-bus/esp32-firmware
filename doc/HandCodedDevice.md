@@ -1,6 +1,6 @@
-# Building a Device or Controller Without the Generator
+# Building a Device Without the Generator
 
-The [`device.yml` generator](GenerateHomieDevice.md) is the fast path, but it isn't the only one. You can define a Homie device (or controller) entirely in C++, with no `device.yml` at all — useful when you want full control over construction order, conditional/dynamic nodes, a one-off custom node that isn't worth a component YAML, or logic the declarative format can't express.
+The [`device.yml` generator](GenerateHomieDevice.md) is the fast path, but it isn't the only one. You can write the device's Homie nodes and properties in C++ yourself: useful when you want full control over construction order, conditional/dynamic nodes, a one-off custom node that isn't worth a component YAML, or logic the declarative format can't express.
 
 This guide covers the hand-coded path. If you just want to wire together existing library components, use the generator instead — it's less code to maintain.
 
@@ -8,49 +8,33 @@ This guide covers the hand-coded path. If you just want to wire together existin
 
 ---
 
-## What the generator produces (and you take over)
+## A hand-coded project
 
-Running `./ebus-esp32 generate` turns `device.yml` into three files:
+A hand-coded device is a project like any other (see [GettingStartedCLI.md](GettingStartedCLI.md)), whose `device.yml` has **no `nodes:` key**:
 
-| File | Role | Hand-coded path |
-|---|---|---|
-| `src/homie.cpp` | Static node objects + `setup_homie()` / `loop_homie()` / `register_homie_properties()` | **You write this by hand** |
-| `data/homie.yml` | Homie 5 device header (`$name` / `$type` / version) read at boot | You maintain it |
-| `data/config.yml` | Runtime config (wifi, mqtt, device identity) | You maintain it (or keep using the `config-overlay.yml` overlay) |
+```
+my-device/
+  device.yml            device:, wifi:, mqtt:, log:, mdns: as usual; no nodes:
+  config-overlay.yml    secrets and local settings, kept out of version control
+  src/                  your device code, compiled into the firmware
+    device.cpp
+```
 
-In a generator project these three are gitignored and rebuilt on every `pio run`. In a hand-coded project they are **your tracked source** — so the first step is to take ownership of them.
+Without `nodes:`, `ebus-esp32 generate` writes no device code; your `src/` provides it. Everything else is generated as usual: `config.yml` (with the overlay merged in) and `homie.yml` come from `device.yml`, and `ebus-esp32 build`, `run`, `push` and `monitor` work unchanged:
+
+```sh
+cd my-device
+ebus-esp32 build
+ebus-esp32 run
+```
+
+Any `lib/<bus>/<component>.h` your sources include is built in, with the libraries its `.yml` declares, so a hand-coded device uses the same drivers as a generated one. Files under `src/` compile with a project that has `nodes:` too, alongside the generated code.
+
+**Easiest way to start:** generate once from a `device.yml` close to what you want and copy `.ebus/src/homie.cpp` into `src/` as your starting point, then remove `nodes:`.
 
 ---
 
-## Opting out of the generator
-
-The pre-build hook (`scripts/generate_homie.py`) only runs the generator when a `device.yml` exists. **Remove (or rename) `device.yml` and the hook stands aside** — your hand-written `src/homie.cpp` is left untouched. Then un-ignore the three files so git tracks them:
-
-```sh
-# 1. Take the generator out of the loop
-git rm device.yml                       # or: mv device.yml device.yml.disabled
-
-# 2. Track the files you now maintain by hand (they were gitignored for the generator)
-#    Edit .gitignore and delete the `src/homie.cpp` and `data/homie.yml` lines, then:
-git add -f src/homie.cpp data/homie.yml
-```
-
-Build and flash with **raw `pio`** from here on, naming the board env explicitly:
-
-```sh
-pio run -c platformio/platformio.ini -e <board>                # compile
-pio run -c platformio/platformio.ini -e <board> -t upload      # flash firmware
-pio run -c platformio/platformio.ini -e <board> -t uploadfs    # flash the filesystem (a separate run)
-pio device monitor -p <port> -b 115200                         # serial monitor
-```
-
-where `<board>` is an `[env:*]` from `platformio/platformio.ini`; the `-c` is required because that file is not at the repo root. Keep firmware and filesystem uploads in separate `pio run` invocations (see [GettingStartedCLI.md](GettingStartedCLI.md#troubleshooting)). The `./ebus-esp32` CLI is the **generator** front-end — it reads `device.yml` to resolve the board and regenerates `src/homie.cpp` on every build, which would clobber your hand-written one — so a hand-coded project (no `device.yml`) uses `pio` directly. (You also forgo `ebus-esp32`'s serial-port handoff; Ctrl-C the monitor before flashing.)
-
-**Easiest way to start:** run `./ebus-esp32 generate` *once* with a `device.yml` close to what you want, then opt out as above. You inherit a working `src/homie.cpp` + `data/homie.yml` + `data/config.yml` to edit, instead of writing them from a blank page.
-
----
-
-## Anatomy of `src/homie.cpp`
+## Anatomy of the device code
 
 `main.cpp` calls four functions declared in [`include/homie.h`](../include/homie.h) at the right points in the Arduino lifecycle. You provide three of them (the fourth, `setup_ebus_mdns()`, is platform code):
 
@@ -62,7 +46,7 @@ Optionally, also define `uint16_t settable_table_capacity()`, the number of `/se
 
 Keep ids and topics within the limits in [Id and topic lengths](GenerateHomieDevice.md#id-and-topic-lengths). `generate` enforces them for a `device.yml`; for a hand-coded file the firmware logs an `**ERROR` line at boot when it has to cut a device, node or property id or a property topic.
 
-A complete `src/homie.cpp` for an SHT20 sensor + a relay on a GPIO — identical in shape to what the generator emits:
+A complete `src/device.cpp` for an SHT20 sensor + a relay on a GPIO — identical in shape to what the generator emits:
 
 ```cpp
 #include <homie.h>
@@ -159,27 +143,20 @@ Write your driver there, then come back here for the hand-coded wiring: instanti
 
 ---
 
-## `data/homie.yml` and `data/config.yml`
+## `homie.yml` and `config.yml`
 
-The firmware reads both from the LittleFS image at boot:
+The firmware reads both from the LittleFS image at boot, and `generate` writes both from `device.yml` into the project's `.ebus/data/`:
 
-- **`data/homie.yml`** supplies the device-level header (`homie:` version, `name:`, `type:`). The published node topology comes from `register_homie_properties()`, so the simplest reliable starting point is a generated `homie.yml` — keep its header and trim or adjust the `nodes:` to match. See the format in [GenerateHomieDevice.md](GenerateHomieDevice.md#datahomieyml).
-- **`data/config.yml`** is the runtime config (wifi / mqtt / device identity). It uses the same `device:`/`wifi:`/`mqtt:`/`log:`/`mdns:` sections as `device.yml` — run `./ebus-esp32 generate` once and keep the result as your starting point; [Configuration.md](Configuration.md#variables-youll-commonly-set) documents every key. You can still keep your secrets in the `config-overlay.yml` overlay — but note the overlay is *merged by the generator*, so in a hand-coded project either edit `data/config.yml` directly or run `./ebus-esp32 generate` once to fold the overlay in before you opt out. The firmware also still accepts the older flat form (`mqtt_host:` rather than `mqtt: host:`) **at the top level**, so a hand-maintained file mid-conversion keeps working — but the single-element `config:` list that older files wrapped everything in is no longer parsed. If your file starts with `config:`, unwrap it (promote the sections one level) or regenerate.
+- **`homie.yml`** supplies the device-level header (`homie:` version, `name:`, `type:`). The published node topology comes from `register_homie_properties()`. See the format in [GenerateHomieDevice.md](GenerateHomieDevice.md#homieyml).
+- **`config.yml`** is the runtime config (wifi / mqtt / device identity), with the project's `config-overlay.yml` merged in; [Configuration.md](Configuration.md#variables-youll-commonly-set) documents every key.
 
-Re-flash the filesystem after editing either file: `pio run -c platformio/platformio.ini -e <board> -t uploadfs`.
+Extra files for the filesystem go in the project's `data/`.
 
 ---
 
-## Controller mode (without the generator)
+## Controller mode
 
-A controller — a device that discovers and monitors *other* Homie devices instead of publishing its own nodes — is a build-time mode, not a `device.yml` option. It's selected by the **`ENABLE_CONTROLLER`** build flag, which switches `main.cpp` to the controller branch: `controller_init()`, `controller_setup_discovery()`, and the discovery/stats loop, all from [`lib/ebus_core/include/homie/controller.h`](https://github.com/electrification-bus/cpp-sdk/blob/main/include/homie/controller.h).
-
-To build a controller, add the flag to your env in a `platformio_local.ini` override. Appending to `build_src_flags` keeps the env's own `build_flags` intact; a `build_flags` key there would replace the env's whole list rather than append to it. Alternatively, uncomment the `;-DENABLE_CONTROLLER` line in `[common]` of `platformio/platformio.ini` to apply it to every env.
-
-```ini
-[env:esp32-poe-iso]
-build_src_flags = ${env.build_src_flags} -DENABLE_CONTROLLER
-```
+A controller — a device that discovers and monitors *other* Homie devices instead of publishing its own nodes — is selected by `homie_role: controller` in `device.yml`, which makes `generate` add the **`ENABLE_CONTROLLER`** build flag. That switches `main.cpp` to the controller branch: `controller_init()`, `controller_setup_discovery()`, and the discovery/stats loop, all from [`lib/ebus_core/include/homie/controller.h`](https://github.com/electrification-bus/cpp-sdk/blob/main/include/homie/controller.h).
 
 In this mode you do **not** implement `register_homie_properties()` / `setup_homie()` / `loop_homie()` — the controller branch of `main.cpp` drives everything via the controller API. Fuller controller documentation lives in [`Controller.md`](Controller.md).
 

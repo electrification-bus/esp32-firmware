@@ -11,13 +11,14 @@ This test:
 6. Emits pass/fail summary with diagnostics
 
 Usage:
-    python device_test.py [--config config.yml] [--homie homie.yml] [--timeout 30]
+    python device_test.py [--project DIR | --config config.yml --homie homie.yml] [--timeout 30]
                           [--domain ebus|homie] [--host H] [--port N]
                           [--username U] [--password P] [--tls [--cafile F] [--insecure]]
 """
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -755,8 +756,11 @@ class HomieDeviceTest:
 
 def main():
     parser = argparse.ArgumentParser(description='Homie Device Test')
-    parser.add_argument('--config', default='data/config.yml', help='Path to config.yml')
-    parser.add_argument('--homie', default='data/homie.yml', help='Path to homie.yml')
+    parser.add_argument('--project', default='.',
+                        help='Project directory; its .ebus/data/ holds the generated config.yml '
+                             'and homie.yml (default: the current directory)')
+    parser.add_argument('--config', help='Path to config.yml (default: <project>/.ebus/data/config.yml)')
+    parser.add_argument('--homie', help='Path to homie.yml (default: <project>/.ebus/data/homie.yml)')
     parser.add_argument('--timeout', type=int, default=30, help='Test timeout in seconds')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
     parser.add_argument('--domain', default='ebus', choices=['ebus', 'homie'],
@@ -773,6 +777,9 @@ def main():
                         help='With --tls, skip broker hostname verification')
 
     args = parser.parse_args()
+    generated = os.path.join(args.project, '.ebus', 'data')
+    args.config = args.config or os.path.join(generated, 'config.yml')
+    args.homie = args.homie or os.path.join(generated, 'homie.yml')
     if (args.cafile or args.insecure) and not args.tls:
         parser.error('--cafile and --insecure require --tls')
 

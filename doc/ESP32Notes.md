@@ -156,7 +156,7 @@ littlefs, data, littlefs,0x3D0000, 0x30000,
 - `nvs` must appear before any `app` partition; the default start is `0x9000`.
 - `otadata` tracks which OTA slot is active; without it, OTA updates are impossible.
 - Both `ota_0` and `ota_1` must be the same size, and each must be large enough for the firmware `.bin`.
-- LittleFS/SPIFFS must be uploaded separately (`./ebus-esp32 push --fs-only` uploads the contents of the `data/` folder); OTA only flashes the app partition.
+- LittleFS/SPIFFS must be uploaded separately (`ebus-esp32 push --fs-only` uploads the contents of the `data/` folder); OTA only flashes the app partition.
 - Total of all partition sizes + offsets must not exceed the flash chip size (e.g. 4 MB = `0x400000`).
 
 **Common mistakes:**
@@ -229,30 +229,30 @@ Flash: [======    ]  63.3% (used 1244093 bytes from 1966080 bytes)
 **Verbose section sizes from the command line:**
 ```bash
 # Build and show section sizes
-pio run -c platformio/platformio.ini -e esp32-poe-iso-16mb -v 2>&1 | grep -E "\.text|\.data|\.bss|\.rodata"
+pio run -c <project>/.ebus/platformio.ini -e esp32-poe-iso-16mb -v 2>&1 | grep -E "\.text|\.data|\.bss|\.rodata"
 
 # Or use xtensa size tool directly on the ELF
 ~/.platformio/packages/toolchain-xtensa-esp32/bin/xtensa-esp32-elf-size \
-  -A .pio/build/esp32-poe-iso-16mb/firmware.elf
+  -A <project>/.ebus/build/esp32-poe-iso-16mb/firmware.elf
 ```
 
 ### Common PlatformIO commands
 
 ```bash
 # Build specific environment
-pio run -c platformio/platformio.ini -e esp32-poe-iso-16mb
+pio run -c <project>/.ebus/platformio.ini -e esp32-poe-iso-16mb
 
 # Build and upload firmware
-pio run -c platformio/platformio.ini -e esp32-poe-iso-16mb -t upload
+pio run -c <project>/.ebus/platformio.ini -e esp32-poe-iso-16mb -t upload
 
 # Upload filesystem (LittleFS) only — does not reflash firmware
-pio run -c platformio/platformio.ini -e esp32-poe-iso-16mb -t uploadfs
+pio run -c <project>/.ebus/platformio.ini -e esp32-poe-iso-16mb -t uploadfs
 
 # Serial monitor
 pio device monitor -p COM15 -b 115200
 
 # List available targets for an environment
-pio run -c platformio/platformio.ini -e esp32-poe-iso-16mb --list-targets
+pio run -c <project>/.ebus/platformio.ini -e esp32-poe-iso-16mb --list-targets
 
 # Full flash erase (use before switching filesystem type, e.g. SPIFFS → LittleFS)
 esptool.py --port COM15 erase_flash

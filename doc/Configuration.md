@@ -2,33 +2,35 @@
 
 This project uses **two overlay files** so that each developer (or each deployed device) can carry its own settings without trampling on anyone else's. Both follow the same pattern: a real file that is gitignored (or lives outside the repo) is layered on top of the tracked shared base at build time.
 
-| What it controls | Real file (gitignored) | Tracked template | Used by |
+| What it controls | Real file (kept out of version control) | Tracked template | Used by |
 |---|---|---|---|
-| Firmware runtime config (MQTT, WiFi, Homie, device id) | `config-overlay.yml` (repo root) | *none; create it before the first `generate`, which needs `device.device_passphrase` from it* | `./ebus-esp32 generate` merges it into the generated `data/config.yml` (built from `device.yml`), then it's baked into the LittleFS image alongside firmware |
+| Firmware runtime config (MQTT, WiFi, Homie, device id) | `config-overlay.yml` in the project | *none; create it before the first `generate`, which needs `device.device_passphrase` from it* | `ebus-esp32 generate` merges it into the generated `.ebus/data/config.yml` (built from `device.yml`), then it's baked into the LittleFS image alongside firmware |
 | PlatformIO build / upload settings | `platformio_local.ini` (repo root) | `platformio_local.ini.example` | `pio` reads automatically via `extra_configs` in `platformio/platformio.ini` |
+
+A project without a `config-overlay.yml` of its own still gets one at this repo's root, where it used to live; `generate` prints a note to move it.
 
 ## 1. Firmware config — `config-overlay.yml`
 
-This is what the firmware reads at boot to learn its MQTT broker, WiFi credentials, device id, Homie role, OTA passphrase, etc. `data/config.yml` is a **generated, gitignored** file: `./ebus-esp32 generate` builds it from `device.yml` and then merges your personal overlay on top. It gets baked into the **LittleFS partition**, so a config change reaches the device only when the filesystem is re-uploaded. `./ebus-esp32 run` and `./ebus-esp32 push` both do that as a matter of course — they upload firmware and filesystem as separate steps — so an ordinary `run` is all a config change needs. (`push --fs-only` exists to skip the firmware half when that's all you want.)
+This is what the firmware reads at boot to learn its MQTT broker, WiFi credentials, device id, Homie role, OTA passphrase, etc. The project's `.ebus/data/config.yml` is a **generated** file: `ebus-esp32 generate` builds it from `device.yml` and then merges your personal overlay on top. It gets baked into the **LittleFS partition**, so a config change reaches the device only when the filesystem is re-uploaded. `ebus-esp32 run` and `ebus-esp32 push` both do that as a matter of course — they upload firmware and filesystem as separate steps — so an ordinary `run` is all a config change needs. (`push --fs-only` exists to skip the firmware half when that's all you want.)
 
-There is deliberately **no template and no init step**. Create the overlay before the first `generate`: the tracked `device.yml` leaves `device.device_passphrase` empty, and `generate` refuses an empty or `changeme` passphrase.
+There is deliberately **no template and no init step**. Create the overlay before the first `generate`: the examples' `device.yml` files leave `device.device_passphrase` empty, and `generate` refuses an empty or `changeme` passphrase.
 
 ### Flow
 
 ```
-device.yml                  ←  declarative device definition (tracked, source of truth)
-        │  ./ebus-esp32 generate writes data/config.yml from device:/wifi:/mqtt:/log:/mdns:
+device.yml                  ←  declarative device definition (source of truth)
+        │  ebus-esp32 generate writes .ebus/data/config.yml from device:/wifi:/mqtt:/log:/mdns:
         ▼
-data/config.yml             ←  generated file PIO reads when building the LittleFS image
-        ▲                      (gitignored — regenerated every build; never edit directly)
+.ebus/data/config.yml       ←  generated file PIO reads when building the LittleFS image
+        ▲                      (regenerated every build; never edit directly)
         │  then merges your overlay's NON-EMPTY fields on top (your broker/credentials win)
         │
-config-overlay.yml          ←  your personal overlay (gitignored, never leaves your machine)
+config-overlay.yml          ←  your personal overlay (out of version control, never leaves your machine)
 ```
 
 ### One shape everywhere
 
-The overlay, `device.yml` and the generated `data/config.yml` all use **the same sections and the same key names**. Copy the block you want to override out of `device.yml`, paste it into `config-overlay.yml`, and change the values:
+The overlay, `device.yml` and the generated `config.yml` all use **the same sections and the same key names**. Copy the block you want to override out of `device.yml`, paste it into `config-overlay.yml`, and change the values:
 
 ```yaml
 # config-overlay.yml — same shape as device.yml
@@ -61,24 +63,24 @@ Only non-empty fields override; anything you leave blank falls back to the value
 | `mdns.enabled` | `true`/`false`. `false` is the full opt-out: no mDNS at all, including no `<device-id>.local` hostname, and it overrides `mdns.discovery`/`mdns.advertise`; `generate` warns when it is set. A discovery `mqtt.mode` still starts the querier, which claims the hostname. `true` turns both gates on. Omit the whole `mdns:` section to keep the firmware's build-conditional default (see `device.yml`) |
 | `device.id` | A **template** resolved on-device to a Homie-legal id (`${chip_id}` full eFuse MAC, `${chip_id_short}` last 3 bytes, `${name}`). Default `${chip_id}`. Device-ids are **opaque** — consumers identify a device by `$type` + `info/serial-number`, never by parsing the id. A fixed literal (no `${chip_id}`) collides across units. See [GenerateHomieDevice.md](GenerateHomieDevice.md#the-id-template) |
 | `device.id_prefix` | Optional deployment-scoped segment prepended to the resolved id with a hyphen (`lab1` + `ebus-${chip_id}` → `lab1-ebus-a1b2c3d4e5f6`). Sanitized independently, so `Lab 1` yields `lab-1`. Empty = no prefix. Adds **no** per-unit uniqueness — every board on a site shares it, so keep a `${chip_id}` in `device.id`. This is the key to set per-site from an overlay rather than editing the tracked template |
-| `device.device_passphrase` | Password for the admin and OTA endpoints (see [Authentication.md](Authentication.md)). `generate` refuses to run when it is empty or `changeme` after the overlay is merged, so set it here rather than in the tracked `device.yml` |
+| `device.device_passphrase` | Password for the admin and OTA endpoints (see [Authentication.md](Authentication.md)). `generate` refuses to run when it is empty or `changeme` after the overlay is merged, so set it here rather than in `device.yml` |
 
 ### Broker CA certificate (TLS)
 
 Setting `mqtt.port` to `8883` makes the firmware connect with TLS. It verifies the broker against a PEM CA certificate on the device's LittleFS filesystem, looked up in this order:
 
-1. `/certs/<Host>.ca`, where `<Host>` is `mqtt.host` with the dots removed and the letter after each dot capitalized (`public.cloud.shiftr.io` becomes `publicCloudShiftrIo.ca`). Put the file in `data/certs/` and flash the filesystem image (`./ebus-esp32 push --fs-only`).
+1. `/certs/<Host>.ca`, where `<Host>` is `mqtt.host` with the dots removed and the letter after each dot capitalized (`public.cloud.shiftr.io` becomes `publicCloudShiftrIo.ca`). Put the file in `data/certs/` and flash the filesystem image (`ebus-esp32 push --fs-only`).
 2. `/certs/uploaded-cert.ca`, written by `POST /api/v1/broker-cert` (see [Authentication.md](Authentication.md)).
 
 The certificate must be smaller than 4096 bytes. Store only CA certificates there, never private keys. When neither file exists, envs built with `-DESP32_POE_ISO` fall back to plain MQTT on port 1883; other envs fetch the broker's root certificate, save it under the first name, and connect with it, or connect without verification if the fetch fails. The serial log reports which path was taken.
 
 ### Legacy flat keys
 
-Earlier versions generated `data/config.yml` as one flat block (`wifi_ssid:`, `mqtt_host:`, `device_passphrase:` …) nested under a single-element `config:` list. **Neither is supported any more**: sections must be at the top level. The firmware still accepts a flat *key* at the top level as a fallback (`mqtt_host:` beside `mqtt:`), which covers a hand-maintained file mid-conversion, but the `config:` wrapper is gone. A board carrying an old filesystem image needs its filesystem re-flashed, which any `./ebus-esp32 run` or `push` does anyway. `generate` rejects flat keys in an overlay and tells you the section equivalent.
+Earlier versions generated `config.yml` as one flat block (`wifi_ssid:`, `mqtt_host:`, `device_passphrase:` …) nested under a single-element `config:` list. **Neither is supported any more**: sections must be at the top level. The firmware still accepts a flat *key* at the top level as a fallback (`mqtt_host:` beside `mqtt:`), which covers a hand-maintained file mid-conversion, but the `config:` wrapper is gone. A board carrying an old filesystem image needs its filesystem re-flashed, which any `ebus-esp32 run` or `push` does anyway. `generate` rejects flat keys in an overlay and tells you the section equivalent.
 
 ### Credentials on the device
 
-At boot the firmware prints the parsed config to the serial console, which is also mirrored to the unauthenticated TCP log console. Before printing, it replaces the value of every key whose name contains `password` or `passphrase` with `***` (`redact_secrets()` in `src/platform/config.cpp`). The values themselves are stored as plain YAML in `data/config.yml` on the LittleFS partition, so anyone who can read the board's flash can recover them. Values saved through the web UI live in NVS instead; [proposals/RuntimeConfigViaNVS.md](proposals/RuntimeConfigViaNVS.md) covers keeping secrets out of the image.
+At boot the firmware prints the parsed config to the serial console, which is also mirrored to the unauthenticated TCP log console. Before printing, it replaces the value of every key whose name contains `password` or `passphrase` with `***` (`redact_secrets()` in `src/platform/config.cpp`). The values themselves are stored as plain YAML in `/config.yml` on the LittleFS partition, so anyone who can read the board's flash can recover them. Values saved through the web UI live in NVS instead; [proposals/RuntimeConfigViaNVS.md](proposals/RuntimeConfigViaNVS.md) covers keeping secrets out of the image.
 
 ## 2. PlatformIO build/upload — `platformio_local.ini`
 
@@ -105,7 +107,7 @@ cp platformio_local.ini.example platformio_local.ini   # copy template
 $EDITOR platformio_local.ini                           # uncomment / add the overrides you need
 ```
 
-`./ebus-esp32` runs `pio` from the repo root with `-c build/platformio.ini`, and `extra_configs` resolves `platformio_local.ini` against that directory, so the overrides apply to every `./ebus-esp32` build and upload. `pio project config` cannot show them: it takes no `-c` and there is no `platformio.ini` at the repo root.
+`ebus-esp32` runs `pio` from the repo root with `-c <project>/.ebus/platformio.ini`, and `extra_configs` resolves `platformio_local.ini` against that directory, so the overrides apply to every `ebus-esp32` build and upload. `pio project config` cannot show them: it takes no `-c` and there is no `platformio.ini` at the repo root.
 
 Or skip the bootstrap entirely — if you don't need any overrides, leave `platformio_local.ini` absent. PIO ignores a missing `extra_configs` path silently.
 
@@ -129,10 +131,10 @@ See [`platformio_local.ini.example`](../platformio_local.ini.example) for fully-
 
 ## Why two separate overlays?
 
-Different lifecycles. `data/config.yml` controls what gets baked into the device's filesystem image and changes per-deployment (per device, per environment, per customer). `platformio_local.ini` controls how *your specific machine* builds and uploads to *your specific connected board* and changes per-developer. A new dev joining the project would typically:
+Different lifecycles. `config.yml` controls what gets baked into the device's filesystem image and changes per-deployment (per device, per environment, per customer). `platformio_local.ini` controls how *your specific machine* builds and uploads to *your specific connected board* and changes per-developer. A new dev joining the project would typically:
 
-1. Create `config-overlay.yml` with a `device.device_passphrase` (required: `generate` refuses an empty or `changeme` one) and their MQTT broker
+1. Create the project's `config-overlay.yml` with a `device.device_passphrase` (required: `generate` refuses an empty or `changeme` one) and their MQTT broker
 2. Possibly `cp platformio_local.ini.example platformio_local.ini` once → tweak `upload_speed` if they're on a CH340 chip
-3. Then `./ebus-esp32 run` (full cycle) or `./ebus-esp32 push` (upload only) indefinitely without touching either file
+3. Then `ebus-esp32 run` (full cycle) or `ebus-esp32 push` (upload only) indefinitely without touching either file
 
 Both overlays compose cleanly with a future move to a different repo structure (e.g. extracting the C++ core into its own library, with per-packaging repos for PlatformIO / ESPHome / etc.) — they're conventions, not infrastructure.

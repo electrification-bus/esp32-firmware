@@ -7,7 +7,7 @@ import os
 # component whose third-party library is not in lib_deps (because device.yml does not
 # use it) fails on its #include: i2c/gme12864 alone died on Adafruit_BME280.h.
 #
-# `ebus-esp32 generate` writes the components the build needs into build/platformio.ini
+# `ebus-esp32 generate` writes the components the build needs into .ebus/platformio.ini
 # as custom_ebus_components (bus/name pairs, space-separated, including components
 # reached through another component's headers). Here the source filter drops
 # <name>.cpp/.c of every other lib/<bus>/<name>.yml component in this library. Files

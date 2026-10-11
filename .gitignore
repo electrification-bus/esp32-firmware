@@ -5,12 +5,12 @@
 .vscode/ipch
 
 # LSP / clangd compilation database + index — per-developer, regenerable.
-# compile_commands.json: run `./ebus-esp32 compiledb` to refresh.
+# compile_commands.json: run `ebus-esp32 compiledb` to refresh.
 # .cache/clangd/: clangd's persistent symbol index.
 compile_commands.json
 .cache/
 
-# Python virtual environment for ./ebus-esp32 (see doc/GettingStartedCLI.md)
+# Python virtual environment for ebus-esp32 (see doc/GettingStartedCLI.md)
 .venv/
 
 # macOS Finder metadata — never track
@@ -28,7 +28,7 @@ GEMINI.md
 .continuerules
 .beads/
 
-# Generated from device.yml by `./ebus-esp32 generate` (and automatically by the
+# Generated from device.yml by `ebus-esp32 generate` (and automatically by the
 # pre-build hook on every `pio run`). device.yml + lib/<bus>/*.yml are the tracked
 # source of truth; these outputs are regenerated, never committed.
 src/homie.cpp
@@ -45,7 +45,7 @@ src/idf_component.yml
 src/idf_component.yml.orig
 
 # Generated runtime config — built from device.yml + config-overlay.yml on every
-# `./ebus-esp32 generate` (which the pre-build hook runs before every build).
+# `ebus-esp32 generate` (which the pre-build hook runs before every build).
 data/config.yml
 data/config.yml~
 data/config.yml.bak
@@ -75,3 +75,6 @@ platformio_local.ini
 # Python bytecode and test caches
 __pycache__/
 .pytest_cache/
+
+# Build output of a project (ebus-esp32 build examples/<name>).
+.ebus/

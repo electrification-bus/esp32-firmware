@@ -12,11 +12,11 @@ Working firmware with Homie 5 device representation, Modbus RTU, captive-portal 
 
 You need:
 
-- An **ESP32 board** from [Hardware Targets](#hardware-targets), plus a USB cable for the first flash. The default is an Olimex ESP32-POE-ISO on Ethernet; for another board, set `device.environment` in `device.yml`, and on a WiFi board also set `wifi.ssid` and `wifi.password` in the overlay below. The default `device.yml` needs nothing else attached: its one node is a settable output on GPIO 14.
+- An **ESP32 board** from [Hardware Targets](#hardware-targets), plus a USB cable for the first flash. The demo project targets an Olimex ESP32-POE-ISO on Ethernet; for another board, set `device.environment` in its `device.yml`, and on a WiFi board also set `wifi.ssid` and `wifi.password` in the overlay below. The demo needs nothing else attached: its one node is a settable output on GPIO 14.
 - An **MQTT broker** the board can reach. [broker-quickstart](https://github.com/electrification-bus/broker-quickstart) sets one up on a laptop, a Raspberry Pi or Docker; any [Mosquitto](https://mosquitto.org/) works too. Mosquitto 2.x accepts only local connections until its config has a `listener 1883` line and an authentication choice (`allow_anonymous true` is enough for a bench test).
 - **Python 3.9+**, git, and **PlatformIO Core** (the VSCode PlatformIO IDE extension, `pipx install platformio`, or `brew install platformio`).
 
-Clone with `--recursive`, because the portable core in `lib/ebus_core/` is a git submodule of [cpp-sdk](https://github.com/electrification-bus/cpp-sdk), and install PyYAML for the `./ebus-esp32` CLI in a virtual environment (Homebrew and most Linux distributions refuse `pip install` into the system Python):
+Clone with `--recursive`, because the portable core in `lib/ebus_core/` is a git submodule of [cpp-sdk](https://github.com/electrification-bus/cpp-sdk), install PyYAML for the `ebus-esp32` CLI in a virtual environment (Homebrew and most Linux distributions refuse `pip install` into the system Python), and put the CLI on your `PATH`:
 
 ```sh
 git clone --recursive https://github.com/electrification-bus/esp32-firmware.git
@@ -24,11 +24,19 @@ cd esp32-firmware
 python3 -m venv .venv
 . .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install pyyaml
+export PATH="$PWD:$PATH"      # Windows: set PATH=%CD%;%PATH%
 ```
 
 In a clone made without `--recursive`, and after a pull that moves the submodule, run `git submodule update --init`.
 
-Before the first build, create `config-overlay.yml`, a gitignored file merged over `device.yml` at build time. It must set `device.device_passphrase` (the password for the device's admin and OTA endpoints; `generate` refuses an empty or `changeme` value) and points the firmware at your broker:
+Your device lives in a project directory of its own, outside this repo: a `device.yml`, a `config-overlay.yml`, and optionally hand-written code in `src/` and extra filesystem files in `data/`. Everything the build generates goes into the project's `.ebus/`. Start from the demo:
+
+```sh
+cp -R examples/demo ~/my-device
+cd ~/my-device
+```
+
+Before the first build, create `config-overlay.yml` in the project, merged over `device.yml` at build time and kept out of version control. It must set `device.device_passphrase` (the password for the device's admin and OTA endpoints; `generate` refuses an empty or `changeme` value) and points the firmware at your broker:
 
 ```yaml
 device:
@@ -37,12 +45,12 @@ mqtt:
   host: 192.168.1.10          # your broker's address
 ```
 
-Build, flash, and watch the boot log (the monitor needs a real terminal):
+From the project directory, build, flash, and watch the boot log (the monitor needs a real terminal):
 
 ```sh
-./ebus-esp32 build            # the first build downloads the toolchain and takes several minutes
-./ebus-esp32 run              # flash firmware + filesystem over USB
-./ebus-esp32 monitor --serial # boot log over USB; also learns the board's IP for later network monitoring
+ebus-esp32 build            # the first build downloads the toolchain and takes several minutes
+ebus-esp32 run              # flash firmware + filesystem over USB
+ebus-esp32 monitor --serial # boot log over USB; also learns the board's IP for later network monitoring
 ```
 
 The boot log prints `Device ID: <id>`. Watch the device's Homie tree and drive its output:
@@ -52,7 +60,7 @@ mosquitto_sub -h 192.168.1.10 -t 'ebus/5/#' -v
 mosquitto_pub -h 192.168.1.10 -t 'ebus/5/<id>/led/state/set' -m true
 ```
 
-To build a different device file in place, pass its path: `./ebus-esp32 build examples/sht20/device.yml`. The comments in [`device.yml`](device.yml) list the available components and explain how to switch to a real sensor.
+Every command takes a project directory, or its `device.yml`, in place of the current directory: `ebus-esp32 build ~/my-device`. The comments in the demo's [`device.yml`](examples/demo/device.yml) list the available components and explain how to switch to a real sensor.
 
 ## Finding the device on the network
 
@@ -67,9 +75,9 @@ The [Quick start](#quick-start) is the shortest path. For the full setup, pick t
 | **VSCode + PlatformIO extension** | [doc/GettingStartedVSCode.md](doc/GettingStartedVSCode.md) |
 | **Terminal (Python CLI)** | [doc/GettingStartedCLI.md](doc/GettingStartedCLI.md) |
 
-Both produce the same firmware. The CLI path uses the `./ebus-esp32` tool and a `./bin/pio` shim; the VSCode path runs the same `./ebus-esp32` commands in the integrated terminal. Either way, [doc/GenerateHomieDevice.md](doc/GenerateHomieDevice.md) explains how `device.yml` defines the device.
+Both produce the same firmware. The CLI path uses the `ebus-esp32` tool and a `./bin/pio` shim; the VSCode path runs the same `ebus-esp32` commands in the integrated terminal. Either way, [doc/GenerateHomieDevice.md](doc/GenerateHomieDevice.md) explains how `device.yml` defines the device.
 
-After initial setup, read [doc/Configuration.md](doc/Configuration.md) once to understand how the two per-developer overlay files (`config-overlay.yml` and `platformio_local.ini`) keep your MQTT credentials and PIO tweaks out of the shared repo.
+After initial setup, read [doc/Configuration.md](doc/Configuration.md) once to understand how the two per-developer overlay files (`config-overlay.yml` in the project and `platformio_local.ini` in this repo) keep your MQTT credentials and PIO tweaks out of version control.
 
 ## Project Layout
 
@@ -93,11 +101,11 @@ data/                         LittleFS image source; everything here is flashed 
   certs/                      Broker CA certificates (<Host>.ca)
   html/config.html            Web portal page
   openapi.yml                 OpenAPI description of the device's REST API
-  config.yml, homie.yml       Generated from device.yml + overlay (gitignored)
 partitions/                   ESP32 flash partition tables, one CSV per flash size
-examples/                     Example device files and a copy/paste driver
+examples/                     Example projects and a copy/paste driver
+  demo/                       One settable output on GPIO 14; the Quick start's project
   sht20/ ssr/ bms/            device.yml (+ README) per example
-  bridge-bess.device.yml      Nested bridge device (see doc/NestedBridgeExample.md)
+  bridge-bess/                Nested bridge device (see doc/NestedBridgeExample.md)
   controller_example.cpp      Controller-mode sketch
 scripts/                      PlatformIO build hooks: generate_homie.py (pre-build generator),
                               add_project_include.py, lib_src_filter.py, littlefs_image.py
@@ -107,13 +115,9 @@ test/                         Device-side Python test harness (device_test.py, T
 doc/                          Documentation (see the index below)
 ebus-esp32                    CLI entry point: generate, build, run, push, monitor, serve
 ebus-esp32.bat                Windows wrapper for the CLI
-device.yml                    Declarative device definition, the source of truth (tracked)
 platformio/platformio.ini     Shared build config (tracked)
 platformio_local.ini.example  Per-developer PIO overrides template (tracked)
 platformio_local.ini          Your local PIO overrides (gitignored, optional)
-config-overlay.yml            Your per-developer config overlay (gitignored). Required:
-                              it holds device.device_passphrase, plus any other values
-                              that must not be committed (e.g. broker credentials)
 .vscode/                      Tracked: extensions.json, settings.json, tasks.json
 .dir-locals.el                Emacs project-local settings (compile-command, indent style)
 CONTRIBUTING.md               How to contribute, house style
@@ -122,33 +126,33 @@ LICENSE                       MIT
 
 ## Common Commands
 
-Edit `device.yml` (the declarative device definition), then drive everything through the `./ebus-esp32` CLI:
+Edit the project's `device.yml` (the declarative device definition), then drive everything through the `ebus-esp32` CLI from the project directory:
 
 ```text
-./ebus-esp32 generate                       regenerate src/homie.cpp + data/*.yml from device.yml
-./ebus-esp32 build                          compile firmware + filesystem image (regenerates first)
-./ebus-esp32 build examples/ssr/device.yml  most commands take another device file in place of device.yml
-./ebus-esp32 run                            build and flash firmware + filesystem over USB
-./ebus-esp32 run --port COM3                override serial port
-./ebus-esp32 push                           flash firmware + filesystem without forcing a rebuild
-./ebus-esp32 push --fs-only                 flash filesystem only (re-flash config without rebuilding)
-./ebus-esp32 monitor                        watch the device over the network if its address is
+ebus-esp32 generate                       regenerate .ebus/ (device code, config.yml, homie.yml) from device.yml
+ebus-esp32 build                          compile firmware + filesystem image (regenerates first)
+ebus-esp32 build ~/other-device           most commands take another project in place of the current directory
+ebus-esp32 run                            build and flash firmware + filesystem over USB
+ebus-esp32 run --port COM3                override serial port
+ebus-esp32 push                           flash firmware + filesystem without forcing a rebuild
+ebus-esp32 push --fs-only                 flash filesystem only (re-flash config without rebuilding)
+ebus-esp32 monitor                        watch the device over the network if its address is
                                             known, else over USB (real terminal only)
-./ebus-esp32 monitor --serial               force USB, and learn the device's IP for later --net use
-./ebus-esp32 monitor --net --host 10.0.0.5  network console at a specific address
-./ebus-esp32 run --monitor                  flash, then attach the network console
-./ebus-esp32 devices                        list attached serial devices
-./ebus-esp32 envs                           list board environments; * marks the one device.yml selects
-./ebus-esp32 test                           run the firmware's host-side unit tests (no board)
+ebus-esp32 monitor --serial               force USB, and learn the device's IP for later --net use
+ebus-esp32 monitor --net --host 10.0.0.5  network console at a specific address
+ebus-esp32 run --monitor                  flash, then attach the network console
+ebus-esp32 devices                        list attached serial devices
+ebus-esp32 envs                           list board environments; * marks the one device.yml selects
+ebus-esp32 test                           run the firmware's host-side unit tests (no board)
 ```
 
-The CLI's own unit tests need no PlatformIO or hardware: `pip install -r tests/requirements.txt`, then `python -m pytest -q`. `./ebus-esp32 test` runs the firmware's Unity tests in `test/native/` and the core's in `lib/ebus_core/test/` on the host; see [CONTRIBUTING.md](CONTRIBUTING.md).
+The CLI's own unit tests need no PlatformIO or hardware: `pip install -r tests/requirements.txt`, then `python -m pytest -q`. `ebus-esp32 test` runs the firmware's Unity tests in `test/native/` and the core's in `lib/ebus_core/test/` on the host; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 The network console reads the firmware's serial-over-TCP log (`log.tcp_port` in `device.yml`, default 23), so a board installed without a USB cable can still be watched — it replays its ring buffer on connect, so the boot log survives connecting late. `--monitor` also works on `build` and `push`. See [GettingStartedCLI.md](doc/GettingStartedCLI.md#network-console--no-usb-cable).
 
-The generated `src/homie.cpp`, `data/homie.yml`, and `data/config.yml` are gitignored and rebuilt from `device.yml` before every `pio run` (a PlatformIO pre-build hook) — `device.yml` and the `lib/<bus>/*.yml` component definitions are the only tracked source. Before the first `generate`, create a gitignored `config-overlay.yml` that sets `device.device_passphrase` (`generate` refuses an empty or `changeme` passphrase) plus any other values that must stay out of the tracked `device.yml`, such as broker credentials, written in `device.yml`'s own sections and key names — see [GettingStartedCLI.md](doc/GettingStartedCLI.md). On Windows use `ebus-esp32.bat` (or `python ebus-esp32`).
+The project's `.ebus/` holds the generated device code, `config.yml` and `homie.yml`, and the build output; it is rebuilt from `device.yml` before every `pio run` (a PlatformIO pre-build hook) and carries its own `.gitignore`. Before the first `generate`, create `config-overlay.yml` in the project, setting `device.device_passphrase` (`generate` refuses an empty or `changeme` passphrase) plus any other values that must stay out of `device.yml`, such as broker credentials, written in `device.yml`'s own sections and key names — see [GettingStartedCLI.md](doc/GettingStartedCLI.md). On Windows the CLI is `ebus-esp32.bat` (or `python <repo>\ebus-esp32`).
 
-VSCode users: run `./ebus-esp32` in the integrated terminal. The PlatformIO extension does not adopt this folder as a project, because the tracked config is `platformio/platformio.ini` rather than a root `platformio.ini`; [GettingStartedVSCode.md](doc/GettingStartedVSCode.md) explains why and how to opt back in.
+VSCode users: run `ebus-esp32` in the integrated terminal. The PlatformIO extension does not adopt this folder as a project, because the tracked config is `platformio/platformio.ini` rather than a root `platformio.ini`; [GettingStartedVSCode.md](doc/GettingStartedVSCode.md) explains why and how to opt back in.
 
 ## Documentation Index
 
@@ -179,7 +183,7 @@ VSCode users: run `./ebus-esp32` in the integrated terminal. The PlatformIO exte
 
 ## Hardware Targets
 
-Defined in [`platformio/platformio.ini`](platformio/platformio.ini). Run `./ebus-esp32 envs` to list them, or `./ebus-esp32 devices` to see what's currently attached via USB. WiFi-AP builds also join WiFi as a station when `wifi.ssid` is set; Ethernet builds do so only with `wifi.enabled: true` (see [Configuration.md](doc/Configuration.md#variables-youll-commonly-set)).
+Defined in [`platformio/platformio.ini`](platformio/platformio.ini). Run `ebus-esp32 envs` to list them, or `ebus-esp32 devices` to see what's currently attached via USB. WiFi-AP builds also join WiFi as a station when `wifi.ssid` is set; Ethernet builds do so only with `wifi.enabled: true` (see [Configuration.md](doc/Configuration.md#variables-youll-commonly-set)).
 
 | Env | Board | Notes |
 |---|---|---|

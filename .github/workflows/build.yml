@@ -99,16 +99,64 @@ jobs:
       - name: Install PlatformIO and PyYAML
         run: pip install platformio pyyaml
 
-      # The tracked device.yml names one environment; build each matrix env from a copy.
-      # The overlay gives the image a throwaway admin passphrase so no secret is needed.
-      - name: Prepare device file and config overlay
+      # examples/demo names one environment; build each matrix env from a copy of it, as a
+      # project outside the repo. The overlay gives the image a throwaway admin passphrase
+      # so no secret is needed.
+      - name: Prepare the project
         run: |
-          sed "s/^  environment: .*/  environment: ${{ matrix.env }}/" device.yml > ci-device.yml
-          grep -q "^  environment: ${{ matrix.env }}$" ci-device.yml
-          printf 'device:\n  device_passphrase: "%s"\n' "$(openssl rand -hex 16)" > config-overlay.yml
+          mkdir -p "$RUNNER_TEMP/demo"
+          sed "s/^  environment: .*/  environment: ${{ matrix.env }}/" examples/demo/device.yml > "$RUNNER_TEMP/demo/device.yml"
+          grep -q "^  environment: ${{ matrix.env }}$" "$RUNNER_TEMP/demo/device.yml"
+          printf 'device:\n  device_passphrase: "%s"\n' "$(openssl rand -hex 16)" > "$RUNNER_TEMP/demo/config-overlay.yml"
 
       - name: Generate
-        run: ./ebus-esp32 generate ci-device.yml
+        run: ./ebus-esp32 generate "$RUNNER_TEMP/demo"
 
       - name: Build
-        run: ./ebus-esp32 build ci-device.yml
+        run: ./ebus-esp32 build "$RUNNER_TEMP/demo"
+
+  # Every example project builds as it stands, in its own environment. (examples/demo is
+  # built for every environment above; examples/bms needs its driver copied into lib/.)
+  example:
+    name: examples/${{ matrix.example }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          - bridge-bess
+          - sht20
+          - ssr
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Find the example's environment
+        id: env
+        run: |
+          echo "name=$(sed -n 's/^  environment: *\([^ #]*\).*/\1/p' examples/${{ matrix.example }}/device.yml)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            !~/.platformio/penv
+          key: pio-v2-${{ steps.env.outputs.name }}-${{ hashFiles('platformio/platformio.ini', 'lib/*/library.json', 'lib/*/*.yml') }}
+          restore-keys: pio-v2-${{ steps.env.outputs.name }}-
+
+      - name: Install PlatformIO and PyYAML
+        run: pip install platformio pyyaml
+
+      - name: Prepare the project
+        run: |
+          cp -R examples/${{ matrix.example }} "$RUNNER_TEMP/project"
+          printf 'device:\n  device_passphrase: "%s"\n' "$(openssl rand -hex 16)" > "$RUNNER_TEMP/project/config-overlay.yml"
+
+      - name: Build
+        run: ./ebus-esp32 build "$RUNNER_TEMP/project"

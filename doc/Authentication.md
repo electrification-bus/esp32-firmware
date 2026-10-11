@@ -9,7 +9,7 @@ The API's canonical base path is `/api/v1`. Every route that existed before it i
 
 ## The passphrase
 
-The passphrase comes from `device.device_passphrase` in the generated `data/config.yml` on LittleFS. Set it in `config-overlay.yml` (gitignored); `./ebus-esp32 generate` refuses to run when the merged value is empty or `changeme`:
+The passphrase comes from `device.device_passphrase` in the generated `config.yml` on LittleFS. Set it in the project's `config-overlay.yml`, kept out of version control; `ebus-esp32 generate` refuses to run when the merged value is empty or `changeme`:
 
 ```yaml
 # config-overlay.yml
@@ -134,7 +134,7 @@ Bodies up to 2047 bytes share one buffer. A request that finds it in use by anot
 
 ## Bundled CA certificate
 
-`data/certs/publicCloudShiftrIo.ca` holds ISRG Root X1, the Let's Encrypt root (valid until 2035-06-04), and ships in every filesystem image. The device looks up a CA for a host at `/certs/<Host>.ca`, where `<Host>` is the hostname with each dot removed and the letter after it capitalized, so this file is the CA for the host `public.cloud.shiftr.io` and its name has to stay as it is. To verify another MQTT broker or HTTPS OTA host, add its CA as `data/certs/<Host>.ca` and flash the filesystem with `./ebus-esp32 push --fs-only`; for the MQTT broker, `POST /api/v1/broker-cert` also works.
+`data/certs/publicCloudShiftrIo.ca` holds ISRG Root X1, the Let's Encrypt root (valid until 2035-06-04), and ships in every filesystem image. The device looks up a CA for a host at `/certs/<Host>.ca`, where `<Host>` is the hostname with each dot removed and the letter after it capitalized, so this file is the CA for the host `public.cloud.shiftr.io` and its name has to stay as it is. To verify another MQTT broker or HTTPS OTA host, add its CA as `data/certs/<Host>.ca` and flash the filesystem with `ebus-esp32 push --fs-only`; for the MQTT broker, `POST /api/v1/broker-cert` also works.
 
 ## Security notes
 

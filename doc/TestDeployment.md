@@ -26,7 +26,7 @@ Six components are exercised across the four device boards.
 | poe4-a     | esp32-poe-iso        | `i2c/bme280`, `ble/serial_bms`                | I2C + BLE                     |
 | poe4-b     | esp32-poe-iso        | `gpio/digital_output`                         | GPIO                          |
 
-OTA needs no node: every build carries the OTA endpoints described in [ESP32OTA.md](ESP32OTA.md), so any of these boards can be reflashed with `./ebus-esp32 push --ota`.
+OTA needs no node: every build carries the OTA endpoints described in [ESP32OTA.md](ESP32OTA.md), so any of these boards can be reflashed with `ebus-esp32 push --ota`.
 
 `ble/serial_bms` is an example, not a shipped component: copy it in first with `cp examples/bms/serial_bms.{h,cpp,yml} lib/ble/` (see [examples/bms/README.md](../examples/bms/README.md)). Its YAML notes that NimBLE can overflow DRAM on the non-PSRAM `esp32-poe-iso`; check the link before relying on poe4-a.
 
@@ -96,11 +96,11 @@ nodes:
 ## Build and Flash
 
 ```bash
-./ebus-esp32 run controller.yml --port <port>
-./ebus-esp32 run poe16-a.yml --port <port>
-./ebus-esp32 run poe16-b.yml --port <port>
-./ebus-esp32 run poe4-a.yml --port <port>
-./ebus-esp32 run poe4-b.yml --port <port>
+ebus-esp32 run controller.yml --port <port>
+ebus-esp32 run poe16-a.yml --port <port>
+ebus-esp32 run poe16-b.yml --port <port>
+ebus-esp32 run poe4-a.yml --port <port>
+ebus-esp32 run poe4-b.yml --port <port>
 ```
 
 ---

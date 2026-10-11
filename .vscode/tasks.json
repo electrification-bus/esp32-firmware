@@ -9,10 +9,10 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "LSP: Regenerate compile_commands.json (ebus-esp32 compiledb)",
+            "label": "LSP: Regenerate compile_commands.json (ebus-esp32 compiledb examples/demo)",
             "detail": "Run after a fresh clone, after lib_deps changes, or when IntelliSense / clangd gets confused. Produces a per-machine compilation database (gitignored).",
             "type": "shell",
-            "command": "./ebus-esp32 compiledb",
+            "command": "./ebus-esp32 compiledb examples/demo",
             "problemMatcher": [],
             "presentation": {
                 "echo": true,

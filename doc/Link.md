@@ -272,7 +272,7 @@ In a device build, a remote source can feed only one link: the link watches its 
 
 ## Troubleshooting
 
-The console (`./ebus-esp32 monitor`) reports what each link resolved at boot:
+The console (`ebus-esp32 monitor`) reports what each link resolved at boot:
 
 ```
 LINK[climate-to-display]: source %1 = environment-sht20/temperature (local, every 1000 ms)
