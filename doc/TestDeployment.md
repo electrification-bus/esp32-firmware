@@ -28,7 +28,7 @@ Six components are exercised across the four device boards.
 
 OTA needs no node: every build carries the OTA endpoints described in [ESP32OTA.md](ESP32OTA.md), so any of these boards can be reflashed with `ebus-esp32 push --ota`.
 
-`ble/serial_bms` is an example, not a shipped component: copy it in first with `cp examples/bms/serial_bms.{h,cpp,yml} lib/ble/` (see [examples/bms/README.md](../examples/bms/README.md)). Its YAML notes that NimBLE can overflow DRAM on the non-PSRAM `esp32-poe-iso`; check the link before relying on poe4-a.
+`ble/serial_bms` is an example project component, not a shipped one: copy it into the project's `lib/ble/` first with `cp examples/bms/lib/ble/serial_bms.{h,cpp,yml} <project>/lib/ble/` (see [examples/bms/README.md](../examples/bms/README.md)). Its YAML notes that NimBLE can overflow DRAM on the non-PSRAM `esp32-poe-iso`; check the link before relying on poe4-a.
 
 ---
 

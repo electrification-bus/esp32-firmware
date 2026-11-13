@@ -82,7 +82,7 @@ children:
         id: battery-bms
 ```
 
-`serial_bms` is a copy/paste example rather than a shipped component, so copy it into place first (`cp examples/bms/serial_bms.{h,cpp,yml} lib/ble/` — see [examples/bms/README.md](../examples/bms/README.md)). Its yml declares the NimBLE dependency itself, so `ebus-esp32 build` pulls the stack in automatically. BLE needs internal DRAM, so keep `CONFIG_WIFI_AP` off on non-PSRAM boards. The driver scans for and connects to a JBD BMS over BLE and publishes its real readings under the same `<root>-bms` child topics.
+`serial_bms` is an example project component rather than a shipped one, so copy it into your project's `lib/ble/` first (`cp examples/bms/lib/ble/serial_bms.{h,cpp,yml} <project>/lib/ble/`; see [examples/bms/README.md](../examples/bms/README.md)). Its yml declares the NimBLE dependency itself, so `ebus-esp32 build` pulls the stack in automatically. BLE needs internal DRAM, so keep `CONFIG_WIFI_AP` off on non-PSRAM boards. The driver scans for and connects to a JBD BMS over BLE and publishes its real readings under the same `<root>-bms` child topics.
 
 ## Why this shapes the device API
 

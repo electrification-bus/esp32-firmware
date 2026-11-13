@@ -89,4 +89,4 @@ generator:
   header: ble/gatt_device.h
   constructor: '("{id}", "{config.address}", "{config.name_filter}", "{config.service_uuid}", "{config.notify_uuid}", "{config.write_uuid}")'
   lib_deps:
-    - h2zero/NimBLE-Arduino @ ^2.0.0
+    - h2zero/NimBLE-Arduino @ 2.5.2

@@ -23,6 +23,7 @@
 #include <platform/portal_prefs.h>
 #include <LittleFS.h>
 #include <homie.h>
+#include <peripheral/peripheral.h>
 #ifdef EBUS_OA3
 #include <platform/oa3_port.h>
 #endif
@@ -330,6 +331,7 @@ static void setup_broker(mqtt_reconnect_callback_t on_reconnect) {
 static void loop_housekeeping() {
     log_tcp_loop();     // accept monitors, push buffered log; never blocks
     captive_portal_loop();
+    loop_peripherals();
 #ifndef EBUS_ROLE_STANDALONE
     // Deferred out of on_state_observed(); see the note at _state_reassert_pending.
     // Publishing the real state echoes back, matches, and clears; it cannot re-arm itself.
@@ -394,6 +396,10 @@ void setup() {
     delay(1000);
 
     Serial.println("\n\n===== HOMIE CONTROLLER =====");
+
+    // device.yml's peripherals: (doc/Peripherals.md), first, so app code and features
+    // find them ready.
+    setup_peripherals();
 
     if (!setup_network()) return;
     setup_broker(on_mqtt_reconnect);
@@ -490,6 +496,10 @@ void setup() {
 
     Serial.println("\n\n===== STANDALONE =====");
 
+    // device.yml's peripherals: (doc/Peripherals.md), first, so app code and features
+    // find them ready.
+    setup_peripherals();
+
     if (!setup_network()) return;
 
 #ifdef EBUS_OA3
@@ -572,6 +582,10 @@ void setup() {
     delay(1000);
 
     Serial.println("\n\n===== HOMIE DEVICE =====");
+
+    // device.yml's peripherals: (doc/Peripherals.md), first, so app code and features
+    // find them ready.
+    setup_peripherals();
 
     // Board/build sanity check
     uint32_t flash_size = ESP.getFlashChipSize();

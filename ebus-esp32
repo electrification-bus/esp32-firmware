@@ -94,18 +94,22 @@ GEN_SRC_DIR    = OUT_DIR / "src"            # PlatformIO src_dir: links to src/,
 GEN_DATA_DIR   = OUT_DIR / "data"           # PlatformIO data_dir: the filesystem image source
 GENERATED_INI  = OUT_DIR / "platformio.ini"
 PIO_BUILD_DIR  = OUT_DIR / "build"          # <env>/firmware.bin, <env>/littlefs.bin
+PROJECT_LIB_DIR = PROJECT_DIR / "lib"       # the project's own components, lib/<bus>/<name>
+GEN_LIB_DIR    = OUT_DIR / "lib"            # PlatformIO libraries staged from PROJECT_LIB_DIR
 CONFIG_OVERLAY = PROJECT_DIR / "config-overlay.yml"
 
 def use_project(project_dir: Path) -> None:
     """Point the project paths above at project_dir."""
     global PROJECT_DIR, OUT_DIR, GEN_SRC_DIR, GEN_DATA_DIR, GENERATED_INI, PIO_BUILD_DIR
-    global CONFIG_OVERLAY
+    global CONFIG_OVERLAY, PROJECT_LIB_DIR, GEN_LIB_DIR
     PROJECT_DIR    = project_dir.resolve()
     OUT_DIR        = PROJECT_DIR / ".ebus"
     GEN_SRC_DIR    = OUT_DIR / "src"
     GEN_DATA_DIR   = OUT_DIR / "data"
     GENERATED_INI  = OUT_DIR / "platformio.ini"
     PIO_BUILD_DIR  = OUT_DIR / "build"
+    PROJECT_LIB_DIR = PROJECT_DIR / "lib"
+    GEN_LIB_DIR    = OUT_DIR / "lib"
     CONFIG_OVERLAY = PROJECT_DIR / "config-overlay.yml"
     if not CONFIG_OVERLAY.exists() and CONFIG_OVERLAY_REPO.exists():
         CONFIG_OVERLAY = CONFIG_OVERLAY_REPO
@@ -365,14 +369,44 @@ def find_component_yml(component: str):
     component in device.yml is a clear ERROR message rather than a Python traceback."""
     parts = component.split("/")
     if len(parts) == 2:
-        p = LIB_DIR / parts[0] / f"{parts[1]}.yml"
-        return p if p.exists() else None
-    for sub in LIB_DIR.iterdir():
-        if sub.is_dir():
-            candidate = sub / f"{component}.yml"
-            if candidate.exists():
-                return candidate
+        return lib_file(f"{parts[0]}/{parts[1]}.yml")
+    for root in lib_roots():
+        for sub in sorted(root.iterdir()):
+            if sub.is_dir():
+                candidate = sub / f"{component}.yml"
+                if candidate.exists():
+                    return candidate
     return None
+
+def lib_roots() -> list:
+    """Where components live: the project's lib/ (its own components), then the repo's."""
+    roots = [LIB_DIR] if LIB_DIR.is_dir() else []
+    if has_project_lib():
+        roots.insert(0, PROJECT_LIB_DIR)
+    return roots
+
+def has_project_lib() -> bool:
+    return PROJECT_LIB_DIR.is_dir() and PROJECT_LIB_DIR.resolve() != LIB_DIR.resolve()
+
+def lib_file(rel: str):
+    """A file under lib/<bus>/ by its path relative to lib/, from the project's lib/ or
+    the repo's; None when neither has it."""
+    for root in lib_roots():
+        p = root / rel
+        if p.is_file():
+            return p
+    return None
+
+def check_project_components() -> None:
+    """A project component may not share its name with a repo component."""
+    if not has_project_lib():
+        return
+    clashes = sorted(f"{y.parent.name}/{y.stem}" for y in PROJECT_LIB_DIR.glob("*/*.yml")
+                     if (LIB_DIR / y.parent.name / y.name).is_file())
+    if clashes:
+        print(f"ERROR: {shown(PROJECT_LIB_DIR)} has component(s) named like the firmware's own: "
+              f"{', '.join(clashes)}. Rename the project's.", file=sys.stderr)
+        sys.exit(1)
 
 # _cpp_literal()'s named escapes. Any other control character becomes a three-digit octal
 # escape, which ends after three digits, so a digit that follows is not swallowed (a hex
@@ -416,13 +450,18 @@ def fmt_ctor(template: str, node_id: str, config: dict, registers: list = None,
     # {bus.<name>.<key>} comes from device.yml's top-level buses: block — board facts
     # shared by every node on that bus, so they are declared once rather than repeated
     # (and required to agree) in each node's config:.
-    for bus_name, bus_cfg in (buses or {}).items():
-        for k, v in (bus_cfg or {}).items():
-            result = result.replace(f"{{bus.{bus_name}.{k}}}", _cpp_literal(v))
-    return result
+    # {bus.<name>.<key>|<default>} is optional: the default stands in when the bus leaves
+    # the key out (e.g. pin_miso on a write-only SPI bus).
+    def bus_value(m):
+        bus_name, key, default = m.group(1), m.group(2), m.group(3)
+        value = ((buses or {}).get(bus_name) or {}).get(key)
+        if value is None:
+            return m.group(0) if default is None else default
+        return _cpp_literal(value)
+    return _BUS_KEY_RE.sub(bus_value, result)
 
 _CONFIG_KEY_RE = re.compile(r"\{config\.(\w+)\}")
-_BUS_KEY_RE    = re.compile(r"\{bus\.(\w+)\.(\w+)\}")
+_BUS_KEY_RE    = re.compile(r"\{bus\.(\w+)\.(\w+)(?:\|([^}]*))?\}")
 
 def required_config_keys(ctor_tmpl: str) -> set:
     """Config keys a component's constructor template actually substitutes, e.g.
@@ -430,12 +469,18 @@ def required_config_keys(ctor_tmpl: str) -> set:
     return set(_CONFIG_KEY_RE.findall(ctor_tmpl))
 
 def required_bus_keys(ctor_tmpl: str) -> set:
-    """(bus, key) pairs a constructor template substitutes, e.g. '{bus.i2c.pin_sda}'
-    -> {('i2c', 'pin_sda')}."""
-    return set(_BUS_KEY_RE.findall(ctor_tmpl))
+    """(bus, key) pairs a constructor template substitutes without a default, e.g.
+    '{bus.i2c.pin_sda}' -> {('i2c', 'pin_sda')}; '{bus.spi.pin_miso|-1}' is optional."""
+    return {(b, k) for b, k, default in _BUS_KEY_RE.findall(ctor_tmpl) if not default}
+
+def present_bus_keys(ctor_tmpl: str, buses: dict) -> set:
+    """(bus, key) pairs a constructor template substitutes that the buses: block sets,
+    optional ones included: the pins the component will use."""
+    return {(b, k) for b, k, _ in _BUS_KEY_RE.findall(ctor_tmpl)
+            if isinstance((buses or {}).get(b), dict) and buses[b].get(k) is not None}
 
 def check_bus_keys(node_id: str, component: str, comp_path: Path,
-                   ctor_tmpl: str, buses: dict) -> None:
+                   ctor_tmpl: str, buses: dict, what: str = "node") -> None:
     """Every {bus.<name>.<key>} a component needs must be declared under device.yml's
     top-level buses: block, with a value."""
     required = sorted(required_bus_keys(ctor_tmpl))
@@ -460,14 +505,14 @@ def check_bus_keys(node_id: str, component: str, comp_path: Path,
         elif bus_cfg[key] is None:
             problems.append(f"buses.{bus}.{key} has no value")
     if problems:
-        print(f"ERROR: device.yml node '{node_id}' (component '{component}') needs "
+        print(f"ERROR: device.yml {what} '{node_id}' (component '{component}') needs "
               f"{'; '.join(problems)}. Bus pins are declared ONCE in the top-level buses: "
               f"block (see doc/GPIOPins.md for reference values), not per node — see "
               f"{comp_path}", file=sys.stderr)
         sys.exit(1)
 
 def check_config_keys(node_id: str, component: str, comp_path: Path,
-                       ctor_tmpl: str, node_cfg: dict) -> None:
+                       ctor_tmpl: str, node_cfg: dict, what: str = "node") -> None:
     """Catch a missing or typo'd config: key at generate time instead of letting it
     surface as a raw '{config.foo}' left in the generated C++ (a confusing compile
     error far from the actual mistake in device.yml)."""
@@ -496,7 +541,7 @@ def check_config_keys(node_id: str, component: str, comp_path: Path,
             if any(k.startswith("pin_") for k in extra):
                 parts.append("bus pins (pin_sda/pin_scl, pin_a/pin_b) are declared once in "
                              "the top-level buses: block, not in a node's config:")
-        print(f"ERROR: device.yml node '{node_id}' (component '{component}') config: block "
+        print(f"ERROR: device.yml {what} '{node_id}' (component '{component}') config: block "
               f"problem — {'; '.join(parts)}. Expected: {', '.join(sorted(required)) or 'none'} "
               f"— see {comp_path}", file=sys.stderr)
         sys.exit(1)
@@ -557,15 +602,15 @@ def component_source_closure(used_components: list) -> list:
     seen_files = set()
     pending = []
     for comp in used_components:
-        pending += [LIB_DIR / f"{comp}.h", LIB_DIR / f"{comp}.cpp"]
+        pending += [p for p in (lib_file(f"{comp}.h"), lib_file(f"{comp}.cpp")) if p]
     while pending:
         path = pending.pop()
         if path in seen_files or not path.is_file():
             continue
         seen_files.add(path)
         for inc in _INCLUDE_RE.findall(path.read_text(encoding="utf-8", errors="replace")):
-            target = LIB_DIR / inc
-            if target.is_file():
+            target = lib_file(inc)
+            if target is not None:
                 pending += [target, target.with_suffix(".cpp")]
     found = set(used_components)
     for path in seen_files:
@@ -584,6 +629,8 @@ def component_source_closure(used_components: list) -> list:
 # hold a generated data/config.yml, secrets included.
 _GENERATED_DATA = ("config.yml", "homie.yml")
 _PROJECT_SRC_LINK = "project"
+# Written by the generator into the staged src/, never linked from the firmware's.
+_GENERATED_SRC = ("homie.cpp", "peripherals.cpp", "peripherals.h")
 _SOURCE_SUFFIXES = (".h", ".hpp", ".c", ".cc", ".cpp")
 
 def _link_or_copy(target: Path, link: Path) -> None:
@@ -613,7 +660,8 @@ def stage_sources() -> None:
         wanted[_PROJECT_SRC_LINK] = project_src
     GEN_SRC_DIR.mkdir(parents=True, exist_ok=True)
     for entry in GEN_SRC_DIR.iterdir():
-        if entry.name in wanted or entry.name == "homie.cpp" or entry.name.startswith("idf_component"):
+        if (entry.name in wanted or entry.name in _GENERATED_SRC
+                or entry.name.startswith("idf_component")):
             continue
         if entry.is_dir() and not entry.is_symlink():
             shutil.rmtree(entry)
@@ -631,6 +679,30 @@ def _skip_data(top: Path):
             skip |= {n for n in names if n in _GENERATED_DATA}
         return skip
     return ignore
+
+def stage_project_lib() -> list:
+    """Stage each lib/<bus>/ of the project as a PlatformIO library under GEN_LIB_DIR, with
+    the same layout and source filter as the repo's lib/<bus>/ (includes are <bus>/<name>.h),
+    and return the lib_deps entries that bring them into the build."""
+    if GEN_LIB_DIR.exists():
+        shutil.rmtree(GEN_LIB_DIR)
+    if not has_project_lib():
+        return []
+    deps = []
+    for bus in sorted(d for d in PROJECT_LIB_DIR.iterdir() if d.is_dir()):
+        staged = GEN_LIB_DIR / bus.name
+        staged.mkdir(parents=True)
+        for entry in sorted(bus.iterdir()):
+            if entry.is_file() and entry.name != "library.json":
+                _link_or_copy(entry, staged / entry.name)
+        (staged / "library.json").write_text(json.dumps({
+            "name": f"project-{bus.name}",
+            "version": "0.0.0",
+            "build": {"includeDir": "..", "srcDir": ".",
+                      "extraScript": str(ROOT / "scripts" / "lib_src_filter.py")},
+        }, indent=2) + "\n", encoding="utf-8")
+        deps.append(f"project-{bus.name}=symlink://{staged}")
+    return deps
 
 def stage_data() -> None:
     """Rebuild GEN_DATA_DIR from the repo's data/ and the project's data/."""
@@ -657,8 +729,8 @@ def project_components() -> list:
         if not path.is_file() or path.suffix not in _SOURCE_SUFFIXES:
             continue
         for inc in _INCLUDE_RE.findall(path.read_text(encoding="utf-8", errors="replace")):
-            target = LIB_DIR / inc
-            if target.suffix == ".h" and target.with_suffix(".yml").is_file():
+            target = lib_file(inc)
+            if target is not None and target.suffix == ".h" and target.with_suffix(".yml").is_file():
                 name = f"{target.parent.name}/{target.stem}"
                 if name not in found:
                     found.append(name)
@@ -1170,6 +1242,7 @@ def device_role(device: dict, device_yml: Path) -> str:
 # The oa3: block (doc/OpenADR3.md): the OpenADR 3 VEN, in any role. Its runtime keys are
 # copied into config.yml; max_events sizes the client's event arrays, so it is a build flag.
 OA3_KEYS = {"base_url": str, "program_name": str, "program_id": str, "poll_period_s": int,
+            "display": str,
             "max_events": int}
 OA3_MAX_EVENTS_DEFAULT = 2
 # The cpp-oa3 library, pinned. EBUS_CPP_OA3 names another source, e.g. a local checkout:
@@ -1201,7 +1274,8 @@ def oa3_config(cfg: dict):
     if not block.get("program_name") and not block.get("program_id"):
         problems.append("program_name or program_id: at least one is required")
     # The firmware's buffers (src/platform/config.cpp); cpp-oa3 refuses a longer name or id.
-    for key, most in (("base_url", 255), ("program_name", 63), ("program_id", 63)):
+    for key, most in (("base_url", 255), ("program_name", 63), ("program_id", 63),
+                      ("display", 31)):
         value = block.get(key)
         if isinstance(value, str) and len(value) > most:
             problems.append(f"{key}: at most {most} characters, got {len(value)}")
@@ -1216,6 +1290,83 @@ def oa3_config(cfg: dict):
             print(f"  {p}", file=sys.stderr)
         sys.exit(1)
     return block
+
+# ── library dependencies ───────────────────────────────────────────────────────
+#
+# Every lib_deps entry a build takes from a component (generator.lib_deps) or from the
+# project (device.yml lib_deps:) names exactly one version: "owner/Name @ 1.2.3", a git
+# URL ending in "#<tag or commit>", or a local symlink:// or file:// source. A bare name
+# ("Wire") is a framework library. A library asked for at two versions is refused rather
+# than left for PlatformIO to pick one.
+
+_BRANCH_REFS = {"main", "master", "develop", "dev", "HEAD", "trunk"}
+_EXACT_VERSION_RE = re.compile(r"^v?\d+(\.\d+)*([-+][0-9A-Za-z.\-]+)?$")
+
+def lib_dep_key(spec: str):
+    """(key, version) of a lib_deps entry: key is the library's name lower-cased with only
+    letters and digits, so 'adafruit/Adafruit BusIO @ 1.17.4' and a git URL ending in
+    Adafruit_BusIO.git name the same library; version is None when the entry pins none.
+    A leading 'name=' (as in 'oa3=https://...') names the library."""
+    s = str(spec).strip()
+    alias = None
+    m = re.match(r"^([\w.\-]+)\s*=(?!=)", s)   # "oa3=https://..."; not the "=" of ">=1.0"
+    if m:
+        alias, s = m.group(1), s[m.end():].strip()
+    if "://" in s:
+        scheme, rest = s.split("://", 1)
+        if scheme in ("symlink", "file"):
+            name, version = Path(rest.rstrip("/")).name, f"local {rest}"
+        else:
+            path, _, ref = rest.partition("#")
+            name = path.rstrip("/").rsplit("/", 1)[-1]
+            name = name[:-4] if name.endswith(".git") else name
+            version = ref.strip() or None
+            if version in _BRANCH_REFS:
+                version = None             # a branch moves; pin a tag or commit
+    else:
+        name, _, version = s.partition("@")
+        name, version = name.strip(), version.strip() or None
+        if "/" not in name and version is None:
+            version = "framework"          # a framework library, e.g. Wire
+        elif version is not None and not _EXACT_VERSION_RE.match(version):
+            version = None
+        name = name.rsplit("/", 1)[-1]
+    if version and _EXACT_VERSION_RE.match(version):
+        version = version.lstrip("v")      # a git tag "v1.2.3" is release 1.2.3
+    key = re.sub(r"[^a-z0-9]", "", (alias or name).lower())
+    return key, version
+
+def project_lib_deps(cfg: dict) -> list:
+    """device.yml's top-level lib_deps: list, for the project's own src/."""
+    deps = cfg.get("lib_deps")
+    if deps is None:
+        return []
+    if not isinstance(deps, list) or not all(isinstance(d, str) and d.strip() for d in deps):
+        print("ERROR: device.yml lib_deps: must be a list of PlatformIO library specs, e.g.\n"
+              "  lib_deps:\n    - adafruit/Adafruit ILI9341 @ 1.7.0", file=sys.stderr)
+        sys.exit(1)
+    return [d.strip() for d in deps]
+
+def check_lib_deps(deps: list, sources: dict) -> None:
+    """Refuse an entry that pins no version, and a library asked for at two versions."""
+    problems, seen = [], {}
+    for dep in deps:
+        key, version = lib_dep_key(dep)
+        source = sources.get(dep, "the build")
+        if version is None:
+            problems.append(f"'{dep}' ({source}) names no exact version; pin one, e.g. "
+                            f"'owner/Name @ 1.2.3' or a git URL ending in '#<tag>'")
+            continue
+        if key in seen and seen[key][1] != version:
+            other, other_version = seen[key]
+            problems.append(f"'{dep}' ({source}) and '{other}' ({sources.get(other, 'the build')}) "
+                            f"are the same library at different versions")
+        seen.setdefault(key, (dep, version))
+    if problems:
+        print("ERROR: lib_deps:", file=sys.stderr)
+        for p in problems:
+            print(f"  {p}", file=sys.stderr)
+        sys.exit(1)
 
 def env_has_psram(env_name) -> bool:
     if not env_name:
@@ -1291,6 +1442,7 @@ def _generate(args) -> None:
               file=sys.stderr)
         sys.exit(1)
     cfg        = load_device_yml(device_yml)
+    check_project_components()
     device     = cfg.get("device", {})
     nodes_cfg  = cfg.get("nodes", [])
     buses_cfg  = cfg.get("buses") or {}
@@ -1335,6 +1487,7 @@ def _generate(args) -> None:
     seen_node_cvars   = {}   # C++ name -> node_id, so ids that differ only in '-' vs '_' are caught
     seen_child_ids    = {}   # C++ name -> child id (duplicate child-device check)
     used_lib_deps     = []   # lib_deps strings from every used component's generator block (dedup, ordered)
+    lib_dep_sources   = {}   # lib_deps string -> what asked for it, for check_lib_deps()
     used_components   = []   # 'bus/name' of every used component (dedup, ordered)
     pin_uses          = {}   # label -> GPIO, for every bus and node pin in use (conflict check)
     settable_count    = [0]  # settable properties across the whole device tree
@@ -1342,6 +1495,89 @@ def _generate(args) -> None:
 
     def _cvar(s):
         return "".join(c if (c.isalnum() or c == "_") else "_" for c in str(s))
+
+    peripheral_includes = []   # headers of the peripheral components used
+    peripheral_decls    = []   # Ili9341 lcd(...);
+    peripheral_externs  = []   # extern Ili9341 lcd;
+    peripheral_vars     = []   # C++ names, in device.yml order, for the lookup table
+    peripheral_kinds    = {}   # peripheral id -> its component's peripheral.kind
+
+    def emit_peripheral(entry):
+        """One device.yml peripherals: entry: a driver object, named after its id, that app
+        code and features use directly (doc/Peripherals.md)."""
+        if not isinstance(entry, dict) or not entry.get("id") or not entry.get("component"):
+            print(f"ERROR: device.yml peripherals: entry needs an id and a component, e.g.\n"
+                  f"  - id: lcd\n    component: spi/ili9341\n  (got {entry!r})", file=sys.stderr)
+            sys.exit(1)
+        pid, component = str(entry["id"]), str(entry["component"])
+        pcfg = entry.get("config") or {}
+        if not isinstance(pcfg, dict):
+            print(f"ERROR: device.yml peripheral '{pid}': config: must be a mapping",
+                  file=sys.stderr)
+            sys.exit(1)
+        if len(pid) > 31:
+            print(f"ERROR: device.yml peripheral id '{pid}' is longer than 31 characters "
+                  f"(oa3.display and other references hold at most 31)", file=sys.stderr)
+            sys.exit(1)
+        if sanitize_homie_id(pid) != pid:
+            print(f"ERROR: device.yml peripheral id '{pid}' must be a Homie id: lower-case "
+                  f"letters, digits and '-', starting with a letter or digit", file=sys.stderr)
+            sys.exit(1)
+        comp_path = find_component_yml(component)
+        if comp_path is None:
+            print(f"ERROR: device.yml peripheral '{pid}' references component '{component}', "
+                  f"which matches no lib/<bus>/<name>.yml", file=sys.stderr)
+            sys.exit(1)
+        comp = load_yaml_file(comp_path)
+        kind = (comp.get("peripheral") or {}).get("kind")
+        if not kind:
+            print(f"ERROR: device.yml peripheral '{pid}': component '{component}' is not a "
+                  f"peripheral ({comp_path} has no peripheral: block); list it under nodes:",
+                  file=sys.stderr)
+            sys.exit(1)
+        gen = comp.get("generator") or {}
+        missing = [k for k in ("class", "header", "constructor") if k not in gen]
+        if missing:
+            print(f"ERROR: component yml '{comp_path}' generator block missing required "
+                  f"field(s): {', '.join(missing)}", file=sys.stderr)
+            sys.exit(1)
+        # Peripheral and node ids share one namespace.
+        if pid in seen_node_ids:
+            print(f"ERROR: id '{pid}' is used more than once in peripherals: and nodes:",
+                  file=sys.stderr)
+            sys.exit(1)
+        seen_node_ids[pid] = component
+        var = _cvar(pid)
+        if var in seen_node_cvars:
+            print(f"ERROR: ids '{seen_node_cvars[var]}' and '{pid}' both become the C++ name "
+                  f"'{var}'. Change one so they differ by more than '-' versus '_'.",
+                  file=sys.stderr)
+            sys.exit(1)
+        seen_node_cvars[var] = pid
+        ctor = gen["constructor"]
+        pcfg = {**(gen.get("config_defaults") or {}), **pcfg}
+        check_config_keys(pid, component, comp_path, ctor, pcfg, what="peripheral")
+        check_bus_keys(pid, component, comp_path, ctor, buses_cfg, what="peripheral")
+        for bus, key in present_bus_keys(ctor, buses_cfg):
+            if _is_pin_key(key):
+                pin_uses[f"buses.{bus}.{key}"] = buses_cfg[bus][key]
+        for key in required_config_keys(ctor):
+            if _is_pin_key(key):
+                pin_uses[f"peripheral '{pid}' config.{key}"] = pcfg[key]
+        comp_name = f"{comp_path.parent.name}/{comp_path.stem}"
+        for dep in gen.get("lib_deps") or []:
+            if dep not in used_lib_deps:
+                used_lib_deps.append(dep)
+            lib_dep_sources.setdefault(dep, f"component {comp_name}")
+        if comp_name not in used_components:
+            used_components.append(comp_name)
+        include = f"#include <{gen['header']}>"
+        if include not in peripheral_includes:
+            peripheral_includes.append(include)
+        peripheral_decls.append(f"{gen['class']} {var}{fmt_ctor(ctor, pid, pcfg, None, buses_cfg)};")
+        peripheral_externs.append(f"extern {gen['class']} {var};")
+        peripheral_vars.append(var)
+        peripheral_kinds[pid] = kind
 
     def emit_node(entry, dev_access, setdev_addr, is_root, dev_id, dev_label):
         # dev_access: C++ device access prefix — "device->" (root) or "dev_x." (child)
@@ -1367,12 +1603,18 @@ def _generate(args) -> None:
             if "/" in component:
                 expected = f"lib/{component}.yml"
             else:
-                expected = f"lib/<bus>/{component}.yml (searched every <bus> under {LIB_DIR})"
+                expected = (f"lib/<bus>/{component}.yml (searched every <bus> under "
+                            f"{' and '.join(str(r) for r in lib_roots())})")
             print(f"ERROR: device.yml node '{node_id or component}' references component "
                   f"'{component}', which does not match any component file — expected "
                   f"{expected}", file=sys.stderr)
             sys.exit(1)
         comp = load_yaml_file(comp_path)
+        if comp.get("peripheral"):
+            print(f"ERROR: device.yml node '{node_id or component}': component '{component}' "
+                  f"is a peripheral; list it under peripherals: (doc/Peripherals.md)",
+                  file=sys.stderr)
+            sys.exit(1)
         gen = comp.get("generator")
         if not gen:
             print(f"WARNING: no generator block in {comp_path} — skipping")
@@ -1437,16 +1679,17 @@ def _generate(args) -> None:
         node_cfg = {**(gen.get("config_defaults") or {}), **node_cfg}
         check_config_keys(node_id, component, comp_path, ctor_tmpl, node_cfg)
         check_bus_keys(node_id, component, comp_path, ctor_tmpl, buses_cfg)
-        for bus, key in required_bus_keys(ctor_tmpl):
+        for bus, key in present_bus_keys(ctor_tmpl, buses_cfg):
             if _is_pin_key(key):
                 pin_uses[f"buses.{bus}.{key}"] = buses_cfg[bus][key]
         for key in required_config_keys(ctor_tmpl):
             if _is_pin_key(key):
                 pin_uses[f"node '{node_id}' config.{key}"] = node_cfg[key]
+        comp_name = f"{comp_path.parent.name}/{comp_path.stem}"
         for dep in gen.get("lib_deps") or []:
             if dep not in used_lib_deps:
                 used_lib_deps.append(dep)
-        comp_name = f"{comp_path.parent.name}/{comp_path.stem}"
+            lib_dep_sources.setdefault(dep, f"component {comp_name}")
         if comp_name == "logic/link":
             link_entries.append((str(node_id), node_cfg))
         if comp_name not in used_components:
@@ -1611,6 +1854,19 @@ def _generate(args) -> None:
               "(role: controller). In a device build, declare each link as a node:\n"
               "         - component: logic/link   (see doc/Link.md)", file=sys.stderr)
         sys.exit(1)
+    peripherals_cfg = cfg.get("peripherals") or []
+    if not isinstance(peripherals_cfg, list):
+        print("ERROR: device.yml peripherals: must be a list of entries (id, component, "
+              "config)", file=sys.stderr)
+        sys.exit(1)
+    for entry in peripherals_cfg:
+        emit_peripheral(entry)
+    if oa3 and oa3.get("display"):
+        if peripheral_kinds.get(oa3["display"]) != "display":
+            print(f"ERROR: oa3.display '{oa3['display']}' names no display under peripherals:"
+                  f" ({', '.join(k for k, v in peripheral_kinds.items() if v == 'display') or 'none listed'})",
+                  file=sys.stderr)
+            sys.exit(1)
     if role == "standalone":
         present = [k for k in ("nodes", "children", "links") if cfg.get(k)]
         if present:
@@ -1666,16 +1922,24 @@ def _generate(args) -> None:
     for comp in project_components():
         if comp not in used_components:
             used_components.append(comp)
-            gen = load_yaml_file(LIB_DIR / f"{comp}.yml").get("generator") or {}
+            gen = load_yaml_file(find_component_yml(comp)).get("generator") or {}
             for dep in gen.get("lib_deps") or []:
                 if dep not in used_lib_deps:
                     used_lib_deps.append(dep)
+                lib_dep_sources.setdefault(dep, f"component {comp}")
+    for dep in project_lib_deps(cfg):
+        if dep not in used_lib_deps:
+            used_lib_deps.append(dep)
+        lib_dep_sources.setdefault(dep, "device.yml lib_deps:")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     (OUT_DIR / ".gitignore").write_text("# Build output of ebus-esp32; regenerated on every build.\n*\n",
                                         encoding="utf-8")
     stage_sources()
     stage_data()
+    for dep in stage_project_lib():
+        used_lib_deps.append(dep)
+        lib_dep_sources[dep] = f"{shown(PROJECT_LIB_DIR)}"
 
     # .ebus/src/homie.cpp
     lines = [_HOMIE_CPP_HEADER]
@@ -1719,6 +1983,22 @@ def _generate(args) -> None:
     lines += ["", "void setup_controller_links() {"] + (link_setups or ["    // no controller links"]) + ["}"]
     lines += ["", "void loop_controller_links() {"] + (link_loops or ["    // no controller links"]) + ["}", ""]
 
+    # .ebus/src/peripherals.{h,cpp}: every peripherals: entry as a named object, and the
+    # table peripheral_find() searches. Always written: main.cpp calls setup_peripherals().
+    p_head = ["// AUTO-GENERATED by `ebus-esp32 generate` from device.yml's peripherals: — do "
+              "not edit.", "#pragma once", "", "#include <peripheral/peripheral.h>"]
+    p_head += peripheral_includes + [""] + peripheral_externs
+    (GEN_SRC_DIR / "peripherals.h").write_text("\n".join(p_head) + "\n", encoding="utf-8")
+    p_cpp = ["// AUTO-GENERATED by `ebus-esp32 generate` from device.yml's peripherals: — do "
+             "not edit.", '#include "peripherals.h"', ""] + peripheral_decls + [""]
+    if peripheral_vars:
+        p_cpp.append("Peripheral* const peripheral_table[] = {"
+                     + ", ".join(f"&{v}" for v in peripheral_vars) + "};")
+    else:
+        p_cpp.append("Peripheral* const peripheral_table[] = {nullptr};")
+    p_cpp.append(f"const size_t peripheral_count = {len(peripheral_vars)};")
+    (GEN_SRC_DIR / "peripherals.cpp").write_text("\n".join(p_cpp) + "\n", encoding="utf-8")
+
     out_cpp = GEN_SRC_DIR / "homie.cpp"
     if hand_coded:
         if out_cpp.exists():
@@ -1740,6 +2020,27 @@ def _generate(args) -> None:
         role_flags += ["-DEBUS_OA3",
                        f"-DOA3_MAX_EVENTS={oa3.get('max_events') or OA3_MAX_EVENTS_DEFAULT}"]
         used_lib_deps.append(oa3_lib_dep())
+        lib_dep_sources.setdefault(oa3_lib_dep(), "oa3:")
+    # A component that includes another's header compiles that one too (the source
+    # closure), so it needs that one's libraries as well.
+    for comp in component_source_closure(used_components):
+        if comp in used_components:
+            continue
+        gen = load_yaml_file(find_component_yml(comp)).get("generator") or {}
+        for dep in gen.get("lib_deps") or []:
+            if dep not in used_lib_deps:
+                used_lib_deps.append(dep)
+            lib_dep_sources.setdefault(dep, f"component {comp}")
+    # The firmware's own [common] libraries take part in the conflict check too.
+    base_deps = []
+    if PLATFORMIO_INI.exists():
+        ini = configparser.RawConfigParser()
+        ini.read(PLATFORMIO_INI, encoding="utf-8")
+        if ini.has_option("common", "lib_deps"):
+            base_deps = [l.strip() for l in ini.get("common", "lib_deps").splitlines() if l.strip()]
+    for dep in base_deps:
+        lib_dep_sources.setdefault(dep, "the firmware's platformio.ini")
+    check_lib_deps(base_deps + [d for d in used_lib_deps if d not in base_deps], lib_dep_sources)
     env_for_ini = device.get("environment")
     if env_for_ini:
         write_lean_platformio_ini(env_for_ini, used_lib_deps, used_components,
@@ -1832,7 +2133,7 @@ def _generate(args) -> None:
         config_doc["wifi"]["enabled"] = wifi["enabled"]
     if oa3:
         config_doc["oa3"] = {k: oa3[k] for k in ("base_url", "program_name", "program_id",
-                                                 "poll_period_s") if oa3.get(k)}
+                                                 "poll_period_s", "display") if oa3.get(k)}
 
     out_config = GEN_DATA_DIR / "config.yml"
     with open(out_config, "w", encoding="utf-8") as f:

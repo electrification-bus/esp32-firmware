@@ -7,6 +7,7 @@
 #include <platform/oa3_port.h>
 #include <platform/config.h>
 #include <platform/network.h>
+#include <peripheral/display.h>
 
 #include <Arduino.h>
 #include <HTTPClient.h>
@@ -185,11 +186,83 @@ oa3::StaticVenStorage<> _static_storage;   // internal RAM: about 38 KB with OA3
 oa3::JsonArena* _arena = nullptr;
 uint32_t _logged_requests = 0;
 
+// The price screen, on the display oa3.display names (doc/OpenADR3.md). Drawn only from the
+// OA3 task: at its start, and from the client's callbacks, which run inside loop().
+Display* _display = nullptr;
+
+// "2026-11-13T19:00:00Z" -> "19:00 UTC"
+void hhmm(const oa3::DateTime& t, char* out, size_t len) {
+    char iso[oa3::kDateTimeStringSize];
+    if (oa3::format_datetime(t, iso, sizeof(iso)) >= 16) {
+        snprintf(out, len, "%.5s UTC", iso + 11);
+    } else {
+        snprintf(out, len, "?");
+    }
+}
+
+void screen_begin() {
+    if (oa3_display[0] == '\0') return;
+    _display = peripheral<Display>(oa3_display);
+    if (!_display) {
+        Serial.printf("OA3: **ERROR -- oa3.display '%s' is not a display peripheral\n", oa3_display);
+        return;
+    }
+    PeripheralLock l(*_display);
+    _display->clear(Display::kBlack);
+    _display->text(8, 8, "OpenADR 3 price", 2, Display::kWhite, Display::kBlack);
+    _display->fill_rect(0, 30, _display->width(), 1, Display::kGrey);
+    _display->text(8, 90, "waiting for a price", 2, Display::kWhite, Display::kBlack);
+    _display->flush();
+}
+
+void screen_price(const oa3::PriceInfo& p) {
+    if (!_display) return;
+    PeripheralLock l(*_display);
+    _display->fill_rect(0, 40, _display->width(), 150, Display::kBlack);
+    if (!p.active) {
+        _display->text(8, 90, "no price in force", 2, Display::kYellow, Display::kBlack);
+        _display->flush();
+        return;
+    }
+    char line[48];
+    _display->text(8, 50, p.text, 5, Display::kWhite, Display::kBlack);
+    snprintf(line, sizeof(line), "%s/%s", p.currency, p.units);
+    _display->text(8, 105, line, 2, Display::kWhite, Display::kBlack);
+    char next[24];
+    if (p.has_next_change) {
+        hhmm(p.next_change, next, sizeof(next));
+    } else if (!p.span.end_indefinite) {
+        hhmm(p.span.end, next, sizeof(next));
+    } else {
+        snprintf(next, sizeof(next), "none");
+    }
+    snprintf(line, sizeof(line), "next change %s", next);
+    _display->text(8, 140, line, 2, Display::kWhite, Display::kBlack);
+    _display->flush();
+}
+
+void screen_status(const oa3::VenStatusInfo& s) {
+    if (!_display) return;
+    uint16_t color = Display::kRed;
+    if (s.status == oa3::VenStatus::kOk) {
+        color = Display::kGreen;
+    } else if (s.status == oa3::VenStatus::kWaitingForClock ||
+               s.status == oa3::VenStatus::kResolvingProgram ||
+               s.status == oa3::VenStatus::kStale || s.status == oa3::VenStatus::kTruncated) {
+        color = Display::kYellow;
+    }
+    PeripheralLock l(*_display);
+    _display->fill_rect(0, 200, _display->width(), 40, Display::kBlack);
+    _display->text(8, 210, oa3::to_string(s.status), 2, color, Display::kBlack);
+    _display->flush();
+}
+
 void on_log(void*, oa3::LogLevel level, const char* line) {
     Serial.printf("OA3: %s %s\n", oa3::to_string(level), line);
 }
 
 void on_price(void*, const oa3::PriceInfo& p) {
+    screen_price(p);
     if (!p.active) {
         Serial.println("OA3: no price in force");
         return;
@@ -206,6 +279,7 @@ void on_price(void*, const oa3::PriceInfo& p) {
 }
 
 void on_status(void*, const oa3::VenStatusInfo& s) {
+    screen_status(s);
     Serial.printf("OA3: status %s (http %s, %d; %u failures; retry in %lu s)\n",
                   oa3::to_string(s.status), oa3::to_string(s.http_result), s.http_status,
                   (unsigned)s.consecutive_failures, (unsigned long)(s.retry_in_ms / 1000));
@@ -227,6 +301,7 @@ void log_poll(const oa3::VenClient& client) {
 
 void oa3_task(void* arg) {
     oa3::VenClient* client = static_cast<oa3::VenClient*>(arg);
+    screen_begin();
     for (;;) {
         client->loop();
         if (_http.requests() != _logged_requests) {

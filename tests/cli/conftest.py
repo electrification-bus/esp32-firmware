@@ -103,6 +103,8 @@ def sandbox(cli, tmp_path, monkeypatch):
         "GEN_DATA_DIR": out / "data",
         "GENERATED_INI": out / "platformio.ini",
         "PIO_BUILD_DIR": out / "build",
+        "PROJECT_LIB_DIR": project / "lib",
+        "GEN_LIB_DIR": out / "lib",
         "CONFIG_OVERLAY": project / "config-overlay.yml",
         "CONFIG_OVERLAY_REPO": root / "config-overlay.yml",
         "CONFIG_OVERLAY_LEGACY": tmp_path / "home" / ".config" / "eBus" / "config.yml",

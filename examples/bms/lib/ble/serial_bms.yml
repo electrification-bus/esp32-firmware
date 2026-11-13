@@ -154,4 +154,4 @@ generator:
   # devices. Don't assume "compiles" means "links" for this component on a
   # non-PSRAM board without checking the DRAM usage report.
   lib_deps:
-    - h2zero/NimBLE-Arduino @ ^2.0.0
+    - h2zero/NimBLE-Arduino @ 2.5.2
