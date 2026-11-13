@@ -1,0 +1,36 @@
+# NS2009 resistive touch controller on the shared I2C bus (doc/Peripherals.md, Touch). A
+# peripheral over a display: x and y come out in that display's pixels and rotation.
+#
+#   buses:
+#     i2c: { pin_sda: 13, pin_scl: 33 }      # ESP32-POE-ISO-WROVER UEXT (SCL 16 without PSRAM)
+#   peripherals:
+#     - id: lcd
+#       component: spi/ili9341
+#       config: { pin_cs: 5, pin_dc: 15 }
+#     - id: touch
+#       component: i2c/ns2009
+#       config: { display: lcd }
+#
+# Defaults are Olimex's for the MOD-LCD2.8RTP (rev C and later): address 0x48, raw X 200-3850
+# and Y 400-3920, Y inverted, in the display's native (rotation 0) orientation. sample_ms is
+# the polling period; a press or release needs two agreeing samples; z_threshold is the
+# pressure above which the panel counts as pressed.
+peripheral:
+  kind: touch
+  references:
+    display: display
+generator:
+  class: Ns2009
+  header: i2c/ns2009.h
+  constructor: '("{id}", {bus.i2c.pin_sda}, {bus.i2c.pin_scl}, {config.address}, "{config.display}", {config.x_min}, {config.x_max}, {config.y_min}, {config.y_max}, {config.swap_xy}, {config.invert_x}, {config.invert_y}, {config.sample_ms}, {config.z_threshold})'
+  config_defaults:
+    address: 0x48
+    x_min: 200
+    x_max: 3850
+    y_min: 400
+    y_max: 3920
+    swap_xy: false
+    invert_x: false
+    invert_y: true
+    sample_ms: 20
+    z_threshold: 150

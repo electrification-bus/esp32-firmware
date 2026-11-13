@@ -19,6 +19,7 @@ public:
 protected:
     int16_t do_width() override { return _tft.width(); }
     int16_t do_height() override { return _tft.height(); }
+    uint8_t do_rotation() override { return _tft.getRotation(); }
     void do_clear(uint16_t color) override { _tft.fillScreen(color); }
     void do_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) override {
         _tft.fillRect(x, y, w, h, color);

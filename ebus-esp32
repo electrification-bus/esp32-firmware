@@ -1501,6 +1501,7 @@ def _generate(args) -> None:
     peripheral_externs  = []   # extern Ili9341 lcd;
     peripheral_vars     = []   # C++ names, in device.yml order, for the lookup table
     peripheral_kinds    = {}   # peripheral id -> its component's peripheral.kind
+    peripheral_refs     = []   # (id, config key, value, kind it must name)
 
     def emit_peripheral(entry):
         """One device.yml peripherals: entry: a driver object, named after its id, that app
@@ -1578,6 +1579,10 @@ def _generate(args) -> None:
         peripheral_externs.append(f"extern {gen['class']} {var};")
         peripheral_vars.append(var)
         peripheral_kinds[pid] = kind
+        # peripheral.references: config keys that name another peripheral of a given kind
+        # (a touch panel's display:), checked once every peripheral is known.
+        for key, ref_kind in ((comp.get("peripheral") or {}).get("references") or {}).items():
+            peripheral_refs.append((pid, key, pcfg.get(key), ref_kind))
 
     def emit_node(entry, dev_access, setdev_addr, is_root, dev_id, dev_label):
         # dev_access: C++ device access prefix — "device->" (root) or "dev_x." (child)
@@ -1861,6 +1866,12 @@ def _generate(args) -> None:
         sys.exit(1)
     for entry in peripherals_cfg:
         emit_peripheral(entry)
+    for pid, key, value, ref_kind in peripheral_refs:
+        if peripheral_kinds.get(value) != ref_kind:
+            listed = ", ".join(k for k, v in peripheral_kinds.items() if v == ref_kind)
+            print(f"ERROR: device.yml peripheral '{pid}': config.{key} '{value}' names no "
+                  f"{ref_kind} under peripherals: ({listed or 'none listed'})", file=sys.stderr)
+            sys.exit(1)
     if oa3 and oa3.get("display"):
         if peripheral_kinds.get(oa3["display"]) != "display":
             print(f"ERROR: oa3.display '{oa3['display']}' names no display under peripherals:"

@@ -18,6 +18,7 @@
 enum class PeripheralKind : uint8_t {
     kOther,
     kDisplay,
+    kTouch,
 };
 
 class Peripheral {

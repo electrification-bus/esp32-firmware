@@ -25,6 +25,8 @@ public:
 
     int16_t width() { PeripheralLock l(*this); return do_width(); }
     int16_t height() { PeripheralLock l(*this); return do_height(); }
+    // 0-3, quarter turns from the panel's native orientation; width() and height() follow it.
+    uint8_t rotation() { PeripheralLock l(*this); return do_rotation(); }
     void clear(uint16_t color) { PeripheralLock l(*this); do_clear(color); }
     void fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
         PeripheralLock l(*this);
@@ -42,6 +44,7 @@ protected:
 
     virtual int16_t do_width() = 0;
     virtual int16_t do_height() = 0;
+    virtual uint8_t do_rotation() { return 0; }
     virtual void do_clear(uint16_t color) = 0;
     virtual void do_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) = 0;
     virtual void do_text(int16_t x, int16_t y, const char* s, uint8_t size, uint16_t color,
