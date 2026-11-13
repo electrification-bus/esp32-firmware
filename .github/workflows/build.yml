@@ -128,6 +128,7 @@ jobs:
         example:
           - bms
           - bridge-bess
+          - oa3-price
           - sht20
           - ssr
     steps:

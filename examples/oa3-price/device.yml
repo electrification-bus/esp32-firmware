@@ -1,0 +1,39 @@
+# The current OpenADR 3 price on a display: an OpenADR 3 VEN (doc/OpenADR3.md) that follows
+# one price-server program and draws the price on an Olimex MOD-LCD2.8RTP on the UEXT
+# connector of an Olimex ESP32-POE-ISO-WROVER. No broker and no Homie device (role
+# standalone). See README.md in this folder.
+device:
+  name: oa3-price
+  id: ${chip_id}
+  type: control
+  environment: esp32-poe-iso-wrover
+  device_type: ebus
+  firmware_name: OA3 price display
+  firmware_version: 1.0.0
+  manufacturer: Example Manufacturer
+  model: oa3-price
+  role: standalone
+  device_passphrase: ""  # set it in config-overlay.yml; generate refuses an empty or "changeme" value
+
+# UEXT on the ESP32-POE-ISO-WROVER: the panel is write-only, so no MISO (UEXT pin 7, MISO's
+# pin, carries the panel's D/C). The I2C bus is the touch controller's; SCL is GPIO 33 on
+# the WROVER because PSRAM takes GPIO 16.
+buses:
+  spi: { pin_sck: 14, pin_mosi: 2 }
+  i2c: { pin_sda: 13, pin_scl: 33 }
+
+peripherals:
+  - id: lcd
+    component: spi/ili9341
+    config: { pin_cs: 5, pin_dc: 15 }
+  - id: touch
+    component: i2c/ns2009
+    config: { display: lcd }
+
+oa3:
+  base_url: https://price.grid-coordination.energy/openadr3/3.1.0
+  program_name: EELEC-012041131
+  display: lcd
+
+log:
+  tcp_port: 23

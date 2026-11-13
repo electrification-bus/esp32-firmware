@@ -114,10 +114,11 @@ data/                         LittleFS image source; everything here is flashed 
   html/config.html            Web portal page
   openapi.yml                 OpenAPI description of the device's REST API
 partitions/                   ESP32 flash partition tables, one CSV per flash size
-examples/                     Example projects and a copy/paste driver
+examples/                     Example projects
   demo/                       One settable output on GPIO 14; the Quick start's project
   sht20/ ssr/ bms/            device.yml (+ README) per example
   bridge-bess/                Nested bridge device (see doc/NestedBridgeExample.md)
+  oa3-price/                  OpenADR 3 price on a touch display (standalone)
   controller_example.cpp      Controller-mode sketch
 scripts/                      PlatformIO build hooks: generate_homie.py (pre-build generator),
                               add_project_include.py, lib_src_filter.py, littlefs_image.py
@@ -175,7 +176,7 @@ VSCode users: run `ebus-esp32` in the integrated terminal. The PlatformIO extens
 - **Specifying a device**
   - **Declaratively** (`device.yml` + the generator; the default path): [GenerateHomieDevice.md](doc/GenerateHomieDevice.md)
   - **In code** (hand-coded device/controller, no generator; type-safe descriptor tables + `on_set` handlers): [HandCodedDevice.md](doc/HandCodedDevice.md)
-- **Examples**: [examples/sht20/](examples/sht20/device.yml) (Modbus sensor), [examples/ssr/](examples/ssr/README.md) (relay on a GPIO), [examples/bms/](examples/bms/README.md) (BLE protocol, copy/paste), [examples/bridge-bess/](examples/bridge-bess/device.yml) (nested bridge)
+- **Examples**: [examples/sht20/](examples/sht20/device.yml) (Modbus sensor), [examples/ssr/](examples/ssr/README.md) (relay on a GPIO), [examples/bms/](examples/bms/README.md) (BLE protocol, its driver a project component), [examples/bridge-bess/](examples/bridge-bess/device.yml) (nested bridge), [examples/oa3-price/](examples/oa3-price/README.md) (OpenADR 3 price on a display, standalone)
 - **Writing a driver** (authoring a `NodeEntity` subclass — the reusable hardware unit, shared by both paths above): [WritingADriver.md](doc/WritingADriver.md)
 - **Peripherals** (hardware the project's `src/` and features use directly, such as a display, in any role; project components and `lib_deps:`): [Peripherals.md](doc/Peripherals.md)
 - **Picking pins for a board** (what Ethernet/PSRAM/flash have already taken, and this firmware's reference values): [GPIOPins.md](doc/GPIOPins.md)
