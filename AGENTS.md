@@ -4,18 +4,19 @@ Instructions for LLM coding assistants working in this repository. Personal addi
 
 ## What this is
 
-Arduino-framework firmware, built with PlatformIO, that makes ESP32 / ESP32-S3 / Olimex ESP32-POE-ISO boards act as eBus devices or controllers over the [Homie 5 MQTT convention](https://homieiot.github.io/). A device is a project outside this repo, described by its `device.yml`; `./ebus-esp32 generate <project>` turns it into the Homie node and property tree in the project's `.ebus/`. The portable core (Homie model, `/set` dispatch, controller, links, discovery) is the [cpp-sdk](https://github.com/electrification-bus/cpp-sdk) library, a git submodule at `lib/ebus_core/`.
+Arduino-framework firmware, built with PlatformIO, that makes ESP32, ESP32-S3 and ESP32-P4 boards act as eBus devices or controllers over the [Homie 5 MQTT convention](https://homieiot.github.io/). A device is a project outside this repo, described by its `device.yml`; `./ebus-esp32 generate <project>` turns it into the Homie node and property tree in the project's `.ebus/`. `device.role` is `device` (the default), `controller`, or `standalone` (no broker and no Homie). Peripherals (displays, touch panels, sensors) are drivers that app code and features use in any role, with a Homie node over them as an option (`doc/Peripherals.md`). An `oa3:` block adds an OpenADR 3 VEN built on [cpp-oa3](https://github.com/grid-coordination/cpp-oa3) (`doc/OpenADR3.md`). The portable core (Homie model, `/set` dispatch, controller, links, discovery) is the [cpp-sdk](https://github.com/electrification-bus/cpp-sdk) library, a git submodule at `lib/ebus_core/`.
 
 ## Key files
 
-- A project (user-owned, outside this repo): `device.yml` (device, mqtt, buses, nodes), `config-overlay.yml` merged over it at build time with the developer's secrets and local settings (never committed), optional hand-written code in `src/` and extra filesystem files in `data/`. The build writes everything into the project's `.ebus/`: `src/homie.cpp`, `data/config.yml`, `data/homie.yml`, `platformio.ini`, `build/<env>/`. Never edit `.ebus/` by hand.
+- A project (user-owned, outside this repo): `device.yml` (device, mqtt, buses, peripherals, nodes, oa3, lib_deps), `config-overlay.yml` merged over it at build time with the developer's secrets and local settings (never committed), optional hand-written code in `src/` (its entry points are `setup_app()`/`loop_app()` in `include/app.h`, and `#include <peripherals.h>` names its peripherals), its own components in `lib/<bus>/<name>.{h,cpp,yml}`, and extra filesystem files in `data/`. The build writes everything into the project's `.ebus/`: `src/homie.cpp`, `src/peripherals.{h,cpp}`, `lib/` (the project's components, staged), `data/config.yml`, `data/homie.yml`, `platformio.ini`, `build/<env>/`. Never edit `.ebus/` by hand.
 - `examples/<name>/`: sample projects; `examples/demo` is the usual one to build and flash for testing. A build in place writes `examples/<name>/.ebus/` (gitignored).
 - `ebus-esp32`: the CLI (generate, build, push, monitor, test). Python 3 with PyYAML. Commands take the project as their last argument.
 - `platformio/platformio.ini`: the tracked environments (Arduino-ESP32 3.x unsuffixed, `-arduino2` for 2.0.17).
-- `src/main.cpp`, `src/node/`, `src/platform/`: the firmware; a build links them into the project's `.ebus/src/`.
-- `lib/<bus>/<component>.{h,cpp,yml}`: drivers, one per component; `lib/platform/modbus/` is the shared Modbus queue. New drivers are contributed here.
+- `src/main.cpp`, `src/node/`, `src/platform/`, `src/peripheral/`: the firmware; a build links them into the project's `.ebus/src/`. `src/platform/oa3_port.cpp` is the ESP32 port of cpp-oa3's VEN client.
+- `include/peripheral/`: the `Peripheral` base (its lock, `peripheral<T>(id)`) and the `Display` and `Touch` interfaces.
+- `lib/<bus>/<component>.{h,cpp,yml}`: drivers, one per component: a Homie node (`gpio/digital_output`), a peripheral (`spi/ili9341`, `i2c/ns2009`), or a peripheral with a node over it (`i2c/bme280`). `lib/platform/modbus/` is the shared Modbus queue. Every `lib_deps` entry names an exact version. New drivers meant to be shared are contributed here.
 - `lib/ebus_core/`: the cpp-sdk submodule, pinned to a release tag. Core changes are PRs in cpp-sdk, followed by a submodule bump here.
-- `doc/`: user and developer guides; `doc/WritingADriver.md` is the reference for drivers.
+- `doc/`: user and developer guides; `doc/WritingADriver.md` is the reference for node drivers and `doc/Peripherals.md` for peripherals.
 
 ## Python environment
 
