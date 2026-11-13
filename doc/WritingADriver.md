@@ -157,6 +157,10 @@ When you need to support a chip this firmware doesn't ship yet, [ESPHome](https:
 
 This keeps the license clean and keeps the driver in the firmware's idiom — which is the whole point of reimplementing rather than vendoring a foreign runtime.
 
+## Peripheral drivers
+
+Hardware that app code or a feature uses directly, such as a display the board draws on, is a peripheral rather than a node: its class derives from `Peripheral` or a kind's interface (`Display`) instead of `NodeEntity`, publishes no Homie properties, and is listed under `peripherals:` in `device.yml`. `lib/spi/ili9341.*` is the first one. [Peripherals.md](Peripherals.md#writing-a-peripheral-component) describes the class, the yml's `peripheral:` block and the locking it needs.
+
 ## Using your driver
 
 Once the driver compiles, wire it into a device by either path:
@@ -168,5 +172,6 @@ Once the driver compiles, wire it into a device by either path:
 
 - [GenerateHomieDevice.md](GenerateHomieDevice.md) — assemble a device from drivers via `device.yml` (the easy default)
 - [HandCodedDevice.md](HandCodedDevice.md) — wire drivers into your project's `src/` by hand
+- [Peripherals.md](Peripherals.md): peripheral drivers, project components and `lib_deps:`
 - [`include/node/NodeEntity.h`](../include/node/NodeEntity.h) — the node-entity base class
 - [`include/node/NodeProperty.h`](../include/node/NodeProperty.h) — the runtime value API

@@ -49,7 +49,7 @@ def test_bms_example_counts_every_settable_in_its_component(cli, sandbox, monkey
     # The example's component lives in examples/bms/, outside the lib/<bus>/ search path.
     real = cli.find_component_yml
     monkeypatch.setattr(cli, "find_component_yml",
-                        lambda c: REPO / "examples/bms/serial_bms.yml" if c == "ble/serial_bms"
+                        lambda c: REPO / "examples/bms/lib/ble/serial_bms.yml" if c == "ble/serial_bms"
                         else real(c))
     sandbox.generate(load("examples/bms/device.yml"))
     assert "// 8 settable properties" in sandbox.homie_cpp

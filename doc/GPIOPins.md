@@ -104,6 +104,7 @@ What this means in `device.yml`:
   `buses.spi: { pin_sck: 14, pin_miso: 15, pin_mosi: 2 }` with its chip-select on 5. The
   reference values below use MISO 34 / MOSI 15 instead, to keep the strapping pin GPIO2
   out of the bus; use the UEXT set only for a module on the connector.
+- **The Olimex MOD-LCD2.8RTP uses UEXT pin 7 (GPIO15, MISO's pin) as its D/C line.** The panel is write-only, so leave `pin_miso` out of `buses.spi` and give GPIO15 to the display: `buses.spi: { pin_sck: 14, pin_mosi: 2 }` with `spi/ili9341`'s `pin_cs: 5, pin_dc: 15` ([Peripherals.md](Peripherals.md#example)). With `pin_miso: 15` as well, `generate` refuses GPIO15 as assigned twice.
 - **GPIO2, 14 and 15 are shared with the SD card** — free only while no card is
   inserted. GPIO2, 5 and 15 are boot strapping pins: a module that pulls one of them the
   wrong way at power-up can stop the board booting.
@@ -149,7 +150,7 @@ Bus pins go in device.yml's top-level `buses:` block, once per physical bus; onl
 |---|---|---|---|---|
 | `buses.rs485` (`pin_a`/`pin_b`) — all `modbus/*` | 36 / 4 | 36 / 4 | 6 / 7 | **44 / 43** |
 | `buses.i2c` (`pin_sda`/`pin_scl`) — all `i2c/*` | 13 / 16 | 13 / **14** | **8 / 9** | 5 / 6 |
-| `buses.spi` (`pin_sck`/`pin_miso`/`pin_mosi`) — all `spi/*` | see note | see note | 12 / 13 / 11 | 7 / 8 / 9 |
+| `buses.spi` (`pin_sck`/`pin_miso`/`pin_mosi`) — all `spi/*`; `pin_miso` optional for write-only `spi/ili9341` | see note | see note | 12 / 13 / 11 | 7 / 8 / 9 |
 | `spi/atm90e32_energy_meter` (`pin_cs1`/`pin_cs2`) | see note | see note | 15 / 16 | 1 / 2 |
 | `gpio/digital_output` | 14, 15, 2, 5 | 14, 15, 2, 5 | plenty | 1, 2, 3, 4 |
 

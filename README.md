@@ -177,6 +177,7 @@ VSCode users: run `ebus-esp32` in the integrated terminal. The PlatformIO extens
   - **In code** (hand-coded device/controller, no generator; type-safe descriptor tables + `on_set` handlers): [HandCodedDevice.md](doc/HandCodedDevice.md)
 - **Examples**: [examples/sht20/](examples/sht20/device.yml) (Modbus sensor), [examples/ssr/](examples/ssr/README.md) (relay on a GPIO), [examples/bms/](examples/bms/README.md) (BLE protocol, copy/paste), [examples/bridge-bess/](examples/bridge-bess/device.yml) (nested bridge)
 - **Writing a driver** (authoring a `NodeEntity` subclass — the reusable hardware unit, shared by both paths above): [WritingADriver.md](doc/WritingADriver.md)
+- **Peripherals** (hardware the project's `src/` and features use directly, such as a display, in any role; project components and `lib_deps:`): [Peripherals.md](doc/Peripherals.md)
 - **Picking pins for a board** (what Ethernet/PSRAM/flash have already taken, and this firmware's reference values): [GPIOPins.md](doc/GPIOPins.md)
 - **Following an OpenADR 3 price server** (the `oa3:` block, and `role: standalone` for a board with no broker): [OpenADR3.md](doc/OpenADR3.md)
 - **Wiring one property into another** (a reading onto a display, a state onto a relay, a value from another device — `logic/link`, no code): [Link.md](doc/Link.md)

@@ -146,11 +146,31 @@ Bus pins are a fact about the board, shared by every node on that bus, so they a
 |-----|------|---------|
 | `i2c`   | `pin_sda`, `pin_scl` | `i2c/*` — one `TwoWire`, started by the first node's `setup()` |
 | `rs485` | `pin_a`, `pin_b` | `modbus/*` — one UART; `pin_a` is the RS485 module's RXD pin, `pin_b` its TXD |
-| `spi`   | `pin_sck`, `pin_miso`, `pin_mosi` | `spi/*` — one `SPIClass`; chip-selects stay per node |
+| `spi`   | `pin_sck`, `pin_miso`, `pin_mosi` | `spi/*` — one `SPIClass`; chip-selects stay per node. `pin_miso` may be left out when every `spi/*` component in the build is write-only (`spi/ili9341`) |
+
+### peripherals
+
+A top-level `peripherals:` list declares hardware that the project's `src/` and the firmware's features use directly, in any role, without a Homie node. Each entry has an `id`, a `component` whose yml has a `peripheral:` block, and an optional `config:`; peripheral and node ids share one namespace. `generate` declares each as a static object in `.ebus/src/peripherals.h`. [Peripherals.md](Peripherals.md) describes them.
+
+```yaml
+peripherals:
+  - id: lcd
+    component: spi/ili9341
+    config: { pin_cs: 5, pin_dc: 15 }
+```
+
+### lib_deps
+
+A top-level `lib_deps:` list adds PlatformIO libraries for the project's own `src/`. Every entry, here and in a component's `generator.lib_deps`, names an exact version, and a library asked for at two versions is refused ([Peripherals.md](Peripherals.md#library-versions)).
+
+```yaml
+lib_deps:
+  - adafruit/Adafruit NeoPixel @ 1.12.3
+```
 
 ### oa3
 
-A top-level `oa3:` block builds in the OpenADR 3 VEN, in any role. Its keys are `base_url`, `program_name`, `program_id`, `poll_period_s` and `max_events`; [OpenADR3.md](OpenADR3.md) describes them, the VTN's CA certificate and the VEN's memory use.
+A top-level `oa3:` block builds in the OpenADR 3 VEN, in any role. Its keys are `base_url`, `program_name`, `program_id`, `poll_period_s`, `max_events` and `display`; [OpenADR3.md](OpenADR3.md) describes them, the VTN's CA certificate and the VEN's memory use.
 
 ```yaml
 oa3:
@@ -171,6 +191,7 @@ oa3:
 | `gpio/digital_output` | `DigitalOutput` | `pin`, `active_low`, `initial_state` |
 | `ble/gatt_device` | `GattDevice` | `address`, `name_filter`, `service_uuid`, `notify_uuid`, `write_uuid` |
 | `spi/atm90e32_energy_meter` | `EnergyMeter` | `buses.spi`; `pin_cs1`, `pin_cs2` |
+| `spi/ili9341` | `Ili9341` | a peripheral, listed under `peripherals:`: `buses.spi` (`pin_miso` optional); `pin_cs`, `pin_dc`, `rotation`, `spi_hz`; 320x240 TFT ([Peripherals.md](Peripherals.md)) |
 | `i2c/gme12864` | `GME12864` | `buses.i2c`; `address` (0x3C) — 0.96" SSD1306 OLED, settable `one-line`/`two-line`/`three-line` text |
 | `sim/battery_sim` | `BatterySim` | none; simulated battery data source for [NestedBridgeExample.md](NestedBridgeExample.md) |
 | `sim/proxy_info` | `ProxyInfo` | none; the `info` capability node of a proxied device |
@@ -287,7 +308,8 @@ Everything goes under the project's `.ebus/`:
 
 | Path | Contents |
 |---|---|
-| `src/` | `homie.cpp`, with links to the firmware's sources and to the project's own `src/` |
+| `src/` | `homie.cpp` and `peripherals.h`/`peripherals.cpp`, with links to the firmware's sources and to the project's own `src/` |
+| `lib/` | the project's own components, each `lib/<bus>/` staged as a PlatformIO library ([Project components](#project-components)) |
 | `data/` | the filesystem image source: this repo's `data/`, the project's `data/`, `homie.yml` and `config.yml` |
 | `platformio.ini` | the PlatformIO config for this build |
 | `build/<environment>/` | `firmware.bin` and `littlefs.bin` |
@@ -423,6 +445,7 @@ The `constructor` value is the argument list that follows the class name in the 
 | `{id}` | The `id:` value from the `nodes:` entry in `device.yml` |
 | `{config.KEY}` | The value of `KEY` under that node's `config:` block |
 | `{bus.NAME.KEY}` | The value of `KEY` under `buses: NAME:` — for pins shared by every node on a bus |
+| `{bus.NAME.KEY\|DEFAULT}` | The same, optional: `DEFAULT`, inserted as written, when `buses: NAME:` leaves `KEY` out (`{bus.spi.pin_miso\|-1}` in `spi/ili9341`) |
 
 Examples:
 
@@ -465,6 +488,12 @@ nodes:
 ```
 
 Run `ebus-esp32 generate` (or just build — the pre-build hook regenerates) and the new component will appear in `.ebus/src/homie.cpp` and `.ebus/data/homie.yml` automatically.
+
+A peripheral component has a `peripheral:` block and no Homie nodes, and is listed under `peripherals:` instead; see [Peripherals.md](Peripherals.md#writing-a-peripheral-component).
+
+### Project components
+
+A component may also live in the project, in its own `lib/<bus>/<name>.{h,cpp,yml}`, and is used like one in this repo. A project component may not share its `<bus>/<name>` with one in this repo's `lib/`; `generate` refuses the build and names the clash. See [Peripherals.md](Peripherals.md#project-components).
 
 ---
 

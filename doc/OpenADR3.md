@@ -30,8 +30,29 @@ The VTN's CA certificate goes in `data/certs/priceGrid-coordinationEnergy.ca` (s
 | `program_id` | one of the two | The program's id, fetched as `/programs/<id>`, at most 63 characters; with `program_name` as well, the name must match |
 | `poll_period_s` | no | Seconds between polls, 10 to 715827; the client's default is 900 |
 | `max_events` | no | Events the client holds, 1 to 64, default 2 |
+| `display` | no | The id of a `display` peripheral under `peripherals:`, to draw the [price screen](#price-screen) on ([Peripherals.md](Peripherals.md)) |
 
-`generate` validates the block (`oa3_config()` in `ebus-esp32`) and refuses an unknown key, a value of the wrong type, or one out of range. It copies `base_url`, `program_name`, `program_id` and `poll_period_s` into the `oa3:` section of `.ebus/data/config.yml`, read at boot. `max_events` sizes the client's event arrays, so it becomes the build flag `-DOA3_MAX_EVENTS`, along with `-DEBUS_OA3`.
+`generate` validates the block (`oa3_config()` in `ebus-esp32`) and refuses an unknown key, a value of the wrong type, or one out of range. It refuses a `display` that names no `display` peripheral. It copies `base_url`, `program_name`, `program_id`, `poll_period_s` and `display` into the `oa3:` section of `.ebus/data/config.yml`, read at boot. `max_events` sizes the client's event arrays, so it becomes the build flag `-DOA3_MAX_EVENTS`, along with `-DEBUS_OA3`.
+
+## Price screen
+
+With `display:`, the VEN draws the price on that display from its own task (`screen_begin()`, `screen_price()` and `screen_status()` in `src/platform/oa3_port.cpp`). Positions are fixed in pixels, down to y 240, for a 320x240 panel such as `spi/ili9341` in landscape:
+
+| Part | Shows |
+|---|---|
+| Header | `OpenADR 3 price` over a grey rule |
+| Price | The price in force as the VTN sent it, in large type; `waiting for a price` until the first evaluation, and `no price in force`, in yellow, when no interval covers the current time |
+| Units | `<currency>/<units>` |
+| Next change | `next change HH:MM UTC`: the next interval boundary, else the end of the interval in force, else `none` |
+| Status | The client's status, colored by `screen_status()` |
+
+| Status color | Statuses |
+|---|---|
+| Green | `OK` |
+| Yellow | `WAITING_FOR_CLOCK`, `RESOLVING_PROGRAM`, `STALE`, `TRUNCATED` |
+| Red | any other: `STOPPED`, `PROGRAM_NOT_FOUND`, `TRANSPORT_ERROR`, `HTTP_ERROR`, `PARSE_ERROR` |
+
+The price and status are redrawn when the client reports a change. Each redraw holds the display's `PeripheralLock`, so other code drawing on the same display does not interleave with it.
 
 ## CA certificate
 
@@ -75,6 +96,7 @@ Every line starts with `OA3:`.
 | `poll <status>, <n> events; internal free ..., largest ..., min ...; task stack free ...; arena high water ... of ...` | after each request: internal heap, the task's stack high-water mark and the parse arena's use |
 | `GET <host> failed: <error>` | the request failed before a response; a handshake or certificate failure adds `, TLS: <error>` |
 | `<level> <message>` | the client library's own log, at `info` and above |
+| `**ERROR -- oa3.display '<id>' is not a display peripheral` | the VEN runs without its price screen |
 | `**ERROR -- ...` | the VEN did not start: no `base_url`, no CA file, no PSRAM for its storage, or a configuration the client rejects |
 
 The client reads UTC from the clock NTP sets; until NTP has set it, the client's status is `WAITING_FOR_CLOCK` and it makes no request.

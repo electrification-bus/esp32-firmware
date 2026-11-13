@@ -1,9 +1,7 @@
 # JBD / Xiaoxiang Smart BMS over BLE.
 #
-# COPY/PASTE EXAMPLE. The driver this references does not live under lib/, so copy it in
-# first — see README.md in this folder:
+# The driver is a project component in this folder's lib/ble/ (see README.md):
 #
-#   cp examples/bms/serial_bms.{h,cpp,yml} lib/ble/
 #   cp -R examples/bms ~/bms          # a project of your own; add its config-overlay.yml
 #   ebus-esp32 run ~/bms
 #

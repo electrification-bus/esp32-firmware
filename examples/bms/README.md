@@ -3,14 +3,17 @@
 A worked protocol driver: BLE transport from the firmware, JBD framing and a charging policy
 from this folder.
 
-**This is copy/paste reference, not a buildable component.** `ebus-esp32 generate` only
-discovers components under `lib/<bus>/<name>.yml`, so `device.yml` cannot reach these
-files where they sit.
+**A project component.** The driver is in this project's `lib/ble/`, where `ebus-esp32
+generate` finds it as it finds the firmware's own components
+([doc/Peripherals.md](../../doc/Peripherals.md)).
 
 ## Using it
 
+Copy the driver into your own project's `lib/ble/`:
+
 ```bash
-cp examples/bms/serial_bms.{h,cpp,yml} lib/ble/
+mkdir -p <project>/lib/ble
+cp examples/bms/lib/ble/serial_bms.{h,cpp,yml} <project>/lib/ble/
 ```
 
 then add the node to your project's `device.yml`:
@@ -25,7 +28,7 @@ nodes:
 `ebus-esp32 build` pulls the BLE stack in once the component is actually used — and
 leaves it out of every build that isn't.
 
-This folder is a complete example project: with the driver copied in, `ebus-esp32 build examples/bms` builds it.
+This folder is a complete example project: `ebus-esp32 build examples/bms` builds it.
 
 ## Why it lives here and not in `lib/`
 
@@ -47,7 +50,7 @@ The split is worth seeing side by side:
 |---|---|---|
 | `lib/ble/ble_client.*` | ~300 | NimBLE, scanning, GATT, NVS — no device protocol |
 | `lib/ble/gatt_device.*` | ~200 | nothing; publishes notifications as hex |
-| `examples/bms/serial_bms.*` | ~610 | JBD frames, registers, MOSFETs, charging policy |
+| `examples/bms/lib/ble/serial_bms.*` | ~610 | JBD frames, registers, MOSFETs, charging policy |
 
 Before the split, one file held all three concerns at 923 lines.
 

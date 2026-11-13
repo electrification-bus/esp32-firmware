@@ -83,6 +83,7 @@ char oa3_base_url[256] = {0};
 char oa3_program_name[64] = {0};
 char oa3_program_id[64] = {0};
 uint32_t oa3_poll_period_s = 0;
+char oa3_display[32] = {0};
 #endif
 
 // Device passphrase for authenticated REST endpoints
@@ -431,6 +432,7 @@ bool loadPlatformConfiguration() {
   cfg_copy_str("oa3", "program_id",   "oa3_program_id",   oa3_program_id,   sizeof(oa3_program_id));
   JsonVariant v_oa3_poll = cfg_value("oa3", "poll_period_s", "oa3_poll_period_s");
   if (v_oa3_poll.is<uint32_t>()) oa3_poll_period_s = v_oa3_poll.as<uint32_t>();
+  cfg_copy_str("oa3", "display", "oa3_display", oa3_display, sizeof(oa3_display));
 #endif
   cfg_copy_str("device", "device_passphrase", "device_passphrase", device_passphrase, sizeof(device_passphrase));
 
