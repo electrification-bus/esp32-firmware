@@ -167,6 +167,33 @@ The driver's `loop()` samples the panel every `sample_ms` (default 20) and count
 
 A peripheral component names the config keys that refer to other peripherals in its `peripheral:` block, `references: { display: display }` for this one; `generate` checks each names a peripheral of that kind.
 
+## Sensors and Homie nodes over peripherals
+
+`i2c/bme280` is a peripheral with a Homie node over it. The driver, `Bme280`, reads the sensor every `interval_ms` (default 10000) in its `loop()` and keeps the result; `reading()` returns it (`valid`, `temperature_c`, `humidity_pct`, `pressure_hpa`, `at_ms`, `seq`) from any task without bus traffic. Before each read it checks that the sensor is still in normal mode. A sensor that lost power comes back in its sleep reset state, so the reading turns invalid and the driver configures the sensor again on the next read. `Bme280Node` publishes the reading as the `temperature`, `relative-humidity` and `air-pressure` properties, and retracts them while the reading is invalid (`lib/i2c/bme280.*`).
+
+As a node, as before, the driver and its node together under the node's id:
+
+```yaml
+nodes:
+  - component: i2c/bme280
+    id: environment
+    config: { address: 0x77 }
+```
+
+As a peripheral the app reads, published only when a node names it:
+
+```yaml
+peripherals:
+  - id: env
+    component: i2c/bme280
+    config: { address: 0x77 }
+nodes:
+  - id: environment
+    peripheral: env              # optional; without it nothing is published
+```
+
+A `nodes:` entry with `peripheral:` takes no `component:` or `config:` of its own. In the first form, the driver object is named after the node with `_peripheral` appended (`environment_peripheral`).
+
 ## Concurrency
 
 Any task may call a peripheral. Each `Peripheral` holds its own recursive FreeRTOS mutex (`include/peripheral/peripheral.h`), and every `Display` method takes it for the call. A sequence of calls that must not interleave with another task's, such as a redraw, holds a `PeripheralLock` for its scope; the calls inside take the mutex again, which a recursive mutex allows. `setup_peripherals()` and `loop_peripherals()` hold the lock around each peripheral's `setup()` and `loop()`.
@@ -179,7 +206,7 @@ A peripheral component is the same three files as a node component, `lib/<bus>/<
 
 The class derives from the interface for its kind (`Display` for a display) and implements its `do_*` methods; the public methods in the base take the mutex and call them. It overrides `setup()` for the hardware bring-up, which starts its bus itself (`ensure_spi_bus()` in `Ili9341::setup()`), and `loop()` when it has periodic work. It offers `native()` returning its library's object. The constructor does no hardware work.
 
-The yml has no Homie `nodes:`; it has the `peripheral:` and `generator:` blocks:
+A display or touch component's yml has no Homie `nodes:`; it has the `peripheral:` and `generator:` blocks:
 
 ```yaml
 peripheral:
@@ -199,7 +226,8 @@ generator:
 
 | Key | Description |
 |---|---|
-| `peripheral.kind` | What the class implements; `display` is the kind so far (`PeripheralKind::kDisplay`). A feature that takes a peripheral checks it: `oa3.display` must name a `display` |
+| `peripheral.kind` | What the class implements: `display`, `touch` or `sensor` (`PeripheralKind`). A feature that takes a peripheral checks it: `oa3.display` must name a `display` |
+| `node.class`, `node.header` | Optional: a Homie node class over the driver, constructed as `Class("<node id>", <driver>)`, with the yml's Homie `nodes:` as its topology ([Sensors and Homie nodes over peripherals](#sensors-and-homie-nodes-over-peripherals); `lib/i2c/bme280.yml`) |
 | `generator.class`, `header`, `constructor` | Required, as for a node component ([GenerateHomieDevice.md](GenerateHomieDevice.md#constructor-template-syntax)) |
 | `generator.config_defaults` | Values for `{config.KEY}` that `device.yml` may leave out |
 | `generator.lib_deps` | The libraries the driver needs, each at an exact version ([Library versions](#library-versions)) |

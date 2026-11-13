@@ -391,17 +391,17 @@ def test_a_node_with_a_peripherals_id_is_refused(cli, sandbox, capsys):
 
 
 def test_a_node_component_under_peripherals_is_refused(cli, sandbox, capsys):
-    doc = peripheral_doc([{"id": "env", "component": "i2c/bme280", "config": {"address": 0x76}}],
-                         buses={"i2c": {"pin_sda": 13, "pin_scl": 16}})
+    doc = peripheral_doc([{"id": "out", "component": "gpio/digital_output",
+                           "config": {"pin": 14, "active_low": False, "initial_state": False}}])
     err = refused(sandbox, capsys, doc)
-    assert "peripheral 'env': component 'i2c/bme280' is not a peripheral" in err
+    assert "peripheral 'out': component 'gpio/digital_output' is not a peripheral" in err
     assert "list it under nodes:" in err
 
 
 def test_a_peripheral_component_under_nodes_is_refused(cli, sandbox, capsys):
     doc = device_doc(nodes=[lcd()], buses=SPI)
     err = refused(sandbox, capsys, doc)
-    assert "node 'lcd': component 'spi/ili9341' is a peripheral; list it under peripherals:" in err
+    assert "node 'lcd': component 'spi/ili9341' is a peripheral with no Homie node; list it under peripherals:" in err
 
 
 def test_missing_peripheral_config_is_refused(cli, sandbox, capsys):
@@ -562,3 +562,73 @@ def test_touch_calibration_can_be_set(cli, sandbox):
                                     buses=SPI_I2C))
     cpp = (cli.GEN_SRC_DIR / "peripherals.cpp").read_text()
     assert '"lcd", 100, 3850, 400, 3920, true, false, false, 20, 150);' in cpp
+
+
+# ── a Homie node over a peripheral (i2c/bme280) ───────────────────────────────
+
+I2C = {"i2c": {"pin_sda": 13, "pin_scl": 16}}
+
+
+def env(pid="env", **config):
+    return {"id": pid, "component": "i2c/bme280", "config": {"address": 0x77, **config}}
+
+
+def homie_cpp_text(cli):
+    return (cli.GEN_SRC_DIR / "homie.cpp").read_text()
+
+
+def peripherals_cpp_text(cli):
+    return (cli.GEN_SRC_DIR / "peripherals.cpp").read_text()
+
+
+def test_bme280_node_shorthand_creates_driver_and_node(cli, sandbox):
+    sandbox.generate(device_doc([{"component": "i2c/bme280", "id": "environment",
+                                  "config": {"address": 0x77}}], buses=I2C))
+    assert 'Bme280 environment_peripheral("environment", 13, 16, 119, 10000);' in \
+        peripherals_cpp_text(cli)
+    assert "Peripheral* const peripheral_table[] = {&environment_peripheral};" in \
+        peripherals_cpp_text(cli)
+    assert 'Bme280Node environment("environment", environment_peripheral);' in homie_cpp_text(cli)
+    assert '#include "peripherals.h"' in homie_cpp_text(cli)
+    assert '"temperature", "Temperature", "float", "°C"' in homie_cpp_text(cli)
+
+
+def test_bme280_peripheral_published_by_a_node(cli, sandbox):
+    doc = peripheral_doc([env(interval_ms=5000)], buses=I2C,
+                         nodes=[{"id": "environment", "peripheral": "env"}])
+    sandbox.generate(doc)
+    assert 'Bme280 env("env", 13, 16, 119, 5000);' in peripherals_cpp_text(cli)
+    assert "extern Bme280 env;" in (cli.GEN_SRC_DIR / "peripherals.h").read_text()
+    assert 'Bme280Node environment("environment", env);' in homie_cpp_text(cli)
+
+
+def test_bme280_peripheral_without_a_node_publishes_nothing(cli, sandbox):
+    sandbox.generate(peripheral_doc([env()], buses=I2C, role="standalone"))
+    assert 'Bme280 env("env", 13, 16, 119, 10000);' in peripherals_cpp_text(cli)
+    assert "Bme280Node" not in homie_cpp_text(cli)
+
+
+def test_node_naming_an_unknown_peripheral_is_refused(cli, sandbox, capsys):
+    err = refused(sandbox, capsys, peripheral_doc([env()], buses=I2C,
+                                                  nodes=[{"id": "environment",
+                                                          "peripheral": "envx"}]))
+    assert "names peripheral 'envx', which is not under peripherals:" in err
+
+
+def test_node_naming_a_peripheral_takes_no_config(cli, sandbox, capsys):
+    err = refused(sandbox, capsys, peripheral_doc([env()], buses=I2C,
+                                                  nodes=[{"id": "environment", "peripheral": "env",
+                                                          "config": {"address": 0x76}}]))
+    assert "takes no component: or config: of its own" in err
+
+
+def test_node_over_a_peripheral_without_a_node_class_is_refused(cli, sandbox, capsys):
+    err = refused(sandbox, capsys, peripheral_doc([lcd()], nodes=[{"id": "screen",
+                                                                   "peripheral": "lcd"}]))
+    assert "is a peripheral with no Homie node" in err
+
+
+def test_bme280_shorthand_still_checks_its_config(cli, sandbox, capsys):
+    err = refused(sandbox, capsys, device_doc([{"component": "i2c/bme280", "id": "environment"}],
+                                              buses=I2C))
+    assert "missing required key(s): address" in err

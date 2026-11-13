@@ -1502,10 +1502,13 @@ def _generate(args) -> None:
     peripheral_vars     = []   # C++ names, in device.yml order, for the lookup table
     peripheral_kinds    = {}   # peripheral id -> its component's peripheral.kind
     peripheral_refs     = []   # (id, config key, value, kind it must name)
+    peripheral_info     = {}   # peripheral id -> {"component": ..., "var": ...}
 
-    def emit_peripheral(entry):
+    def emit_peripheral(entry, implicit=False):
         """One device.yml peripherals: entry: a driver object, named after its id, that app
-        code and features use directly (doc/Peripherals.md)."""
+        code and features use directly (doc/Peripherals.md). implicit: the driver a
+        `nodes: - component:` entry of a split component creates; it takes the node's id,
+        which emit_node() has already claimed. Returns the object's C++ name."""
         if not isinstance(entry, dict) or not entry.get("id") or not entry.get("component"):
             print(f"ERROR: device.yml peripherals: entry needs an id and a component, e.g.\n"
                   f"  - id: lcd\n    component: spi/ili9341\n  (got {entry!r})", file=sys.stderr)
@@ -1520,7 +1523,7 @@ def _generate(args) -> None:
             print(f"ERROR: device.yml peripheral id '{pid}' is longer than 31 characters "
                   f"(oa3.display and other references hold at most 31)", file=sys.stderr)
             sys.exit(1)
-        if sanitize_homie_id(pid) != pid:
+        if not implicit and sanitize_homie_id(pid) != pid:
             print(f"ERROR: device.yml peripheral id '{pid}' must be a Homie id: lower-case "
                   f"letters, digits and '-', starting with a letter or digit", file=sys.stderr)
             sys.exit(1)
@@ -1543,18 +1546,21 @@ def _generate(args) -> None:
                   f"field(s): {', '.join(missing)}", file=sys.stderr)
             sys.exit(1)
         # Peripheral and node ids share one namespace.
-        if pid in seen_node_ids:
-            print(f"ERROR: id '{pid}' is used more than once in peripherals: and nodes:",
-                  file=sys.stderr)
-            sys.exit(1)
-        seen_node_ids[pid] = component
-        var = _cvar(pid)
-        if var in seen_node_cvars:
-            print(f"ERROR: ids '{seen_node_cvars[var]}' and '{pid}' both become the C++ name "
-                  f"'{var}'. Change one so they differ by more than '-' versus '_'.",
-                  file=sys.stderr)
-            sys.exit(1)
-        seen_node_cvars[var] = pid
+        if implicit:
+            var = _cvar(pid) + "_peripheral"
+        else:
+            if pid in seen_node_ids:
+                print(f"ERROR: id '{pid}' is used more than once in peripherals: and nodes:",
+                      file=sys.stderr)
+                sys.exit(1)
+            seen_node_ids[pid] = component
+            var = _cvar(pid)
+            if var in seen_node_cvars:
+                print(f"ERROR: ids '{seen_node_cvars[var]}' and '{pid}' both become the C++ "
+                      f"name '{var}'. Change one so they differ by more than '-' versus '_'.",
+                      file=sys.stderr)
+                sys.exit(1)
+            seen_node_cvars[var] = pid
         ctor = gen["constructor"]
         pcfg = {**(gen.get("config_defaults") or {}), **pcfg}
         check_config_keys(pid, component, comp_path, ctor, pcfg, what="peripheral")
@@ -1579,10 +1585,12 @@ def _generate(args) -> None:
         peripheral_externs.append(f"extern {gen['class']} {var};")
         peripheral_vars.append(var)
         peripheral_kinds[pid] = kind
+        peripheral_info[pid] = {"component": component, "var": var}
         # peripheral.references: config keys that name another peripheral of a given kind
         # (a touch panel's display:), checked once every peripheral is known.
         for key, ref_kind in ((comp.get("peripheral") or {}).get("references") or {}).items():
             peripheral_refs.append((pid, key, pcfg.get(key), ref_kind))
+        return var
 
     def emit_node(entry, dev_access, setdev_addr, is_root, dev_id, dev_label):
         # dev_access: C++ device access prefix — "device->" (root) or "dev_x." (child)
@@ -1595,6 +1603,21 @@ def _generate(args) -> None:
         component = entry.get("component")
         node_id   = entry.get("id")
         node_cfg  = entry.get("config") or {}
+        # `peripheral: <id>` publishes a peripherals: entry as a node; its component and
+        # config are the peripheral's.
+        node_peripheral = entry.get("peripheral")
+        if node_peripheral is not None:
+            node_peripheral = str(node_peripheral)
+            if component or entry.get("config"):
+                print(f"ERROR: device.yml node '{node_id or node_peripheral}' names peripheral "
+                      f"'{node_peripheral}', so it takes no component: or config: of its own",
+                      file=sys.stderr)
+                sys.exit(1)
+            if node_peripheral not in peripheral_info:
+                print(f"ERROR: device.yml node '{node_id or node_peripheral}' names peripheral "
+                      f"'{node_peripheral}', which is not under peripherals:", file=sys.stderr)
+                sys.exit(1)
+            component = peripheral_info[node_peripheral]["component"]
         if not isinstance(node_cfg, dict):
             print(f"ERROR: device.yml has incorrect YAML in node '{node_id or component}'s "
                   f"config: block — check the indentation and syntax", file=sys.stderr)
@@ -1615,10 +1638,13 @@ def _generate(args) -> None:
                   f"{expected}", file=sys.stderr)
             sys.exit(1)
         comp = load_yaml_file(comp_path)
-        if comp.get("peripheral"):
+        # A split component: a peripheral driver with a Homie node class over it (node:).
+        node_blk = comp.get("node") if comp.get("peripheral") else None
+        if comp.get("peripheral") and not (isinstance(node_blk, dict) and node_blk.get("class")
+                                           and node_blk.get("header")):
             print(f"ERROR: device.yml node '{node_id or component}': component '{component}' "
-                  f"is a peripheral; list it under peripherals: (doc/Peripherals.md)",
-                  file=sys.stderr)
+                  f"is a peripheral with no Homie node; list it under peripherals: "
+                  f"(doc/Peripherals.md)", file=sys.stderr)
             sys.exit(1)
         gen = comp.get("generator")
         if not gen:
@@ -1681,16 +1707,28 @@ def _generate(args) -> None:
         # device.yml entry leaves out, so a template can reference a key without every
         # instance having to spell it. Merged before the check, so a defaulted key counts
         # as provided and an explicit device.yml value still wins.
-        node_cfg = {**(gen.get("config_defaults") or {}), **node_cfg}
-        check_config_keys(node_id, component, comp_path, ctor_tmpl, node_cfg)
-        check_bus_keys(node_id, component, comp_path, ctor_tmpl, buses_cfg)
-        for bus, key in present_bus_keys(ctor_tmpl, buses_cfg):
-            if _is_pin_key(key):
-                pin_uses[f"buses.{bus}.{key}"] = buses_cfg[bus][key]
-        for key in required_config_keys(ctor_tmpl):
-            if _is_pin_key(key):
-                pin_uses[f"node '{node_id}' config.{key}"] = node_cfg[key]
         comp_name = f"{comp_path.parent.name}/{comp_path.stem}"
+        node_var = _cvar(node_id)
+        if node_blk:
+            # The driver is checked and declared by emit_peripheral(): the named peripheral,
+            # or one this entry creates under the node's own id.
+            if node_peripheral is not None:
+                pvar = peripheral_info[node_peripheral]["var"]
+            else:
+                pvar = emit_peripheral({"id": node_id, "component": component,
+                                        "config": entry.get("config") or {}}, implicit=True)
+            includes.append(f"#include <{node_blk['header']}>")
+            decls.append(f'{node_blk["class"]} {node_var}("{_cpp_literal(str(node_id))}", {pvar});')
+        node_cfg = {**(gen.get("config_defaults") or {}), **node_cfg}
+        if not node_blk:
+            check_config_keys(node_id, component, comp_path, ctor_tmpl, node_cfg)
+            check_bus_keys(node_id, component, comp_path, ctor_tmpl, buses_cfg)
+            for bus, key in present_bus_keys(ctor_tmpl, buses_cfg):
+                if _is_pin_key(key):
+                    pin_uses[f"buses.{bus}.{key}"] = buses_cfg[bus][key]
+            for key in required_config_keys(ctor_tmpl):
+                if _is_pin_key(key):
+                    pin_uses[f"node '{node_id}' config.{key}"] = node_cfg[key]
         for dep in gen.get("lib_deps") or []:
             if dep not in used_lib_deps:
                 used_lib_deps.append(dep)
@@ -1699,14 +1737,14 @@ def _generate(args) -> None:
             link_entries.append((str(node_id), node_cfg))
         if comp_name not in used_components:
             used_components.append(comp_name)
-        includes.append(f"#include <{header}>")
         if registers is not None:
             decls.extend(registers_to_desc_table(registers, node_id))
         # The C++ object is named after the node id, but Homie ids allow hyphens and C++
         # names don't — same mapping as the property variables below. {id} in the
         # constructor still gets the real id string.
-        node_var = _cvar(node_id)
-        decls.append(f"{cls} {node_var}{fmt_ctor(ctor_tmpl, node_id, node_cfg, registers, buses_cfg)};")
+        if not node_blk:
+            includes.append(f"#include <{header}>")
+            decls.append(f"{cls} {node_var}{fmt_ctor(ctor_tmpl, node_id, node_cfg, registers, buses_cfg)};")
         setups.append(f"    {node_var}.setup();")
         loops.append(f"    {node_var}.loop();")
         if setdev_addr:
@@ -1955,6 +1993,7 @@ def _generate(args) -> None:
     # .ebus/src/homie.cpp
     lines = [_HOMIE_CPP_HEADER]
     lines.append("#include <homie/Device.h>")
+    lines.append('#include "peripherals.h"')
     lines.append("#include <homie/Property.h>")
     lines.append("")
     if includes:
