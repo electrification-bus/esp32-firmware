@@ -53,7 +53,7 @@ The build uses cpp-oa3 pinned in `ebus-esp32` (`OA3_LIB_DEP`):
 oa3=https://github.com/grid-coordination/cpp-oa3.git#v0.1.0
 ```
 
-That tag is not published yet, so until it is, a build needs `EBUS_CPP_OA3`, which names another source, for example a local checkout:
+`EBUS_CPP_OA3` names another source for a build, for example a local checkout:
 
 ```sh
 EBUS_CPP_OA3=symlink:///path/to/cpp-oa3 ./ebus-esp32 build <project>
