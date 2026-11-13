@@ -65,6 +65,12 @@ void mdns_services_advertise(MdnsBackend* backend, const MdnsServicesConfig* cfg
     result->txt[MDNS_SERVICE_LOG] = TXT_OK;
   }
 
-  advertise_one(backend, MDNS_SERVICE_EBUS, cfg->ebus_port, txt_build_ebus(&id, &rec), &rec,
-                result);
+  // A standalone build has no broker, so no _ebus._tcp.
+  if (cfg->ebus_port != 0) {
+    advertise_one(backend, MDNS_SERVICE_EBUS, cfg->ebus_port, txt_build_ebus(&id, &rec), &rec,
+                  result);
+  } else {
+    result->status[MDNS_SERVICE_EBUS] = MDNS_SERVICE_SKIPPED;
+    result->txt[MDNS_SERVICE_EBUS] = TXT_OK;
+  }
 }

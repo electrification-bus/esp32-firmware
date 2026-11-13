@@ -75,8 +75,15 @@ char firmware_version[16] = "1.0.0";
 char firmware_url[128] = {0};
 char fs_url[128] = {0};
 
-// Homie role: "device" or "controller"
-char homie_role[16] = "device";
+// device.role: "device", "controller" or "standalone"
+char device_role[16] = "device";
+
+#ifdef EBUS_OA3
+char oa3_base_url[256] = {0};
+char oa3_program_name[64] = {0};
+char oa3_program_id[64] = {0};
+uint32_t oa3_poll_period_s = 0;
+#endif
 
 // Device passphrase for authenticated REST endpoints
 char device_passphrase[64] = {0};
@@ -414,7 +421,17 @@ bool loadPlatformConfiguration() {
   cfg_copy_str("device", "firmware_url",     "firmware_url",     firmware_url,     sizeof(firmware_url));
   cfg_copy_str("device", "fs_url",            "fs_url",           fs_url,           sizeof(fs_url));
 
-  cfg_copy_str("device", "homie_role",        "homie_role",        homie_role,        sizeof(homie_role));
+  // homie_role is role's older name, still found in hand-written config files.
+  cfg_copy_str("device", "homie_role",        "homie_role",        device_role,       sizeof(device_role));
+  cfg_copy_str("device", "role",              "role",              device_role,       sizeof(device_role));
+
+#ifdef EBUS_OA3
+  cfg_copy_str("oa3", "base_url",     "oa3_base_url",     oa3_base_url,     sizeof(oa3_base_url));
+  cfg_copy_str("oa3", "program_name", "oa3_program_name", oa3_program_name, sizeof(oa3_program_name));
+  cfg_copy_str("oa3", "program_id",   "oa3_program_id",   oa3_program_id,   sizeof(oa3_program_id));
+  JsonVariant v_oa3_poll = cfg_value("oa3", "poll_period_s", "oa3_poll_period_s");
+  if (v_oa3_poll.is<uint32_t>()) oa3_poll_period_s = v_oa3_poll.as<uint32_t>();
+#endif
   cfg_copy_str("device", "device_passphrase", "device_passphrase", device_passphrase, sizeof(device_passphrase));
 
   JsonVariant v_mqtt_mode = cfg_value("mqtt", "mode", "mqtt_mode");
@@ -429,6 +446,10 @@ bool loadPlatformConfiguration() {
     }
     Serial.printf("CONFIG: mqtt_mode=%s\n", mode_str);
   }
+#ifdef EBUS_ROLE_STANDALONE
+  // No broker: a discovery mode would only browse for one, blocking the loop each time.
+  mqtt_mode = MQTT_MODE_CONFIGURED_ONLY;
+#endif
 
   // Broker service types to browse, in priority order. generate validates the list; a
   // hand-written config.yml gets each bad entry skipped, and the default if none is left.

@@ -410,7 +410,7 @@ static bool mqtt_fetch_and_save_root_cert() {
   secureClient.setTimeout(15);
 
   // Connect on the MQTTS port directly - same cert chain, guaranteed open
-  ntp_lookup_wait();   // connect() resolves mqtt_host; see network.cpp
+  network_dns_prime(mqtt_host);   // connect() resolves mqtt_host; see network.cpp
   Serial.printf("TLS: Connecting insecurely to %s:%u...\n", mqtt_host, mqtt_port);
   if (!secureClient.connect(mqtt_host, mqtt_port)) {
     Serial.printf("TLS: ERROR - Failed to connect to %s:%u\n", mqtt_host, mqtt_port);
@@ -696,7 +696,7 @@ static bool broker_connect() {
   mqtt_client.setWill(lwt_topic, HOMIE_STATE_LOST, true, homie_qos(true));
   Serial.printf("MQTT: will '%s' = '%s'\n", lwt_topic, HOMIE_STATE_LOST);
 
-  ntp_lookup_wait();   // begin()/connect() resolve mqtt_host; see network.cpp
+  network_dns_prime(mqtt_host);   // begin()/connect() resolve mqtt_host; see network.cpp
   mqtt_client.begin(mqtt_host, mqtt_port, *transportClient);
   mqtt_client.onMessageAdvanced(subscriber_callback);   // begin() clears it
   _mqtt_begun = true;

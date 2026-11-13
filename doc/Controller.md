@@ -1,12 +1,12 @@
 # Homie Controller
 
-A controller build discovers, monitors and commands other Homie 5 devices on the MQTT broker. Controller mode is exclusive: when `ENABLE_CONTROLLER` is defined (generate defines it for `homie_role: controller`), `src/main.cpp` compiles its controller branch instead of the device branch, so the board publishes no nodes or properties of its own. The controller API is declared in [`lib/ebus_core/include/homie/controller.h`](https://github.com/electrification-bus/cpp-sdk/blob/main/include/homie/controller.h) and implemented in `lib/ebus_core/src/homie/controller.cpp`, part of the portable core; it stores what it discovers in the same `Device`, `Node` and `Property` classes the device role uses.
+A controller build discovers, monitors and commands other Homie 5 devices on the MQTT broker. Controller mode is exclusive: when `ENABLE_CONTROLLER` is defined (generate defines it for `role: controller`), `src/main.cpp` compiles its controller branch instead of the device branch, so the board publishes no nodes or properties of its own. The controller API is declared in [`lib/ebus_core/include/homie/controller.h`](https://github.com/electrification-bus/cpp-sdk/blob/main/include/homie/controller.h) and implemented in `lib/ebus_core/src/homie/controller.cpp`, part of the portable core; it stores what it discovers in the same `Device`, `Node` and `Property` classes the device role uses.
 
 ## Enabling it
 
-Set `homie_role: controller` in the `device:` section of `device.yml` and declare no `nodes:` or `children:`. generate then adds `-DENABLE_CONTROLLER` to the env's `build_flags` in the generated `.ebus/platformio.ini`, so both `src/main.cpp` and the `logic/link` component under `lib/` compile as a controller. Build and flash as usual (`ebus-esp32 build`, `ebus-esp32 run`). The firmware also reports the role in the mDNS TXT record and the portal status.
+Set `role: controller` in the `device:` section of `device.yml` and declare no `nodes:` or `children:`. generate then adds `-DENABLE_CONTROLLER` to the env's `build_flags` in the generated `.ebus/platformio.ini`, so both `src/main.cpp` and the `logic/link` component under `lib/` compile as a controller. Build and flash as usual (`ebus-esp32 build`, `ebus-esp32 run`). The firmware also reports the role in the mDNS TXT record and the portal status.
 
-Do not add `-DENABLE_CONTROLLER` by hand to `build_src_flags` (in `platformio_local.ini` or elsewhere). That flag reaches only `src/`, so with `homie_role: device` it gives a split build: `main.cpp` runs the controller branch while `lib/logic/link.cpp` and the generated `homie.cpp` are built for a device, and the device's nodes and links are never set up.
+Do not add `-DENABLE_CONTROLLER` by hand to `build_src_flags` (in `platformio_local.ini` or elsewhere). That flag reaches only `src/`, so with `role: device` it gives a split build: `main.cpp` runs the controller branch while `lib/logic/link.cpp` and the generated `homie.cpp` are built for a device, and the device's nodes and links are never set up.
 
 The serial log starts with `===== HOMIE CONTROLLER =====` instead of the device banner, and `CONTROLLER: Ready - discovering devices...` once discovery is subscribed.
 
@@ -29,7 +29,7 @@ A controller's configured work is a top-level `links:` list in `device.yml`. Eac
 
 ```yaml
 device:
-  homie_role: controller
+  role: controller
 
 links:
   - id: pressure-to-display

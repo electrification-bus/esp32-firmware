@@ -41,8 +41,16 @@ extern char firmware_version[16];
 extern char firmware_url[128];
 extern char fs_url[128];
 
-// Homie role: "device" or "controller"
-extern char homie_role[16];
+// device.role: "device", "controller" or "standalone"
+extern char device_role[16];
+
+#ifdef EBUS_OA3
+// oa3: in device.yml, the OpenADR 3 VEN (doc/OpenADR3.md)
+extern char oa3_base_url[256];
+extern char oa3_program_name[64];
+extern char oa3_program_id[64];
+extern uint32_t oa3_poll_period_s;   // 0: the client's default
+#endif
 
 // Device passphrase for authenticated REST endpoints (OTA, registration)
 extern char device_passphrase[64];

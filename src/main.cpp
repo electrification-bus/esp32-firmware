@@ -4,6 +4,8 @@
  * Build modes:
  *   - Device mode (default): Publishes own nodes/properties to MQTT broker
  *   - Controller mode (ENABLE_CONTROLLER): Discovers and monitors other Homie devices
+ *   - Standalone mode (EBUS_ROLE_STANDALONE): No broker and no Homie; runs the features
+ *     device.yml enables (EBUS_OA3: the OpenADR 3 VEN)
  *
  * Network architecture:
  *   - CONFIG_WIFI_AP: WiFi AP captive portal + API; WiFi STA for user network
@@ -21,6 +23,9 @@
 #include <platform/portal_prefs.h>
 #include <LittleFS.h>
 #include <homie.h>
+#ifdef EBUS_OA3
+#include <platform/oa3_port.h>
+#endif
 
 // Web server is always started (captive portal on WiFi AP boards, HTTP API on ethernet boards)
 
@@ -182,11 +187,15 @@ static void loop_recovery() {
 // ============================================================================
 // SHARED BRING-UP - used by the controller and device halves below
 // ============================================================================
-#ifdef ENABLE_CONTROLLER
+#if defined(ENABLE_CONTROLLER)
 #define ROLE_TAG "CONTROLLER"
+#elif defined(EBUS_ROLE_STANDALONE)
+#define ROLE_TAG "STANDALONE"
 #else
 #define ROLE_TAG "DEVICE"
 #endif
+
+#ifndef EBUS_ROLE_STANDALONE
 
 // Role hooks, defined in the controller or device half.
 static void own_state_topic(char* buf, size_t len);         // this firmware's $state topic
@@ -215,6 +224,7 @@ static void watch_own_state() {
     if (mqtt_transport.connected()) mqtt_transport.subscribe(state_topic, homie_qos(true));
     Serial.printf(ROLE_TAG ": watching %s for a stale 'lost'\n", state_topic);
 }
+#endif  // EBUS_ROLE_STANDALONE
 
 // Wait for at least one network interface to get an IP
 static void wait_for_network() {
@@ -274,6 +284,7 @@ static bool setup_network() {
     return true;
 }
 
+#ifndef EBUS_ROLE_STANDALONE
 // Wait for MQTT broker to be available
 // In discovery-only mode, only wait for mDNS (ignore configured broker)
 static void wait_for_broker() {
@@ -313,12 +324,13 @@ static void setup_broker(mqtt_reconnect_callback_t on_reconnect) {
 
     mqtt_set_reconnect_callback(on_reconnect);
 }
+#endif  // EBUS_ROLE_STANDALONE
 
-// Called first from loop() by both roles; the role's own servicing follows.
+// Called first from loop() by every role; the role's own servicing follows.
 static void loop_housekeeping() {
     log_tcp_loop();     // accept monitors, push buffered log; never blocks
     captive_portal_loop();
-
+#ifndef EBUS_ROLE_STANDALONE
     // Deferred out of on_state_observed(); see the note at _state_reassert_pending.
     // Publishing the real state echoes back, matches, and clears; it cannot re-arm itself.
     if (_state_reassert_pending) {
@@ -331,12 +343,13 @@ static void loop_housekeeping() {
         mqtt_restart();
         setup_mqtt();
     }
+    loop_mqtt();
+#endif
     loop_ntp();
     loop_mdns();
-    loop_mqtt();
 }
 
-#ifdef ENABLE_CONTROLLER
+#if defined(ENABLE_CONTROLLER)
 // ============================================================================
 // CONTROLLER MODE - discovers and monitors other Homie devices
 // ============================================================================
@@ -403,6 +416,10 @@ void setup() {
     // on another, through the discovery cache above (see doc/Link.md).
     setup_controller_links();
 
+#ifdef EBUS_OA3
+    setup_oa3();
+#endif
+
     memstats();
 
     Serial.println("CONTROLLER: Ready - discovering devices...");
@@ -460,6 +477,32 @@ void loop() {
                      stats.devices_discovered, stats.properties_discovered,
                      stats.messages_received, stats.messages_dropped);
     }
+}
+
+#elif defined(EBUS_ROLE_STANDALONE)
+// ============================================================================
+// STANDALONE MODE - no broker and no Homie; runs the features device.yml enables
+// ============================================================================
+
+void setup() {
+    Serial.begin(115200);
+    delay(1000);
+
+    Serial.println("\n\n===== STANDALONE =====");
+
+    if (!setup_network()) return;
+
+#ifdef EBUS_OA3
+    setup_oa3();
+#endif
+
+    memstats();
+}
+
+void loop() {
+    if (_recovery_mode) { loop_recovery(); return; }
+    loop_housekeeping();
+    delay(1);   // nothing else runs here; leave the core to the feature tasks
 }
 
 #else
@@ -570,6 +613,10 @@ void setup() {
 
     setup_homie();
 
+#ifdef EBUS_OA3
+    setup_oa3();
+#endif
+
     memstats();
 }
 
@@ -579,4 +626,4 @@ void loop() {
     loop_homie();
 }
 
-#endif // ENABLE_CONTROLLER
+#endif // ENABLE_CONTROLLER / EBUS_ROLE_STANDALONE

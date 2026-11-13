@@ -62,7 +62,7 @@ device:
   manufacturer: Example Manufacturer
   model: ESP32-POE-ISO
   serial_number:   # leave empty to use device_id
-  homie_role: device  # "device" or "controller"
+  role: device  # "device", "controller" or "standalone"
   device_passphrase: ""  # set it in config-overlay.yml; generate refuses an empty or "changeme" value
 
 # WiFi station. WiFi-AP builds (CONFIG_WIFI_AP, e.g. esp32-s3-devkitc-1) join ssid when it

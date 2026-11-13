@@ -15,9 +15,10 @@ void loop_mdns();
 
 // Start SNTP once an interface has a lease (main task only; see network.cpp).
 void loop_ntp();
-// Call on the main task before any hostByName() (MQTT connect, OTA pull): waits until
-// loop_ntp()'s NTP server lookup is no longer pending. Returns at once when none is.
-void ntp_lookup_wait();
+// Call before anything that resolves host (MQTT connect, OTA pull, the OA3 VEN's GET),
+// from any task: makes the cache-clearing first lookup after an address change safely
+// (see network.cpp). False when host does not resolve.
+bool network_dns_prime(const char* host);
 
 bool client_connected();
 
