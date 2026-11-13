@@ -51,6 +51,8 @@ extern char oa3_program_name[64];
 extern char oa3_program_id[64];
 extern uint32_t oa3_poll_period_s;   // 0: the client's default
 extern char oa3_display[32];         // a peripherals: id; "" draws nothing
+extern bool oa3_notifications;       // follow the VTN's MQTT notifications
+extern bool oa3_exclusive_tls;       // one TLS session at a time (the classic ESP32)
 #endif
 
 // Device passphrase for authenticated REST endpoints (OTA, registration)

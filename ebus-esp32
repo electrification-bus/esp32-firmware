@@ -1259,7 +1259,7 @@ def device_role(device: dict, device_yml: Path) -> str:
 # The oa3: block (doc/OpenADR3.md): the OpenADR 3 VEN, in any role. Its runtime keys are
 # copied into config.yml; max_events sizes the client's event arrays, so it is a build flag.
 OA3_KEYS = {"base_url": str, "program_name": str, "program_id": str, "poll_period_s": int,
-            "display": str,
+            "display": str, "notifications": bool, "exclusive_tls": bool,
             "max_events": int}
 OA3_MAX_EVENTS_DEFAULT = 2
 # The cpp-oa3 library, pinned. EBUS_CPP_OA3 names another source, e.g. a local checkout:
@@ -1279,9 +1279,10 @@ def oa3_config(cfg: dict):
         want = OA3_KEYS.get(key)
         if want is None:
             problems.append(f"{key}: unknown key (known: {', '.join(OA3_KEYS)})")
-        elif value is not None and (not isinstance(value, want) or isinstance(value, bool)):
-            problems.append(f"{key}: must be {'a string' if want is str else 'an integer'}, "
-                            f"got {value!r}")
+        elif value is not None and not (isinstance(value, bool) if want is bool else
+                                        isinstance(value, want) and not isinstance(value, bool)):
+            kind = {str: "a string", int: "an integer", bool: "true or false"}[want]
+            problems.append(f"{key}: must be {kind}, got {value!r}")
     url = block.get("base_url")
     if not url:
         problems.append("base_url: required, e.g. "
@@ -2203,6 +2204,13 @@ def _generate(args) -> None:
     if oa3:
         config_doc["oa3"] = {k: oa3[k] for k in ("base_url", "program_name", "program_id",
                                                  "poll_period_s", "display") if oa3.get(k)}
+        # MQTT notifications; exclusive_tls defaults on for an original ESP32, which has
+        # room for one TLS session (doc/OpenADR3.md, 'Memory').
+        if oa3.get("notifications"):
+            config_doc["oa3"]["notifications"] = True
+            config_doc["oa3"]["exclusive_tls"] = (
+                oa3["exclusive_tls"] if oa3.get("exclusive_tls") is not None
+                else env_is_classic_esp32(device.get("environment")))
 
     out_config = GEN_DATA_DIR / "config.yml"
     with open(out_config, "w", encoding="utf-8") as f:

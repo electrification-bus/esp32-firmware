@@ -13,6 +13,8 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <NetworkClientSecure.h>
+#include <MQTTClient.h>
+#include <mbedtls/x509.h>
 #include <LittleFS.h>
 #include <esp_heap_caps.h>
 #include <new>
@@ -21,6 +23,7 @@
 #include <time.h>
 
 #include <oa3/client/ven_client.h>
+#include <oa3/client/mqtt_session.h>
 
 #ifndef OA3_TASK_STACK
 #define OA3_TASK_STACK 8192   // porting.md: at least 6 KB; the spike bottomed at 2.6 KB free of 8
@@ -37,11 +40,38 @@
 #ifndef OA3_CA_MAX
 #define OA3_CA_MAX 4096       // one PEM root
 #endif
+#ifndef OA3_MQTT_READ_BUF
+#define OA3_MQTT_READ_BUF 8192   // a price-server notification is about 3.5 KB (porting.md)
+#endif
 
 // gettimeofday() before NTP has synchronized reads 1970; anything before this is unset.
 #define OA3_CLOCK_FLOOR_S 1577836800LL   // 2020-01-01T00:00:00Z
 
 namespace {
+
+// The internal-heap low during one operation (an HTTPS request, an MQTT connect), from
+// ESP-IDF's local minimum monitor, with the largest internal block just before it. The
+// lifetime minimum in the poll line can only fall, so it cannot tell the two apart.
+class LocalLow {
+public:
+    explicit LocalLow(const char* what, const char* host) : _what(what), _host(host) {
+        _largest = heap_caps_get_largest_free_block(kCaps);
+        _monitoring = heap_caps_monitor_local_minimum_free_size_start() == ESP_OK;
+    }
+    ~LocalLow() {
+        const size_t low = heap_caps_get_minimum_free_size(kCaps);
+        if (_monitoring) heap_caps_monitor_local_minimum_free_size_stop();
+        Serial.printf("OA3: %s %s: internal low-water %u, largest block before %u\n", _what,
+                      _host, (unsigned)low, (unsigned)_largest);
+    }
+
+private:
+    static constexpr uint32_t kCaps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+    const char* _what;
+    const char* _host;
+    size_t _largest;
+    bool _monitoring;
+};
 
 // A response body from HTTPClient's stream: Content-Length bytes when the server sent one,
 // otherwise until it closes the connection, and never past the request's deadline.
@@ -109,6 +139,7 @@ public:
         const uint32_t deadline = millis() + timeout_ms;
         if (!host_of(req.url)) return oa3::HttpResult::kInvalidUrl;
         if (!network_dns_prime(_host)) return oa3::HttpResult::kDnsFailed;
+        LocalLow low("GET", _host);
 
         // Each phase gets what is left of the one budget. The header read is bounded per
         // gap between lines (HTTPClient's setTimeout), not in total.
@@ -188,7 +219,154 @@ public:
     uint32_t monotonic_ms() override { return millis(); }
 };
 
+// The PEM root for host, from /certs/ under mqtt_build_cert_path()'s name.
+bool read_ca(const char* host, char* buf, size_t len) {
+    char path[96];
+    mqtt_build_cert_path(host, path, sizeof(path));
+    File f = LittleFS.open(path, FILE_READ);
+    if (!f) {
+        Serial.printf("OA3: no CA certificate for %s at %s; verifying it against the public "
+                      "root CAs\n", host, path);
+        return false;
+    }
+    size_t n = f.size();
+    if (n >= len) {
+        Serial.printf("OA3: **ERROR -- %s is %u bytes, more than %u\n", path, (unsigned)n,
+                      (unsigned)len - 1);
+        f.close();
+        return false;
+    }
+    f.readBytes(buf, n);
+    buf[n] = '\0';
+    f.close();
+    Serial.printf("OA3: CA certificate %s\n", path);
+    return true;
+}
+
+// One MQTT 3.1.1 session over arduino-mqtt, driven from the OA3 task (porting.md, MqttSession).
+// The broker's CA comes from /certs/<host>.ca, named by mqtt_build_cert_path() as the VTN's
+// is, else the public root CAs, unless the client passes one. disconnect() always stops the network client, which
+// frees the TLS session: MQTTClient::disconnect() returns early once the link is gone.
+class ArduinoMqttSession final : public oa3::MqttSession {
+public:
+    oa3::MqttResult connect(const oa3::MqttConnectOptions& o, bool* session_present) override {
+        disconnect();
+        if (!o.host || !o.host[0] || !o.client_id || !o.client_id[0]) {
+            return oa3::MqttResult::kInvalidArgument;
+        }
+        if (strlen(o.host) >= sizeof(_host)) return oa3::MqttResult::kInvalidArgument;
+        strcpy(_host, o.host);   // MQTTClient keeps the pointer it is given
+        if (!network_dns_prime(_host)) return oa3::MqttResult::kDnsFailed;
+
+        Client* net = &_plain;
+        if (o.tls) {
+            if (!o.verify) {
+                _secure.setInsecure();
+            } else if (o.ca_pem) {
+                _secure.setCACert(o.ca_pem);
+            } else if (load_ca_for(_host)) {
+                _secure.setCACert(_ca);
+            } else if (!tls_trust_public_roots(_secure)) {
+                return oa3::MqttResult::kTlsVerifyFailed;
+            }
+            _secure.setHandshakeTimeout((o.timeout_ms + 999) / 1000);
+            net = &_secure;
+        }
+        LocalLow low("MQTT connect", _host);
+        MQTTClient& m = mqtt();
+        m.begin(_host, o.port, *net);
+        m.onMessageAdvanced(on_mqtt_message);   // begin() clears it
+        m.setKeepAlive(o.keepalive_s);
+        m.setCleanSession(o.clean_session);
+        m.setTimeout(o.timeout_ms);
+        if (!m.connect(o.client_id)) {
+            const int rc = m.returnCode();
+            const lwmqtt_err_t err = m.lastError();
+            char text[96] = "";
+            const int tls = o.tls ? _secure.lastError(text, sizeof(text)) : 0;
+            Serial.printf("OA3: MQTT connect to %s:%u failed (lwmqtt %d, return code %d%s%s)\n",
+                          _host, (unsigned)o.port, (int)err, rc, tls < -1 ? ", TLS: " : "",
+                          tls < -1 ? text : "");
+            disconnect();
+            if (rc >= 1 && rc <= 3) return oa3::MqttResult::kRefused;
+            if (rc == 4 || rc == 5) return oa3::MqttResult::kNotAuthorized;
+            if (err == LWMQTT_NETWORK_TIMEOUT) return oa3::MqttResult::kTimeout;
+            if (err == LWMQTT_NETWORK_FAILED_CONNECT) {
+                if (tls == MBEDTLS_ERR_X509_CERT_VERIFY_FAILED) {
+                    return oa3::MqttResult::kTlsVerifyFailed;
+                }
+                return tls < -1 ? oa3::MqttResult::kTlsFailed : oa3::MqttResult::kConnectFailed;
+            }
+            return oa3::MqttResult::kIoError;
+        }
+        if (session_present) *session_present = m.sessionPresent();
+        return oa3::MqttResult::kOk;
+    }
+
+    void disconnect() override {
+        if (_mqtt) _mqtt->disconnect();
+        _secure.stop();
+        _plain.stop();
+    }
+
+    oa3::MqttResult subscribe(const char* filter, uint8_t qos, uint32_t timeout_ms) override {
+        if (!connected()) return oa3::MqttResult::kNotConnected;
+        mqtt().setTimeout(timeout_ms);
+        if (mqtt().subscribe(filter, qos)) return oa3::MqttResult::kOk;
+        return mqtt().lastError() == LWMQTT_FAILED_SUBSCRIPTION ? oa3::MqttResult::kSubscribeFailed
+                                                                : oa3::MqttResult::kIoError;
+    }
+
+    oa3::MqttResult unsubscribe(const char* filter, uint32_t timeout_ms) override {
+        if (!connected()) return oa3::MqttResult::kNotConnected;
+        mqtt().setTimeout(timeout_ms);
+        return mqtt().unsubscribe(filter) ? oa3::MqttResult::kOk : oa3::MqttResult::kIoError;
+    }
+
+    oa3::MqttResult poll(uint32_t max_wait_ms, oa3::MqttMessageFn on_message, void* ctx) override {
+        (void)max_wait_ms;   // the client passes 0; loop() handles what has arrived
+        if (!_mqtt || !_mqtt->connected()) return oa3::MqttResult::kConnectionLost;
+        _on_message = on_message;
+        _ctx = ctx;
+        const bool ok = _mqtt->loop();
+        _on_message = nullptr;
+        return ok && _mqtt->connected() ? oa3::MqttResult::kOk : oa3::MqttResult::kConnectionLost;
+    }
+
+    bool connected() const override { return _mqtt && _mqtt->connected(); }
+
+private:
+    // Constructed on first use: its buffers are allocated then (in PSRAM above 4 KB where the
+    // board has it), so a build that never connects pays nothing.
+    MQTTClient& mqtt() {
+        if (!_mqtt) {
+            static MQTTClient m(OA3_MQTT_READ_BUF, 512);
+            _mqtt = &m;
+            m.ref = this;
+        }
+        return *_mqtt;
+    }
+
+    static void on_mqtt_message(MQTTClient* client, char topic[], char bytes[], int length) {
+        auto* self = static_cast<ArduinoMqttSession*>(client->ref);
+        if (!self || !self->_on_message) return;
+        oa3::MqttMessage msg{topic, bytes, static_cast<size_t>(length), 1, false, false};
+        self->_on_message(self->_ctx, msg);
+    }
+
+    bool load_ca_for(const char* host) { return read_ca(host, _ca, sizeof(_ca)); }
+
+    NetworkClientSecure _secure;
+    NetworkClient _plain;
+    MQTTClient* _mqtt = nullptr;
+    oa3::MqttMessageFn _on_message = nullptr;
+    void* _ctx = nullptr;
+    char _host[128];
+    char _ca[OA3_CA_MAX];
+};
+
 ArduinoHttpTransport _http;
+ArduinoMqttSession _mqtt_session;
 SntpClock _clock;
 char _ca[OA3_CA_MAX];
 char _ca_host[128];
@@ -329,17 +507,24 @@ void on_price(void*, const oa3::PriceInfo& p) {
 
 void on_status(void*, const oa3::VenStatusInfo& s) {
     screen_status(s);
-    Serial.printf("OA3: status %s (http %s, %d; %u failures; retry in %lu s)\n",
+    Serial.printf("OA3: status %s (http %s, %d; %u failures; retry in %lu s)",
                   oa3::to_string(s.status), oa3::to_string(s.http_result), s.http_status,
                   (unsigned)s.consecutive_failures, (unsigned long)(s.retry_in_ms / 1000));
+    if (s.notify != oa3::NotifyState::kOff) {
+        Serial.printf("; notify %s (mqtt %s; %u failures; %lu notifications)",
+                      oa3::to_string(s.notify), oa3::to_string(s.mqtt_result),
+                      (unsigned)s.mqtt_failures, (unsigned long)s.notifications);
+    }
+    Serial.println();
 }
 
 // After each request: the memory the v0.1.0 soak watches for drift.
 void log_poll(const oa3::VenClient& client) {
     const uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
-    Serial.printf("OA3: poll %s, %u events; internal free %u, largest %u, min %u; "
+    Serial.printf("OA3: poll %s, notify %s, %u events; internal free %u, largest %u, min %u; "
                   "task stack free %u; arena high water %u of %u\n",
-                  oa3::to_string(client.status().status), (unsigned)client.event_count(),
+                  oa3::to_string(client.status().status), oa3::to_string(client.status().notify),
+                  (unsigned)client.event_count(),
                   (unsigned)heap_caps_get_free_size(caps),
                   (unsigned)heap_caps_get_largest_free_block(caps),
                   (unsigned)heap_caps_get_minimum_free_size(caps),
@@ -363,7 +548,7 @@ void oa3_task(void* arg) {
     }
 }
 
-// The PEM root for base_url's host, from /certs/ under mqtt_build_cert_path()'s name.
+// The PEM root for base_url's host.
 bool load_ca(const char* base_url) {
     const char* host = strstr(base_url, "://");
     host = host ? host + 3 : base_url;
@@ -371,27 +556,7 @@ bool load_ca(const char* base_url) {
     if (len == 0 || len >= sizeof(_ca_host)) return false;
     memcpy(_ca_host, host, len);
     _ca_host[len] = '\0';
-
-    char path[96];
-    mqtt_build_cert_path(_ca_host, path, sizeof(path));
-    File f = LittleFS.open(path, FILE_READ);
-    if (!f) {
-        Serial.printf("OA3: no CA certificate for %s at %s; verifying it against the public "
-                      "root CAs\n", _ca_host, path);
-        return false;
-    }
-    size_t n = f.size();
-    if (n >= sizeof(_ca)) {
-        Serial.printf("OA3: **ERROR -- %s is %u bytes, more than %u\n", path, (unsigned)n,
-                      (unsigned)sizeof(_ca) - 1);
-        f.close();
-        return false;
-    }
-    f.readBytes(_ca, n);
-    _ca[n] = '\0';
-    f.close();
-    Serial.printf("OA3: CA certificate %s\n", path);
-    return true;
+    return read_ca(_ca_host, _ca, sizeof(_ca));
 }
 
 // The client's event arrays and parse arena (about 38 KB with OA3_MAX_EVENTS=2), allocated
@@ -418,6 +583,16 @@ bool make_storage(oa3::VenStorage* out) {
     for (size_t i = 0; i < 2 * n; i++) new (&events[i]) oa3::Event();
     static oa3::JsonArena arena(arena_buf, OA3_PORT_ARENA_SIZE);
     *out = oa3::VenStorage{events, events + n, n, &arena};
+    if (oa3_notifications) {
+        void* notes = heap_caps_aligned_alloc(alignof(oa3::NotificationStorage),
+                                              sizeof(oa3::NotificationStorage), caps);
+        if (!notes) {
+            Serial.printf("OA3: **ERROR -- no memory for the notification storage (%u bytes)\n",
+                          (unsigned)sizeof(oa3::NotificationStorage));
+            return false;
+        }
+        out->notifications = new (notes) oa3::NotificationStorage();
+    }
     _arena = out->arena;
     return true;
 }
@@ -441,14 +616,21 @@ void setup_oa3() {
     }
     oa3::VenStorage storage;
     if (!make_storage(&storage)) return;
-    static oa3::VenClient client(_http, _clock, storage);
+    static oa3::VenClient client(_http, _clock, storage, &_mqtt_session);
     _client = &client;
+    static char client_id[48];
+    snprintf(client_id, sizeof(client_id), "oa3-%s", getDeviceID());
 
     oa3::VenConfig c{};
     c.base_url = oa3_base_url;
     if (oa3_program_name[0]) c.program_name = oa3_program_name;
     if (oa3_program_id[0]) c.program_id = oa3_program_id;
     if (oa3_poll_period_s) c.poll_period_s = oa3_poll_period_s;
+    if (oa3_notifications) {
+        c.notifications = oa3::NotificationMode::kMqtt;
+        c.exclusive_tls = oa3_exclusive_tls;
+        c.mqtt_client_id = client_id;
+    }
     c.on_price_change = on_price;
     c.on_status = on_status;
     c.log = oa3::LogSink{on_log, nullptr, oa3::LogLevel::kInfo};
@@ -456,9 +638,13 @@ void setup_oa3() {
         Serial.println("OA3: **ERROR -- the oa3: configuration is not valid; the VEN is not started");
         return;
     }
-    Serial.printf("OA3: VEN for %s at %s, up to %u events\n",
+    Serial.printf("OA3: VEN for %s at %s, up to %u events; notifications %s%s\n",
                   oa3_program_name[0] ? oa3_program_name : oa3_program_id, oa3_base_url,
-                  (unsigned)OA3_MAX_EVENTS);
+                  (unsigned)OA3_MAX_EVENTS, oa3_notifications ? "MQTT as " : "off",
+                  oa3_notifications ? client_id : "");
+    if (oa3_notifications) {
+        Serial.printf("OA3: exclusive_tls %s\n", oa3_exclusive_tls ? "on" : "off");
+    }
     xTaskCreatePinnedToCore(oa3_task, "oa3", OA3_TASK_STACK, &client, 1, nullptr, 1);
 }
 
