@@ -87,6 +87,21 @@ lcd.native().drawCircle(160, 120, 40, Display::kGreen);
 
 A project that uses a library of its own in `src/` adds it with [`lib_deps:`](#lib_deps).
 
+A project's `src/` gets two optional hooks in every role, declared in `include/app.h`: `setup_app()` once at the end of `setup()`, with the peripherals and features up, and `loop_app()` on every pass of `loop()`, on the loop task. The firmware's defaults (`src/main.cpp`) do nothing:
+
+```cpp
+#include <app.h>
+#include <peripherals.h>
+
+static void on_touch(void*, const TouchState& s) {
+    if (s.pressed) Serial.printf("touched at %d,%d\n", s.x, s.y);
+}
+
+void setup_app() {
+    touch.on_touch(on_touch, nullptr);
+}
+```
+
 ### From a feature
 
 Firmware code built for every project cannot include `<peripherals.h>`, so it looks a peripheral up by id and type:
@@ -106,12 +121,51 @@ Display* d = peripheral<Display>("lcd");   // nullptr when device.yml lists no d
 | Method | Does |
 |---|---|
 | `width()`, `height()` | The panel's size in pixels, after rotation |
+| `rotation()` | 0-3, quarter turns from the panel's native orientation |
 | `clear(color)` | Fills the screen |
 | `fill_rect(x, y, w, h, color)` | Fills a rectangle |
 | `text(x, y, s, size, color, bg)` | Text with its top-left corner at `x,y`, on a `bg`-colored box, in the library's built-in font; size 1 is its base size and larger sizes multiply it |
 | `flush()` | Sends buffered drawing to the panel; a driver that draws straight to the panel (`Ili9341`) does nothing here |
 
 Colors are RGB565. A monochrome panel lights any nonzero color. The interface names `kBlack`, `kWhite`, `kRed`, `kGreen`, `kBlue`, `kYellow` and `kGrey`.
+
+## Touch
+
+`include/peripheral/touch.h` is the interface of a touch panel over a display. The first driver is `i2c/ns2009`, the touch controller of an Olimex MOD-LCD2.8RTP from revision C on:
+
+```yaml
+buses:
+  spi: { pin_sck: 14, pin_mosi: 2 }
+  i2c: { pin_sda: 13, pin_scl: 33 }        # ESP32-POE-ISO-WROVER UEXT
+
+peripherals:
+  - id: lcd
+    component: spi/ili9341
+    config: { pin_cs: 5, pin_dc: 15 }
+  - id: touch
+    component: i2c/ns2009
+    config: { display: lcd }
+```
+
+The driver's `loop()` samples the panel every `sample_ms` (default 20) and counts a press or a release after two agreeing samples. It maps raw readings to the display's pixels through its calibration and the display's current `rotation()`, so `x` and `y` match what was drawn there. A held finger's position is taken one sample late, so the last reading before lift-off, which can pass the pressure threshold with a coordinate near an edge, never becomes the reported position.
+
+| Call | Does |
+|---|---|
+| `state()` | The latest `TouchState`: `pressed`, `x`, `y` (the last position while pressed, the release position after) and `since_ms` (`millis()` of the last press or release). No bus traffic; any task |
+| `on_touch(fn, ctx)` | Registers `void fn(void* ctx, const TouchState&)`, called on each press and each release, on the loop task, with the touch peripheral locked |
+
+`i2c/ns2009`'s `config:` keys, with Olimex's values as defaults (`lib/i2c/ns2009.yml`):
+
+| Key | Default | |
+|---|---|---|
+| `display` | (required) | The id of the display the panel covers; `generate` refuses one that names no display |
+| `address` | `0x48` | |
+| `x_min`, `x_max`, `y_min`, `y_max` | 200, 3850, 400, 3920 | Raw readings at the panel's edges |
+| `swap_xy`, `invert_x`, `invert_y` | false, false, true | How the panel's axes sit against the display's native (rotation 0) orientation |
+| `sample_ms` | 20 | |
+| `z_threshold` | 150 | The pressure above which the panel counts as pressed |
+
+A peripheral component names the config keys that refer to other peripherals in its `peripheral:` block, `references: { display: display }` for this one; `generate` checks each names a peripheral of that kind.
 
 ## Concurrency
 

@@ -522,3 +522,43 @@ def test_long_peripheral_id_is_refused(cli, sandbox, capsys):
 def test_missing_peripheral_bus_key_names_the_peripheral(cli, sandbox, capsys):
     err = refused(sandbox, capsys, peripheral_doc([lcd()], buses={"spi": {"pin_sck": 14}}))
     assert "peripheral 'lcd'" in err
+
+
+# ── touch (i2c/ns2009) and peripheral references ──────────────────────────────
+
+SPI_I2C = {"spi": {"pin_sck": 14, "pin_mosi": 2}, "i2c": {"pin_sda": 13, "pin_scl": 33}}
+
+
+def touch(display="lcd", **config):
+    return {"id": "touch", "component": "i2c/ns2009", "config": {"display": display, **config}}
+
+
+def test_touch_over_a_display_is_emitted_with_olimex_defaults(cli, sandbox):
+    sandbox.generate(peripheral_doc([lcd(), touch()], buses=SPI_I2C, role="standalone"))
+    cpp = (cli.GEN_SRC_DIR / "peripherals.cpp").read_text()
+    assert ('Ns2009 touch("touch", 13, 33, 72, "lcd", 200, 3850, 400, 3920, false, false, '
+            'true, 20, 150);') in cpp
+    assert "Peripheral* const peripheral_table[] = {&lcd, &touch};" in cpp
+    assert "extern Ns2009 touch;" in (cli.GEN_SRC_DIR / "peripherals.h").read_text()
+
+
+def test_touch_listed_before_its_display_is_accepted(cli, sandbox):
+    sandbox.generate(peripheral_doc([touch(), lcd()], buses=SPI_I2C, role="standalone"))
+
+
+def test_touch_naming_no_display_is_refused(cli, sandbox, capsys):
+    err = refused(sandbox, capsys, peripheral_doc([lcd(), touch("screen")], buses=SPI_I2C))
+    assert "peripheral 'touch': config.display 'screen' names no display" in err
+    assert "(lcd)" in err
+
+
+def test_touch_naming_a_non_display_is_refused(cli, sandbox, capsys):
+    err = refused(sandbox, capsys, peripheral_doc([lcd(), touch("touch")], buses=SPI_I2C))
+    assert "config.display 'touch' names no display" in err
+
+
+def test_touch_calibration_can_be_set(cli, sandbox):
+    sandbox.generate(peripheral_doc([lcd(), touch(x_min=100, invert_y=False, swap_xy=True)],
+                                    buses=SPI_I2C))
+    cpp = (cli.GEN_SRC_DIR / "peripherals.cpp").read_text()
+    assert '"lcd", 100, 3850, 400, 3920, true, false, false, 20, 150);' in cpp

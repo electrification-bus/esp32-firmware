@@ -24,9 +24,13 @@
 #include <LittleFS.h>
 #include <homie.h>
 #include <peripheral/peripheral.h>
+#include <app.h>
 #ifdef EBUS_OA3
 #include <platform/oa3_port.h>
 #endif
+
+__attribute__((weak)) void setup_app() {}
+__attribute__((weak)) void loop_app() {}
 
 // Web server is always started (captive portal on WiFi AP boards, HTTP API on ethernet boards)
 
@@ -332,6 +336,7 @@ static void loop_housekeeping() {
     log_tcp_loop();     // accept monitors, push buffered log; never blocks
     captive_portal_loop();
     loop_peripherals();
+    loop_app();
 #ifndef EBUS_ROLE_STANDALONE
     // Deferred out of on_state_observed(); see the note at _state_reassert_pending.
     // Publishing the real state echoes back, matches, and clears; it cannot re-arm itself.
@@ -426,6 +431,8 @@ void setup() {
     setup_oa3();
 #endif
 
+    setup_app();
+
     memstats();
 
     Serial.println("CONTROLLER: Ready - discovering devices...");
@@ -505,6 +512,8 @@ void setup() {
 #ifdef EBUS_OA3
     setup_oa3();
 #endif
+
+    setup_app();
 
     memstats();
 }
@@ -630,6 +639,8 @@ void setup() {
 #ifdef EBUS_OA3
     setup_oa3();
 #endif
+
+    setup_app();
 
     memstats();
 }
