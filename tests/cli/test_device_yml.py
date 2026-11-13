@@ -210,7 +210,9 @@ def test_buses_block_must_be_a_mapping(sandbox, capsys):
 
 def test_bus_pins_are_substituted_into_the_constructor(sandbox):
     sandbox.generate(device_doc([bme280()], buses={"i2c": {"pin_sda": 13, "pin_scl": 16}}))
-    assert 'BME280 env("env", 13, 16, 0x76);' in sandbox.homie_cpp
+    peripherals = (sandbox.cli.GEN_SRC_DIR / "peripherals.cpp").read_text()
+    assert 'Bme280 env_peripheral("env", 13, 16, 0x76, 10000);' in peripherals
+    assert 'Bme280Node env("env", env_peripheral);' in sandbox.homie_cpp
 
 
 # ── generated output ──────────────────────────────────────────────────────────

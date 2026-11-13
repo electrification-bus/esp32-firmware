@@ -124,9 +124,10 @@ id: panel-main            # fixed literal — logs a warning (two units collide 
 
 | Field       | Required | Description |
 |-------------|----------|-------------|
-| `component` | yes | Path to the component: `<bus>/<name>` (matches `lib/<bus>/<name>.yml`) |
+| `component` | yes, unless `peripheral` | Path to the component: `<bus>/<name>` (matches `lib/<bus>/<name>.yml`) |
 | `id`        | no  | The instance's Homie node id — `a-z`, `0-9` and `-` only, at most 31 characters (see [Id and topic lengths](#id-and-topic-lengths)). Defaults to the component's own node id. The generated C++ object is named after it with `-` mapped to `_` (`display-gme12864` → `display_gme12864`) |
 | `config`    | no  | Key-value pairs substituted into the component's constructor template — per-device details such as an address, never bus pins |
+| `peripheral` | instead of `component` | The id of a `peripherals:` entry to publish as this node, for a component with a Homie node over its driver (`i2c/bme280`; [Peripherals.md](Peripherals.md#sensors-and-homie-nodes-over-peripherals)). Takes no `component:` or `config:` |
 
 ### Components are types; `nodes:` entries are instances
 
@@ -489,7 +490,7 @@ nodes:
 
 Run `ebus-esp32 generate` (or just build — the pre-build hook regenerates) and the new component will appear in `.ebus/src/homie.cpp` and `.ebus/data/homie.yml` automatically.
 
-A peripheral component has a `peripheral:` block and no Homie nodes, and is listed under `peripherals:` instead; see [Peripherals.md](Peripherals.md#writing-a-peripheral-component).
+A peripheral component has a `peripheral:` block and is listed under `peripherals:`; one with a `node:` block as well (`i2c/bme280`) can also be listed under `nodes:` as before. See [Peripherals.md](Peripherals.md#writing-a-peripheral-component).
 
 ### Project components
 

@@ -30,9 +30,11 @@ nodes:
         value: 0.0
 extensions: []
 implementation: homie-esp32-firmware
-# I2C pins come from device.yml's top-level buses: block, shared by every i2c/* node.
-# The only per-node config is the sensor's I2C address: 0x76 (SDO low, the usual
-# breakout default) or 0x77 (SDO high). Example:
+# A peripheral (doc/Peripherals.md) with a Homie node over it. I2C pins come from
+# device.yml's top-level buses: block. config: address, 0x76 (SDO low, the usual breakout
+# default) or 0x77 (SDO high); interval_ms between reads (default 10000).
+#
+# As a node, as before: the driver and its node together, under the node's id.
 #
 #   buses:
 #     i2c: { pin_sda: 13, pin_scl: 16 }
@@ -42,12 +44,29 @@ implementation: homie-esp32-firmware
 #       config:
 #         address: 0x76
 #
+# As a peripheral app code reads (env.reading()), published as a node only if listed:
+#
+#   peripherals:
+#     - id: env
+#       component: i2c/bme280
+#       config: { address: 0x77 }
+#   nodes:
+#     - id: environment
+#       peripheral: env
+#
 # Reference pins by board are in doc/GPIOPins.md (WROVER boards must move SCL off
 # GPIO 16/17 — PSRAM uses those pins).
-generator:
-  class: BME280
+peripheral:
+  kind: sensor
+node:
+  class: Bme280Node
   header: i2c/bme280.h
-  constructor: '("{id}", {bus.i2c.pin_sda}, {bus.i2c.pin_scl}, {config.address})'
+generator:
+  class: Bme280
+  header: i2c/bme280.h
+  constructor: '("{id}", {bus.i2c.pin_sda}, {bus.i2c.pin_scl}, {config.address}, {config.interval_ms})'
+  config_defaults:
+    interval_ms: 10000
   lib_deps:
     # The BME280 library depends on these two without versions; listing them first pins them.
     - adafruit/Adafruit Unified Sensor @ 1.1.15
