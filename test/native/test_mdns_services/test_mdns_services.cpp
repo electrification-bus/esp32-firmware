@@ -164,6 +164,20 @@ static void test_unknown_role_is_device(void) {
   TEST_ASSERT_EQUAL_UINT8(EBUS_ROLE_DEVICE, id.roles);
 }
 
+// A standalone build has no broker: ebus_port 0 skips _ebus._tcp.
+static void test_no_ebus_port_skips_ebus(void) {
+  RecordingBackend b;
+  MdnsServicesConfig cfg = full_config();
+  cfg.ebus_port = 0;
+  MdnsServicesResult r;
+  mdns_services_advertise(&b, &cfg, &r);
+  TEST_ASSERT_EQUAL_UINT8(MDNS_SERVICE_SKIPPED, r.status[MDNS_SERVICE_EBUS]);
+  TEST_ASSERT_EQUAL_UINT8(MDNS_SERVICE_ADVERTISED, r.status[MDNS_SERVICE_HTTP]);
+  for (int i = 0; i < b.count; i++) {
+    TEST_ASSERT_NULL(strstr(b.lines[i], "_ebus._tcp"));
+  }
+}
+
 static void test_backend_refusal_is_reported(void) {
   RecordingBackend b;
   b.refuse = true;
@@ -195,6 +209,7 @@ int main(int, char**) {
   RUN_TEST(test_full_config);
   RUN_TEST(test_controller_with_defaults);
   RUN_TEST(test_unknown_role_is_device);
+  RUN_TEST(test_no_ebus_port_skips_ebus);
   RUN_TEST(test_backend_refusal_is_reported);
   RUN_TEST(test_build_failure_is_reported);
   return UNITY_END();

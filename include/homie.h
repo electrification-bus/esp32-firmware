@@ -7,7 +7,7 @@ class Device;
 void setup_ebus_mdns();
 void setup_homie();
 void loop_homie();
-// Controller builds only (-DENABLE_CONTROLLER, set from device.yml's homie_role by
+// Controller builds only (-DENABLE_CONTROLLER, set from device.yml's role by
 // `ebus-esp32 generate`): the top-level links: list. The generator always emits both
 // pairs — empty when the role does not use them — so either main.cpp path links.
 void setup_controller_links();

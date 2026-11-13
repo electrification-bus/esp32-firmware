@@ -156,7 +156,7 @@ Extra files for the filesystem go in the project's `data/`.
 
 ## Controller mode
 
-A controller — a device that discovers and monitors *other* Homie devices instead of publishing its own nodes — is selected by `homie_role: controller` in `device.yml`, which makes `generate` add the **`ENABLE_CONTROLLER`** build flag. That switches `main.cpp` to the controller branch: `controller_init()`, `controller_setup_discovery()`, and the discovery/stats loop, all from [`lib/ebus_core/include/homie/controller.h`](https://github.com/electrification-bus/cpp-sdk/blob/main/include/homie/controller.h).
+A controller — a device that discovers and monitors *other* Homie devices instead of publishing its own nodes — is selected by `role: controller` in `device.yml`, which makes `generate` add the **`ENABLE_CONTROLLER`** build flag. That switches `main.cpp` to the controller branch: `controller_init()`, `controller_setup_discovery()`, and the discovery/stats loop, all from [`lib/ebus_core/include/homie/controller.h`](https://github.com/electrification-bus/cpp-sdk/blob/main/include/homie/controller.h).
 
 In this mode you do **not** implement `register_homie_properties()` / `setup_homie()` / `loop_homie()` — the controller branch of `main.cpp` drives everything via the controller API. Fuller controller documentation lives in [`Controller.md`](Controller.md).
 

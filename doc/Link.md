@@ -132,12 +132,12 @@ a controller would. It needs the broker, and the target device must be up to act
 ### On a controller
 
 A link whose ends are both on other devices is, in Homie's terms, controller work — and a
-board can be dedicated to it. Set `homie_role: controller` and list the links under a
+board can be dedicated to it. Set `role: controller` and list the links under a
 top-level `links:` instead of as nodes:
 
 ```yaml
 device:
-  homie_role: controller
+  role: controller
 
 links:
   - id: sht20-to-display

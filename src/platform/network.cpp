@@ -316,7 +316,7 @@ static const char* get_os_version() {
 void mdns_register_services() {
   MdnsServicesConfig cfg = {};
   cfg.device_id = getDeviceID();
-  cfg.homie_role = homie_role;
+  cfg.homie_role = device_role;
   cfg.manufacturer = device_manufacturer;
   cfg.model = device_model;
   cfg.serial = device_serial;
@@ -326,7 +326,11 @@ void mdns_register_services() {
   cfg.os_version = get_os_version();
   cfg.mac = get_primary_mac();
   cfg.http_port = 80;
+#ifdef EBUS_ROLE_STANDALONE
+  cfg.ebus_port = 0;
+#else
   cfg.ebus_port = mqtt_port;
+#endif
   // _telnet._tcp, the serial log stream, so a monitor can find the device by name
   // instead of by IP. Only advertised when the listener is actually up.
   cfg.log_port = log_tcp_running() ? log_tcp_get_port() : 0;
@@ -399,8 +403,12 @@ bool setup_wifi() {
 // The names are looked up asynchronously: dns_gethostbyname() runs on the tcpip thread
 // (tcpip_callback) and its callback stores the result, which loop_ntp() collects on a
 // later pass, so a lookup never blocks the main loop. Our own lookup must not be
-// pending at a cache clear either, so every main-task hostByName() caller (MQTT
-// connect, the TLS root-cert fetch, OTA pull) calls ntp_lookup_wait() first.
+// pending at a cache clear either, and the OA3 task resolves names too, so every
+// caller that resolves a name (MQTT connect, the TLS root-cert fetch, OTA pull, the
+// OA3 VEN) calls network_dns_prime() first. It makes that first, cache-clearing
+// hostByName() itself, under _dns_mutex, once no NTP lookup is pending; an NTP round
+// starts only while it can take _dns_mutex. The caller's own lookup then finds the
+// flags current and clears nothing.
 //
 // A new lease starts a lookup round of every name. A name that fails keeps its last
 // address, if it has one, and SNTP runs on whatever addresses exist. While any name
@@ -473,17 +481,39 @@ static bool ntp_lookups_pending() {
   return pending;
 }
 
-void ntp_lookup_wait() {
-  if (!_ntp_round_active || !ntp_lookups_pending()) return;
-  Serial.println("NTP: waiting for the NTP server lookup to finish before resolving");
-  unsigned long start = millis();
-  while (ntp_lookups_pending()) {
-    if (millis() - start > NTP_LOOKUP_WAIT_MAX_MS) {
-      Serial.println("NTP: WARNING server lookup still pending, continuing");
-      return;
+static StaticSemaphore_t _dns_mutex_buf;
+static SemaphoreHandle_t _dns_mutex = nullptr;
+
+static SemaphoreHandle_t dns_mutex() {
+  static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+  portENTER_CRITICAL(&mux);
+  if (_dns_mutex == nullptr) _dns_mutex = xSemaphoreCreateMutexStatic(&_dns_mutex_buf);
+  portEXIT_CRITICAL(&mux);
+  return _dns_mutex;
+}
+
+bool network_dns_prime(const char* host) {
+  xSemaphoreTake(dns_mutex(), portMAX_DELAY);
+  if (ntp_lookups_pending()) {
+    Serial.println("NTP: waiting for the NTP server lookup to finish before resolving");
+    unsigned long start = millis();
+    while (ntp_lookups_pending()) {
+      if (millis() - start > NTP_LOOKUP_WAIT_MAX_MS) {
+        Serial.println("NTP: WARNING server lookup still pending, continuing");
+        break;
+      }
+      vTaskDelay(pdMS_TO_TICKS(10));
     }
-    delay(10);
   }
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  IPAddress ip;
+  bool ok = Network.hostByName(host, ip) == 1;
+#else
+  (void)host;
+  bool ok = true;   // 2.0.x has no cache clear; the caller's own lookup reports failure
+#endif
+  xSemaphoreGive(_dns_mutex);
+  return ok;
 }
 
 // all: look up every name; otherwise only the names that failed last round.
@@ -567,6 +597,12 @@ void loop_ntp() {
   } else if (!_ntp_next_armed || (long)(millis() - _ntp_next_at) < 0) {
     return;
   }
+  // Not while another task is in network_dns_prime(); the next pass tries again.
+  if (xSemaphoreTake(dns_mutex(), 0) != pdTRUE) {
+    _ntp_next_armed = true;
+    _ntp_next_at = millis();
+    return;
+  }
   _ntp_next_armed = false;
   bool all = _ntp_next_all;
   if (!all && millis() - _ntp_all_at >= NTP_REFRESH_MS) {
@@ -574,6 +610,7 @@ void loop_ntp() {
     all = true;
   }
   ntp_round_start(all);
+  xSemaphoreGive(_dns_mutex);
 }
 
 void WiFiEvent(WiFiEvent_t event)

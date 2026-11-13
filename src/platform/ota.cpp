@@ -181,7 +181,7 @@ static bool run_update(int update_type, const char* url) {
         client = &secure_client;
     }
 
-    ntp_lookup_wait();   // the GET below resolves the URL's host; see network.cpp
+    network_dns_prime(_last_host);   // the GET below resolves the URL's host; see network.cpp
     if (!http.begin(*client, _last_url)) {
         Serial.println("OTA: Failed to connect to server");
         _ota_status = OTA_STATUS_HOST_NOT_FOUND;

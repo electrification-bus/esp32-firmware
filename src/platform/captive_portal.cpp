@@ -615,7 +615,7 @@ static void handleDeviceInfo(AsyncWebServerRequest *request) {
     snprintf(json_buf, sizeof(json_buf),
         "{\"name\":\"%s\",\"topic\":\"%s/%s/\",\"wifi_enabled\":%s,\"role\":\"%s\","
         "\"fw_url\":\"%s\",\"fs_url\":\"%s\"}",
-        device_name, HOMIE_TOPIC_PREFIX, getDeviceID(), wifi_enabled, homie_role,
+        device_name, HOMIE_TOPIC_PREFIX, getDeviceID(), wifi_enabled, device_role,
         portal_prefs_has_fw_url() ? firmware_url : "",
         portal_prefs_has_fs_url() ? fs_url : "");
     request->send(200, "application/json", json_buf);

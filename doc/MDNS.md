@@ -75,13 +75,13 @@ All four are registered once by `setup_mdns()` when `mdns.advertise` is on. Each
 
 ### `_ebus._tcp`
 
-Entity discovery (requirement 6). The port is the configured `mqtt.port`.
+Entity discovery (requirement 6). The port is the configured `mqtt.port`. A `role: standalone` build has no broker and does not advertise it (`src/platform/mdns_services.cpp`).
 
 | TXT key | Spec | Value |
 |---|---|---|
 | `txtvers` | required | `1` |
 | `ebus_version` | required | `0.9` |
-| `roles` | required | `controller` when `device.homie_role` is `controller`, otherwise `device` |
+| `roles` | required | `controller` when `device.role` (or the older `device.homie_role`) is `controller`, otherwise `device` |
 | `device_id` | required | Device ID |
 | `device_type` | recommended | `device.device_type`, or `device.type` when that is empty |
 | `name` | recommended | `device.name` |

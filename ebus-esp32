@@ -665,7 +665,7 @@ def project_components() -> list:
     return found
 
 def write_lean_platformio_ini(env_name: str, used_lib_deps: list,
-                              used_components: list, controller: bool = False,
+                              used_components: list, role_flags: tuple = (),
                               device_yml: Path = None) -> None:
     """Write .ebus/platformio.ini: a standalone copy of platformio.ini containing
     only [platformio], [env], [common] (lib_deps pruned+extended), and this one
@@ -728,12 +728,16 @@ def write_lean_platformio_ini(env_name: str, used_lib_deps: list,
     out.add_section(env_section)
     for key, val in src.items(env_section):
         out.set(env_section, key, val)
-    # homie_role: controller selects the controller build. Set here, from device.yml, so
-    # the role and the compiled firmware cannot disagree the way a hand-edited flag could.
-    if controller:
-        flags = out.get(env_section, "build_flags") if out.has_option(env_section, "build_flags") else ""
-        if "-DENABLE_CONTROLLER" not in flags:
-            out.set(env_section, "build_flags", (flags + "\n" if flags else "") + "-DENABLE_CONTROLLER")
+    # The role and feature flags (-DENABLE_CONTROLLER, -DEBUS_ROLE_STANDALONE, -DEBUS_OA3).
+    # Set here, from device.yml, so the build cannot disagree with it the way a hand-edited
+    # flag could. build_flags, not build_src_flags: OA3_MAX_EVENTS sizes structs that the
+    # library and src/ must agree on.
+    flags = out.get(env_section, "build_flags") if out.has_option(env_section, "build_flags") else ""
+    for flag in role_flags:
+        if flag not in flags.split():
+            flags = (flags + "\n" if flags else "") + flag
+    if flags:
+        out.set(env_section, "build_flags", flags)
     # Read by scripts/lib_src_filter.py, so a lib/<bus> library compiles only these
     # components' sources: an unused component's #include would otherwise need a
     # library that kept_deps left out.
@@ -930,7 +934,7 @@ def link_ref_problem(ref: str, controller: bool, limits: dict):
     for p, limit_name in zip(raw, _LINK_PART_LIMITS[len(raw)]):
         if "*" in p:
             if not controller:
-                return ("uses *, which only a controller build resolves (homie_role: "
+                return ("uses *, which only a controller build resolves (role: "
                         "controller)"), None
             part = p.lower()
             if not _LINK_PATTERN_RE.fullmatch(part):
@@ -1145,6 +1149,123 @@ class IdLimits:
         print(f"       ({'; '.join(notes)}.) Shorten the ids named above; see "
               f"doc/GenerateHomieDevice.md, 'Id and topic lengths'.", file=sys.stderr)
         sys.exit(1)
+
+ROLES = ("device", "controller", "standalone")
+
+def device_role(device: dict, device_yml: Path) -> str:
+    """device.role, or the older device.homie_role it replaces; device when neither is set."""
+    role, legacy = device.get("role"), device.get("homie_role")
+    if role is not None and legacy is not None and str(role).strip() != str(legacy).strip():
+        print(f"ERROR: {shown(device_yml)} sets device.role: {role} and device.homie_role: "
+              f"{legacy}. homie_role is the older name of role; keep only role.",
+              file=sys.stderr)
+        sys.exit(1)
+    value = str(role if role is not None else (legacy or "device")).strip()
+    if value not in ROLES:
+        print(f"ERROR: device.role must be one of {', '.join(ROLES)} (got {value!r})",
+              file=sys.stderr)
+        sys.exit(1)
+    return value
+
+# The oa3: block (doc/OpenADR3.md): the OpenADR 3 VEN, in any role. Its runtime keys are
+# copied into config.yml; max_events sizes the client's event arrays, so it is a build flag.
+OA3_KEYS = {"base_url": str, "program_name": str, "program_id": str, "poll_period_s": int,
+            "max_events": int}
+OA3_MAX_EVENTS_DEFAULT = 2
+# The cpp-oa3 library, pinned. EBUS_CPP_OA3 names another source, e.g. a local checkout:
+#   EBUS_CPP_OA3=symlink:///path/to/cpp-oa3
+OA3_LIB_DEP = "oa3=https://github.com/grid-coordination/cpp-oa3.git#v0.1.0"
+
+def oa3_config(cfg: dict):
+    """The validated oa3: block, or None when device.yml has none."""
+    block = cfg.get("oa3")
+    if block is None:
+        return None
+    problems = []
+    if not isinstance(block, dict):
+        problems.append(f"must be a section (a nested block), got {type(block).__name__}")
+        block = {}
+    for key, value in block.items():
+        want = OA3_KEYS.get(key)
+        if want is None:
+            problems.append(f"{key}: unknown key (known: {', '.join(OA3_KEYS)})")
+        elif value is not None and (not isinstance(value, want) or isinstance(value, bool)):
+            problems.append(f"{key}: must be {'a string' if want is str else 'an integer'}, "
+                            f"got {value!r}")
+    url = block.get("base_url")
+    if not url:
+        problems.append("base_url: required, e.g. "
+                        "https://price.grid-coordination.energy/openadr3/3.1.0")
+    elif isinstance(url, str) and not re.match(r"https?://[^/\s]+", url):
+        problems.append(f"base_url: must start with https:// or http:// and a host, got {url!r}")
+    if not block.get("program_name") and not block.get("program_id"):
+        problems.append("program_name or program_id: at least one is required")
+    # The firmware's buffers (src/platform/config.cpp); cpp-oa3 refuses a longer name or id.
+    for key, most in (("base_url", 255), ("program_name", 63), ("program_id", 63)):
+        value = block.get(key)
+        if isinstance(value, str) and len(value) > most:
+            problems.append(f"{key}: at most {most} characters, got {len(value)}")
+    # poll_period_s: VenClient::start() needs 3 poll periods (stale_after_polls) below 2^31 ms.
+    for key, low, high in (("poll_period_s", 10, 715_827), ("max_events", 1, 64)):
+        value = block.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and not low <= value <= high:
+            problems.append(f"{key}: must be {low}..{high}, got {value}")
+    if problems:
+        print("ERROR: device.yml oa3: is not valid:", file=sys.stderr)
+        for p in problems:
+            print(f"  {p}", file=sys.stderr)
+        sys.exit(1)
+    return block
+
+def env_has_psram(env_name) -> bool:
+    if not env_name:
+        return False
+    cfg = read_pio_config()
+    section = f"env:{env_name}"
+    if not cfg.has_option(section, "build_flags"):
+        return False
+    return any("-DBOARD_HAS_PSRAM" in line.split(";", 1)[0].split()
+               for line in cfg.get(section, "build_flags").splitlines())
+
+def _warn_oa3_storage(oa3: dict, env_name) -> None:
+    """Without PSRAM the VEN's storage is static internal RAM: two Event arrays of
+    max_events (about 5.4 KB per Event) and the 16 KB parse arena."""
+    n = oa3.get("max_events") or OA3_MAX_EVENTS_DEFAULT
+    if env_name and not env_has_psram(env_name) and n > OA3_MAX_EVENTS_DEFAULT:
+        print(f"  WARNING: oa3.max_events {n} on env:{env_name}, which has no PSRAM, takes about "
+              f"{round(2 * n * 5.4 + 16)} KB of internal RAM; see doc/OpenADR3.md, 'Memory'.")
+
+def oa3_lib_dep() -> str:
+    source = os.environ.get("EBUS_CPP_OA3", "").strip()
+    if not source:
+        return OA3_LIB_DEP
+    return source if source.startswith("oa3=") else f"oa3={source}"
+
+def env_is_classic_esp32(env_name) -> bool:
+    """True when the env builds for the original ESP32, not an S3, C3 or P4."""
+    if not env_name:
+        return False
+    cfg = read_pio_config()
+    section = f"env:{env_name}"
+    for key in ("board_build.mcu", "board"):
+        if cfg.has_option(section, key):
+            value = cfg.get(section, key).split(";", 1)[0].strip().lower()
+            if key == "board_build.mcu":
+                return value == "esp32"
+            return not re.search(r"esp32-?(s2|s3|c3|c5|c6|h2|p4)", value)
+    return False
+
+def _warn_oa3_second_tls(config_path: Path, env_name) -> None:
+    """An ESP32 has room for one TLS session; a TLS broker plus the VEN's HTTPS is two."""
+    if not env_is_classic_esp32(env_name):
+        return
+    mqtt = (load_yaml_file(config_path) or {}).get("mqtt") or {}
+    configured_tls = mqtt.get("mode") != "discovery-only" and mqtt.get("port") == 8883
+    discovered_tls = mqtt.get("mode") != "configured-only" and "secure-mqtt" in (mqtt.get("discover") or [])
+    if configured_tls or discovered_tls:
+        print(f"  WARNING: oa3: with a TLS broker holds two TLS sessions at once, about 45 KB of\n"
+              f"           internal RAM each. env:{env_name} is an ESP32, which may not fit both;\n"
+              f"           see doc/OpenADR3.md, 'Memory'.")
 
 # Set once this process has generated, and inherited by every `pio run` it starts. The
 # pre-build hook (scripts/generate_homie.py) re-runs generate inside each of those runs;
@@ -1461,15 +1582,17 @@ def _generate(args) -> None:
             prop_reg_body.append(f"    {dev_access}addChild(&{cvar});")
             emit_device(child, f"{cvar}.", f"&{cvar}", cidbuf, False, child_id, child_label)
 
-    # homie_role decides what this build IS. A device publishes nodes; a controller (Homie's
+    # device.role decides what this build IS. A device publishes nodes; a controller (Homie's
     # other role — it discovers devices and commands them over /set) publishes no nodes of
     # its own and instead runs the top-level links: list, each a logic/link whose ends are
     # both on other devices. Local links stay logic/link NODES in a device build, so each
-    # thing has one way to be written.
+    # thing has one way to be written. A standalone build has no broker and no Homie; it
+    # runs only what the top-level feature blocks (oa3:) enable.
     #
-    # links: is OPTIONAL for both roles. A device never has one; a controller without one
-    # still builds and runs, it just discovers devices without driving any.
-    role = (device.get("homie_role") or "device").strip()
+    # links: is OPTIONAL for both Homie roles. A device never has one; a controller without
+    # one still builds and runs, it just discovers devices without driving any.
+    role = device_role(device, device_yml)
+    oa3 = oa3_config(cfg)
     links_cfg = cfg.get("links") or []
     # links: is top-level only. Indented under another section it parses as that
     # section's key and would be ignored without a word — the controller then runs with
@@ -1479,23 +1602,30 @@ def _generate(args) -> None:
             print(f"ERROR: device.yml has links: inside the {section}: section — it must be "
                   f"top-level (no indentation before 'links:')", file=sys.stderr)
             sys.exit(1)
-    if role not in ("device", "controller"):
-        print(f"ERROR: device.homie_role must be 'device' or 'controller' (got {role!r})",
-              file=sys.stderr)
-        sys.exit(1)
     if not isinstance(links_cfg, list):
         print(f"ERROR: device.yml links: must be a list of link entries (got "
               f"{type(links_cfg).__name__})", file=sys.stderr)
         sys.exit(1)
     if role == "device" and links_cfg:
         print("ERROR: device.yml has a top-level links: list, which only a controller runs "
-              "(homie_role: controller). In a device build, declare each link as a node:\n"
+              "(role: controller). In a device build, declare each link as a node:\n"
               "         - component: logic/link   (see doc/Link.md)", file=sys.stderr)
         sys.exit(1)
-    if role == "controller":
+    if role == "standalone":
+        present = [k for k in ("nodes", "children", "links") if cfg.get(k)]
+        if present:
+            print(f"ERROR: role: standalone has no Homie device, so it takes no "
+                  f"{'/'.join(k + ':' for k in present)} — remove "
+                  f"{'it' if len(present) == 1 else 'them'}, or set role: device.",
+                  file=sys.stderr)
+            sys.exit(1)
+        if not cfg.get("oa3"):
+            print("  NOTE: role: standalone with no oa3: — it will run the network, web "
+                  "server and OTA only")
+    elif role == "controller":
         if nodes_cfg or cfg.get("children"):
-            print("ERROR: homie_role: controller publishes no nodes of its own — remove "
-                  "nodes:/children:, or set homie_role: device.\n"
+            print("ERROR: role: controller publishes no nodes of its own — remove "
+                  "nodes:/children:, or set role: device.\n"
                   "       A controller's work goes under a top-level links: list, with both "
                   "ends on other devices\n"
                   "       (<device-id>/<node>/<property>) — see doc/Controller.md#controller-links.",
@@ -1504,7 +1634,7 @@ def _generate(args) -> None:
         if not links_cfg:
             # Not an error: links: is optional. Said once so a controller that drives
             # nothing is a choice rather than a surprise.
-            print("  NOTE: homie_role: controller with no links: — it will discover devices "
+            print("  NOTE: role: controller with no links: — it will discover devices "
                   "but drive none")
         for link in links_cfg:
             if not isinstance(link, dict) or not link.get("id"):
@@ -1604,10 +1734,16 @@ def _generate(args) -> None:
     # needed this build, then extended with what device.yml's components DO need.
     # This is what actually keeps e.g. EspSoftwareSerial out of non-modbus builds —
     # see write_lean_platformio_ini().
+    role_flags = {"controller": ["-DENABLE_CONTROLLER"],
+                  "standalone": ["-DEBUS_ROLE_STANDALONE"]}.get(role, [])
+    if oa3:
+        role_flags += ["-DEBUS_OA3",
+                       f"-DOA3_MAX_EVENTS={oa3.get('max_events') or OA3_MAX_EVENTS_DEFAULT}"]
+        used_lib_deps.append(oa3_lib_dep())
     env_for_ini = device.get("environment")
     if env_for_ini:
         write_lean_platformio_ini(env_for_ini, used_lib_deps, used_components,
-                                  controller=(role == "controller"), device_yml=device_yml)
+                                  role_flags=tuple(role_flags), device_yml=device_yml)
 
     # data/homie.yml
     homie_doc = {
@@ -1661,7 +1797,7 @@ def _generate(args) -> None:
             "manufacturer":      device.get("manufacturer")      or "",
             "model":             device.get("model")             or "",
             "serial_number":     device.get("serial_number")     or "",
-            "homie_role":        device.get("homie_role")        or "device",
+            "role":              role,
             "device_passphrase": device.get("device_passphrase") or "",
         },
         "wifi": {
@@ -1694,6 +1830,9 @@ def _generate(args) -> None:
         config_doc["mdns"] = mdns_out
     if wifi.get("enabled") is not None:
         config_doc["wifi"]["enabled"] = wifi["enabled"]
+    if oa3:
+        config_doc["oa3"] = {k: oa3[k] for k in ("base_url", "program_name", "program_id",
+                                                 "poll_period_s") if oa3.get(k)}
 
     out_config = GEN_DATA_DIR / "config.yml"
     with open(out_config, "w", encoding="utf-8") as f:
@@ -1702,10 +1841,19 @@ def _generate(args) -> None:
     _apply_overlay(out_config)
     _check_broker_discovery(out_config)
     _check_network_keys(out_config, device.get("environment"))
-    _warn_no_broker(out_config)
+    if role != "standalone":
+        _warn_no_broker(out_config)
+        if oa3:
+            _warn_oa3_second_tls(out_config, device.get("environment"))
 
     env_name = device.get("environment", "<environment>")
-    if role == "controller":
+    if oa3:
+        _warn_oa3_storage(oa3, device.get("environment"))
+        print(f"\noa3: {oa3.get('program_name') or oa3.get('program_id')} at {oa3['base_url']}, "
+              f"library {oa3_lib_dep().split('=', 1)[1]}")
+    if role == "standalone":
+        print(f"\nstandalone, environment: {env_name}")
+    elif role == "controller":
         print(f"\ncontroller: {len(links_cfg)} link(s), environment: {env_name}")
     elif hand_coded:
         print(f"\nhand-coded device, environment: {env_name}")
@@ -3029,7 +3177,7 @@ def _flat_key_hint(key: str) -> str:
         if key.startswith(section + "_"):
             return f"{section}:\n      {key[len(section) + 1:]}: ..."
     if key == "device_id" or key.startswith("firmware_") or key in (
-            "manufacturer", "model", "serial_number", "homie_role",
+            "manufacturer", "model", "serial_number", "role", "homie_role",
             "device_name", "device_type", "device_passphrase", "device_id_prefix"):
         leaf = {"device_id": "id", "device_name": "name"}.get(key, key)
         return f"device:\n      {leaf}: ..."
@@ -3097,6 +3245,12 @@ def _apply_overlay(config_path: Path) -> None:
     # ignored by the firmware, which reads sections — the overlay looked applied (it was in
     # the generated file) but changed nothing. Fail loudly instead.
     problems = []
+    device_overrides = overrides.get("device")
+    if isinstance(device_overrides, dict):
+        for k in ("role", "homie_role"):
+            if k in device_overrides:
+                problems.append(f"  device.{k}: decides what firmware is built, so it is set in "
+                                f"device.yml only")
     for k, v in overrides.items():
         if k not in OVERLAY_SECTIONS:
             hint = _flat_key_hint(k)

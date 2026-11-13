@@ -20,7 +20,7 @@ struct MdnsServicesConfig {
   const char* os_version;
   const char* mac;            // lowercase hex without colons
   uint16_t http_port;         // _device-info._tcp and _http._tcp
-  uint16_t ebus_port;         // _ebus._tcp: mqtt.port
+  uint16_t ebus_port;         // _ebus._tcp: mqtt.port; 0 skips it (standalone)
   uint16_t log_port;          // _telnet._tcp; 0 when the log stream is not listening
 };
 

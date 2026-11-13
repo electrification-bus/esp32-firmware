@@ -99,7 +99,7 @@ nodes:
 | `id`    | no  | Device-id **template** (see below); defaults to `${chip_id}` |
 | `type`  | yes | Homie device `$type` string — how consumers identify the device |
 | `environment` | yes | PlatformIO environment name (`[env:…]`) from `platformio/platformio.ini` — **not** a PlatformIO `board` id; an env pins platform, board, PSRAM, flash size, partitions and build flags together |
-| `homie_role` | no | `device` (default) or `controller`. A controller build discovers other devices and runs the top-level `links:` list; it has no `nodes:`/`children:`, and the generator adds `-DENABLE_CONTROLLER` to the build. See [Controller role](#controller-role-links) |
+| `role` | no | `device` (default), `controller` or `standalone`. A controller build discovers other devices and runs the top-level `links:` list; it has no `nodes:`/`children:`, and the generator adds `-DENABLE_CONTROLLER` to the build. See [Controller role](#controller-role-links). A standalone build has no broker and no Homie device and takes no `nodes:`, `children:` or `links:`; the generator adds `-DEBUS_ROLE_STANDALONE`. See [OpenADR3.md](OpenADR3.md#role-standalone). `homie_role` is the older name of `role` and is still accepted; `generate` refuses a file that sets both to different values |
 
 #### The `id` template
 
@@ -148,6 +148,16 @@ Bus pins are a fact about the board, shared by every node on that bus, so they a
 | `rs485` | `pin_a`, `pin_b` | `modbus/*` — one UART; `pin_a` is the RS485 module's RXD pin, `pin_b` its TXD |
 | `spi`   | `pin_sck`, `pin_miso`, `pin_mosi` | `spi/*` — one `SPIClass`; chip-selects stay per node |
 
+### oa3
+
+A top-level `oa3:` block builds in the OpenADR 3 VEN, in any role. Its keys are `base_url`, `program_name`, `program_id`, `poll_period_s` and `max_events`; [OpenADR3.md](OpenADR3.md) describes them, the VTN's CA certificate and the VEN's memory use.
+
+```yaml
+oa3:
+  base_url: https://price.grid-coordination.energy/openadr3/3.1.0
+  program_name: EELEC-012041131
+```
+
 ---
 
 ## Available components
@@ -171,7 +181,7 @@ Multiple instances of the same component are allowed; give each a unique `id`.
 
 ## Controller role: `links:`
 
-With `homie_role: controller` the board is a Homie **controller**, not a device: it
+With `role: controller` the board is a Homie **controller**, not a device: it
 publishes only its own `$state`, discovers the devices on the broker, and does its
 configured work through a top-level `links:` list. Each link watches up to three
 properties on other devices and drives one settable property on another:
@@ -180,7 +190,7 @@ properties on other devices and drives one settable property on another:
 device:
   name: climate-controller
   environment: esp32-poe-iso
-  homie_role: controller
+  role: controller
 
 links:
   - id: sht20-to-display
@@ -355,7 +365,7 @@ Merged Homie 5 topology assembled from each selected component's node and proper
 
 ### config.yml
 
-Runtime configuration (wifi, mqtt, device identity) written from the `device:`, `wifi:`, `mqtt:`, `log:`, and `mdns:` sections of `device.yml`, then uploaded to the filesystem. It keeps those same sections and key names, so the generated file, `device.yml`, and the overlay all read alike. If a per-developer overlay exists at `config-overlay.yml`, its non-empty fields are merged in on top during `generate` — that is how your real broker and credentials stay out of the tracked `device.yml`. See [Configuration.md](Configuration.md) and [GettingStartedCLI.md](GettingStartedCLI.md) for the overlay model.
+Runtime configuration (wifi, mqtt, device identity) written from the `device:`, `wifi:`, `mqtt:`, `log:`, `mdns:` and `oa3:` sections of `device.yml`, then uploaded to the filesystem. It keeps those same sections and key names, so the generated file, `device.yml`, and the overlay all read alike. If a per-developer overlay exists at `config-overlay.yml`, its non-empty fields are merged in on top during `generate` — that is how your real broker and credentials stay out of the tracked `device.yml`. See [Configuration.md](Configuration.md) and [GettingStartedCLI.md](GettingStartedCLI.md) for the overlay model.
 
 ---
 
