@@ -122,6 +122,7 @@ Display* d = peripheral<Display>("lcd");   // nullptr when device.yml lists no d
 |---|---|
 | `width()`, `height()` | The panel's size in pixels, after rotation |
 | `rotation()` | 0-3, quarter turns from the panel's native orientation |
+| `char_width(size)`, `char_height(size)` | The built-in font's character cell at a text size, in pixels (6x8 per size step on `Ili9341`) |
 | `clear(color)` | Fills the screen |
 | `fill_rect(x, y, w, h, color)` | Fills a rectangle |
 | `text(x, y, s, size, color, bg)` | Text with its top-left corner at `x,y`, on a `bg`-colored box, in the library's built-in font; size 1 is its base size and larger sizes multiply it |

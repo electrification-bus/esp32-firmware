@@ -89,6 +89,8 @@ char oa3_display[32] = {0};
 // Device passphrase for authenticated REST endpoints
 char device_passphrase[64] = {0};
 
+char device_timezone[64] = NTP_TIMEZONE;
+
 // OTA enable state and timeout tracking
 static bool _ota_enabled = false;
 static unsigned long _ota_enabled_at = 0;
@@ -435,6 +437,8 @@ bool loadPlatformConfiguration() {
   cfg_copy_str("oa3", "display", "oa3_display", oa3_display, sizeof(oa3_display));
 #endif
   cfg_copy_str("device", "device_passphrase", "device_passphrase", device_passphrase, sizeof(device_passphrase));
+  cfg_copy_str("device", "timezone", "timezone", device_timezone, sizeof(device_timezone));
+  if (device_timezone[0] == '\0') strcpy(device_timezone, NTP_TIMEZONE);
 
   JsonVariant v_mqtt_mode = cfg_value("mqtt", "mode", "mqtt_mode");
   if (v_mqtt_mode.is<JsonString>()) {

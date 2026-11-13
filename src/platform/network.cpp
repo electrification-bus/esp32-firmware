@@ -576,10 +576,10 @@ static void ntp_round_finish() {
 
   _ntp_ip_set = set;
   configTime(0, 0, servers[0], n > 1 ? servers[1] : nullptr);
-  setenv("TZ", NTP_TIMEZONE, 1);
+  setenv("TZ", device_timezone, 1);
   tzset();
   _ntp_started = true;
-  Serial.printf("NTP: sync started with %u server(s), TZ=%s\n", (unsigned)n, NTP_TIMEZONE);
+  Serial.printf("NTP: sync started with %u server(s), TZ=%s\n", (unsigned)n, device_timezone);
 }
 
 void loop_ntp() {
