@@ -165,7 +165,7 @@ curl -u admin:<passphrase> -H 'Content-Type: application/json' -d '{"url":"http:
 
 ### https and redirects
 
-`https://` URLs work. The device looks for a CA at `/certs/<Host>.ca` — same naming as the MQTT broker certs, so put it in `data/certs/` and flash the filesystem. **Without a matching cert the transfer still proceeds, encrypted but unverified**, and the log says so: anything able to intercept the connection could serve its own image. Verify the server for anything that matters.
+`https://` URLs work. The device looks for a CA at `/certs/<Host>.ca` — same naming as the MQTT broker certs, so put it in `data/certs/` and flash the filesystem. Without one, the device checks the server against the public root CAs (arduino-esp32 3.x), so a server with a publicly trusted certificate verifies with no file. **When neither verifies it, the transfer still proceeds, encrypted but unverified**, and the log says so: anything able to intercept the connection could serve its own image. Verify the server for anything that matters.
 
 TLS costs roughly 40 KB of heap for the session on top of whatever the MQTT transport holds; the device logs free heap before the handshake so a failure there is diagnosable.
 

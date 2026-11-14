@@ -30,5 +30,3 @@ cp -R examples/oa3-price ~/oa3-price     # a project of your own
 ./ebus-esp32 build ~/oa3-price
 ./ebus-esp32 push --port <serial-port> ~/oa3-price
 ```
-
-`data/certs/priceGrid-coordinationEnergy.ca` is the price server's CA root (Amazon Root CA 1), which the VEN needs to verify the server ([doc/OpenADR3.md](../../doc/OpenADR3.md#ca-certificate)).

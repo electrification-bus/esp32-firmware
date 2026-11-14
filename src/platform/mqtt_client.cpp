@@ -4,6 +4,7 @@
 #include <TimeLib.h>
 #include <WiFiClient.h>
 #include <WiFiClientSecure.h>
+#include <platform/tls_trust.h>
 #include <platform/config.h>
 #include <platform/network.h>
 #include <homie/Property.h>
@@ -506,6 +507,12 @@ bool mqtt_init_transport() {
 
     // Load CA certificate from SPIFFS
     const char* caCert = mqtt_load_ca_cert();
+    if (caCert == nullptr && tls_public_roots_verify(secureClient, mqtt_host, mqtt_port)) {
+      Serial.println("MQTT: TLS transport configured with the public root CAs");
+      secureClient.setTimeout(15);  // 15 seconds for TLS handshake
+      transportClient = &secureClient;
+      return true;
+    }
 #ifdef MQTT_FETCH_ROOT_CA
     // Auto-fetch the root CA cert if not cached
     if (caCert == nullptr) {

@@ -67,12 +67,14 @@ Only non-empty fields override; anything you leave blank falls back to the value
 
 ### Broker CA certificate (TLS)
 
-Setting `mqtt.port` to `8883` makes the firmware connect with TLS. It verifies the broker against a PEM CA certificate on the device's LittleFS filesystem, looked up in this order:
+Setting `mqtt.port` to `8883` makes the firmware connect with TLS. It verifies the broker against a PEM CA certificate on the device's LittleFS filesystem, looked up in this order, and otherwise against the public root CAs:
 
 1. `/certs/<Host>.ca`, where `<Host>` is `mqtt.host` with the dots removed and the letter after each dot capitalized (`public.cloud.shiftr.io` becomes `publicCloudShiftrIo.ca`). Put the file in `data/certs/` and flash the filesystem image (`ebus-esp32 push --fs-only`).
 2. `/certs/uploaded-cert.ca`, written by `POST /api/v1/broker-cert` (see [Authentication.md](Authentication.md)).
 
-The certificate must be smaller than 4096 bytes. Store only CA certificates there, never private keys. When neither file exists, envs built with `-DESP32_POE_ISO` fall back to plain MQTT on port 1883; other envs fetch the broker's root certificate, save it under the first name, and connect with it, or connect without verification if the fetch fails. The serial log reports which path was taken.
+3. The public root CAs (ESP-IDF's certificate bundle, arduino-esp32 3.x only): the firmware connects once to check that the broker's certificate verifies against them, and if it does uses them. A broker with a publicly trusted certificate needs no file.
+
+The certificate must be smaller than 4096 bytes. Store only CA certificates there, never private keys. When none of the three verifies the broker, envs built with `-DESP32_POE_ISO` fall back to plain MQTT on port 1883; other envs fetch the broker's root certificate, save it under the first name, and connect with it, or connect without verification if the fetch fails. The serial log reports which path was taken.
 
 ### Legacy flat keys
 
