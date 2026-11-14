@@ -180,9 +180,6 @@ ArduinoHttpTransport _http;
 SntpClock _clock;
 char _ca[OA3_CA_MAX];
 char _ca_host[128];
-#ifndef BOARD_HAS_PSRAM
-oa3::StaticVenStorage<> _static_storage;   // internal RAM: about 38 KB with OA3_MAX_EVENTS=2
-#endif
 oa3::JsonArena* _arena = nullptr;
 uint32_t _logged_requests = 0;
 
@@ -344,25 +341,30 @@ bool load_ca(const char* base_url) {
     return true;
 }
 
-// The client's event arrays and parse arena: in PSRAM on a board that has it, allocated once
-// here and never freed, so the internal heap is left to the TLS session (porting.md).
+// The client's event arrays and parse arena (about 38 KB with OA3_MAX_EVENTS=2), allocated
+// once here and never freed: in PSRAM on a board that has it, so the internal heap is left
+// to the TLS session (porting.md); otherwise in internal RAM. Never static: that much .bss
+// leaves ESP-IDF too little heap at startup, which aborts ("esp_timer: Not enough memory to
+// create timer task") before Arduino marks a new image valid, so OTA rolls it back.
 bool make_storage(oa3::VenStorage* out) {
 #ifdef BOARD_HAS_PSRAM
+    const uint32_t caps = MALLOC_CAP_SPIRAM;
+#else
+    const uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+#endif
     const size_t n = OA3_MAX_EVENTS;
     void* events_mem = heap_caps_aligned_alloc(alignof(oa3::Event), 2 * n * sizeof(oa3::Event),
-                                               MALLOC_CAP_SPIRAM);
-    void* arena_buf = heap_caps_aligned_alloc(8, OA3_JSON_ARENA_SIZE, MALLOC_CAP_SPIRAM);
+                                               caps);
+    void* arena_buf = heap_caps_aligned_alloc(8, OA3_JSON_ARENA_SIZE, caps);
     if (!events_mem || !arena_buf) {
-        Serial.println("OA3: **ERROR -- no PSRAM for the client's storage");
+        Serial.printf("OA3: **ERROR -- no memory for the client's storage (%u bytes)\n",
+                      (unsigned)(2 * n * sizeof(oa3::Event) + OA3_JSON_ARENA_SIZE));
         return false;
     }
     oa3::Event* events = static_cast<oa3::Event*>(events_mem);
     for (size_t i = 0; i < 2 * n; i++) new (&events[i]) oa3::Event();
     static oa3::JsonArena arena(arena_buf, OA3_JSON_ARENA_SIZE);
     *out = oa3::VenStorage{events, events + n, n, &arena};
-#else
-    *out = _static_storage.storage();
-#endif
     _arena = out->arena;
     return true;
 }
