@@ -284,3 +284,15 @@ def test_cmd_generate_quiets_stdout_when_already_generated(cli, sandbox, capsys,
     cli.cmd_generate(Namespace(device_yml=str(path)))
     assert capsys.readouterr().out == ""
     assert (cli.GEN_SRC_DIR / "homie.cpp").exists()
+
+
+def test_log_heap_interval_defaults_to_off(cli):
+    assert cli.get_log_heap_interval({}) == 0
+    assert cli.get_log_heap_interval({"log": {"heap_interval_s": 60}}) == 60
+
+
+@pytest.mark.parametrize("value", [-1, 86401, "60", 1.5, True])
+def test_log_heap_interval_is_validated(cli, capsys, value):
+    with pytest.raises(SystemExit):
+        cli.get_log_heap_interval({"log": {"heap_interval_s": value}})
+    assert "log.heap_interval_s must be an integer 0..86400" in capsys.readouterr().err

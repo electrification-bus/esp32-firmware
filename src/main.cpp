@@ -332,7 +332,22 @@ static void setup_broker(mqtt_reconnect_callback_t on_reconnect) {
 #endif  // EBUS_ROLE_STANDALONE
 
 // Called first from loop() by every role; the role's own servicing follows.
+// Every log.heap_interval_s seconds, internal RAM as byte allocations see it (on the original
+// ESP32, MALLOC_CAP_INTERNAL alone also counts IRAM they cannot use) and free PSRAM.
+static void log_heap() {
+    static uint32_t last_ms = 0;
+    if (log_heap_interval_s == 0 || millis() - last_ms < log_heap_interval_s * 1000UL) return;
+    last_ms = millis();
+    const uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+    Serial.printf("HEAP: up %lu s, internal free %u, low %u, largest %u; psram free %u\n",
+                  (unsigned long)(millis() / 1000), (unsigned)heap_caps_get_free_size(caps),
+                  (unsigned)heap_caps_get_minimum_free_size(caps),
+                  (unsigned)heap_caps_get_largest_free_block(caps),
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+}
+
 static void loop_housekeeping() {
+    log_heap();
     log_tcp_loop();     // accept monitors, push buffered log; never blocks
     captive_portal_loop();
     loop_peripherals();

@@ -306,6 +306,18 @@ def get_log_port(cfg: dict) -> int:
         print("ERROR: device.yml log.tcp_port must be an integer", file=sys.stderr)
         sys.exit(1)
 
+def get_log_heap_interval(cfg: dict) -> int:
+    """Seconds between the firmware's heap log lines (device.yml `log.heap_interval_s`,
+    default 0: none), 0 to 86400."""
+    value = (cfg.get("log") or {}).get("heap_interval_s", 0)
+    if value is None:
+        return 0
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 86400:
+        print(f"ERROR: device.yml log.heap_interval_s must be an integer 0..86400, got {value!r}",
+              file=sys.stderr)
+        sys.exit(1)
+    return value
+
 # Broker service types for mqtt.discover: the DNS-SD names from the eBus specification
 # (framework.md, "Broker Discovery"), without the leading underscore and ._tcp.
 BROKER_SERVICES = ("secure-mqtt", "mqtt", "mqtt-ws", "mqtt-wss")
@@ -2198,6 +2210,8 @@ def _generate(args) -> None:
         "log": {
             # Serial-over-TCP console port (device.yml: log.tcp_port); 0 disables.
             "tcp_port": get_log_port(cfg),
+            # Seconds between heap log lines (device.yml: log.heap_interval_s); 0: none.
+            "heap_interval_s": get_log_heap_interval(cfg),
         },
     }
     # mdns.* and wifi.enabled are TRI-STATE. Emitting them unconditionally would defeat the
