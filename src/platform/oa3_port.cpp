@@ -38,6 +38,16 @@
 #define OA3_PORT_ARENA_SIZE 8192
 #endif
 #endif
+// One event array instead of two (cpp-oa3's VenStorage::scratch nullptr) saves
+// OA3_MAX_EVENTS events of RAM; a fetch that fails after it has begun to parse then clears the
+// prices until the next success. The default without PSRAM, where that RAM is internal.
+#ifndef OA3_PORT_SINGLE_BUFFER
+#ifdef BOARD_HAS_PSRAM
+#define OA3_PORT_SINGLE_BUFFER 0
+#else
+#define OA3_PORT_SINGLE_BUFFER 1
+#endif
+#endif
 #ifndef OA3_CA_MAX
 #define OA3_CA_MAX 4096       // one PEM root
 #endif
@@ -506,12 +516,35 @@ void screen_chart(int16_t top, int16_t bottom) {
     }
 }
 
+char _next_text[24];           // the next change, as the time line shows it
+int16_t _time_y = -1;          // where the price screen put the time line; -1 for none
+int32_t _time_minute = -1;     // the minute (Unix time / 60) the time line shows
+
+// "now 06:12, next 07:00 PST": the current local time and the next change, redrawn as the
+// minute turns. Where that does not fit the panel, "next change 07:00 PST".
+void screen_time_line() {
+    const time_t now = time(nullptr);
+    _time_minute = static_cast<int32_t>(now / 60);
+    char line[48], clock[8] = "";
+    struct tm local;
+    if (localtime_r(&now, &local)) strftime(clock, sizeof(clock), "%H:%M", &local);
+    snprintf(line, sizeof(line), "now %s, next %s", clock, _next_text);
+    if (!clock[0] || 8 + static_cast<int16_t>(strlen(line)) * _display->char_width(2) >
+                         _display->width()) {
+        snprintf(line, sizeof(line), "next change %s", _next_text);
+    }
+    _display->fill_rect(0, _time_y, _display->width(), _display->char_height(2),
+                        Display::kBlack);
+    _display->text(8, _time_y, line, 2, Display::kWhite, Display::kBlack);
+}
+
 void screen_price(const oa3::PriceInfo& p) {
     if (!_display) return;
     PeripheralLock l(*_display);
     screen_header();
     _display->fill_rect(0, 40, _display->width(), 150, Display::kBlack);
     _chart_top = -1;
+    _time_y = -1;
     if (!p.active) {
         _display->text(8, 90, "no price in force", 2, Display::kYellow, Display::kBlack);
         _display->flush();
@@ -531,23 +564,22 @@ void screen_price(const oa3::PriceInfo& p) {
         _display->text(8, 105, line, 2, Display::kWhite, Display::kBlack);
         next_y = 140;
     }
-    char next[24];
     if (p.has_next_change) {
-        hhmm(p.next_change, next, sizeof(next));
+        hhmm(p.next_change, _next_text, sizeof(_next_text));
     } else if (!p.span.end_indefinite) {
-        hhmm(p.span.end, next, sizeof(next));
+        hhmm(p.span.end, _next_text, sizeof(_next_text));
     } else {
-        snprintf(next, sizeof(next), "none");
+        snprintf(_next_text, sizeof(_next_text), "none");
     }
-    snprintf(line, sizeof(line), "next change %s", next);
-    _display->text(8, next_y, line, 2, Display::kWhite, Display::kBlack);
+    _time_y = next_y;
+    screen_time_line();
     _chart_top = next_y + _display->char_height(2) + 6;
     screen_chart(_chart_top, kChartBottom);
     _display->flush();
 }
 
 // Redraws the chart alone: the events can change, by a fetch or a notification, without
-// the price in force changing, and the client reports only the latter.
+// the price in force changing, and the client reports only the latter (on_price_change).
 void screen_chart_refresh() {
     if (!_display || _chart_top < 0) return;
     PeripheralLock l(*_display);
@@ -594,9 +626,13 @@ void on_price(void*, const oa3::PriceInfo& p) {
 
 void on_status(void*, const oa3::VenStatusInfo& s) {
     screen_status(s);
-    Serial.printf("OA3: status %s (http %s, %d; %u failures; retry in %lu s)",
-                  oa3::to_string(s.status), oa3::to_string(s.http_result), s.http_status,
-                  (unsigned)s.consecutive_failures, (unsigned long)(s.retry_in_ms / 1000));
+    char retry[24] = "no poll scheduled";   // UINT32_MAX: subscribed and not polling
+    if (s.retry_in_ms != UINT32_MAX) {
+        snprintf(retry, sizeof(retry), "retry in %lu s", (unsigned long)(s.retry_in_ms / 1000));
+    }
+    Serial.printf("OA3: status %s (http %s, %d; %u failures; %s)", oa3::to_string(s.status),
+                  oa3::to_string(s.http_result), s.http_status,
+                  (unsigned)s.consecutive_failures, retry);
     if (s.notify != oa3::NotifyState::kOff) {
         Serial.printf("; notify %s (mqtt %s; %u failures; %lu notifications)",
                       oa3::to_string(s.notify), oa3::to_string(s.mqtt_result),
@@ -623,16 +659,22 @@ void log_poll(const oa3::VenClient& client) {
 void oa3_task(void* arg) {
     oa3::VenClient* client = static_cast<oa3::VenClient*>(arg);
     screen_begin();
-    uint32_t charted_notifications = 0;
+    uint32_t charted_revision = client->events_revision();
     for (;;) {
         client->loop();
-        const bool fetched = _http.requests() != _logged_requests;
-        if (fetched) {
+        if (_http.requests() != _logged_requests) {
             _logged_requests = _http.requests();
             log_poll(*client);
         }
-        if (fetched || client->status().notifications != charted_notifications) {
-            charted_notifications = client->status().notifications;
+        if (_display && _time_y >= 0 && time(nullptr) / 60 != _time_minute) {
+            PeripheralLock l(*_display);
+            screen_time_line();
+            _display->flush();
+        }
+        if (client->events_revision() != charted_revision) {
+            charted_revision = client->events_revision();
+            Serial.printf("OA3: events revision %lu, %u events\n", (unsigned long)charted_revision,
+                          (unsigned)client->event_count());
             screen_chart_refresh();
         }
         uint32_t wait = client->ms_until_due();
@@ -652,8 +694,7 @@ bool load_ca(const char* base_url) {
     return read_ca(_ca_host, _ca, sizeof(_ca));
 }
 
-// The client's event arrays and parse arena (about 38 KB with OA3_MAX_EVENTS=2), allocated
-// once here and never freed: in PSRAM on a board that has it, so the internal heap is left
+// The client's event array(s) and parse arena, allocated once here and never freed: in PSRAM on a board that has it, so the internal heap is left
 // to the TLS session (porting.md); otherwise in internal RAM. Never static: that much .bss
 // leaves ESP-IDF too little heap at startup, which aborts ("esp_timer: Not enough memory to
 // create timer task") before Arduino marks a new image valid, so OTA rolls it back.
@@ -664,18 +705,22 @@ bool make_storage(oa3::VenStorage* out) {
     const uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
 #endif
     const size_t n = OA3_MAX_EVENTS;
-    void* events_mem = heap_caps_aligned_alloc(alignof(oa3::Event), 2 * n * sizeof(oa3::Event),
-                                               caps);
+    const size_t arrays = OA3_PORT_SINGLE_BUFFER ? 1 : 2;
+    const size_t bytes = arrays * n * sizeof(oa3::Event);
+    void* events_mem = heap_caps_aligned_alloc(alignof(oa3::Event), bytes, caps);
     void* arena_buf = heap_caps_aligned_alloc(8, OA3_PORT_ARENA_SIZE, caps);
     if (!events_mem || !arena_buf) {
         Serial.printf("OA3: **ERROR -- no memory for the client's storage (%u bytes)\n",
-                      (unsigned)(2 * n * sizeof(oa3::Event) + OA3_PORT_ARENA_SIZE));
+                      (unsigned)(bytes + OA3_PORT_ARENA_SIZE));
         return false;
     }
     oa3::Event* events = static_cast<oa3::Event*>(events_mem);
-    for (size_t i = 0; i < 2 * n; i++) new (&events[i]) oa3::Event();
+    for (size_t i = 0; i < arrays * n; i++) new (&events[i]) oa3::Event();
     static oa3::JsonArena arena(arena_buf, OA3_PORT_ARENA_SIZE);
-    *out = oa3::VenStorage{events, events + n, n, &arena};
+    *out = oa3::VenStorage{events, arrays == 2 ? events + n : nullptr, n, &arena};
+    Serial.printf("OA3: storage %u bytes (%u event array(s) of %u, arena %u)\n",
+                  (unsigned)(bytes + OA3_PORT_ARENA_SIZE), (unsigned)arrays, (unsigned)n,
+                  (unsigned)OA3_PORT_ARENA_SIZE);
     if (oa3_notifications) {
         void* notes = heap_caps_aligned_alloc(alignof(oa3::NotificationStorage),
                                               sizeof(oa3::NotificationStorage), caps);
@@ -722,6 +767,7 @@ void setup_oa3() {
     if (oa3_notifications) {
         c.notifications = oa3::NotificationMode::kMqtt;
         c.exclusive_tls = oa3_exclusive_tls;
+        c.notify_poll_period_s = oa3_notify_poll_period_s;
         c.mqtt_client_id = client_id;
     }
     c.on_price_change = on_price;
@@ -736,7 +782,13 @@ void setup_oa3() {
                   (unsigned)OA3_MAX_EVENTS, oa3_notifications ? "MQTT as " : "off",
                   oa3_notifications ? client_id : "");
     if (oa3_notifications) {
-        Serial.printf("OA3: exclusive_tls %s\n", oa3_exclusive_tls ? "on" : "off");
+        Serial.printf("OA3: exclusive_tls %s; polled while subscribed: ",
+                      oa3_exclusive_tls ? "on" : "off");
+        if (oa3_notify_poll_period_s) {
+            Serial.printf("every %u s\n", (unsigned)oa3_notify_poll_period_s);
+        } else {
+            Serial.println("no");
+        }
     }
     xTaskCreatePinnedToCore(oa3_task, "oa3", OA3_TASK_STACK, &client, 1, nullptr, 1);
 }

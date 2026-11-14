@@ -86,6 +86,7 @@ uint32_t oa3_poll_period_s = 0;
 char oa3_display[32] = {0};
 bool oa3_notifications = false;
 bool oa3_exclusive_tls = true;
+uint32_t oa3_notify_poll_period_s = 0;
 #endif
 
 // Device passphrase for authenticated REST endpoints
@@ -441,6 +442,8 @@ bool loadPlatformConfiguration() {
   if (v_oa3_notes.is<bool>()) oa3_notifications = v_oa3_notes.as<bool>();
   JsonVariant v_oa3_excl = cfg_value("oa3", "exclusive_tls", "oa3_exclusive_tls");
   if (v_oa3_excl.is<bool>()) oa3_exclusive_tls = v_oa3_excl.as<bool>();
+  JsonVariant v_oa3_npp = cfg_value("oa3", "notify_poll_period_s", "oa3_notify_poll_period_s");
+  if (v_oa3_npp.is<uint32_t>()) oa3_notify_poll_period_s = v_oa3_npp.as<uint32_t>();
 #endif
   cfg_copy_str("device", "device_passphrase", "device_passphrase", device_passphrase, sizeof(device_passphrase));
   cfg_copy_str("device", "timezone", "timezone", device_timezone, sizeof(device_timezone));
