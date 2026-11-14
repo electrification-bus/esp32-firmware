@@ -320,3 +320,27 @@ def test_timezone_is_copied_into_config(cli, sandbox):
 def test_unset_timezone_leaves_the_firmware_default(cli, sandbox):
     sandbox.generate(device_doc())
     assert sandbox.config_yml["device"]["timezone"] == ""
+
+
+@pytest.mark.parametrize("env,exclusive", [("esp32-poe-iso-wrover", True),
+                                           ("olimex-esp32-p4-devkit", False)])
+def test_notifications_default_exclusive_tls_by_chip(cli, sandbox, env, exclusive):
+    doc = device_doc(role="standalone")
+    doc["device"]["environment"] = env
+    doc.update(oa3(notifications=True))
+    sandbox.generate(doc)
+    assert sandbox.config_yml["oa3"]["notifications"] is True
+    assert sandbox.config_yml["oa3"]["exclusive_tls"] is exclusive
+
+
+def test_exclusive_tls_can_be_set(cli, sandbox):
+    doc = device_doc(role="standalone")
+    doc.update(oa3(notifications=True, exclusive_tls=False))
+    sandbox.generate(doc)
+    assert sandbox.config_yml["oa3"]["exclusive_tls"] is False
+
+
+@pytest.mark.parametrize("value", ["yes", 1])
+def test_notifications_must_be_a_boolean(cli, capsys, value):
+    assert "notifications: must be true or false" in oa3_problems(cli, capsys,
+                                                                  oa3(notifications=value))
