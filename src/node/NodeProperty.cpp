@@ -121,7 +121,7 @@ void NodeProperty::publish() {
 }
 
 void NodeProperty::clearValue() {
-    if (_prop && _prop->has_value()) _prop->clearValue();
+    if (_prop) _prop->clearValue();
 }
 
 void NodeProperty::set_value_and_publish(int value)          { set(value); publish(); }
