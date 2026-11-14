@@ -14,7 +14,7 @@ Arduino-framework firmware, built with PlatformIO, that makes ESP32, ESP32-S3 an
 - `platformio/platformio.ini`: the tracked environments (Arduino-ESP32 3.x unsuffixed, `-arduino2` for 2.0.17).
 - `src/main.cpp`, `src/node/`, `src/platform/`, `src/peripheral/`: the firmware; a build links them into the project's `.ebus/src/`. `src/platform/oa3_port.cpp` is the ESP32 port of cpp-oa3's VEN client.
 - `include/peripheral/`: the `Peripheral` base (its lock, `peripheral<T>(id)`) and the `Display` and `Touch` interfaces.
-- `lib/<bus>/<component>.{h,cpp,yml}`: drivers, one per component: a Homie node (`gpio/digital_output`), a peripheral (`spi/ili9341`, `i2c/ns2009`), or a peripheral with a node over it (`i2c/bme280`). `lib/platform/modbus/` is the shared Modbus queue. Every `lib_deps` entry names an exact version. New drivers meant to be shared are contributed here.
+- `lib/<bus>/<component>.{h,cpp,yml}`: drivers, one per component: a Homie node (`gpio/digital_output`), a peripheral (`spi/ili9341`, `dsi/st7701`, `i2c/ns2009`), or a peripheral with a node over it (`i2c/bme280`). `lib/platform/modbus/` is the shared Modbus queue. Every `lib_deps` entry names an exact version. New drivers meant to be shared are contributed here.
 - `lib/ebus_core/`: the cpp-sdk submodule, pinned to a release tag. Core changes are PRs in cpp-sdk, followed by a submodule bump here.
 - `doc/`: user and developer guides; `doc/WritingADriver.md` is the reference for node drivers and `doc/Peripherals.md` for peripherals.
 

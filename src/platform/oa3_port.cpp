@@ -413,6 +413,16 @@ void unit_label(const char* currency, const char* units, char* out, size_t len) 
 
 // The header is the program: its configured name from the start, or, when only
 // oa3.program_id is configured, the id until the client has resolved the name.
+// The screen is laid out for 320x240 and scaled by _k = min(width / 320, height / 240), so it
+// fills a larger panel; the chart takes whatever height the text leaves.
+float _k = 1;
+int16_t px(int v) { return static_cast<int16_t>(v * _k); }
+uint8_t ts(int size) {
+    const int s = static_cast<int>(size * _k + 0.5f);
+    return static_cast<uint8_t>(s < 1 ? 1 : s);
+}
+int16_t status_top() { return _display->height() - px(40); }
+
 void screen_header() {
     if (_header_named) return;
     const char* name = oa3_program_name;
@@ -423,8 +433,8 @@ void screen_header() {
     } else {
         _header_named = true;
     }
-    _display->fill_rect(0, 0, _display->width(), 30, Display::kBlack);
-    _display->text(8, 8, name, 2, Display::kWhite, Display::kBlack);
+    _display->fill_rect(0, 0, _display->width(), px(30), Display::kBlack);
+    _display->text(px(8), px(8), name, ts(2), Display::kWhite, Display::kBlack);
 }
 
 void screen_begin() {
@@ -435,10 +445,12 @@ void screen_begin() {
         return;
     }
     PeripheralLock l(*_display);
+    const float kx = _display->width() / 320.0f, ky = _display->height() / 240.0f;
+    _k = kx < ky ? kx : ky;
     _display->clear(Display::kBlack);
     screen_header();
-    _display->fill_rect(0, 30, _display->width(), 1, Display::kGrey);
-    _display->text(8, 90, "waiting for a price", 2, Display::kWhite, Display::kBlack);
+    _display->fill_rect(0, px(30), _display->width(), ts(1), Display::kGrey);
+    _display->text(px(8), px(90), "waiting for a price", ts(2), Display::kWhite, Display::kBlack);
     _display->flush();
 }
 
@@ -449,8 +461,7 @@ void screen_begin() {
 #define OA3_CHART_STEPS 32    // spans it draws; the price server's are an hour each
 #endif
 
-constexpr int16_t kChartBottom = 200;   // the status line's band starts here
-int16_t _chart_top = -1;                // where the price screen put the chart; -1 for none
+int16_t _chart_top = -1;   // where the price screen put the chart; -1 for none
 
 // The x of instant t on a chart of [now, now + span_s) drawn width pixels wide from left.
 int16_t chart_x(int64_t t, int64_t now, int64_t span_s, int16_t left, int16_t width) {
@@ -462,13 +473,14 @@ int16_t chart_x(int64_t t, int64_t now, int64_t span_s, int16_t left, int16_t wi
 // (a stub) to the highest, so the shape shows; both are printed above the bars, and every
 // third local hour below them.
 void screen_chart(int16_t top, int16_t bottom) {
-    const int16_t label_h = _display->char_height(1);
-    const int16_t bars_top = top + label_h + 2;
-    const int16_t bars_bottom = bottom - label_h - 2;
-    const int16_t left = 8;
+    const uint8_t label_size = ts(1);
+    const int16_t label_h = _display->char_height(label_size);
+    const int16_t bars_top = top + label_h + px(2);
+    const int16_t bars_bottom = bottom - label_h - px(2);
+    const int16_t left = px(8);
     const int16_t width = _display->width() - 2 * left;
     _display->fill_rect(0, top, _display->width(), bottom - top, Display::kBlack);
-    if (!_client || bars_bottom - bars_top < 20) return;
+    if (!_client || bars_bottom - bars_top < px(20)) return;
 
     const int64_t now = static_cast<int64_t>(time(nullptr));
     const int64_t span_s = static_cast<int64_t>(OA3_CHART_HOURS) * 3600;
@@ -489,7 +501,7 @@ void screen_chart(int16_t top, int16_t bottom) {
     }
     if (!any) return;
 
-    const int16_t stub = 4;   // the lowest price's bar
+    const int16_t stub = px(4);   // the lowest price's bar
     const int16_t bars_h = bars_bottom - bars_top - stub;
     for (size_t i = 0; i < n; ++i) {
         if (!steps[i].value) continue;
@@ -503,8 +515,8 @@ void screen_chart(int16_t top, int16_t bottom) {
 
     char label[40];
     snprintf(label, sizeof(label), "max %.4g   min %.4g", hi, lo);
-    _display->text(left, top, label, 1, Display::kGrey, Display::kBlack);
-    const int16_t hour_w = 2 * _display->char_width(1);
+    _display->text(left, top, label, label_size, Display::kGrey, Display::kBlack);
+    const int16_t hour_w = 2 * _display->char_width(label_size);
     for (int64_t t = (now / 3600 + 1) * 3600; t < now + span_s; t += 3600) {
         const time_t secs = static_cast<time_t>(t);
         struct tm local;
@@ -512,7 +524,8 @@ void screen_chart(int16_t top, int16_t bottom) {
         const int16_t x = chart_x(t, now, span_s, left, width);
         if (x + hour_w > left + width) continue;
         snprintf(label, sizeof(label), "%02d", local.tm_hour);
-        _display->text(x, bars_bottom + 2, label, 1, Display::kGrey, Display::kBlack);
+        _display->text(x, bars_bottom + px(2), label, label_size, Display::kGrey,
+                       Display::kBlack);
     }
 }
 
@@ -529,40 +542,44 @@ void screen_time_line() {
     struct tm local;
     if (localtime_r(&now, &local)) strftime(clock, sizeof(clock), "%H:%M", &local);
     snprintf(line, sizeof(line), "now %s, next %s", clock, _next_text);
-    if (!clock[0] || 8 + static_cast<int16_t>(strlen(line)) * _display->char_width(2) >
+    if (!clock[0] || px(8) + static_cast<int16_t>(strlen(line)) * _display->char_width(ts(2)) >
                          _display->width()) {
         snprintf(line, sizeof(line), "next change %s", _next_text);
     }
-    _display->fill_rect(0, _time_y, _display->width(), _display->char_height(2),
+    _display->fill_rect(0, _time_y, _display->width(), _display->char_height(ts(2)),
                         Display::kBlack);
-    _display->text(8, _time_y, line, 2, Display::kWhite, Display::kBlack);
+    _display->text(px(8), _time_y, line, ts(2), Display::kWhite, Display::kBlack);
 }
 
 void screen_price(const oa3::PriceInfo& p) {
     if (!_display) return;
     PeripheralLock l(*_display);
     screen_header();
-    _display->fill_rect(0, 40, _display->width(), 150, Display::kBlack);
+    _display->fill_rect(0, px(40), _display->width(), status_top() - px(40), Display::kBlack);
     _chart_top = -1;
     _time_y = -1;
     if (!p.active) {
-        _display->text(8, 90, "no price in force", 2, Display::kYellow, Display::kBlack);
+        _display->text(px(8), px(90), "no price in force", ts(2), Display::kYellow,
+                       Display::kBlack);
         _display->flush();
         return;
     }
     char line[48];
-    _display->text(8, 50, p.text, 5, Display::kWhite, Display::kBlack);
+    const uint8_t price_size = ts(5), text_size = ts(2);
+    _display->text(px(8), px(50), p.text, price_size, Display::kWhite, Display::kBlack);
     // Units beside the price, bottom-aligned with it, where they fit; else on the line below.
     unit_label(p.currency, p.units, line, sizeof(line));
-    const int16_t price_right = 8 + static_cast<int16_t>(strlen(p.text)) * _display->char_width(5);
-    const int16_t units_w = static_cast<int16_t>(strlen(line)) * _display->char_width(2);
-    int16_t next_y = 105;
-    if (price_right + 6 + units_w <= _display->width() - 4) {
-        _display->text(price_right + 6, 50 + _display->char_height(5) - _display->char_height(2),
-                       line, 2, Display::kWhite, Display::kBlack);
+    const int16_t price_right =
+        px(8) + static_cast<int16_t>(strlen(p.text)) * _display->char_width(price_size);
+    const int16_t units_w = static_cast<int16_t>(strlen(line)) * _display->char_width(text_size);
+    int16_t next_y = px(105);
+    if (price_right + px(6) + units_w <= _display->width() - px(4)) {
+        _display->text(price_right + px(6),
+                       px(50) + _display->char_height(price_size) - _display->char_height(text_size),
+                       line, text_size, Display::kWhite, Display::kBlack);
     } else {
-        _display->text(8, 105, line, 2, Display::kWhite, Display::kBlack);
-        next_y = 140;
+        _display->text(px(8), px(105), line, text_size, Display::kWhite, Display::kBlack);
+        next_y = px(140);
     }
     if (p.has_next_change) {
         hhmm(p.next_change, _next_text, sizeof(_next_text));
@@ -573,8 +590,8 @@ void screen_price(const oa3::PriceInfo& p) {
     }
     _time_y = next_y;
     screen_time_line();
-    _chart_top = next_y + _display->char_height(2) + 6;
-    screen_chart(_chart_top, kChartBottom);
+    _chart_top = next_y + _display->char_height(text_size) + px(6);
+    screen_chart(_chart_top, status_top());
     _display->flush();
 }
 
@@ -583,7 +600,7 @@ void screen_price(const oa3::PriceInfo& p) {
 void screen_chart_refresh() {
     if (!_display || _chart_top < 0) return;
     PeripheralLock l(*_display);
-    screen_chart(_chart_top, kChartBottom);
+    screen_chart(_chart_top, status_top());
     _display->flush();
 }
 
@@ -598,8 +615,9 @@ void screen_status(const oa3::VenStatusInfo& s) {
         color = Display::kYellow;
     }
     PeripheralLock l(*_display);
-    _display->fill_rect(0, 200, _display->width(), 40, Display::kBlack);
-    _display->text(8, 210, oa3::to_string(s.status), 2, color, Display::kBlack);
+    _display->fill_rect(0, status_top(), _display->width(), px(40), Display::kBlack);
+    _display->text(px(8), status_top() + px(10), oa3::to_string(s.status), ts(2), color,
+                   Display::kBlack);
     _display->flush();
 }
 
