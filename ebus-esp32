@@ -1264,7 +1264,7 @@ OA3_KEYS = {"base_url": str, "program_name": str, "program_id": str, "poll_perio
 OA3_MAX_EVENTS_DEFAULT = 2
 # The cpp-oa3 library, pinned. EBUS_CPP_OA3 names another source, e.g. a local checkout:
 #   EBUS_CPP_OA3=symlink:///path/to/cpp-oa3
-OA3_LIB_DEP = "oa3=https://github.com/grid-coordination/cpp-oa3.git#v0.1.0"
+OA3_LIB_DEP = "oa3=https://github.com/grid-coordination/cpp-oa3.git#v0.2.0"
 
 def oa3_config(cfg: dict):
     """The validated oa3: block, or None when device.yml has none."""

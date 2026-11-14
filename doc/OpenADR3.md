@@ -64,7 +64,7 @@ A VTN with a private CA needs its PEM root at `/certs/<Host>.ca`, named by `mqtt
 
 With `notifications: true` the VEN follows the VTN's MQTT notifications as well as polling. Once the program is resolved, the client asks the VTN for its `/notifiers`, connects to the broker it advertises, subscribes to the program's event and program topics, and fetches `/events` as a snapshot. While subscribed it polls `/events` hourly instead of every `poll_period_s` (cpp-oa3's `VenConfig::notify_poll_period_s`), and a notification updates the events, and with them the price, as it arrives. These notifications need cpp-oa3 0.2.0 or later.
 
-The MQTT client is arduino-mqtt, run on the VEN's own task (`ArduinoMqttSession` in `src/platform/oa3_port.cpp`), with an 8 KB read buffer allocated on the first connect. Its client id is `oa3-<device id>`. The broker's host is resolved through the same lock as every other lookup (`network_dns_prime()`), and its CA certificate is read at connect time from `/certs/<Host>.ca`, named as for the VTN. For the price server that file is `data/certs/mqttGrid-coordinationEnergy.ca`.
+The MQTT client is arduino-mqtt, run on the VEN's own task (`ArduinoMqttSession` in `src/platform/oa3_port.cpp`), with an 8 KB read buffer allocated on the first connect. Its client id is `oa3-<device id>`. The broker's host is resolved through the same lock as every other lookup (`network_dns_prime()`), and it is verified as the VTN is: against `/certs/<Host>.ca` when that file exists, read at connect time, otherwise against the public root CAs.
 
 With `exclusive_tls`, the client closes the MQTTS session before each HTTPS request and reconnects after it. It connects with a kept session and QoS 1, so the broker queues what arrives while the session is closed.
 
@@ -79,7 +79,7 @@ In a `device` or `controller` build, the VEN starts at the end of `setup()`, aft
 The build uses cpp-oa3 pinned in `ebus-esp32` (`OA3_LIB_DEP`):
 
 ```
-oa3=https://github.com/grid-coordination/cpp-oa3.git#v0.1.0
+oa3=https://github.com/grid-coordination/cpp-oa3.git#v0.2.0
 ```
 
 `EBUS_CPP_OA3` names another source for a build, for example a local checkout:
