@@ -18,7 +18,9 @@ An OpenADR 3 VEN that follows one program on the [price server](https://price.gr
 
 ## What it shows
 
-The [price screen](../../doc/OpenADR3.md#price-screen): the price, its currency and units, when it next changes (UTC), and the VEN's status. The VEN polls the program's events every 15 minutes and the screen follows the hourly intervals between polls.
+The [price screen](../../doc/OpenADR3.md#price-screen): the program, the price and its units, the time now and of the next change in local time (`device.timezone`), the next 12 hours of prices, and the VEN's status. The VEN polls the program's events every 15 minutes and the screen follows the hourly intervals between polls.
+
+![The price screen on an Olimex MOD-LCD2.8RTP](../../doc/images/mod-lcd2.8rtp-price-screen.jpg)
 
 The touch panel is declared under `peripherals:` so a project's own code can read it ([doc/Peripherals.md](../../doc/Peripherals.md#touch)); this example draws nothing on a touch.
 

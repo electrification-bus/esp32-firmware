@@ -37,7 +37,7 @@ oa3:
 
 ## Price screen
 
-With `display:`, the VEN draws the price on that display from its own task (`screen_begin()`, `screen_price()`, `screen_chart()` and `screen_status()` in `src/platform/oa3_port.cpp`). The layout is drawn for a 320x240 panel such as `spi/ili9341` in landscape and scaled by the smaller of width / 320 and height / 240, so it fills a larger panel such as `dsi/st7701`'s 640x480; the chart takes the height the text leaves:
+With `display:`, the VEN draws the price on that display ([Displays.md](Displays.md) has the panels and how to connect them) from its own task (`screen_begin()`, `screen_price()`, `screen_chart()` and `screen_status()` in `src/platform/oa3_port.cpp`). The layout is drawn for a 320x240 panel such as `spi/ili9341` in landscape and scaled by the smaller of width / 320 and height / 240, so it fills a larger panel such as `dsi/st7701`'s 640x480; the chart takes the height the text leaves:
 
 | Part | Shows |
 |---|---|
