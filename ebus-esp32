@@ -1277,7 +1277,7 @@ OA3_POLL_PERIOD_DEFAULT = 900   # cpp-oa3's VenConfig::poll_period_s
 OA3_MAX_EVENTS_DEFAULT = 2
 # The cpp-oa3 library, pinned. EBUS_CPP_OA3 names another source, e.g. a local checkout:
 #   EBUS_CPP_OA3=symlink:///path/to/cpp-oa3
-OA3_LIB_DEP = "oa3=https://github.com/grid-coordination/cpp-oa3.git#v0.3.0"
+OA3_LIB_DEP = "oa3=https://github.com/grid-coordination/cpp-oa3.git#v0.4.0"
 
 def oa3_config(cfg: dict):
     """The validated oa3: block, or None when device.yml has none."""
@@ -2228,13 +2228,12 @@ def _generate(args) -> None:
     if oa3:
         config_doc["oa3"] = {k: oa3[k] for k in ("base_url", "program_name", "program_id",
                                                  "poll_period_s", "display") if oa3.get(k)}
-        # MQTT notifications; exclusive_tls defaults on for an original ESP32, which has
-        # room for one TLS session (doc/OpenADR3.md, 'Memory').
+        # MQTT notifications; one TLS session at a time unless exclusive_tls: false
+        # (doc/OpenADR3.md, 'Memory').
         if oa3.get("notifications"):
             config_doc["oa3"]["notifications"] = True
             config_doc["oa3"]["exclusive_tls"] = (
-                oa3["exclusive_tls"] if oa3.get("exclusive_tls") is not None
-                else env_is_classic_esp32(device.get("environment")))
+                oa3["exclusive_tls"] if oa3.get("exclusive_tls") is not None else True)
             # Push only by default: the events are fetched on connect and after a break,
             # not polled while subscribed.
             config_doc["oa3"]["notify_poll_period_s"] = oa3.get("notify_poll_period_s") or 0

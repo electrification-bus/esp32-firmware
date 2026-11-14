@@ -322,15 +322,14 @@ def test_unset_timezone_leaves_the_firmware_default(cli, sandbox):
     assert sandbox.config_yml["device"]["timezone"] == ""
 
 
-@pytest.mark.parametrize("env,exclusive", [("esp32-poe-iso-wrover", True),
-                                           ("olimex-esp32-p4-devkit", False)])
-def test_notifications_default_exclusive_tls_by_chip(cli, sandbox, env, exclusive):
+@pytest.mark.parametrize("env", ["esp32-poe-iso-wrover", "olimex-esp32-p4-devkit"])
+def test_notifications_default_exclusive_tls_on_every_chip(cli, sandbox, env):
     doc = device_doc(role="standalone")
     doc["device"]["environment"] = env
     doc.update(oa3(notifications=True))
     sandbox.generate(doc)
     assert sandbox.config_yml["oa3"]["notifications"] is True
-    assert sandbox.config_yml["oa3"]["exclusive_tls"] is exclusive
+    assert sandbox.config_yml["oa3"]["exclusive_tls"] is True
 
 
 def test_exclusive_tls_can_be_set(cli, sandbox):
