@@ -19,8 +19,6 @@ oa3:
   program_name: EELEC-012041131
 ```
 
-The VTN's CA certificate goes in `data/certs/priceGrid-coordinationEnergy.ca` (see [CA certificate](#ca-certificate)).
-
 ## Keys
 
 | Key | Required | Description |
@@ -56,9 +54,9 @@ The price and status are redrawn when the client reports a change. Each redraw h
 
 ## CA certificate
 
-With an `https://` `base_url`, the VEN verifies the VTN against a CA certificate at `/certs/<Host>.ca`, named by `mqtt_build_cert_path()` in `src/platform/config.cpp` as broker and OTA certificates are: the host with its dots removed and the letter after each dot capitalized. Put the PEM root in `data/certs/` (the repo's or the project's) and flash the filesystem image (`ebus-esp32 push --fs-only`). The file must be smaller than 4096 bytes (`OA3_CA_MAX`).
+With an `https://` `base_url`, the VEN verifies the VTN against the public root CAs: ESP-IDF's certificate bundle (Mozilla's root list), which the arduino-esp32 3.x framework carries in flash. A VTN with a publicly trusted certificate needs nothing installed.
 
-Without the file the VEN does not start and logs `OA3: **ERROR -- no CA certificate for <host> at <path>`. An `http://` `base_url` needs no certificate.
+A VTN with a private CA needs its PEM root at `/certs/<Host>.ca`, named by `mqtt_build_cert_path()` in `src/platform/config.cpp` as broker and OTA certificates are: the host with its dots removed and the letter after each dot capitalized. Put it in `data/certs/` (the repo's or the project's) and flash the filesystem image (`ebus-esp32 push --fs-only`). The file must be smaller than 4096 bytes (`OA3_CA_MAX`), and when present it is used instead of the public roots. On arduino-esp32 2.x, which has no bundle, the file is required: without it the VEN does not start. An `http://` `base_url` needs no certificate.
 
 ## Role: standalone
 
@@ -90,6 +88,7 @@ Every line starts with `OA3:`.
 |---|---|
 | `VEN for <program> at <base_url>, up to <n> events` | the client started |
 | `CA certificate <path>` | the CA file was read |
+| `no CA certificate for <host> at <path>; verifying it against the public root CAs` | there is no CA file, so the public roots are used |
 | `price <value> <currency>/<units>, interval <id> of event <id>, <start> to <end>` | the first price evaluation, and each change of the price in force |
 | `no price in force` | as above, when no interval covers the current time |
 | `status <status> (http <result>, <code>; <n> failures; retry in <s> s)` | the client reports its status |

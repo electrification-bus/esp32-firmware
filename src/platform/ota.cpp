@@ -3,6 +3,7 @@
 #include <platform/network.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <platform/tls_trust.h>
 #include <HTTPClient.h>
 #include <LittleFS.h>
 #include <Update.h>
@@ -112,6 +113,20 @@ void ota_start_fs_update(bool start_now) {
     Serial.printf("OTA: FS update %s from %s\n", start_now ? "queued" : "staged", _last_url);
 }
 
+// Whether _last_host ("host" or "host:port") verifies against the public root CAs.
+static bool ota_public_roots_verify(WiFiClientSecure& client) {
+    char host[sizeof(_last_host)];
+    strncpy(host, _last_host, sizeof(host) - 1);
+    host[sizeof(host) - 1] = '\0';
+    uint16_t port = 443;
+    char* colon = strchr(host, ':');
+    if (colon) {
+        *colon = '\0';
+        port = (uint16_t)atoi(colon + 1);
+    }
+    return tls_public_roots_verify(client, host, port);
+}
+
 static bool url_is_https(const char* url) {
     return strncasecmp(url, "https://", 8) == 0;
 }
@@ -169,6 +184,8 @@ static bool run_update(int update_type, const char* url) {
         ca_cert = new char[OTA_CA_MAX_SIZE];
         if (ca_cert && load_ota_ca_cert(_last_host, ca_cert, OTA_CA_MAX_SIZE)) {
             secure_client.setCACert(ca_cert);
+        } else if (ota_public_roots_verify(secure_client)) {
+            Serial.println("OTA: verifying the server against the public root CAs");
         } else {
             // Encrypted but UNAUTHENTICATED: anything that can intercept the connection
             // can serve its own image. Put a cert at /certs/<Host>.ca (data/certs/, then

@@ -7,6 +7,7 @@
 #include <platform/oa3_port.h>
 #include <platform/config.h>
 #include <platform/network.h>
+#include <platform/tls_trust.h>
 #include <peripheral/display.h>
 
 #include <Arduino.h>
@@ -93,6 +94,7 @@ private:
 class ArduinoHttpTransport final : public oa3::HttpTransport {
 public:
     void set_ca(const char* pem) { _secure.setCACert(pem); }
+    bool trust_public_roots() { return tls_trust_public_roots(_secure); }
     uint32_t requests() const { return _requests; }
 
     oa3::HttpResult get(const oa3::HttpRequest& req, oa3::HttpResponseFn on_response,
@@ -333,7 +335,8 @@ bool load_ca(const char* base_url) {
     mqtt_build_cert_path(_ca_host, path, sizeof(path));
     File f = LittleFS.open(path, FILE_READ);
     if (!f) {
-        Serial.printf("OA3: **ERROR -- no CA certificate for %s at %s\n", _ca_host, path);
+        Serial.printf("OA3: no CA certificate for %s at %s; verifying it against the public "
+                      "root CAs\n", _ca_host, path);
         return false;
     }
     size_t n = f.size();
@@ -386,8 +389,14 @@ void setup_oa3() {
         return;
     }
     if (strncmp(oa3_base_url, "https://", 8) == 0) {
-        if (!load_ca(oa3_base_url)) return;
-        _http.set_ca(_ca);
+        // A /certs/<Host>.ca file wins (a private CA); otherwise the public roots.
+        if (load_ca(oa3_base_url)) {
+            _http.set_ca(_ca);
+        } else if (!_http.trust_public_roots()) {
+            Serial.println("OA3: **ERROR -- no CA certificate, and no public root CAs on this "
+                           "framework");
+            return;
+        }
     }
     oa3::VenStorage storage;
     if (!make_storage(&storage)) return;
