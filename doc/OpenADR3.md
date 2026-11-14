@@ -36,7 +36,7 @@ oa3:
 
 ## Price screen
 
-With `display:`, the VEN draws the price on that display from its own task (`screen_begin()`, `screen_price()` and `screen_status()` in `src/platform/oa3_port.cpp`). Positions are fixed in pixels, down to y 240, for a 320x240 panel such as `spi/ili9341` in landscape:
+With `display:`, the VEN draws the price on that display from its own task (`screen_begin()`, `screen_price()`, `screen_chart()` and `screen_status()` in `src/platform/oa3_port.cpp`). Positions are fixed in pixels, down to y 240, for a 320x240 panel such as `spi/ili9341` in landscape:
 
 | Part | Shows |
 |---|---|
@@ -44,6 +44,7 @@ With `display:`, the VEN draws the price on that display from its own task (`scr
 | Price | The price in force as the VTN sent it, in large type; `waiting for a price` until the first evaluation, and `no price in force`, in yellow, when no interval covers the current time |
 | Units | `<currency>/<units>` beside the price, bottom-aligned with it (on the line below when it does not fit), with `USD` shown as `$` and `KWH`, `MWH`, `WH` as `kWh`, `MWh`, `Wh`: `$/kWh` |
 | Next change | `next change HH:MM <zone>` in the device's local time (`device.timezone`): the next interval boundary, else the end of the interval in force, else `none` |
+| Chart | The next 12 hours of prices (`OA3_CHART_HOURS`), from cpp-oa3's `price_schedule()`, as bars: the interval in force in white, later ones in blue, none where no price is in force. Bars are scaled from the lowest price, drawn as a short stub, to the highest; both are printed above the bars, and every third local hour below them |
 | Status | The client's status, colored by `screen_status()` |
 
 | Status color | Statuses |
@@ -52,7 +53,7 @@ With `display:`, the VEN draws the price on that display from its own task (`scr
 | Yellow | `WAITING_FOR_CLOCK`, `RESOLVING_PROGRAM`, `STALE`, `TRUNCATED` |
 | Red | any other: `STOPPED`, `PROGRAM_NOT_FOUND`, `TRANSPORT_ERROR`, `HTTP_ERROR`, `PARSE_ERROR` |
 
-The price and status are redrawn when the client reports a change. Each redraw holds the display's `PeripheralLock`, so other code drawing on the same display does not interleave with it.
+The price and status are redrawn when the client reports a change. The chart is redrawn with the price, and after each fetch and each applied notification, since those can change later prices without changing the one in force. Each redraw holds the display's `PeripheralLock`, so other code drawing on the same display does not interleave with it.
 
 ## CA certificate
 

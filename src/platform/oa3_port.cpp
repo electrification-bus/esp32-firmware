@@ -24,6 +24,7 @@
 
 #include <oa3/client/ven_client.h>
 #include <oa3/client/mqtt_session.h>
+#include <oa3/model/intervals.h>
 
 #ifndef OA3_TASK_STACK
 #define OA3_TASK_STACK 8192   // porting.md: at least 6 KB; the spike bottomed at 2.6 KB free of 8
@@ -431,11 +432,86 @@ void screen_begin() {
     _display->flush();
 }
 
+#ifndef OA3_CHART_HOURS
+#define OA3_CHART_HOURS 12    // the price screen's chart: hours ahead of now
+#endif
+#ifndef OA3_CHART_STEPS
+#define OA3_CHART_STEPS 32    // spans it draws; the price server's are an hour each
+#endif
+
+constexpr int16_t kChartBottom = 200;   // the status line's band starts here
+int16_t _chart_top = -1;                // where the price screen put the chart; -1 for none
+
+// The x of instant t on a chart of [now, now + span_s) drawn width pixels wide from left.
+int16_t chart_x(int64_t t, int64_t now, int64_t span_s, int16_t left, int16_t width) {
+    return static_cast<int16_t>(left + (t - now) * width / span_s);
+}
+
+// The next OA3_CHART_HOURS of prices as bars from y top to bottom: the span in force in white,
+// later ones in blue, none where no price is in force. Bars are scaled from the lowest price
+// (a stub) to the highest, so the shape shows; both are printed above the bars, and every
+// third local hour below them.
+void screen_chart(int16_t top, int16_t bottom) {
+    const int16_t label_h = _display->char_height(1);
+    const int16_t bars_top = top + label_h + 2;
+    const int16_t bars_bottom = bottom - label_h - 2;
+    const int16_t left = 8;
+    const int16_t width = _display->width() - 2 * left;
+    _display->fill_rect(0, top, _display->width(), bottom - top, Display::kBlack);
+    if (!_client || bars_bottom - bars_top < 20) return;
+
+    const int64_t now = static_cast<int64_t>(time(nullptr));
+    const int64_t span_s = static_cast<int64_t>(OA3_CHART_HOURS) * 3600;
+    oa3::TimeInterval window{};
+    if (!oa3::from_unix(now, &window.start) || !oa3::from_unix(now + span_s, &window.end)) return;
+    static oa3::PriceStep steps[OA3_CHART_STEPS];
+    // "PRICE": the payload type VenConfig follows by default, as this port leaves it.
+    const size_t n = oa3::price_schedule(_client->events(), _client->event_count(), window,
+                                         "PRICE", steps, OA3_CHART_STEPS, nullptr);
+    double lo = 0, hi = 0;
+    bool any = false;
+    for (size_t i = 0; i < n; ++i) {
+        if (!steps[i].value) continue;
+        const double v = steps[i].value->number;
+        if (!any || v > hi) hi = v;
+        if (!any || v < lo) lo = v;
+        any = true;
+    }
+    if (!any) return;
+
+    const int16_t stub = 4;   // the lowest price's bar
+    const int16_t bars_h = bars_bottom - bars_top - stub;
+    for (size_t i = 0; i < n; ++i) {
+        if (!steps[i].value) continue;
+        const int16_t x0 = chart_x(oa3::to_unix(steps[i].span.start), now, span_s, left, width);
+        const int16_t x1 = chart_x(oa3::to_unix(steps[i].span.end), now, span_s, left, width);
+        const double frac = hi > lo ? (steps[i].value->number - lo) / (hi - lo) : 1.0;
+        const int16_t h = stub + static_cast<int16_t>(frac * bars_h);
+        const int16_t w = x1 - x0 > 2 ? x1 - x0 - 1 : 1;
+        _display->fill_rect(x0, bars_bottom - h, w, h, i == 0 ? Display::kWhite : Display::kBlue);
+    }
+
+    char label[40];
+    snprintf(label, sizeof(label), "max %.4g   min %.4g", hi, lo);
+    _display->text(left, top, label, 1, Display::kGrey, Display::kBlack);
+    const int16_t hour_w = 2 * _display->char_width(1);
+    for (int64_t t = (now / 3600 + 1) * 3600; t < now + span_s; t += 3600) {
+        const time_t secs = static_cast<time_t>(t);
+        struct tm local;
+        if (!localtime_r(&secs, &local) || local.tm_hour % 3 != 0) continue;
+        const int16_t x = chart_x(t, now, span_s, left, width);
+        if (x + hour_w > left + width) continue;
+        snprintf(label, sizeof(label), "%02d", local.tm_hour);
+        _display->text(x, bars_bottom + 2, label, 1, Display::kGrey, Display::kBlack);
+    }
+}
+
 void screen_price(const oa3::PriceInfo& p) {
     if (!_display) return;
     PeripheralLock l(*_display);
     screen_header();
     _display->fill_rect(0, 40, _display->width(), 150, Display::kBlack);
+    _chart_top = -1;
     if (!p.active) {
         _display->text(8, 90, "no price in force", 2, Display::kYellow, Display::kBlack);
         _display->flush();
@@ -465,6 +541,17 @@ void screen_price(const oa3::PriceInfo& p) {
     }
     snprintf(line, sizeof(line), "next change %s", next);
     _display->text(8, next_y, line, 2, Display::kWhite, Display::kBlack);
+    _chart_top = next_y + _display->char_height(2) + 6;
+    screen_chart(_chart_top, kChartBottom);
+    _display->flush();
+}
+
+// Redraws the chart alone: the events can change, by a fetch or a notification, without
+// the price in force changing, and the client reports only the latter.
+void screen_chart_refresh() {
+    if (!_display || _chart_top < 0) return;
+    PeripheralLock l(*_display);
+    screen_chart(_chart_top, kChartBottom);
     _display->flush();
 }
 
@@ -536,11 +623,17 @@ void log_poll(const oa3::VenClient& client) {
 void oa3_task(void* arg) {
     oa3::VenClient* client = static_cast<oa3::VenClient*>(arg);
     screen_begin();
+    uint32_t charted_notifications = 0;
     for (;;) {
         client->loop();
-        if (_http.requests() != _logged_requests) {
+        const bool fetched = _http.requests() != _logged_requests;
+        if (fetched) {
             _logged_requests = _http.requests();
             log_poll(*client);
+        }
+        if (fetched || client->status().notifications != charted_notifications) {
+            charted_notifications = client->status().notifications;
+            screen_chart_refresh();
         }
         uint32_t wait = client->ms_until_due();
         if (wait > 1000) wait = 1000;
