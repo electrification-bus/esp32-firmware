@@ -129,6 +129,7 @@ jobs:
           - bms
           - bridge-bess
           - oa3-price
+          - oa3-price-p4
           - sht20
           - ssr
     steps:

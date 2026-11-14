@@ -1,0 +1,30 @@
+# The current OpenADR 3 price on a MIPI-DSI display: an OpenADR 3 VEN (doc/OpenADR3.md) that
+# follows one price-server program, by MQTT notifications, and draws the price screen on an
+# Olimex MIPI-LCD2.8-640x480 V2 on the MIPI-DSI1 connector of an Olimex ESP32-P4-DevKit. No
+# broker and no Homie device (role standalone). See README.md in this folder.
+device:
+  name: oa3-price-p4
+  id: ${chip_id}
+  type: control
+  environment: olimex-esp32-p4-devkit
+  device_type: ebus
+  firmware_name: OA3 price display (P4)
+  firmware_version: 1.0.0
+  manufacturer: Example Manufacturer
+  model: oa3-price-p4
+  role: standalone
+  device_passphrase: ""  # set it in config-overlay.yml; generate refuses an empty or "changeme" value
+
+peripherals:
+  - id: lcd
+    component: dsi/st7701
+    config: { rotation: 1 }   # landscape 640x480, ribbon on the left
+
+oa3:
+  base_url: https://price.grid-coordination.energy/openadr3/3.1.0
+  program_name: EELEC-012041131
+  display: lcd
+  notifications: true
+
+log:
+  tcp_port: 23
