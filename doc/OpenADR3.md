@@ -38,10 +38,10 @@ With `display:`, the VEN draws the price on that display from its own task (`scr
 
 | Part | Shows |
 |---|---|
-| Header | `OpenADR 3 price` over a grey rule |
+| Header | The program's name (`oa3.program_name`) over a grey rule; with only `oa3.program_id` configured, the id until the client has resolved the name |
 | Price | The price in force as the VTN sent it, in large type; `waiting for a price` until the first evaluation, and `no price in force`, in yellow, when no interval covers the current time |
-| Units | `<currency>/<units>` |
-| Next change | `next change HH:MM UTC`: the next interval boundary, else the end of the interval in force, else `none` |
+| Units | `<currency>/<units>` beside the price, bottom-aligned with it (on the line below when it does not fit), with `USD` shown as `$` and `KWH`, `MWH`, `WH` as `kWh`, `MWh`, `Wh`: `$/kWh` |
+| Next change | `next change HH:MM <zone>` in the device's local time (`device.timezone`): the next interval boundary, else the end of the interval in force, else `none` |
 | Status | The client's status, colored by `screen_status()` |
 
 | Status color | Statuses |

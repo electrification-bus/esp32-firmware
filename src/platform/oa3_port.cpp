@@ -18,6 +18,7 @@
 #include <new>
 #include <string.h>
 #include <sys/time.h>
+#include <time.h>
 
 #include <oa3/client/ven_client.h>
 
@@ -197,15 +198,44 @@ uint32_t _logged_requests = 0;
 // The price screen, on the display oa3.display names (doc/OpenADR3.md). Drawn only from the
 // OA3 task: at its start, and from the client's callbacks, which run inside loop().
 Display* _display = nullptr;
+oa3::VenClient* _client = nullptr;   // for the program's name in the header
+bool _header_named = false;
 
-// "2026-11-13T19:00:00Z" -> "19:00 UTC"
+// A UTC instant as local time in device.timezone, e.g. "11:00 PST".
 void hhmm(const oa3::DateTime& t, char* out, size_t len) {
-    char iso[oa3::kDateTimeStringSize];
-    if (oa3::format_datetime(t, iso, sizeof(iso)) >= 16) {
-        snprintf(out, len, "%.5s UTC", iso + 11);
-    } else {
+    const time_t secs = static_cast<time_t>(t.seconds);
+    struct tm local;
+    if (!localtime_r(&secs, &local) || strftime(out, len, "%H:%M %Z", &local) == 0) {
         snprintf(out, len, "?");
     }
+}
+
+// "USD", "KWH" -> "$/kWh". The VTN's codes are upper case; the panel's built-in font has no
+// currency signs beyond "$", so other currencies keep their codes.
+void unit_label(const char* currency, const char* units, char* out, size_t len) {
+    const char* cur = strcmp(currency, "USD") == 0 ? "$" : currency;
+    const char* u = units;
+    if (strcmp(units, "KWH") == 0) u = "kWh";
+    else if (strcmp(units, "MWH") == 0) u = "MWh";
+    else if (strcmp(units, "WH") == 0) u = "Wh";
+    if (cur[0] && u[0]) snprintf(out, len, "%s/%s", cur, u);
+    else snprintf(out, len, "%s%s", cur, u);
+}
+
+// The header is the program: its configured name from the start, or, when only
+// oa3.program_id is configured, the id until the client has resolved the name.
+void screen_header() {
+    if (_header_named) return;
+    const char* name = oa3_program_name;
+    if (!name[0]) {
+        const oa3::Program* program = _client ? _client->program() : nullptr;
+        name = program && program->program_name[0] ? program->program_name : oa3_program_id;
+        _header_named = program != nullptr;
+    } else {
+        _header_named = true;
+    }
+    _display->fill_rect(0, 0, _display->width(), 30, Display::kBlack);
+    _display->text(8, 8, name, 2, Display::kWhite, Display::kBlack);
 }
 
 void screen_begin() {
@@ -217,7 +247,7 @@ void screen_begin() {
     }
     PeripheralLock l(*_display);
     _display->clear(Display::kBlack);
-    _display->text(8, 8, "OpenADR 3 price", 2, Display::kWhite, Display::kBlack);
+    screen_header();
     _display->fill_rect(0, 30, _display->width(), 1, Display::kGrey);
     _display->text(8, 90, "waiting for a price", 2, Display::kWhite, Display::kBlack);
     _display->flush();
@@ -226,6 +256,7 @@ void screen_begin() {
 void screen_price(const oa3::PriceInfo& p) {
     if (!_display) return;
     PeripheralLock l(*_display);
+    screen_header();
     _display->fill_rect(0, 40, _display->width(), 150, Display::kBlack);
     if (!p.active) {
         _display->text(8, 90, "no price in force", 2, Display::kYellow, Display::kBlack);
@@ -234,8 +265,18 @@ void screen_price(const oa3::PriceInfo& p) {
     }
     char line[48];
     _display->text(8, 50, p.text, 5, Display::kWhite, Display::kBlack);
-    snprintf(line, sizeof(line), "%s/%s", p.currency, p.units);
-    _display->text(8, 105, line, 2, Display::kWhite, Display::kBlack);
+    // Units beside the price, bottom-aligned with it, where they fit; else on the line below.
+    unit_label(p.currency, p.units, line, sizeof(line));
+    const int16_t price_right = 8 + static_cast<int16_t>(strlen(p.text)) * _display->char_width(5);
+    const int16_t units_w = static_cast<int16_t>(strlen(line)) * _display->char_width(2);
+    int16_t next_y = 105;
+    if (price_right + 6 + units_w <= _display->width() - 4) {
+        _display->text(price_right + 6, 50 + _display->char_height(5) - _display->char_height(2),
+                       line, 2, Display::kWhite, Display::kBlack);
+    } else {
+        _display->text(8, 105, line, 2, Display::kWhite, Display::kBlack);
+        next_y = 140;
+    }
     char next[24];
     if (p.has_next_change) {
         hhmm(p.next_change, next, sizeof(next));
@@ -245,7 +286,7 @@ void screen_price(const oa3::PriceInfo& p) {
         snprintf(next, sizeof(next), "none");
     }
     snprintf(line, sizeof(line), "next change %s", next);
-    _display->text(8, 140, line, 2, Display::kWhite, Display::kBlack);
+    _display->text(8, next_y, line, 2, Display::kWhite, Display::kBlack);
     _display->flush();
 }
 
@@ -401,6 +442,7 @@ void setup_oa3() {
     oa3::VenStorage storage;
     if (!make_storage(&storage)) return;
     static oa3::VenClient client(_http, _clock, storage);
+    _client = &client;
 
     oa3::VenConfig c{};
     c.base_url = oa3_base_url;

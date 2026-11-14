@@ -56,6 +56,10 @@ extern char oa3_display[32];         // a peripherals: id; "" draws nothing
 // Device passphrase for authenticated REST endpoints (OTA, registration)
 extern char device_passphrase[64];
 
+// device.timezone: a POSIX TZ string for local time (e.g. "PST8PDT,M3.2.0,M11.1.0");
+// NTP_TIMEZONE when device.yml sets none.
+extern char device_timezone[64];
+
 // OTA enable/disable via REST API
 // OTA_ENABLED_TIMEOUT: minutes before OTA auto-disables (0 = no timeout)
 #ifndef OTA_ENABLED_TIMEOUT

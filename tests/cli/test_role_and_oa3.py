@@ -295,3 +295,28 @@ def test_storage_warning_without_psram(cli, sandbox, capsys, env, max_events, wa
     doc.update(oa3(max_events=max_events))
     sandbox.generate(doc)
     assert ("has no PSRAM" in capsys.readouterr().out) == warns
+
+
+# ── device.timezone ────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("tz", ["PST8PDT,M3.2.0,M11.1.0", "CET-1CEST,M3.5.0,M10.5.0/3", "UTC0",
+                                "<+0530>-5:30"])
+def test_posix_timezone_is_accepted(cli, tz):
+    assert cli.device_timezone({"timezone": tz}) == tz
+
+
+@pytest.mark.parametrize("tz", ["America/Los_Angeles", "PST", 8, "X" * 64])
+def test_non_posix_timezone_is_refused(cli, capsys, tz):
+    with pytest.raises(SystemExit):
+        cli.device_timezone({"timezone": tz})
+    assert "device.timezone must be a POSIX TZ string" in capsys.readouterr().err
+
+
+def test_timezone_is_copied_into_config(cli, sandbox):
+    sandbox.generate(device_doc(timezone="CET-1CEST,M3.5.0,M10.5.0/3"))
+    assert sandbox.config_yml["device"]["timezone"] == "CET-1CEST,M3.5.0,M10.5.0/3"
+
+
+def test_unset_timezone_leaves_the_firmware_default(cli, sandbox):
+    sandbox.generate(device_doc())
+    assert sandbox.config_yml["device"]["timezone"] == ""

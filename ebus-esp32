@@ -1224,6 +1224,23 @@ class IdLimits:
 
 ROLES = ("device", "controller", "standalone")
 
+# A POSIX TZ string's leading standard zone and offset: "PST8...", "<+0530>-5:30", "UTC0".
+_POSIX_TZ_RE = re.compile(r"^([A-Za-z]{3,}|<[A-Za-z0-9+\-]{3,}>)[+\-]?\d{1,2}(:\d{2}){0,2}")
+
+def device_timezone(device: dict) -> str:
+    """device.timezone, a POSIX TZ string (the device's C library has no zone database, so
+    not an IANA name); "" when unset."""
+    tz = device.get("timezone")
+    if tz is None or tz == "":
+        return ""
+    if not isinstance(tz, str) or len(tz) > 63 or not _POSIX_TZ_RE.match(tz):
+        print(f"ERROR: device.timezone must be a POSIX TZ string of at most 63 characters, "
+              f"e.g. \"PST8PDT,M3.2.0,M11.1.0\" or \"CET-1CEST,M3.5.0,M10.5.0/3\" (an IANA "
+              f"name such as America/Los_Angeles is not understood on the device); got {tz!r}",
+              file=sys.stderr)
+        sys.exit(1)
+    return tz
+
 def device_role(device: dict, device_yml: Path) -> str:
     """device.role, or the older device.homie_role it replaces; device when neither is set."""
     role, legacy = device.get("role"), device.get("homie_role")
@@ -2150,6 +2167,8 @@ def _generate(args) -> None:
             "serial_number":     device.get("serial_number")     or "",
             "role":              role,
             "device_passphrase": device.get("device_passphrase") or "",
+            # A POSIX TZ string for local time; "" keeps the firmware's NTP_TIMEZONE.
+            "timezone":          device_timezone(device),
         },
         "wifi": {
             "ssid":     wifi.get("ssid")     or "",

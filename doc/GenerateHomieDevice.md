@@ -100,6 +100,7 @@ nodes:
 | `type`  | yes | Homie device `$type` string — how consumers identify the device |
 | `environment` | yes | PlatformIO environment name (`[env:…]`) from `platformio/platformio.ini` — **not** a PlatformIO `board` id; an env pins platform, board, PSRAM, flash size, partitions and build flags together |
 | `role` | no | `device` (default), `controller` or `standalone`. A controller build discovers other devices and runs the top-level `links:` list; it has no `nodes:`/`children:`, and the generator adds `-DENABLE_CONTROLLER` to the build. See [Controller role](#controller-role-links). A standalone build has no broker and no Homie device and takes no `nodes:`, `children:` or `links:`; the generator adds `-DEBUS_ROLE_STANDALONE`. See [OpenADR3.md](OpenADR3.md#role-standalone). `homie_role` is the older name of `role` and is still accepted; `generate` refuses a file that sets both to different values |
+| `timezone` | no | Local time for the device, as a POSIX TZ string such as `PST8PDT,M3.2.0,M11.1.0` or `CET-1CEST,M3.5.0,M10.5.0/3`; the device has no zone database, so an IANA name like `America/Los_Angeles` is refused. Default: the firmware's `NTP_TIMEZONE` (`include/platform/config.h`). The OpenADR 3 price screen shows times in it |
 
 #### The `id` template
 
