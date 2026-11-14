@@ -23,6 +23,15 @@
 #ifndef OA3_TASK_STACK
 #define OA3_TASK_STACK 8192   // porting.md: at least 6 KB; the spike bottomed at 2.6 KB free of 8
 #endif
+// The parse arena. One price-server event peaked at 6,984 bytes of it, so without PSRAM it
+// is halved from cpp-oa3's 16 KB default to leave internal RAM to the TLS session.
+#ifndef OA3_PORT_ARENA_SIZE
+#ifdef BOARD_HAS_PSRAM
+#define OA3_PORT_ARENA_SIZE OA3_JSON_ARENA_SIZE
+#else
+#define OA3_PORT_ARENA_SIZE 8192
+#endif
+#endif
 #ifndef OA3_CA_MAX
 #define OA3_CA_MAX 4096       // one PEM root
 #endif
@@ -355,15 +364,15 @@ bool make_storage(oa3::VenStorage* out) {
     const size_t n = OA3_MAX_EVENTS;
     void* events_mem = heap_caps_aligned_alloc(alignof(oa3::Event), 2 * n * sizeof(oa3::Event),
                                                caps);
-    void* arena_buf = heap_caps_aligned_alloc(8, OA3_JSON_ARENA_SIZE, caps);
+    void* arena_buf = heap_caps_aligned_alloc(8, OA3_PORT_ARENA_SIZE, caps);
     if (!events_mem || !arena_buf) {
         Serial.printf("OA3: **ERROR -- no memory for the client's storage (%u bytes)\n",
-                      (unsigned)(2 * n * sizeof(oa3::Event) + OA3_JSON_ARENA_SIZE));
+                      (unsigned)(2 * n * sizeof(oa3::Event) + OA3_PORT_ARENA_SIZE));
         return false;
     }
     oa3::Event* events = static_cast<oa3::Event*>(events_mem);
     for (size_t i = 0; i < 2 * n; i++) new (&events[i]) oa3::Event();
-    static oa3::JsonArena arena(arena_buf, OA3_JSON_ARENA_SIZE);
+    static oa3::JsonArena arena(arena_buf, OA3_PORT_ARENA_SIZE);
     *out = oa3::VenStorage{events, events + n, n, &arena};
     _arena = out->arena;
     return true;

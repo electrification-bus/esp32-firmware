@@ -103,8 +103,25 @@ The client reads UTC from the clock NTP sets; until NTP has set it, the client's
 
 ## Memory
 
-With arduino-esp32 3.3.11 (ESP-IDF 5.5.5), Mbed TLS allocates only from internal RAM and uses 16 KB records, and one TLS session takes 42 to 45 KB of internal heap. On an ESP32-POE-ISO-WROVER, an HTTPS request made while an MQTTS session was open succeeded, but the internal heap's low-water mark fell to 232 bytes. An ESP32-P4 kept 160 KB.
+The constraint is internal RAM. With arduino-esp32 3.3.11 (ESP-IDF 5.5.5), Mbed TLS allocates only from internal RAM and uses 16 KB records, so one TLS session takes 42 to 45 KB of it whatever else the board has. The VEN opens its HTTPS connection for each request and closes it before the request returns, so it holds no TLS session between polls; following MQTT notifications (cpp-oa3 0.2.0) holds one more.
 
-The VEN opens its connection for each request and closes it before the request returns, so it holds no TLS session between polls. A `device` or `controller` build with a TLS broker still holds two sessions during a poll, so `generate` warns when `oa3:` and a TLS broker (`mqtt.port: 8883`, or `secure-mqtt` in `mqtt.discover`) share a build for an original-ESP32 environment.
+The client's storage is the other large piece: two event arrays of `max_events` (5,400 bytes per event) and a parse arena, which one price-server event fills to 6,984 bytes. On a `BOARD_HAS_PSRAM` build both go in PSRAM with a 16 KB arena. Without PSRAM they go in internal RAM, allocated once when the VEN starts, with an 8 KB arena: 29,792 bytes with the default `max_events: 2`. `generate` warns when `max_events` is larger. The VEN's task has an 8 KB stack (`OA3_TASK_STACK`).
 
-On a `BOARD_HAS_PSRAM` build, the client's event arrays and parse arena are allocated in PSRAM. Otherwise they are static in internal RAM, about 38 KB with the default `max_events: 2`, and `generate` warns when `max_events` is larger. The VEN's task has an 8 KB stack (`OA3_TASK_STACK`).
+### Choosing a board
+
+The lowest internal free heap measured during an HTTPS fetch, following the price server's EELEC-012041131 program:
+
+| Board | PSRAM | Polling only | Following MQTT notifications |
+|---|---|---|---|
+| Olimex ESP32-POE-ISO (ESP32 WROOM) | none | 11.1 KB | not measured; its MQTT client and notification storage need about 19 KB more internal RAM, which it does not have |
+| Olimex ESP32-POE-ISO-WROVER (ESP32) | 8 MB | 40.4 KB (10 hours) | 22 to 31 KB, one TLS session at a time (`exclusive_tls`) |
+| Waveshare ESP32-S3-POE-ETH | 8 MB | 141 KB | 77 KB with the MQTTS session open during the fetch |
+| Olimex ESP32-P4-DevKit | 32 MB | 204 KB | 141 KB with the MQTTS session open during the fetch |
+
+So:
+
+- An ESP32 without PSRAM runs a polling VEN, `role: standalone`, with about 11 KB to spare at its tightest point, and nothing else that needs TLS. It cannot follow notifications.
+- An ESP32 with PSRAM follows notifications, one TLS session at a time.
+- An ESP32-S3 or ESP32-P4 with PSRAM holds two TLS sessions at once with room left, so it can follow notifications and keep a TLS broker connection, and `exclusive_tls` defaults off there.
+
+A `device` or `controller` build with a TLS broker holds two sessions during a poll, so `generate` warns when `oa3:` and a TLS broker (`mqtt.port: 8883`, or `secure-mqtt` in `mqtt.discover`) share a build for an original-ESP32 environment. An ILI9341 display on the SPI bus took 468 bytes of internal RAM when it started.
