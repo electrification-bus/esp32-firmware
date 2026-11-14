@@ -118,7 +118,7 @@ Return `false` whenever the hardware did not take the value: no display attached
 When a reading isn't available — a sensor read fails, hardware isn't connected yet, a value is genuinely unknown — **omit the property rather than publishing a sentinel** like `0`, `-1`, `-999`, or `NaN`. A consumer can't distinguish a real `0` from a "no data" `0`, so sentinels silently corrupt downstream logic. Two cases:
 
 - **Never seen a value yet** — just don't call `.publish()`. A `NodeProperty` won't publish anything until its first `.set(...)`, so a read failure on the very first poll simply leaves the topic absent (no phantom retained value).
-- **Had a value, now unavailable** — call `.clearValue()`. It retracts the retained topic (publishes a zero-length, retained message, which MQTT treats as "delete") so consumers see the property disappear rather than go stale, and it won't republish the old value until a fresh `.set(...)`.
+- **Had a value, now unavailable** — call `.clearValue()`. It retracts the retained topic (publishes a zero-length, retained message, which MQTT treats as "delete") so consumers see the property disappear rather than go stale, and it won't republish the old value until a fresh `.set(...)`. It retracts only on that transition: called again while the property holds no value, it publishes nothing, so a driver can call it on every failed read.
 
 ```cpp
 void MyDevice::loop() {
