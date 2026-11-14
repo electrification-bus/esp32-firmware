@@ -642,6 +642,9 @@ void subscriber_callback(MQTTClient* client, char topic[], char bytes[], int len
 // which is the question asked of this log most often.
 static uint32_t _session_start_ms = 0;
 static uint16_t _reconnects       = 0;
+// True from a completed broker_connect() until loop_mqtt() reports the session gone, so a
+// session that drops before loop_mqtt() has seen it up is still logged and marked down.
+static bool     _session_up       = false;
 
 // Open a broker session on the configured host. Returns true when connected.
 // Called by setup_mqtt() and by loop_mqtt()'s reconnect path. On success
@@ -727,6 +730,7 @@ static bool broker_connect() {
     Serial.println("MQTT: link dropped while sending held publishes or re-subscribing");
     return false;
   }
+  _session_up = true;
   return true;
 }
 
@@ -812,7 +816,6 @@ void setup_mqtt() {
 // Service the client, watch the link, reconnect when it is down, and drain the publish
 // queue. Called from the main task on every pass, so inbound /set dispatch runs there.
 void loop_mqtt() {
-  static bool was_up = false;
   static uint32_t last_attempt_ms = 0;
   static uint32_t last_status_ms = 0;
 
@@ -830,10 +833,10 @@ void loop_mqtt() {
                     (unsigned)_reconnects, _reconnects == 1 ? "" : "s",
                     mqtt_host, topic_device);
     }
-    was_up = true;
+    _session_up = true;
   } else {
-    if (was_up) {
-      was_up = false;
+    if (_session_up) {
+      _session_up = false;
       mqtt_transport.link_down();
       Serial.printf("MQTT: DISCONNECTED! error %d, loop %s, up %lu s, session lasted %lu s; "
                     "holding retained and QoS 1/2 publishes\n", (int)mqtt_client.lastError(),
