@@ -117,6 +117,8 @@ extern bool mdns_advertise;
 // Config key `log_tcp_port`; 0 disables the listener. NOTE: the stream is
 // unauthenticated — anything the firmware prints is readable by anyone on the LAN.
 extern uint16_t log_tcp_port;
+// Config key `log.heap_interval_s`: seconds between "HEAP:" log lines; 0 (default) logs none.
+extern uint32_t log_heap_interval_s;
 
 // TLS/SSL support for MQTT (port 8883)
 #define MQTT_SECURE_PORT 8883

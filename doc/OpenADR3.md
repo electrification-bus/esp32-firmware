@@ -105,8 +105,8 @@ Every line starts with `OA3:`.
 | `no price in force` | as above, when no interval covers the current time |
 | `status <status> (http <result>, <code>; <n> failures; retry in <s> s)` | the client reports its status; with notifications it adds `; notify <state> (mqtt <result>; <n> failures; <n> notifications)` |
 | `poll <status>, notify <state>, <n> events; internal free ..., largest ..., min ...; task stack free ...; arena high water ... of ...` | after each request: the notification state, internal heap (`min` is the lowest since boot), the task's stack high-water mark and the parse arena's use |
-| `GET <host>: internal low-water <n>, largest block before <m>` | after each HTTPS request: the lowest internal free heap during that request alone, and the largest internal block just before it |
-| `MQTT connect <host>: internal low-water <n>, largest block before <m>` | the same for each broker connect |
+| `GET <host>: internal low-water <n>; before it, free <f>, largest block <m>` | after each HTTPS request: the lowest internal free heap during that request alone, and the internal free heap and largest block just before it |
+| `MQTT connect <host>: internal low-water <n>; before it, free <f>, largest block <m>` | the same for each broker connect |
 | `MQTT connect to <host>:<port> failed (lwmqtt <e>, return code <rc>)` | a broker connect failed; a handshake or certificate failure adds `, TLS: <error>` |
 | `GET <host> failed: <error>` | the request failed before a response; a handshake or certificate failure adds `, TLS: <error>` |
 | `<level> <message>` | the client library's own log, at `info` and above |
@@ -117,7 +117,7 @@ The client reads UTC from the clock NTP sets; until NTP has set it, the client's
 
 ## Memory
 
-The constraint is internal RAM. With arduino-esp32 3.3.11 (ESP-IDF 5.5.5), Mbed TLS allocates only from internal RAM and uses 16 KB records, whatever else the board has. The VEN opens its HTTPS connection for each request and closes it before the request returns, so it holds no TLS session between polls; following MQTT notifications holds one more.
+The constraint is internal RAM. With arduino-esp32 3.3.11 (ESP-IDF 5.5.5), Mbed TLS allocates only from internal RAM and uses 16 KB records, whatever else the board has. The VEN opens its HTTPS connection for each request and closes it before the request returns, so it holds no TLS session between polls; following MQTT notifications holds one more. The VEN makes its first request 30 seconds after boot (`OA3_PORT_START_DELAY_S`): requests made while the network, mDNS, NTP and the web server were still starting overlapped their allocations, and on an ESP32-POE-ISO-WROVER the first fetch's internal low fell to 16.5-25 KB, against about 31 KB once boot had settled.
 
 The client's storage is the other large piece: event arrays of `max_events` (3,056 bytes per event) and a parse arena, which one price-server event fills to 6,984 bytes. On a `BOARD_HAS_PSRAM` build they go in PSRAM: two arrays, so a failed fetch keeps the last good events, and a 16 KB arena. Without PSRAM they go in internal RAM, allocated once when the VEN starts: one array (`OA3_PORT_SINGLE_BUFFER`; a fetch that fails after it has begun to parse clears the prices until the next success) and an 8 KB arena, 14,304 bytes with the default `max_events: 2`. `generate` warns when `max_events` is larger. The VEN's task has an 8 KB stack (`OA3_TASK_STACK`).
 
@@ -157,7 +157,7 @@ A configuration is **recommended** when the lowest internal free heap stays at o
 | Board | PSRAM | Polling | Following MQTT notifications | Largest block before TLS |
 |---|---|---|---|---|
 | Olimex ESP32-POE-ISO (ESP32 WROOM) | none | **Recommended** with cpp-oa3 0.3.0: 18.9 KB over a 4-hour soak, no failures. With 0.2.0, not recommended: 1.6 to 3.6 KB, and one of two runs failed to allocate | **Not recommended**: 68 B over a 12-hour soak, with allocation failures and a dropped MQTT connection at every notification burst | 34.8 KB |
-| Olimex ESP32-POE-ISO-WROVER (ESP32) | 8 MB | **Recommended**: 31.8 to 33.3 KB | **Recommended** with `exclusive_tls`: 22.3 KB over an 18-hour soak with the display, no failures; with cpp-oa3 0.3.0 the first fetch after a boot dipped to 16.5 KB | 34.8 to 36.9 KB; 18.4 KB with the display |
+| Olimex ESP32-POE-ISO-WROVER (ESP32) | 8 MB | **Recommended**: 31.8 to 33.3 KB | **Recommended** with `exclusive_tls`: 22.3 KB over an 18-hour soak with the display, no failures. Before the VEN waited for boot to settle, the first fetch after a boot dipped to 16.5 KB | 34.8 to 36.9 KB; 18.4 KB with the display |
 | Waveshare ESP32-S3-POE-ETH | 8 MB | **Recommended**: 133 to 135 KB | **Recommended**: 89.2 KB over a 16-hour soak, both sessions open during fetches | 94.2 KB |
 | Olimex ESP32-P4-DevKit | 32 MB | **Recommended**: 196 KB | **Recommended**: 151 KB over a 17-hour soak, both sessions open during fetches | 122.9 KB |
 

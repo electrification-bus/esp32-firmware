@@ -57,6 +57,7 @@ bool wifi_sta_enabled = true;
 bool wifi_sta_enabled = false;
 #endif
 uint16_t log_tcp_port = LOG_TCP_PORT_DEFAULT;   // serial-over-TCP console; 0 = off
+uint32_t log_heap_interval_s = 0;               // heap log lines; 0 = none
 char mqtt_username[64] = {0};
 char mqtt_password[64] = {0};
 char device_id_prefix[32] = {0};
@@ -395,6 +396,8 @@ bool loadPlatformConfiguration() {
   if (v_log_port.is<uint16_t>()) {
     log_tcp_port = v_log_port.as<uint16_t>();
   }
+  JsonVariant v_log_heap = cfg_value("log", "heap_interval_s", "log_heap_interval_s");
+  if (v_log_heap.is<uint32_t>()) log_heap_interval_s = v_log_heap.as<uint32_t>();
 
   cfg_copy_str("mqtt", "username", "mqtt_username", mqtt_username, sizeof(mqtt_username));
   cfg_copy_str("mqtt", "password", "mqtt_password", mqtt_password, sizeof(mqtt_password));

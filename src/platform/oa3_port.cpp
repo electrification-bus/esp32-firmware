@@ -26,6 +26,9 @@
 #include <oa3/client/mqtt_session.h>
 #include <oa3/model/intervals.h>
 
+#ifndef OA3_PORT_START_DELAY_S
+#define OA3_PORT_START_DELAY_S 30   // seconds after boot before the VEN's first request
+#endif
 #ifndef OA3_TASK_STACK
 #define OA3_TASK_STACK 8192   // porting.md: at least 6 KB; the spike bottomed at 2.6 KB free of 8
 #endif
@@ -66,20 +69,22 @@ namespace {
 class LocalLow {
 public:
     explicit LocalLow(const char* what, const char* host) : _what(what), _host(host) {
+        _free = heap_caps_get_free_size(kCaps);
         _largest = heap_caps_get_largest_free_block(kCaps);
         _monitoring = heap_caps_monitor_local_minimum_free_size_start() == ESP_OK;
     }
     ~LocalLow() {
         const size_t low = heap_caps_get_minimum_free_size(kCaps);
         if (_monitoring) heap_caps_monitor_local_minimum_free_size_stop();
-        Serial.printf("OA3: %s %s: internal low-water %u, largest block before %u\n", _what,
-                      _host, (unsigned)low, (unsigned)_largest);
+        Serial.printf("OA3: %s %s: internal low-water %u; before it, free %u, largest block %u\n",
+                      _what, _host, (unsigned)low, (unsigned)_free, (unsigned)_largest);
     }
 
 private:
     static constexpr uint32_t kCaps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
     const char* _what;
     const char* _host;
+    size_t _free;
     size_t _largest;
     bool _monitoring;
 };
@@ -677,6 +682,10 @@ void log_poll(const oa3::VenClient& client) {
 void oa3_task(void* arg) {
     oa3::VenClient* client = static_cast<oa3::VenClient*>(arg);
     screen_begin();
+    // Let boot settle first: requests made while the network, mDNS, NTP and the web server
+    // are still starting overlapped their allocations, and on an ESP32-POE-ISO-WROVER the
+    // first fetch's internal low fell to 16.5-25 KB, against about 31 KB once settled.
+    while (millis() < OA3_PORT_START_DELAY_S * 1000UL) vTaskDelay(pdMS_TO_TICKS(500));
     uint32_t charted_revision = client->events_revision();
     for (;;) {
         client->loop();
