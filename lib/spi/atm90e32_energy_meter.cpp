@@ -218,8 +218,7 @@ void EnergyMeter::publish_chip(uint8_t c, const ChipReading& r) {
     _chips[c].published = true;
 }
 
-// clearValue() publishes a retained empty payload every time it is called, so this runs
-// only on a transition and only when there is something on the broker to retract.
+// Runs only on a transition, and only when this chip's values were published.
 void EnergyMeter::retract_chip(uint8_t c) {
     if (!_chips[c].published) return;
     if (c == 0) {
