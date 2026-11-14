@@ -344,3 +344,31 @@ def test_exclusive_tls_can_be_set(cli, sandbox):
 def test_notifications_must_be_a_boolean(cli, capsys, value):
     assert "notifications: must be true or false" in oa3_problems(cli, capsys,
                                                                   oa3(notifications=value))
+
+
+def test_notify_poll_period_defaults_to_push_only(cli, sandbox):
+    doc = device_doc(role="standalone")
+    doc.update(oa3(notifications=True))
+    sandbox.generate(doc)
+    assert sandbox.config_yml["oa3"]["notify_poll_period_s"] == 0
+
+
+@pytest.mark.parametrize("value", [0, 900, 715_827])
+def test_notify_poll_period_is_copied(cli, sandbox, value):
+    doc = device_doc(role="standalone")
+    doc.update(oa3(notifications=True, notify_poll_period_s=value))
+    sandbox.generate(doc)
+    assert sandbox.config_yml["oa3"]["notify_poll_period_s"] == value
+
+
+@pytest.mark.parametrize("cfg,message", [
+    (dict(notify_poll_period_s=3600), "notify_poll_period_s: needs notifications: true"),
+    (dict(notifications=True, notify_poll_period_s=600),
+     "notify_poll_period_s: must be 0 or 900..715827"),
+    (dict(notifications=True, poll_period_s=1200, notify_poll_period_s=1000),
+     "notify_poll_period_s: must be 0 or 1200..715827"),
+    (dict(notifications=True, notify_poll_period_s=715_828),
+     "notify_poll_period_s: must be 0 or 900..715827"),
+])
+def test_notify_poll_period_is_validated(cli, capsys, cfg, message):
+    assert message in oa3_problems(cli, capsys, oa3(**cfg))

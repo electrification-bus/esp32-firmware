@@ -31,6 +31,7 @@ oa3:
 | `display` | no | The id of a `display` peripheral under `peripherals:`, to draw the [price screen](#price-screen) on ([Peripherals.md](Peripherals.md)) |
 | `notifications` | no | `true` to follow the VTN's [MQTT notifications](#mqtt-notifications); default `false` |
 | `exclusive_tls` | no | With `notifications`: at most one TLS session at a time. Default `true` for an original-ESP32 environment and `false` otherwise ([Memory](#memory)) |
+| `notify_poll_period_s` | no | With `notifications`: seconds between polls while subscribed, or `0` for none. `0` or `poll_period_s` to 715827; default `0` |
 
 `generate` validates the block (`oa3_config()` in `ebus-esp32`) and refuses an unknown key, a value of the wrong type, or one out of range. It refuses a `display` that names no `display` peripheral. It copies `base_url`, `program_name`, `program_id`, `poll_period_s` and `display` into the `oa3:` section of `.ebus/data/config.yml`, read at boot, and with `notifications: true` also `notifications` and `exclusive_tls`, the latter resolved to its default for the environment. `max_events` sizes the client's event arrays, so it becomes the build flag `-DOA3_MAX_EVENTS`, along with `-DEBUS_OA3`.
 
@@ -43,7 +44,7 @@ With `display:`, the VEN draws the price on that display from its own task (`scr
 | Header | The program's name (`oa3.program_name`) over a grey rule; with only `oa3.program_id` configured, the id until the client has resolved the name |
 | Price | The price in force as the VTN sent it, in large type; `waiting for a price` until the first evaluation, and `no price in force`, in yellow, when no interval covers the current time |
 | Units | `<currency>/<units>` beside the price, bottom-aligned with it (on the line below when it does not fit), with `USD` shown as `$` and `KWH`, `MWH`, `WH` as `kWh`, `MWh`, `Wh`: `$/kWh` |
-| Next change | `next change HH:MM <zone>` in the device's local time (`device.timezone`): the next interval boundary, else the end of the interval in force, else `none` |
+| Time | `now HH:MM, next HH:MM <zone>` in the device's local time (`device.timezone`), redrawn as the minute turns: the current time, then the next interval boundary, else the end of the interval in force, else `none`. On a panel too narrow for that, `next change HH:MM <zone>` |
 | Chart | The next 12 hours of prices (`OA3_CHART_HOURS`), from cpp-oa3's `price_schedule()`, as bars: the interval in force in white, later ones in blue, none where no price is in force. Bars are scaled from the lowest price, drawn as a short stub, to the highest; both are printed above the bars, and every third local hour below them |
 | Status | The client's status, colored by `screen_status()` |
 
@@ -53,7 +54,7 @@ With `display:`, the VEN draws the price on that display from its own task (`scr
 | Yellow | `WAITING_FOR_CLOCK`, `RESOLVING_PROGRAM`, `STALE`, `TRUNCATED` |
 | Red | any other: `STOPPED`, `PROGRAM_NOT_FOUND`, `TRANSPORT_ERROR`, `HTTP_ERROR`, `PARSE_ERROR` |
 
-The price and status are redrawn when the client reports a change. The chart is redrawn with the price, and after each fetch and each applied notification, since those can change later prices without changing the one in force. Each redraw holds the display's `PeripheralLock`, so other code drawing on the same display does not interleave with it.
+The price and status are redrawn when the client reports a change. The chart is redrawn with the price, and whenever cpp-oa3's `events_revision()` changes (a fetch, an applied notification), since the events can change later prices without changing the one in force. Each redraw holds the display's `PeripheralLock`, so other code drawing on the same display does not interleave with it.
 
 ## CA certificate
 
@@ -63,11 +64,11 @@ A VTN with a private CA needs its PEM root at `/certs/<Host>.ca`, named by `mqtt
 
 ## MQTT notifications
 
-With `notifications: true` the VEN follows the VTN's MQTT notifications as well as polling. Once the program is resolved, the client asks the VTN for its `/notifiers`, connects to the broker it advertises, subscribes to the program's event and program topics, and fetches `/events` as a snapshot. While subscribed it polls `/events` hourly instead of every `poll_period_s` (cpp-oa3's `VenConfig::notify_poll_period_s`), and a notification updates the events, and with them the price, as it arrives. These notifications need cpp-oa3 0.2.0 or later.
+With `notifications: true` the VEN follows the VTN's MQTT notifications as well as polling. Once the program is resolved, the client asks the VTN for its `/notifiers`, connects to the broker it advertises, subscribes to the program's event and program topics, and fetches `/events` as a snapshot. A notification then updates the events, and with them the price, as it arrives. With the default `notify_poll_period_s: 0` the client does not poll while subscribed: it fetches `/events` after a break in the connection, once after a connect where the broker kept no session, and when an event or interval it left out for starting beyond its window (`horizon`, 24 hours) comes within it. A nonzero `notify_poll_period_s` polls at that period as well. These notifications need cpp-oa3 0.3.0 or later.
 
 The MQTT client is arduino-mqtt, run on the VEN's own task (`ArduinoMqttSession` in `src/platform/oa3_port.cpp`), with an 8 KB read buffer allocated on the first connect. Its client id is `oa3-<device id>`. The broker's host is resolved through the same lock as every other lookup (`network_dns_prime()`), and it is verified as the VTN is: against `/certs/<Host>.ca` when that file exists, read at connect time, otherwise against the public root CAs.
 
-With `exclusive_tls`, the client closes the MQTTS session before each HTTPS request and reconnects after it. It connects with a kept session and QoS 1, so the broker queues what arrives while the session is closed.
+With `exclusive_tls`, the client closes the MQTTS session before each HTTPS request and reconnects after it, so without polling that happens only for the fetches above. It connects with a kept session and QoS 1, so the broker queues what arrives while the session is closed.
 
 ## Role: standalone
 
@@ -80,7 +81,7 @@ In a `device` or `controller` build, the VEN starts at the end of `setup()`, aft
 The build uses cpp-oa3 pinned in `ebus-esp32` (`OA3_LIB_DEP`):
 
 ```
-oa3=https://github.com/grid-coordination/cpp-oa3.git#v0.2.0
+oa3=https://github.com/grid-coordination/cpp-oa3.git#v0.3.0
 ```
 
 `EBUS_CPP_OA3` names another source for a build, for example a local checkout:
@@ -118,7 +119,7 @@ The client reads UTC from the clock NTP sets; until NTP has set it, the client's
 
 The constraint is internal RAM. With arduino-esp32 3.3.11 (ESP-IDF 5.5.5), Mbed TLS allocates only from internal RAM and uses 16 KB records, whatever else the board has. The VEN opens its HTTPS connection for each request and closes it before the request returns, so it holds no TLS session between polls; following MQTT notifications holds one more.
 
-The client's storage is the other large piece: two event arrays of `max_events` (5,400 bytes per event) and a parse arena, which one price-server event fills to 6,984 bytes. On a `BOARD_HAS_PSRAM` build both go in PSRAM with a 16 KB arena. Without PSRAM they go in internal RAM, allocated once when the VEN starts, with an 8 KB arena: 29,792 bytes with the default `max_events: 2`. `generate` warns when `max_events` is larger. The VEN's task has an 8 KB stack (`OA3_TASK_STACK`).
+The client's storage is the other large piece: event arrays of `max_events` (3,056 bytes per event) and a parse arena, which one price-server event fills to 6,984 bytes. On a `BOARD_HAS_PSRAM` build they go in PSRAM: two arrays, so a failed fetch keeps the last good events, and a 16 KB arena. Without PSRAM they go in internal RAM, allocated once when the VEN starts: one array (`OA3_PORT_SINGLE_BUFFER`; a fetch that fails after it has begun to parse clears the prices until the next success) and an 8 KB arena, 14,304 bytes with the default `max_events: 2`. `generate` warns when `max_events` is larger. The VEN's task has an 8 KB stack (`OA3_TASK_STACK`).
 
 ### What each feature costs
 
@@ -127,7 +128,7 @@ Measured on 2026-11-14 with cpp-oa3 0.2.0, as the differences between otherwise 
 | Feature | Flash | Static RAM | Internal RAM | In PSRAM where there is one |
 |---|---|---|---|---|
 | Firmware without `oa3:` | 1,472,800 B (ESP32) to 1,550,592 B (P4) | 53 to 69 KB | 120 KB free (ESP32), 223 KB (S3), 290 KB (P4) | |
-| The VEN, polling | +78 to +90 KB | +20 KB | -35 KB; -65 KB without PSRAM | event arrays and parse arena |
+| The VEN, polling | +78 to +90 KB | +20 KB | -35 KB; without PSRAM -50 KB with cpp-oa3 0.3.0's one event array, -65 KB with 0.2.0's two | event arrays and parse arena |
 | MQTT notifications | none: linked with the VEN | none | -46 KB: the MQTTS session and its client, held while subscribed | no |
 | Public root CAs, instead of a `/certs/<Host>.ca` file | 68,983 B, linked into every build since #50 | none | none; lows were 1.5 to 2 KB higher than with the file | flash |
 | MOD-LCD2.8RTP display and the price screen (`spi/ili9341`) | +49,856 B | +1,752 B | -2.4 KB | |
@@ -155,11 +156,11 @@ A configuration is **recommended** when the lowest internal free heap stays at o
 
 | Board | PSRAM | Polling | Following MQTT notifications | Largest block before TLS |
 |---|---|---|---|---|
-| Olimex ESP32-POE-ISO (ESP32 WROOM) | none | **Not recommended**: 1.6 to 3.6 KB, and one of two runs failed to allocate | **Not recommended**: 68 B over a 12-hour soak, with allocation failures and a dropped MQTT connection at every notification burst | 34.8 KB |
-| Olimex ESP32-POE-ISO-WROVER (ESP32) | 8 MB | **Recommended**: 31.8 to 33.3 KB | **Recommended** with `exclusive_tls`: 22.3 KB over an 18-hour soak with the display, no failures | 34.8 to 36.9 KB; 18.4 KB with the display |
+| Olimex ESP32-POE-ISO (ESP32 WROOM) | none | **Recommended** with cpp-oa3 0.3.0: 18.9 KB over a 4-hour soak, no failures. With 0.2.0, not recommended: 1.6 to 3.6 KB, and one of two runs failed to allocate | **Not recommended**: 68 B over a 12-hour soak, with allocation failures and a dropped MQTT connection at every notification burst | 34.8 KB |
+| Olimex ESP32-POE-ISO-WROVER (ESP32) | 8 MB | **Recommended**: 31.8 to 33.3 KB | **Recommended** with `exclusive_tls`: 22.3 KB over an 18-hour soak with the display, no failures; with cpp-oa3 0.3.0 the first fetch after a boot dipped to 16.5 KB | 34.8 to 36.9 KB; 18.4 KB with the display |
 | Waveshare ESP32-S3-POE-ETH | 8 MB | **Recommended**: 133 to 135 KB | **Recommended**: 89.2 KB over a 16-hour soak, both sessions open during fetches | 94.2 KB |
 | Olimex ESP32-P4-DevKit | 32 MB | **Recommended**: 196 KB | **Recommended**: 151 KB over a 17-hour soak, both sessions open during fetches | 122.9 KB |
 
-The polling figures come from 5-minute runs. An ESP32 without PSRAM holds the VEN's storage in internal RAM, and with cpp-oa3 0.2.0's two event arrays a fetch leaves too little; one event array (cpp-oa3 0.3.0) left 18.2 KB in a short run.
+The polling figures come from 5-minute runs, except the WROOM's. An ESP32 without PSRAM holds the VEN's storage in internal RAM: with cpp-oa3 0.3.0 one event array and an 8 KB arena, 14,304 bytes, against 29,792 bytes for 0.2.0's two arrays.
 
 A `device` or `controller` build with a TLS broker holds two sessions during a poll, so `generate` warns when `oa3:` and a TLS broker (`mqtt.port: 8883`, or `secure-mqtt` in `mqtt.discover`) share a build for an original-ESP32 environment.

@@ -1260,11 +1260,12 @@ def device_role(device: dict, device_yml: Path) -> str:
 # copied into config.yml; max_events sizes the client's event arrays, so it is a build flag.
 OA3_KEYS = {"base_url": str, "program_name": str, "program_id": str, "poll_period_s": int,
             "display": str, "notifications": bool, "exclusive_tls": bool,
-            "max_events": int}
+            "notify_poll_period_s": int, "max_events": int}
+OA3_POLL_PERIOD_DEFAULT = 900   # cpp-oa3's VenConfig::poll_period_s
 OA3_MAX_EVENTS_DEFAULT = 2
 # The cpp-oa3 library, pinned. EBUS_CPP_OA3 names another source, e.g. a local checkout:
 #   EBUS_CPP_OA3=symlink:///path/to/cpp-oa3
-OA3_LIB_DEP = "oa3=https://github.com/grid-coordination/cpp-oa3.git#v0.2.0"
+OA3_LIB_DEP = "oa3=https://github.com/grid-coordination/cpp-oa3.git#v0.3.0"
 
 def oa3_config(cfg: dict):
     """The validated oa3: block, or None when device.yml has none."""
@@ -1302,6 +1303,15 @@ def oa3_config(cfg: dict):
         value = block.get(key)
         if isinstance(value, int) and not isinstance(value, bool) and not low <= value <= high:
             problems.append(f"{key}: must be {low}..{high}, got {value}")
+    # notify_poll_period_s: 0 polls not at all while subscribed, else at least poll_period_s.
+    npp = block.get("notify_poll_period_s")
+    if isinstance(npp, int) and not isinstance(npp, bool):
+        poll = block.get("poll_period_s") or OA3_POLL_PERIOD_DEFAULT
+        if not block.get("notifications"):
+            problems.append("notify_poll_period_s: needs notifications: true")
+        elif npp != 0 and not (isinstance(poll, int) and poll <= npp <= 715_827):
+            problems.append(f"notify_poll_period_s: must be 0 or {poll}..715827 "
+                            f"(at least poll_period_s), got {npp}")
     if problems:
         print("ERROR: device.yml oa3: is not valid:", file=sys.stderr)
         for p in problems:
@@ -1397,12 +1407,12 @@ def env_has_psram(env_name) -> bool:
                for line in cfg.get(section, "build_flags").splitlines())
 
 def _warn_oa3_storage(oa3: dict, env_name) -> None:
-    """Without PSRAM the VEN's storage is internal RAM: two Event arrays of max_events
-    (about 5.4 KB per Event) and an 8 KB parse arena."""
+    """Without PSRAM the VEN's storage is internal RAM: one Event array of max_events
+    (about 3 KB per Event) and an 8 KB parse arena."""
     n = oa3.get("max_events") or OA3_MAX_EVENTS_DEFAULT
     if env_name and not env_has_psram(env_name) and n > OA3_MAX_EVENTS_DEFAULT:
         print(f"  WARNING: oa3.max_events {n} on env:{env_name}, which has no PSRAM, takes about "
-              f"{round(2 * n * 5.4 + 8)} KB of internal RAM; see doc/OpenADR3.md, 'Memory'.")
+              f"{round(n * 3.056 + 8)} KB of internal RAM; see doc/OpenADR3.md, 'Memory'.")
 
 def oa3_lib_dep() -> str:
     source = os.environ.get("EBUS_CPP_OA3", "").strip()
@@ -2211,6 +2221,9 @@ def _generate(args) -> None:
             config_doc["oa3"]["exclusive_tls"] = (
                 oa3["exclusive_tls"] if oa3.get("exclusive_tls") is not None
                 else env_is_classic_esp32(device.get("environment")))
+            # Push only by default: the events are fetched on connect and after a break,
+            # not polled while subscribed.
+            config_doc["oa3"]["notify_poll_period_s"] = oa3.get("notify_poll_period_s") or 0
 
     out_config = GEN_DATA_DIR / "config.yml"
     with open(out_config, "w", encoding="utf-8") as f:

@@ -172,7 +172,7 @@ lib_deps:
 
 ### oa3
 
-A top-level `oa3:` block builds in the OpenADR 3 VEN, in any role. Its keys are `base_url`, `program_name`, `program_id`, `poll_period_s`, `max_events` and `display`; [OpenADR3.md](OpenADR3.md) describes them, the VTN's CA certificate and the VEN's memory use.
+A top-level `oa3:` block builds in the OpenADR 3 VEN, in any role. Its keys are `base_url`, `program_name`, `program_id`, `poll_period_s`, `max_events`, `display`, `notifications`, `exclusive_tls` and `notify_poll_period_s`; [OpenADR3.md](OpenADR3.md) describes them, the VTN's CA certificate and the VEN's memory use.
 
 ```yaml
 oa3:
