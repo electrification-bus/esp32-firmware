@@ -30,7 +30,7 @@ oa3:
 | `max_events` | no | Events the client holds, 1 to 64, default 2 |
 | `display` | no | The id of a `display` peripheral under `peripherals:`, to draw the [price screen](#price-screen) on ([Peripherals.md](Peripherals.md)) |
 | `notifications` | no | `true` to follow the VTN's [MQTT notifications](#mqtt-notifications); default `false` |
-| `exclusive_tls` | no | With `notifications`: at most one TLS session at a time. Default `true` for an original-ESP32 environment and `false` otherwise ([Memory](#memory)) |
+| `exclusive_tls` | no | With `notifications`: at most one TLS session at a time, so the VEN is either fetching over HTTPS or subscribed, never both. Default `true`; `false` keeps the MQTTS session open during fetches ([Memory](#memory)) |
 | `notify_poll_period_s` | no | With `notifications`: seconds between polls while subscribed, or `0` for none. `0` or `poll_period_s` to 715827; default `0` |
 
 `generate` validates the block (`oa3_config()` in `ebus-esp32`) and refuses an unknown key, a value of the wrong type, or one out of range. It refuses a `display` that names no `display` peripheral. It copies `base_url`, `program_name`, `program_id`, `poll_period_s` and `display` into the `oa3:` section of `.ebus/data/config.yml`, read at boot, and with `notifications: true` also `notifications` and `exclusive_tls`, the latter resolved to its default for the environment. `max_events` sizes the client's event arrays, so it becomes the build flag `-DOA3_MAX_EVENTS`, along with `-DEBUS_OA3`.
@@ -81,7 +81,7 @@ In a `device` or `controller` build, the VEN starts at the end of `setup()`, aft
 The build uses cpp-oa3 pinned in `ebus-esp32` (`OA3_LIB_DEP`):
 
 ```
-oa3=https://github.com/grid-coordination/cpp-oa3.git#v0.3.0
+oa3=https://github.com/grid-coordination/cpp-oa3.git#v0.4.0
 ```
 
 `EBUS_CPP_OA3` names another source for a build, for example a local checkout:
@@ -147,8 +147,8 @@ Mbed TLS is linked into every build, VEN or not, for the MQTT broker and OTA, so
 | Mode | Sessions while waiting | Sessions during a fetch |
 |---|---|---|
 | Polling | 0 | 1 |
-| MQTT notifications | 1 | 2 |
-| MQTT notifications with `exclusive_tls` | 1 | 1: the MQTTS session is suspended for the fetch |
+| MQTT notifications (`exclusive_tls`, the default) | 1 | 1: the MQTTS session is suspended for the fetch |
+| MQTT notifications with `exclusive_tls: false` | 1 | 2 |
 
 ### Choosing a board
 
@@ -158,8 +158,8 @@ A configuration is **recommended** when the lowest internal free heap stays at o
 |---|---|---|---|---|
 | Olimex ESP32-POE-ISO (ESP32 WROOM) | none | **Recommended** with cpp-oa3 0.3.0: 18.9 KB over a 4-hour soak, no failures. With 0.2.0, not recommended: 1.6 to 3.6 KB, and one of two runs failed to allocate | **Not recommended**: 68 B over a 12-hour soak, with allocation failures and a dropped MQTT connection at every notification burst | 34.8 KB |
 | Olimex ESP32-POE-ISO-WROVER (ESP32) | 8 MB | **Recommended**: 31.8 to 33.3 KB | **Recommended** with `exclusive_tls`: 22.3 KB over an 18-hour soak with the display, no failures. Before the VEN waited for boot to settle, the first fetch after a boot dipped to 16.5 KB | 34.8 to 36.9 KB; 18.4 KB with the display |
-| Waveshare ESP32-S3-POE-ETH | 8 MB | **Recommended**: 133 to 135 KB | **Recommended**: 89.2 KB over a 16-hour soak, both sessions open during fetches | 94.2 KB |
-| Olimex ESP32-P4-DevKit | 32 MB | **Recommended**: 196 KB | **Recommended**: 151 KB over a 17-hour soak, both sessions open during fetches | 122.9 KB |
+| Waveshare ESP32-S3-POE-ETH | 8 MB | **Recommended**: 133 to 135 KB | **Recommended**: 89.2 KB over a 16-hour soak with `exclusive_tls: false`, both sessions open during fetches | 94.2 KB |
+| Olimex ESP32-P4-DevKit | 32 MB | **Recommended**: 196 KB | **Recommended**: 151 KB over a 17-hour soak with `exclusive_tls: false`, both sessions open during fetches | 122.9 KB |
 
 The polling figures come from 5-minute runs, except the WROOM's. An ESP32 without PSRAM holds the VEN's storage in internal RAM: with cpp-oa3 0.3.0 one event array and an 8 KB arena, 14,304 bytes, against 29,792 bytes for 0.2.0's two arrays.
 
