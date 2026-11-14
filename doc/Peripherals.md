@@ -2,7 +2,9 @@
 
 A peripheral is hardware that a project's own `src/` and the firmware's features use directly, in any role (`device`, `controller` or `standalone`). A `device.yml` lists it under `peripherals:`, and `generate` declares it as a static object named after its id. A node, listed under `nodes:`, is a driver that publishes Homie properties; a peripheral publishes nothing, so the app on the board decides what it shows or does. A component is one or the other: `generate` refuses a peripheral component under `nodes:`, and a node component under `peripherals:`.
 
-The first peripheral driver is `spi/ili9341`, a 320x240 ILI9341 TFT such as the Olimex MOD-LCD2.8RTP.
+The display drivers are `spi/ili9341`, a 320x240 ILI9341 TFT such as the Olimex MOD-LCD2.8RTP, and `dsi/st7701`, a 480x640 ST7701 panel on the ESP32-P4's MIPI-DSI such as the Olimex MIPI-LCD2.8-640x480 V2.
+
+`dsi/st7701` draws into a frame buffer in PSRAM (921,600 bytes) that the DSI host refreshes the panel from, so it needs an ESP32-P4 with PSRAM; `flush()` writes the rows drawn since the last flush back from the CPU cache. Its `config:` keys are `rotation` (0-3, default 1: landscape 640x480 with the ribbon on the left; 0 is portrait with the ribbon at the top), and `lane_mbps` (default 500) and `dpi_mhz` (default 16), the figures of Olimex's Arduino demo for this panel. On an ESP32-P4-DevKit the ribbon goes in MIPI-DSI1, not MIPI-CSI1, the camera connector.
 
 ## Example
 
