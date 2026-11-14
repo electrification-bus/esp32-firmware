@@ -1379,12 +1379,12 @@ def env_has_psram(env_name) -> bool:
                for line in cfg.get(section, "build_flags").splitlines())
 
 def _warn_oa3_storage(oa3: dict, env_name) -> None:
-    """Without PSRAM the VEN's storage is static internal RAM: two Event arrays of
-    max_events (about 5.4 KB per Event) and the 16 KB parse arena."""
+    """Without PSRAM the VEN's storage is internal RAM: two Event arrays of max_events
+    (about 5.4 KB per Event) and an 8 KB parse arena."""
     n = oa3.get("max_events") or OA3_MAX_EVENTS_DEFAULT
     if env_name and not env_has_psram(env_name) and n > OA3_MAX_EVENTS_DEFAULT:
         print(f"  WARNING: oa3.max_events {n} on env:{env_name}, which has no PSRAM, takes about "
-              f"{round(2 * n * 5.4 + 16)} KB of internal RAM; see doc/OpenADR3.md, 'Memory'.")
+              f"{round(2 * n * 5.4 + 8)} KB of internal RAM; see doc/OpenADR3.md, 'Memory'.")
 
 def oa3_lib_dep() -> str:
     source = os.environ.get("EBUS_CPP_OA3", "").strip()
