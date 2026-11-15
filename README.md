@@ -179,6 +179,7 @@ VSCode users: run `ebus-esp32` in the integrated terminal. The PlatformIO extens
 - **Examples**: [examples/sht20/](examples/sht20/device.yml) (Modbus sensor), [examples/ssr/](examples/ssr/README.md) (relay on a GPIO), [examples/bms/](examples/bms/README.md) (BLE protocol, its driver a project component), [examples/bridge-bess/](examples/bridge-bess/device.yml) (nested bridge), [examples/oa3-price/](examples/oa3-price/README.md) (OpenADR 3 price on a display, standalone)
 - **Writing a driver** (authoring a `NodeEntity` subclass — the reusable hardware unit, shared by both paths above): [WritingADriver.md](doc/WritingADriver.md)
 - **Peripherals** (hardware the project's `src/` and features use directly, such as a display, in any role; project components and `lib_deps:`): [Peripherals.md](doc/Peripherals.md)
+- **Choosing a board** (what each feature costs in flash and RAM on each board, and which boards run what): [ChoosingABoard.md](doc/ChoosingABoard.md)
 - **Adding a display** (the supported panels, how to connect them, and the OpenADR 3 price screen on them): [Displays.md](doc/Displays.md)
 - **Picking pins for a board** (what Ethernet/PSRAM/flash have already taken, and this firmware's reference values): [GPIOPins.md](doc/GPIOPins.md)
 - **Following an OpenADR 3 price server** (the `oa3:` block, and `role: standalone` for a board with no broker): [OpenADR3.md](doc/OpenADR3.md)

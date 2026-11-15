@@ -123,44 +123,12 @@ The client's storage is the other large piece: event arrays of `max_events` (3,0
 
 ### What each feature costs
 
-Measured on 2026-11-14 with cpp-oa3 0.2.0, as the differences between otherwise identical `role: standalone` builds following the price server's EELEC-012041131 program. Flash is the firmware image; static RAM is `.dram0.data` plus `.dram0.bss`; internal RAM is `heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)`, settled after setup.
-
-| Feature | Flash | Static RAM | Internal RAM | In PSRAM where there is one |
-|---|---|---|---|---|
-| Firmware without `oa3:` | 1,472,800 B (ESP32) to 1,550,592 B (P4) | 53 to 69 KB | 120 KB free (ESP32), 223 KB (S3), 290 KB (P4) | |
-| The VEN, polling | +78 to +90 KB | +20 KB | -35 KB; without PSRAM -50 KB with cpp-oa3 0.3.0's one event array, -65 KB with 0.2.0's two | event arrays and parse arena |
-| MQTT notifications | none: linked with the VEN | none | -46 KB: the MQTTS session and its client, held while subscribed | no |
-| Public root CAs, instead of a `/certs/<Host>.ca` file | 68,983 B, linked into every build since #50 | none | none; lows were 1.5 to 2 KB higher than with the file | flash |
-| MOD-LCD2.8RTP display and the price screen (`spi/ili9341`) | +49,856 B | +1,752 B | -2.4 KB | |
-| NS2009 touch (`i2c/ns2009`) | +1,920 B | +184 B | -2.2 KB | |
-| The VEN's task stack | | | 8 KB (`OA3_TASK_STACK`), of which 3.0 KB (ESP32) to 4.2 KB (P4) stayed unused | no |
+[ChoosingABoard.md](ChoosingABoard.md#what-each-feature-costs) lists the VEN's costs in flash, static RAM, internal RAM and PSRAM beside every other feature's.
 
 ### TLS
 
-Mbed TLS is linked into every build, VEN or not, for the MQTT broker and OTA, so its flash is not a per-feature cost. Each open TLS session is:
-
-| Session | Internal RAM |
-|---|---|
-| An HTTPS fetch, while it runs | 52 to 53 KB, on every board measured |
-| An MQTTS session to the notifications broker, held | about 46 KB, with its client |
-
-| Mode | Sessions while waiting | Sessions during a fetch |
-|---|---|---|
-| Polling | 0 | 1 |
-| MQTT notifications (`exclusive_tls`, the default) | 1 | 1: the MQTTS session is suspended for the fetch |
-| MQTT notifications with `exclusive_tls: false` | 1 | 2 |
+[ChoosingABoard.md](ChoosingABoard.md#tls) has the internal RAM each TLS session takes, and the sessions each mode holds.
 
 ### Choosing a board
 
-A configuration is **recommended** when the lowest internal free heap stays at or above 16 KB with no failures, over a soak of at least 3 hours with notifications or several polls without; **marginal** at 4 to 16 KB with no failures; **not recommended** after any allocation failure or a low under 4 KB. The largest free block before a TLS handshake is reported beside it.
-
-| Board | PSRAM | Polling | Following MQTT notifications | Largest block before TLS |
-|---|---|---|---|---|
-| Olimex ESP32-POE-ISO (ESP32 WROOM) | none | **Recommended**: 17.9 KB over a 15.5-hour soak, no failures. With cpp-oa3 0.2.0's two event arrays, not recommended: 1.6 to 3.6 KB, and one of two runs failed to allocate | **Not recommended** (measured with cpp-oa3 0.2.0): 68 B over a 12-hour soak, with allocation failures and a dropped MQTT connection at every notification burst | 34.8 KB |
-| Olimex ESP32-POE-ISO-WROVER (ESP32) | 8 MB | **Recommended**: 31.8 to 33.3 KB | **Recommended**: 26.0 KB over a 15.5-hour soak with the display, no failures | 34.8 KB before every handshake; 18.4 KB at rest with the MQTTS session open |
-| Waveshare ESP32-S3-POE-ETH | 8 MB | **Recommended**: 133 to 135 KB | **Recommended**: 128.6 KB over a 15.5-hour soak, no failures; 89.2 KB with `exclusive_tls: false` | 94.2 KB |
-| Olimex ESP32-P4-DevKit | 32 MB | **Recommended**: 196 KB | **Recommended**: 172.2 KB over a 15.5-hour soak with the MIPI display, no failures; 151 KB with `exclusive_tls: false` | 118.8 KB |
-
-The 15.5-hour soaks ran cpp-oa3 0.4.0 on 2026-11-14 and 15: the WROOM polling every 15 minutes, the others following notifications without polling and with one TLS session at a time. Each of those fetched once while subscribed, when the next day's event came within its window. The other polling figures come from 5-minute runs. An ESP32 without PSRAM holds the VEN's storage in internal RAM: from cpp-oa3 0.3.0 one event array and an 8 KB arena, 14,304 bytes, against 29,792 bytes for 0.2.0's two arrays.
-
-A `device` or `controller` build with a TLS broker holds two sessions during a poll, so `generate` warns when `oa3:` and a TLS broker (`mqtt.port: 8883`, or `secure-mqtt` in `mqtt.discover`) share a build for an original-ESP32 environment.
+[ChoosingABoard.md](ChoosingABoard.md#verdicts) has the verdict rules and, for each board, whether it runs the VEN polling and following notifications.
