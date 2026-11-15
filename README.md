@@ -1,10 +1,15 @@
 # eBus ESP32 Firmware
 
-eBus on the ESP32. This firmware (the `esp32-firmware` repository) lets ESP32-class hardware act as a device or controller on the [Electrification Bus](https://github.com/electrification-bus/specification) (eBus), which builds on the [Homie 5 MQTT convention](https://homieiot.github.io/). Devices publish under the `ebus/5/` topic root, with pluggable nodes for sensors, actuators, Modbus devices, and energy metering. Currently targets PlatformIO + Arduino-framework on ESP32 / ESP32-S3 / Olimex ESP32-POE-ISO; a future ESPHome variant is a stretch goal.
+Firmware for ESP32, ESP32-S3 and ESP32-P4 boards, built with PlatformIO on the Arduino framework. A project's `device.yml` chooses what a board does:
+
+- **eBus:** a device or controller on the [Electrification Bus](https://github.com/electrification-bus/specification), which builds on the [Homie 5 MQTT convention](https://homieiot.github.io/). Devices publish under `ebus/5/`, with nodes for sensors, actuators, Modbus devices and energy metering.
+- **OpenADR 3:** a VEN, built on [cpp-oa3](https://github.com/grid-coordination/cpp-oa3), that follows a program's events and can show its prices on a display ([OpenADR3.md](doc/OpenADR3.md)).
+
+These combine: a device can also run the VEN, and a `standalone` build runs the VEN with no broker. [ChoosingABoard.md](doc/ChoosingABoard.md) covers which boards run what.
 
 ## Status
 
-Working firmware with Homie 5 device representation, Modbus RTU, captive-portal HTTP OTA, LittleFS-based config, and the start of a CLI developer-experience layer. See [doc/](doc/) for design notes and proposals.
+Working firmware: Homie 5 devices and controllers, an OpenADR 3 VEN, displays and other peripherals, Modbus RTU, OTA, and the `ebus-esp32` CLI. See [doc/](doc/) for design notes and proposals.
 
 [`.ebus-spec.json`](.ebus-spec.json) records the specification commit, `framework.md` version, and framework features this firmware implements.
 
