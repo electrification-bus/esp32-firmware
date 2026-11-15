@@ -15,10 +15,23 @@ Working firmware: Homie 5 devices and controllers, an OpenADR 3 VEN, displays an
 
 ## Quick start
 
+There are two paths, and they need different things around the board:
+
+| | eBus device | OpenADR 3 VEN |
+|---|---|---|
+| The board talks to | an MQTT broker you run, on your network | a VTN, on the internet or your network, over HTTPS or HTTP; with `oa3.notifications`, also the broker the VTN advertises |
+| Start from | [`examples/demo`](examples/demo/device.yml): one settable output, any board | [`examples/oa3-price`](examples/oa3-price/README.md) (ESP32-POE-ISO-WROVER with a 320x240 display) or [`examples/oa3-price-p4`](examples/oa3-price-p4/README.md) (ESP32-P4-DevKit with a 640x480 display) |
+| `device.role` | `device` or `controller` | `standalone`: no broker and no Homie device |
+| You see it working | on the broker: `mosquitto_sub -t 'ebus/5/#'` | on the display, and in the log as `OA3: price ...` lines |
+| Guide | [GenerateHomieDevice.md](doc/GenerateHomieDevice.md) | [OpenADR3.md](doc/OpenADR3.md) |
+
+The two combine: a `device` build with an `oa3:` block runs the VEN beside its Homie device. [ChoosingABoard.md](doc/ChoosingABoard.md) has which boards run which.
+
+### Both paths
+
 You need:
 
-- An **ESP32 board** from [Hardware Targets](#hardware-targets), plus a USB cable for the first flash. The demo project targets an Olimex ESP32-POE-ISO on Ethernet; for another board, set `device.environment` in its `device.yml`, and on a WiFi board also set `wifi.ssid` and `wifi.password` in the overlay below. The demo needs nothing else attached: its one node is a settable output on GPIO 14.
-- An **MQTT broker** the board can reach. [broker-quickstart](https://github.com/electrification-bus/broker-quickstart) sets one up on a laptop, a Raspberry Pi or Docker; any [Mosquitto](https://mosquitto.org/) works too. Mosquitto 2.x accepts only local connections until its config has a `listener 1883` line and an authentication choice (`allow_anonymous true` is enough for a bench test).
+- An **ESP32 board** from [Hardware Targets](#hardware-targets), plus a USB cable for the first flash. For a board other than the example's, set `device.environment` in its `device.yml`, and on a WiFi board also set `wifi.ssid` and `wifi.password` in the overlay below.
 - **Python 3.9+**, git, and **PlatformIO Core** (the VSCode PlatformIO IDE extension, `pipx install platformio`, or `brew install platformio`).
 
 Clone with `--recursive`, because the portable core in `lib/ebus_core/` is a git submodule of [cpp-sdk](https://github.com/electrification-bus/cpp-sdk), install PyYAML for the `ebus-esp32` CLI in a virtual environment (Homebrew and most Linux distributions refuse `pip install` into the system Python), and put the CLI on your `PATH`:
@@ -34,20 +47,13 @@ export PATH="$PWD:$PATH"      # Windows: set PATH=%CD%;%PATH%
 
 In a clone made without `--recursive`, and after a pull that moves the submodule, run `git submodule update --init`.
 
-Your device lives in a project directory of its own, outside this repo: a `device.yml`, a `config-overlay.yml`, and optionally hand-written code in `src/` and extra filesystem files in `data/`. Everything the build generates goes into the project's `.ebus/`. Start from the demo:
+Your device lives in a project directory of its own, outside this repo: a `device.yml`, a `config-overlay.yml`, and optionally hand-written code in `src/` and extra filesystem files in `data/`. Everything the build generates goes into the project's `.ebus/`. Copy an example to start one, as each path below does.
 
-```sh
-cp -R examples/demo ~/my-device
-cd ~/my-device
-```
-
-Before the first build, create `config-overlay.yml` in the project, merged over `device.yml` at build time and kept out of version control. It must set `device.device_passphrase` (the password for the device's admin and OTA endpoints; `generate` refuses an empty or `changeme` value) and points the firmware at your broker:
+Before the first build, create `config-overlay.yml` in the project, merged over `device.yml` at build time and kept out of version control. It must set `device.device_passphrase`, the password for the device's admin and OTA endpoints; `generate` refuses an empty or `changeme` value:
 
 ```yaml
 device:
   device_passphrase: pick-a-long-random-string
-mqtt:
-  host: 192.168.1.10          # your broker's address
 ```
 
 From the project directory, build, flash, and watch the boot log (the monitor needs a real terminal):
@@ -58,14 +64,43 @@ ebus-esp32 run              # flash firmware + filesystem over USB
 ebus-esp32 monitor --serial # boot log over USB; also learns the board's IP for later network monitoring
 ```
 
-The boot log prints `Device ID: <id>`. Watch the device's Homie tree and drive its output:
+Every command takes a project directory, or its `device.yml`, in place of the current directory: `ebus-esp32 build ~/my-device`.
+
+### eBus device
+
+You also need an **MQTT broker** the board can reach. [broker-quickstart](https://github.com/electrification-bus/broker-quickstart) sets one up on a laptop, a Raspberry Pi or Docker; any [Mosquitto](https://mosquitto.org/) works too. Mosquitto 2.x accepts only local connections until its config has a `listener 1883` line and an authentication choice (`allow_anonymous true` is enough for a bench test).
+
+```sh
+cp -R examples/demo ~/my-device
+cd ~/my-device
+```
+
+The demo targets an Olimex ESP32-POE-ISO on Ethernet and needs nothing attached: its one node is a settable output on GPIO 14. Add your broker to the overlay:
+
+```yaml
+mqtt:
+  host: 192.168.1.10          # your broker's address
+```
+
+Build and flash as above. The boot log prints `Device ID: <id>`. Watch the device's Homie tree and drive its output:
 
 ```sh
 mosquitto_sub -h 192.168.1.10 -t 'ebus/5/#' -v
 mosquitto_pub -h 192.168.1.10 -t 'ebus/5/<id>/led/state/set' -m true
 ```
 
-Every command takes a project directory, or its `device.yml`, in place of the current directory: `ebus-esp32 build ~/my-device`. The comments in the demo's [`device.yml`](examples/demo/device.yml) list the available components and explain how to switch to a real sensor.
+The comments in the demo's [`device.yml`](examples/demo/device.yml) list the available components and explain how to switch to a real sensor.
+
+### OpenADR 3 VEN
+
+You need a VTN the board can reach, on the internet or your network, and no broker of your own. The examples follow a program on the public [price server](https://price.grid-coordination.energy/openadr3/3.1.0), whose certificate the firmware verifies against the public root CAs it carries.
+
+```sh
+cp -R examples/oa3-price ~/my-ven
+cd ~/my-ven
+```
+
+Connect the display as [examples/oa3-price/README.md](examples/oa3-price/README.md) shows, or leave out its `peripherals:` and `oa3.display` to follow the price in the log alone. Build and flash as above. Once NTP has set the clock, the log shows `OA3: price <value> <currency>/<units> ...` and the display the price screen. To follow your own VTN and program, set `oa3.base_url` and `oa3.program_name` ([OpenADR3.md](doc/OpenADR3.md#keys)).
 
 ## Building your firmware
 
@@ -74,6 +109,7 @@ Your device is a project outside this clone; the build compiles it against the c
 | You want to | You write | Where | Guide |
 |---|---|---|---|
 | Assemble a device from existing drivers | `device.yml` with `nodes:` | your project | [GenerateHomieDevice.md](doc/GenerateHomieDevice.md) |
+| Follow an OpenADR 3 program | `device.yml` with `oa3:` | your project | [OpenADR3.md](doc/OpenADR3.md) |
 | Write the device in C++ | `device.yml` without `nodes:`, plus `src/` | your project | [HandCodedDevice.md](doc/HandCodedDevice.md) |
 | Support new hardware or add a capability | a driver, `lib/<bus>/<name>.{h,cpp,yml}` | this repo, contributed by pull request | [WritingADriver.md](doc/WritingADriver.md), [CONTRIBUTING.md](CONTRIBUTING.md) |
 
