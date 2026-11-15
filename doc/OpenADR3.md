@@ -156,11 +156,11 @@ A configuration is **recommended** when the lowest internal free heap stays at o
 
 | Board | PSRAM | Polling | Following MQTT notifications | Largest block before TLS |
 |---|---|---|---|---|
-| Olimex ESP32-POE-ISO (ESP32 WROOM) | none | **Recommended** with cpp-oa3 0.3.0: 18.9 KB over a 4-hour soak, no failures. With 0.2.0, not recommended: 1.6 to 3.6 KB, and one of two runs failed to allocate | **Not recommended**: 68 B over a 12-hour soak, with allocation failures and a dropped MQTT connection at every notification burst | 34.8 KB |
-| Olimex ESP32-POE-ISO-WROVER (ESP32) | 8 MB | **Recommended**: 31.8 to 33.3 KB | **Recommended** with `exclusive_tls`: 22.3 KB over an 18-hour soak with the display, no failures. Before the VEN waited for boot to settle, the first fetch after a boot dipped to 16.5 KB | 34.8 to 36.9 KB; 18.4 KB with the display |
-| Waveshare ESP32-S3-POE-ETH | 8 MB | **Recommended**: 133 to 135 KB | **Recommended**: 89.2 KB over a 16-hour soak with `exclusive_tls: false`, both sessions open during fetches | 94.2 KB |
-| Olimex ESP32-P4-DevKit | 32 MB | **Recommended**: 196 KB | **Recommended**: 151 KB over a 17-hour soak with `exclusive_tls: false`, both sessions open during fetches | 122.9 KB |
+| Olimex ESP32-POE-ISO (ESP32 WROOM) | none | **Recommended**: 17.9 KB over a 15.5-hour soak, no failures. With cpp-oa3 0.2.0's two event arrays, not recommended: 1.6 to 3.6 KB, and one of two runs failed to allocate | **Not recommended** (measured with cpp-oa3 0.2.0): 68 B over a 12-hour soak, with allocation failures and a dropped MQTT connection at every notification burst | 34.8 KB |
+| Olimex ESP32-POE-ISO-WROVER (ESP32) | 8 MB | **Recommended**: 31.8 to 33.3 KB | **Recommended**: 26.0 KB over a 15.5-hour soak with the display, no failures | 34.8 KB before every handshake; 18.4 KB at rest with the MQTTS session open |
+| Waveshare ESP32-S3-POE-ETH | 8 MB | **Recommended**: 133 to 135 KB | **Recommended**: 128.6 KB over a 15.5-hour soak, no failures; 89.2 KB with `exclusive_tls: false` | 94.2 KB |
+| Olimex ESP32-P4-DevKit | 32 MB | **Recommended**: 196 KB | **Recommended**: 172.2 KB over a 15.5-hour soak with the MIPI display, no failures; 151 KB with `exclusive_tls: false` | 118.8 KB |
 
-The polling figures come from 5-minute runs, except the WROOM's. An ESP32 without PSRAM holds the VEN's storage in internal RAM: with cpp-oa3 0.3.0 one event array and an 8 KB arena, 14,304 bytes, against 29,792 bytes for 0.2.0's two arrays.
+The 15.5-hour soaks ran cpp-oa3 0.4.0 on 2026-11-14 and 15: the WROOM polling every 15 minutes, the others following notifications without polling and with one TLS session at a time. Each of those fetched once while subscribed, when the next day's event came within its window. The other polling figures come from 5-minute runs. An ESP32 without PSRAM holds the VEN's storage in internal RAM: from cpp-oa3 0.3.0 one event array and an 8 KB arena, 14,304 bytes, against 29,792 bytes for 0.2.0's two arrays.
 
 A `device` or `controller` build with a TLS broker holds two sessions during a poll, so `generate` warns when `oa3:` and a TLS broker (`mqtt.port: 8883`, or `secure-mqtt` in `mqtt.discover`) share a build for an original-ESP32 environment.
