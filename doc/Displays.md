@@ -78,7 +78,7 @@ oa3:
 
 ## What a display costs
 
-Measured on an ESP32-POE-ISO-WROVER with the MOD-LCD2.8RTP and the price screen, against the same build without them ([OpenADR3.md](OpenADR3.md#what-each-feature-costs)):
+Measured on an ESP32-POE-ISO-WROVER with the MOD-LCD2.8RTP and the price screen, against the same build without them ([ChoosingABoard.md](ChoosingABoard.md#what-each-feature-costs) has every feature's cost):
 
 | | Flash | Static RAM | Internal RAM |
 |---|---|---|---|
